@@ -85,3 +85,10 @@ async def get_moneypuck_teams(
         .order_by(MoneyPuckTeam.x_goals_pct.desc())
     )
     return result.scalars().all()
+
+
+@router.get("/moneypuck/live")
+async def get_moneypuck_live():
+    """Fetch fresh team + goalie GSAx data directly from MoneyPuck CSVs (no DB cache)."""
+    from app.scrapers.moneypuck import fetch_live_nhl_snapshot
+    return await fetch_live_nhl_snapshot()

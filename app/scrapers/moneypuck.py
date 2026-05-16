@@ -17,6 +17,9 @@ _CSV_BASE = "https://moneypuck.com/moneypuck/playerData/seasonSummary"
 _SITUATIONS = ("all", "5on5", "powerPlay", "penaltyKill")
 _HEADERS = {"User-Agent": "Clairvoyance/1.0 (sports-intelligence)"}
 
+# Active playoff teams — updated each round
+_PLAYOFF_TEAMS = {"BUF", "MTL", "VGK", "COL", "CAR"}
+
 
 async def fetch_moneypuck_teams() -> list[dict]:
     """Fetch MoneyPuck team stats via direct CSV endpoints (fast, no JS needed)."""
@@ -219,3 +222,78 @@ def _parse_raw_row(row: dict) -> Optional[dict]:
         "low_danger_goals_for": _i(row.get("lowDangerGoalsFor")),
         "low_danger_goals_against": _i(row.get("lowDangerGoalsAgainst")),
     }
+
+
+async def fetch_live_nhl_snapshot() -> dict:
+    """
+    Fetch fresh MoneyPuck team + goalie data directly from CSV endpoints.
+    Called by /nhl/moneypuck/live — no DB needed, always current.
+    Returns {teams: {...}, goalies: [...]} keyed by playoff teams.
+    """
+    season_str = settings.NHL_SEASON
+    year = int(season_str[:4])
+    game_type = "playoffs" if settings.NHL_GAME_TYPE == 3 else "regular"
+    base = f"{_CSV_BASE}/{year}/{game_type}"
+
+    async with httpx.AsyncClient(timeout=20, headers=_HEADERS) as client:
+        teams_resp, goalies_resp = await _gather(
+            client.get(f"{base}/teams.csv"),
+            client.get(f"{base}/goalies.csv"),
+        )
+
+    teams: dict[str, dict] = {}
+    for row in _parse_csv(teams_resp.text if teams_resp.status_code == 200 else ""):
+        t = row.get("team", "")
+        if t not in _PLAYOFF_TEAMS:
+            continue
+        sit = row.get("situation", "")
+        if t not in teams:
+            teams[t] = {}
+        if sit == "all":
+            gp = row.get("games_played") or 1
+            gf = row.get("goals_for") or 0
+            ga = row.get("goals_against") or 0
+            sog_f = row.get("shots_for_60")
+            sog_a = row.get("shots_against_60")
+            teams[t].update({
+                "games_played": gp,
+                "goals_for_pg": round((gf or 0) / (gp or 1), 2),
+                "goals_against_pg": round((ga or 0) / (gp or 1), 2),
+                "sog_pg": round((sog_f or 0) * (row.get("games_played") or 1) / (gp or 1), 1) if sog_f else None,
+                "opp_sog_pg": round((sog_a or 0) * (row.get("games_played") or 1) / (gp or 1), 1) if sog_a else None,
+            })
+        if sit == "5on5":
+            teams[t].update({
+                "xgf_pct": round((row.get("x_goals_pct") or 0.5) * 100, 1),
+                "fenwick_pct": round((row.get("fenwick_for_pct") or 0.5) * 100, 1),
+                "corsi_pct": round((row.get("corsi_for_pct") or 0.5) * 100, 1),
+            })
+
+    goalies: list[dict] = []
+    raw_g = list(csv.DictReader(io.StringIO(goalies_resp.text if goalies_resp.status_code == 200 else "")))
+    for row in raw_g:
+        if row.get("team") not in _PLAYOFF_TEAMS:
+            continue
+        if row.get("situation") != "all":
+            continue
+        xg = _f(row.get("xGoals"))
+        g = _f(row.get("goals"))
+        gsax = round(xg - g, 2) if xg is not None and g is not None else None
+        ice_h = round(_f(row.get("icetime") or 0) / 3600, 1)
+        goalies.append({
+            "name": row.get("name", ""),
+            "team": row.get("team", ""),
+            "games_played": _i(row.get("games_played")),
+            "ice_hours": ice_h,
+            "x_goals_against": xg,
+            "goals_against": g,
+            "gsax": gsax,
+        })
+
+    goalies.sort(key=lambda r: -(r.get("ice_hours") or 0))
+    return {"teams": teams, "goalies": goalies, "source": "moneypuck.com"}
+
+
+async def _gather(*coros):
+    import asyncio
+    return await asyncio.gather(*coros, return_exceptions=True)
