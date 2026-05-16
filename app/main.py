@@ -45,11 +45,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import admin, mlb, nhl, picks  # noqa: E402
+from app.routers import admin, mlb, nhl, picks, predictions  # noqa: E402
 
 app.include_router(mlb.router)
 app.include_router(nhl.router)
 app.include_router(picks.router)
+app.include_router(predictions.router)
 app.include_router(admin.router)
 
 
