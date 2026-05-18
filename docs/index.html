@@ -203,8 +203,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="si">
     <div class="bl" id="boot-lines"></div>
     <div class="bb"><div class="bf" id="boot-fill"></div></div>
-    <div class="sl" id="splash-logo">CLAIRVOYANCE</div>
-    <div class="ss" id="splash-sub">EDGE PRO · SPORTS INTELLIGENCE ENGINE</div>
+    <div class="sl" id="splash-logo" style="padding:0;background:none;-webkit-text-fill-color:unset">
+      <img src="clairvoyance-logo.svg" id="splash-logo-img"
+           style="width:min(700px,90vw);height:auto;opacity:0;transform:scale(.85);transition:opacity 1s cubic-bezier(.34,1.56,.64,1),transform 1s cubic-bezier(.34,1.56,.64,1);filter:drop-shadow(0 0 28px rgba(204,0,255,.55)) drop-shadow(0 0 60px rgba(0,240,255,.2));display:block"
+           alt="CLAIRVOYANCE"/>
+    </div>
     <div class="sk" id="splash-skip" onclick="endSplash()">[[ TAP TO ENTER ]]</div>
   </div>
 </div>
@@ -214,7 +217,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
   </div>
-  <div class="logo">CLAIRVOYANCE</div>
+  <div class="logo" style="padding:0;line-height:1">
+    <svg viewBox="0 0 440 36" width="220" height="36" xmlns="http://www.w3.org/2000/svg" style="display:block">
+      <defs>
+        <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#cc00ff"/>
+          <stop offset="40%" stop-color="#6690ff"/>
+          <stop offset="70%" stop-color="#00f0ff"/>
+          <stop offset="100%" stop-color="#cc00ff"/>
+        </linearGradient>
+        <filter id="hf" x="-5%" y="-50%" width="110%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <text x="220" y="28" text-anchor="middle" font-family="'Courier New',monospace" font-weight="900" font-size="26" letter-spacing="5" fill="url(#hg)" filter="url(#hf)">CLAIRVOYANCE</text>
+    </svg>
+  </div>
   <div class="hdr-r">
     <div class="hs"><div class="hs-v" id="h-acc">--</div><div class="hs-l">ACCURACY</div></div>
     <div class="hs"><div class="hs-v np" id="h-pk">0</div><div class="hs-l">PICKS</div></div>
@@ -222,15 +241,27 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   </div>
 </header>
 <nav id="sbar">
-  <button class="sp act" onclick="SS('mlb')">⚾ BASEBALL</button>
+  <button class="sp act" onclick="SS('home')">🏠 HOME</button>
+  <button class="sp" onclick="SS('mlb')">⚾ BASEBALL</button>
   <button class="sp" onclick="SS('fb')">🏈 FOOTBALL</button>
   <button class="sp" onclick="SS('hk')">🏒 HOCKEY</button>
   <button class="sp" onclick="SS('nba')">🏀 BASKETBALL</button>
   <button class="sp" onclick="SS('ovr')">🧠 OVERALL</button>
 </nav>
 
+<!-- HOME -->
+<div id="sp-home" class="spane act">
+  <div class="sa" style="padding:16px">
+    <div class="sh"><span class="p">🏠</span> TODAY'S BEST PICKS</div>
+    <div id="home-picks" class="fr" style="margin-top:12px"></div>
+    <div class="sh" style="margin-top:24px"><span class="p">📡</span> TONIGHT'S GAMES</div>
+    <div id="home-games" style="margin-top:12px;display:grid;gap:10px"></div>
+    <div style="text-align:center;margin-top:24px;color:var(--t3);font-size:10px;letter-spacing:3px">SELECT A SPORT TAB ABOVE FOR FULL ANALYSIS</div>
+  </div>
+</div>
+
 <!-- BASEBALL -->
-<div id="sp-mlb" class="spane act">
+<div id="sp-mlb" class="spane">
   <nav class="snav"><button class="sb2 act" onclick="">⚾ MLB</button></nav>
   <nav class="inav" id="mlb-in">
     <button class="nb act" onclick="T('mlb','picks')">⚡ PICKS</button>
@@ -2605,6 +2636,30 @@ function checkMidMST(){
 function prepareDayEnd(){const yesterday=new Date(getMSTNow());yesterday.setDate(yesterday.getDate()-1);const yd=yesterday.toISOString().slice(0,10);const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
+function renderHomePage(){
+  const el=document.getElementById('home-picks');
+  const gel=document.getElementById('home-games');
+  if(!el)return;
+  const picks=[];
+  // NHL picks
+  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,p:Math.max(r.p,1-r.p),det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||''});}}catch(e){}
+  // NBA picks
+  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const hN=NBA_BBREF[g.h]?g.h:g.h;const aN=NBA_BBREF[g.a]?g.a:g.a;const fav=r.p>=.5?hN:aN;picks.push({sport:'🏀 NBA',mu:`${aN} @ ${hN}`,pick:fav,p:Math.max(r.p,1-r.p),det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||''});}}catch(e){}
+  // MLB picks
+  try{const mg=GAMES.filter(g=>g.hP&&g.aP).slice(0,6);for(const g of mg){const r=ensemble(g);const fav=r.p>=.5?g.hT:g.aT;picks.push({sport:'⚾ MLB',mu:`${g.aT} @ ${g.hT}`,pick:fav,p:Math.max(r.p,1-r.p),det:'Poisson+Bayesian',col:'var(--hc)',ctx:''});}}catch(e){}
+  picks.sort((a,b)=>b.p-a.p);
+  if(!picks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
+  else{el.innerHTML=picks.map((pk,i)=>`<div class="card" style="border-left:3px solid ${pk.col};position:relative">${i===0?'<div style="position:absolute;top:8px;right:8px;color:var(--gc);font-size:9px;letter-spacing:2px">★ TOP PICK</div>':''}<div style="color:var(--t3);font-size:9px;letter-spacing:2px;margin-bottom:6px">${pk.sport}</div><div style="text-align:center;font-size:12px;color:var(--t2);margin-bottom:8px">${pk.mu}</div><div style="text-align:center;color:${pk.col};font-size:14px;font-weight:700;letter-spacing:3px;margin-bottom:6px">${pk.pick}</div><div style="text-align:center"><span style="font-size:22px;font-weight:700;color:var(--t)">${(pk.p*100).toFixed(1)}%</span> <span style="font-size:9px;color:var(--t3)">${pk.det}</span></div>${pk.ctx?`<div style="text-align:center;font-size:9px;color:var(--t3);margin-top:6px;letter-spacing:1px">${pk.ctx}</div>`:''}</div>`).join('');}
+  // tonight's games summary
+  if(!gel)return;
+  const allG=[
+    ...TONIGHT.map(g=>({sport:'🏒 NHL',mu:`${NHL[g.a]?.name||g.a} @ ${NHL[g.h]?.name||g.h}`,time:g.time,net:g.net,ctx:g.ctx||'',col:'var(--nc)'})),
+    ...NBA_TONIGHT.map(g=>({sport:'🏀 NBA',mu:`${g.a} @ ${g.h}`,time:g.time,net:g.net,ctx:g.ctx||'',col:'var(--gc)'})),
+  ];
+  if(!allG.length){gel.innerHTML='<div class="empty">NO LIVE GAMES TONIGHT</div>';}
+  else{gel.innerHTML=allG.map(g=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${g.col}"><div><span style="color:var(--t3);font-size:9px;letter-spacing:2px">${g.sport}</span><div style="font-size:13px;margin-top:4px">${g.mu}</div>${g.ctx?`<div style="font-size:9px;color:var(--t3);margin-top:2px">${g.ctx}</div>`:''}</div><div style="text-align:right"><div style="font-size:12px;color:${g.col}">${g.time}</div><div style="font-size:9px;color:var(--t3)">${g.net}</div></div></div>`).join('');}
+}
+
 function SS(s){
   document.querySelectorAll('.spane').forEach(p=>p.classList.remove('act'));
   document.querySelectorAll('.sp').forEach(b=>b.classList.remove('act'));
@@ -2614,6 +2669,7 @@ function SS(s){
   if(mn)mn.style.display=s==='mlb'?'flex':'none';
   if(mn2)mn2.style.display=(s==='hk'&&document.getElementById('hk-nhl')?.classList.contains('act'))?'flex':'none';
   if(mn3)mn3.style.display=(s==='nba'&&document.getElementById('nba-nba')?.classList.contains('act'))?'flex':'none';
+  if(s==='home'){renderHomePage();}
   if(s==='ovr'){renderOverall();renderOverallHistory();renderAdaptiveLearning();}
 }
 function setSub(sport,sub){document.querySelectorAll(`#sp-${sport} .subp`).forEach(p=>p.classList.remove('act'));document.querySelectorAll(`#sp-${sport} .sb2`).forEach(b=>b.classList.remove('act'));document.getElementById(`${sport}-${sub}`)?.classList.add('act');document.querySelectorAll(`#sp-${sport} .sb2`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${sub}'`))b.classList.add('act');});const mn2=document.getElementById('mn2'),mn3=document.getElementById('mn3');if(mn2)mn2.style.display=(sport==='hk'&&sub==='nhl')?'flex':'none';if(mn3)mn3.style.display=(sport==='nba'&&sub==='nba')?'flex':'none';}
@@ -2636,7 +2692,7 @@ function T(sport,tabId){
 // ═══ SPLASH ═══════════════════════════════════════════════════
 let splashDone=false;
 function endSplash(){if(splashDone)return;splashDone=true;const sp=document.getElementById('splash');const app=document.getElementById('app');if(sp){sp.style.transition='opacity .7s';sp.style.opacity='0';setTimeout(()=>sp.remove(),800);}if(app)app.classList.add('ready');}
-function startSplash(){const canvas=document.getElementById('matrix-c');const ctx=canvas?.getContext('2d');if(!ctx)return;canvas.width=window.innerWidth;canvas.height=window.innerHeight;const cols=Math.floor(canvas.width/14);const drops=Array(cols).fill(1);const chars='CLAIRVOYANCEEDGEPRO01アイウエオカキクケコ数字量子予測確率統計';const colors=['#cc00ff','#4d79ff','#00e5ff','#ff0080'];function drawMatrix(){ctx.fillStyle='rgba(2,0,8,.05)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle=colors[Math.floor(Math.random()*colors.length)];ctx.font='13px monospace';for(let i=0;i<drops.length;i++){ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*14,drops[i]*14);if(drops[i]*14>canvas.height&&Math.random()>.975)drops[i]=0;drops[i]++;}}const matIV=setInterval(drawMatrix,50);const BOOT=['> INITIALIZING CLAIRVOYANCE v4…',`> BACKEND: ${API_ONLINE()?API_BASE:'OFFLINE MODE (localStorage)'}`,`> CONNECTING ESPN SCOREBOARD API…`,'> LOADING NHL EDGE MODULE…','> CALIBRATING MONTE CARLO (4K×)…','> LOADING HOCKEYVIZ + MONEYPUCK…','> ALL SYSTEMS ONLINE — READY'];const bl=document.getElementById('boot-lines');const bf=document.getElementById('boot-fill');let i=0;function nextLine(){if(i>=BOOT.length){setTimeout(()=>{document.getElementById('splash-logo')?.classList.add('v');document.getElementById('splash-sub')?.classList.add('v');setTimeout(()=>document.getElementById('splash-skip')?.classList.add('v'),600);setTimeout(endSplash,3500);},300);clearInterval(matIV);return;}const div=document.createElement('div');div.className='bll';div.textContent=BOOT[i];bl.appendChild(div);requestAnimationFrame(()=>requestAnimationFrame(()=>div.classList.add('v')));if(bf)bf.style.width=`${Math.round((i+1)/BOOT.length*100)}%`;i++;setTimeout(nextLine,270+Math.random()*110);}setTimeout(nextLine,250);}
+function startSplash(){const canvas=document.getElementById('matrix-c');const ctx=canvas?.getContext('2d');if(!ctx)return;canvas.width=window.innerWidth;canvas.height=window.innerHeight;const cols=Math.floor(canvas.width/14);const drops=Array(cols).fill(1);const chars='CLAIRVOYANCEEDGEPRO01アイウエオカキクケコ数字量子予測確率統計';const colors=['#cc00ff','#4d79ff','#00e5ff','#ff0080'];function drawMatrix(){ctx.fillStyle='rgba(2,0,8,.05)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle=colors[Math.floor(Math.random()*colors.length)];ctx.font='13px monospace';for(let i=0;i<drops.length;i++){ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*14,drops[i]*14);if(drops[i]*14>canvas.height&&Math.random()>.975)drops[i]=0;drops[i]++;}}const matIV=setInterval(drawMatrix,50);const BOOT=['> INITIALIZING CLAIRVOYANCE v4…',`> BACKEND: ${API_ONLINE()?API_BASE:'OFFLINE MODE (localStorage)'}`,`> CONNECTING ESPN SCOREBOARD API…`,'> LOADING NHL EDGE MODULE…','> CALIBRATING MONTE CARLO (4K×)…','> LOADING HOCKEYVIZ + MONEYPUCK…','> ALL SYSTEMS ONLINE — READY'];const bl=document.getElementById('boot-lines');const bf=document.getElementById('boot-fill');let i=0;function nextLine(){if(i>=BOOT.length){setTimeout(()=>{const li=document.getElementById('splash-logo-img');if(li){li.style.opacity='1';li.style.transform='scale(1)';}document.getElementById('splash-sub')?.classList.add('v');setTimeout(()=>document.getElementById('splash-skip')?.classList.add('v'),600);setTimeout(endSplash,3500);},300);clearInterval(matIV);return;}const div=document.createElement('div');div.className='bll';div.textContent=BOOT[i];bl.appendChild(div);requestAnimationFrame(()=>requestAnimationFrame(()=>div.classList.add('v')));if(bf)bf.style.width=`${Math.round((i+1)/BOOT.length*100)}%`;i++;setTimeout(nextLine,270+Math.random()*110);}setTimeout(nextLine,250);}
 
 // ═══ NHL/NBA LIVE TRACKER ════════════════════════════════════
 let _nhlLiveIv=null,_nbaLiveIv=null;
@@ -2725,9 +2781,10 @@ function startNBALive(){if(_nbaLiveIv)clearInterval(_nbaLiveIv);refreshNBALive()
   try{renderOverallHistory();}catch(e){console.error('renderOverallHistory',e);}
   try{renderAdaptiveLearning();}catch(e){console.error('renderAdaptiveLearning',e);}
   try{checkMidMST();setInterval(checkMidMST,60000);}catch(e){console.error('scheduler',e);}
-  const mn=document.getElementById('mn');if(mn)mn.style.display='flex';
+  const mn=document.getElementById('mn');if(mn)mn.style.display='none';
   const mn2=document.getElementById('mn2');if(mn2)mn2.style.display='none';
   const mn3=document.getElementById('mn3');if(mn3)mn3.style.display='none';
+  try{renderHomePage();}catch(e){console.error('renderHomePage',e);}
   try{updateAPIStatus();}catch(e){console.error('updateAPIStatus',e);}
 })();
 </script>
