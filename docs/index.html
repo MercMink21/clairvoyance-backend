@@ -1292,7 +1292,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
 }
 // ═══ PICK STORAGE — backend first, localStorage fallback ════
 function getP(){return S.g('preds',[])||[];}
-function saveP(a){S.s('preds',a);}
+function saveP(a){S.s('preds',a);idbSavePicks(a);}// shadow to IndexedDB
 function getDailyLog(){return S.g('daily_log',{})||{};}
 function saveDailyLog(d){S.s('daily_log',d);}
 
@@ -1417,6 +1417,7 @@ function recR(id,outcome,hScore,aScore){
   const p=preds[i];const log=getDailyLog();
   if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA&&r.lb===p.betOn);if(rec)rec.outcome=outcome;saveDailyLog(log);}
   updHdr();toast(`// RECORDED: ${outcome.toUpperCase()}`);
+  try{setTimeout(()=>{adaptiveTick();renderAdaptiveLearning();},200);}catch(e){}
 }
 function recRFromLog(date,recId,outcome){
   const log=getDailyLog();const preds=getP();
@@ -2395,8 +2396,9 @@ async function fetchNHLEdge(){
     S.s('nhl_edge_date',today());toast('// NHL EDGE REFRESHED');
   }catch(e){console.warn('NHL Edge:',e);}
 }
-async function autoSettleNHL(){try{const r=await fetch(`https://api-web.nhle.com/v1/score/${today()}`,{mode:'cors'});if(!r.ok)return;const d=await r.json();const preds=getP();let changed=false;for(const g of(d.games||[])){if(g.gameState!=='FINAL'&&g.gameState!=='OFF')continue;const h=g.homeTeam?.abbrev,a=g.awayTeam?.abbrev;const hs=g.homeTeam?.score||0,as=g.awayTeam?.score||0;for(const p of preds){if(p.outcome!=='pending'||p.sport!=='NHL')continue;if(p.hA!==h&&p.awA!==a)continue;let outcome=null;if(p.betType==='ML'){if(p.betOn===h)outcome=hs>as?'win':'loss';else if(p.betOn===a)outcome=as>hs?'win':'loss';}else if(p.betType==='PL'){const diff=hs-as;if(p.betOn.includes(h))outcome=(p.betOn.includes('-1.5')?diff>=2:diff<=-2)?'win':'loss';else if(p.betOn.includes(a))outcome=(p.betOn.includes('-1.5')?diff<=-2:diff>=2)?'win':'loss';}else if(p.betType==='OU'){const total=hs+as;const ou=parseFloat(p.ou||5.5);outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`🏒 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}}}if(changed){saveP(preds);updHdr();}}catch(e){console.warn('NHL settle:',e);}}
-function autoSettleFromESPN(games){const preds=getP();let changed=false;for(const g of games){if(g.status!=='post'||g.hScore===null)continue;for(const p of preds){if(p.outcome!=='pending')continue;if(p.hA!==g.hA&&p.awA!==g.awA&&p.hA!==g.awA&&p.awA!==g.hA)continue;if(p.sport!=='MLB')continue;const hW=g.hScore>g.aScore;const aW=g.aScore>g.hScore;let outcome=null;if(p.betType==='ML'){if(p.betOn===g.hA)outcome=hW?'win':'loss';else if(p.betOn===g.awA)outcome=aW?'win':'loss';}else if(p.betType==='RL'){const fav=p.betOn.includes('-1.5');const diff=g.hScore-g.aScore;if(p.betOn.includes(g.hA))outcome=(fav?diff>=2:diff<=-2)?'win':'loss';else if(p.betOn.includes(g.awA))outcome=(fav?diff<=-2:diff>=2)?'win':'loss';}else if(p.betType==='OU'){const total=g.hScore+g.aScore;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|\s/gi,''));if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;const log=getDailyLog();if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA);if(rec)rec.outcome=outcome;saveDailyLog(log);}toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}}}if(changed){saveP(preds);updHdr();}}
+async function autoSettleNHL(){try{const r=await fetch(`https://api-web.nhle.com/v1/score/${today()}`,{mode:'cors'});if(!r.ok)return;const d=await r.json();const preds=getP();let changed=false;for(const g of(d.games||[])){if(g.gameState!=='FINAL'&&g.gameState!=='OFF')continue;const h=g.homeTeam?.abbrev,a=g.awayTeam?.abbrev;const hs=g.homeTeam?.score||0,as=g.awayTeam?.score||0;for(const p of preds){if(p.outcome!=='pending'||p.sport!=='NHL')continue;if(p.hA!==h&&p.awA!==a)continue;let outcome=null;if(p.betType==='ML'){if(p.betOn===h)outcome=hs>as?'win':'loss';else if(p.betOn===a)outcome=as>hs?'win':'loss';}else if(p.betType==='PL'){const diff=hs-as;if(p.betOn.includes(h))outcome=(p.betOn.includes('-1.5')?diff>=2:diff<=-2)?'win':'loss';else if(p.betOn.includes(a))outcome=(p.betOn.includes('-1.5')?diff<=-2:diff>=2)?'win':'loss';}else if(p.betType==='OU'){const total=hs+as;const ou=parseFloat(p.ou||5.5);outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`🏒 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}}}if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}}catch(e){console.warn('NHL settle:',e);}}
+function autoSettleFromESPN(games){const preds=getP();let changed=false;for(const g of games){if(g.status!=='post'||g.hScore===null)continue;for(const p of preds){if(p.outcome!=='pending')continue;if(p.hA!==g.hA&&p.awA!==g.awA&&p.hA!==g.awA&&p.awA!==g.hA)continue;if(p.sport!=='MLB')continue;const hW=g.hScore>g.aScore;const aW=g.aScore>g.hScore;let outcome=null;if(p.betType==='ML'){if(p.betOn===g.hA)outcome=hW?'win':'loss';else if(p.betOn===g.awA)outcome=aW?'win':'loss';}else if(p.betType==='RL'){const fav=p.betOn.includes('-1.5');const diff=g.hScore-g.aScore;if(p.betOn.includes(g.hA))outcome=(fav?diff>=2:diff<=-2)?'win':'loss';else if(p.betOn.includes(g.awA))outcome=(fav?diff<=-2:diff>=2)?'win':'loss';}else if(p.betType==='OU'){const total=g.hScore+g.aScore;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|\s/gi,''));if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;const log=getDailyLog();if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA);if(rec)rec.outcome=outcome;saveDailyLog(log);}toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}}}if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}}
+
 
 // ═══ STATMUSE NHL PLAYOFF LEADERS ════════════════════════════
 // All stats verified via NHL API (gameTypeId=3, seasonId=20252026)
@@ -2956,39 +2958,99 @@ function renderOverallHistory(){
 
 function renderAdaptiveLearning(){
   const el=document.getElementById('ovr-adaptive');if(!el)return;
-  const sa=selfAssess();const all=getP().filter(p=>p.outcome!=='pending');
-  const sports=['MLB','NHL','NBA'];
-  // Pattern analysis
-  const insights=[];
-  sports.forEach(s=>{
-    const sp=all.filter(p=>p.sport===s);if(sp.length<3)return;
-    const w=sp.filter(p=>p.outcome==='win').length;const a=w/sp.length;
-    if(a>=.60)insights.push({type:'strength',sport:s,msg:`${s} model performing above baseline — ${(a*100).toFixed(0)}% win rate across ${sp.length} settled bets. Confidence scores are well-calibrated in this sport.`});
-    else if(a<.45)insights.push({type:'weakness',sport:s,msg:`${s} picks underperforming — ${(a*100).toFixed(0)}% win rate. Model may be overweighting certain factors. Recommended: increase weight skepticism or reduce stake.`});
-  });
-  // Bet type patterns
-  ['ML','OU','RL','PL','PARLAY'].forEach(bt=>{
-    const bp=all.filter(p=>p.betType===bt);if(bp.length<3)return;
-    const bw=bp.filter(p=>p.outcome==='win').length;const ba=bw/bp.length;
-    if(ba>=.60)insights.push({type:'strength',sport:bt,msg:`${bt} bets hitting at ${(ba*100).toFixed(0)}% — strong edge identified. Model's ${bt} probability estimates appear underpriced by market.`});
-    else if(ba<.40)insights.push({type:'weakness',sport:bt,msg:`${bt} bets struggling at ${(ba*100).toFixed(0)}%. Review line movement assumptions and reconsider weighting.`});
-  });
-  // Calibration drift
-  const highConf=all.filter(p=>p.winProb>=.65);
-  if(highConf.length>=3){
-    const hcW=highConf.filter(p=>p.outcome==='win').length;const hcA=hcW/highConf.length;
-    if(hcA<.60)insights.push({type:'calibration',sport:'ALL',msg:`High-confidence picks (≥65%) winning at only ${(hcA*100).toFixed(0)}%. Model may be overconfident — consider tightening thresholds for ELITE tier.`});
-    else insights.push({type:'calibration',sport:'ALL',msg:`High-confidence picks (≥65%) winning at ${(hcA*100).toFixed(0)}% — model calibration is strong. Elite tier picks are justified.`});
+  const state=adaptiveTick();
+  const ts=state.lastRun?new Date(state.lastRun).toLocaleString():'Never';
+  let html=`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:12px">// ADAPTIVE LEARNING ENGINE · LAST CYCLE: ${ts}</div>`;
+  if(state.status==='INSUFFICIENT_DATA'){html+=`<div class="empty">${state.msg}</div>`+renderMorningReport()+`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;el.innerHTML=html;return;}
+  const accColor=a=>a>=.60?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
+  // ── Performance snapshot ──
+  html+=`<div class="card" style="margin-bottom:12px;padding:13px">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">// PERFORMANCE SNAPSHOT</div>
+    <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:10px">
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${accColor(state.overallAcc)}">${(state.overallAcc*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">30-BET ACC</div></div>
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${accColor(state.recentAcc)}">${(state.recentAcc*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">10-BET TREND</div></div>
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--ic)">${state.totalBets}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">TOTAL BETS</div></div>
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--vc)">${(state.evThreshold||2).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">EV THRESH</div></div>
+    </div>
+  </div>`;
+  // ── Auto-tuned weights ──
+  html+=`<div class="card" style="margin-bottom:10px;padding:12px">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--ic);margin-bottom:10px">// AUTO-TUNED ENSEMBLE WEIGHTS</div>
+    ${['MLB','NHL','NBA'].filter(s=>state.weights&&state.weights[s]).map(sport=>{
+      const w=state.weights[sport];
+      return`<div style="margin-bottom:10px"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:6px">${sport}</div>
+      <div style="display:flex;gap:5px">
+        ${[['MC',w.mc,'var(--pc)'],['BAY',w.bay,'var(--ic)'],['ELO',w.elo,'var(--nc)']].map(([lbl,v,c])=>`<div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:7px;text-align:center">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${lbl}</div>
+          <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${c}">${(v*100).toFixed(0)}%</div>
+          <div style="height:3px;background:rgba(77,121,255,.15);border-radius:1px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${(v*100).toFixed(0)}%;background:${c};border-radius:1px"></div></div>
+        </div>`).join('')}
+      </div></div>`;
+    }).join('')}
+  </div>`;
+  // ── Calibration table ──
+  if(Object.keys(state.calErrors||{}).length){
+    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gc);margin-bottom:9px">// CALIBRATION ANALYSIS (PREDICTED vs ACTUAL)</div>
+      <table class="dt" style="font-size:9px"><tr><th>TIER</th><th>PREDICTED</th><th>ACTUAL</th><th>DRIFT</th><th>N</th></tr>
+      ${Object.entries(state.calErrors).map(([bk,d])=>{const drift=d.predicted-d.actual;const dc=Math.abs(drift)>0.06?'var(--hc)':Math.abs(drift)>0.03?'var(--mc)':'var(--nc)';return`<tr><td style="color:var(--t3);text-transform:uppercase">${bk}</td><td>${(d.predicted*100).toFixed(1)}%</td><td style="color:${d.actual>=d.predicted?'var(--nc)':'var(--hc)'}">${(d.actual*100).toFixed(1)}%</td><td style="color:${dc}">${drift>=0?'+':''}${(drift*100).toFixed(1)}%</td><td>${d.n}</td></tr>`;}).join('')}
+      </table>
+    </div>`;
   }
-  // Add selfAssess insights
-  for(const w of sa.warns)insights.push({type:'warning',sport:'SYS',msg:w});
-  for(const i of sa.insights)insights.push({type:'insight',sport:'SYS',msg:i});
-  const typeColor={strength:'var(--nc)',weakness:'var(--hc)',calibration:'var(--gc)',warning:'var(--mc)',insight:'var(--ic)'};
-  const typeLabel={strength:'✓ STRENGTH',weakness:'⚠ WEAKNESS',calibration:'◈ CALIBRATION',warning:'// ALERT',insight:'→ INSIGHT'};
-  let html=`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">// CLAIRVOYANCE HAS ANALYZED ${all.length} SETTLED BETS ACROSS ${sports.filter(s=>all.some(p=>p.sport===s)).length} SPORTS</div>`;
-  if(!insights.length){html+='<div class="empty">NOT ENOUGH DATA — LOCK AND SETTLE MORE BETS TO ENABLE ADAPTIVE LEARNING</div>';el.innerHTML=html;return;}
-  html+=insights.map(ins=>{const c=typeColor[ins.type]||'var(--t3)';const lbl=typeLabel[ins.type]||ins.type.toUpperCase();return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${c};padding:11px"><div style="display:flex;gap:8px;align-items:center;margin-bottom:5px"><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${c};color:${c};border-radius:2px">${lbl}</span><span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${ins.sport}</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t);line-height:1.7">${ins.msg}</div></div>`;}).join('');
-  html+=`<div class="card" style="margin-top:14px;padding:11px;border:1px solid rgba(102,144,255,.3)"><div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--ic);margin-bottom:8px">// ENSEMBLE WEIGHTS (ADJUSTABLE)</div><div class="g3" style="gap:6px">${[['Monte Carlo','mc',ENS.mc],['Bayesian','bay',ENS.bay],['ELO','elo',ENS.elo]].map(([lbl,k,v])=>`<div style="text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${lbl}</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:var(--ic)">${(v*100).toFixed(0)}%</div></div>`).join('')}</div></div>`;
+  // ── Sport performance ──
+  if(Object.keys(state.sportPerf||{}).length){
+    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--vc);margin-bottom:8px">// SPORT BREAKDOWN (30-BET WINDOW)</div>
+      <div style="display:flex;gap:6px">
+        ${Object.entries(state.sportPerf).map(([s,p])=>`<div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${s}</div>
+          <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${accColor(p.acc)}">${(p.acc*100).toFixed(0)}%</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:3px">${p.wins}W / ${p.losses}L</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+  // ── Bet type performance ──
+  const typeData=Object.entries(state.typePerf||{}).filter(([,p])=>p.n>=3);
+  if(typeData.length){
+    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--mc);margin-bottom:8px">// BET TYPE PERFORMANCE</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        ${typeData.map(([bt,p])=>`<div style="flex:1;min-width:60px;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:7px;text-align:center">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${bt}</div>
+          <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:${accColor(p.acc)}">${(p.acc*100).toFixed(0)}%</div>
+          <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">${p.n} bets</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+  // ── Trend history mini-chart ──
+  if((state.history||[]).length>1){
+    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:9px">// ACCURACY TREND (EACH BAR = ONE LEARNING CYCLE)</div>
+      <div style="display:flex;align-items:flex-end;gap:3px;height:44px">
+        ${state.history.map(h=>{const pct=h.overallAcc||0.5;const ht=Math.max(4,Math.round(pct*44));const c=pct>=.58?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';return`<div style="flex:1;background:${c};height:${ht}px;border-radius:1px;opacity:.85;min-width:4px" title="${(pct*100).toFixed(1)}%"></div>`;}).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:4px"><span>OLDEST</span><span>NOW</span></div>
+    </div>`;
+  }
+  // ── Findings ──
+  if((state.findings||[]).length){
+    html+=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:8px;margin-top:14px">// WHAT THE MODEL LEARNED</div>`;
+    const fColor={strength:'var(--nc)',weakness:'var(--hc)',up:'var(--nc)',down:'var(--hc)',calibration:'var(--gc)',alert:'var(--mc)',insight:'var(--ic)'};
+    const fLabel={strength:'STRENGTH',weakness:'WEAKNESS',up:'WEIGHT UP',down:'WEIGHT DOWN',calibration:'CALIBRATION',alert:'ALERT',insight:'INSIGHT'};
+    html+=state.findings.map(f=>`<div class="card" style="margin-bottom:7px;border-left:3px solid ${fColor[f.type]||'var(--t3)'};padding:9px">
+      <div style="display:flex;gap:7px;align-items:center;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:8px;padding:2px 5px;border:1px solid ${fColor[f.type]||'var(--t3)'};color:${fColor[f.type]||'var(--t3)'};border-radius:2px">${fLabel[f.type]||f.type.toUpperCase()}</span>
+        <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${f.component}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t);line-height:1.7">${f.msg}</div>
+    </div>`).join('');
+  }
+  // ── Morning report + controls ──
+  html+=renderMorningReport();
+  html+=`<button class="btn btn-p" style="width:100%;margin-top:12px;padding:9px" onclick="adaptiveTick();renderAdaptiveLearning();toast('// LEARNING CYCLE COMPLETE — WEIGHTS UPDATED')">[ RUN LEARNING CYCLE ]</button>`;
+  html+=`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;
   el.innerHTML=html;
 }
 
@@ -3013,7 +3075,7 @@ async function autoSettleNBA(){
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`🏀 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
       }
     }
-    if(changed){saveP(preds);updHdr();}
+    if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
   }catch(e){console.warn('NBA settle:',e);}
 }
 
@@ -3229,6 +3291,270 @@ async function refreshNBALive(){
 }
 function startNBALive(){if(_nbaLiveIv)clearInterval(_nbaLiveIv);refreshNBALive();_nbaLiveIv=setInterval(refreshNBALive,30000);}
 
+// ══════════════════════════════════════════════════════════════
+// ═══ INDEXEDDB PERSISTENCE — survives cache clears ═══════════
+// ══════════════════════════════════════════════════════════════
+const _IDB_NAME='clairvoyance_v1',_IDB_VER=1;let _idb=null;
+async function openIDB(){
+  if(_idb)return _idb;
+  return new Promise((res,rej)=>{
+    const req=indexedDB.open(_IDB_NAME,_IDB_VER);
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains('picks'))db.createObjectStore('picks',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('meta'))db.createObjectStore('meta',{keyPath:'k'});
+    };
+    req.onsuccess=e=>{_idb=e.target.result;res(_idb);};
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function idbSavePicks(picks){
+  try{
+    const db=await openIDB();
+    const tx=db.transaction(['picks','meta'],'readwrite');
+    const st=tx.objectStore('picks');st.clear();
+    for(const p of(picks||[]))if(p&&p.id)st.put(p);
+    tx.objectStore('meta').put({k:'ts',v:Date.now()});
+  }catch(e){console.warn('[IDB]',e);}
+}
+async function idbLoadPicks(){
+  try{
+    const db=await openIDB();
+    return new Promise((res,rej)=>{
+      const req=db.transaction('picks','readonly').objectStore('picks').getAll();
+      req.onsuccess=()=>res(req.result||[]);req.onerror=rej;
+    });
+  }catch(e){return[];}
+}
+async function idbRecoverPicks(){
+  const idbPicks=await idbLoadPicks();if(!idbPicks.length)return;
+  const local=getP();const ids=new Set(local.map(p=>p.id));
+  let added=0;for(const p of idbPicks){if(!ids.has(p.id)){local.push(p);added++;}}
+  if(added){S.s('preds',local);updHdr();toast(`// IDB RECOVERED ${added} PICKS`);}
+}
+// ══════════════════════════════════════════════════════════════
+// ═══ CROSS-DEVICE SYNC CODE ═══════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+function genSyncCode(){
+  const data={preds:getP(),elo:ELO,daily_log:getDailyLog(),ens:ENS,nhl_ens:NHL_ENS,nba_ens:NBA_ENS,v:2};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  navigator.clipboard?.writeText(b64).then(()=>toast('// SYNC CODE COPIED')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=b64;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('// SYNC CODE COPIED');
+  });
+  return b64;
+}
+function importSyncCode(code){
+  if(!code?.trim()){toast('// NO CODE PROVIDED');return;}
+  try{
+    const d=JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    let added=0;
+    if(d.preds){const local=getP();const ids=new Set(local.map(p=>p.id));for(const p of d.preds){if(!ids.has(p.id)){local.push(p);added++;}}saveP(local);}
+    if(d.elo){ELO=d.elo;S.s('elo',ELO);}
+    if(d.ens){ENS=d.ens;S.s('ens',ENS);}
+    if(d.nhl_ens){NHL_ENS=d.nhl_ens;S.s('nhl_ens',NHL_ENS);}
+    if(d.nba_ens){NBA_ENS=d.nba_ens;S.s('nba_ens',NBA_ENS);}
+    if(d.daily_log)saveDailyLog(d.daily_log);
+    updHdr();renderHistory();
+    toast(`// IMPORTED ${added} NEW PICKS + MODEL STATE`);
+  }catch(e){toast('// IMPORT FAILED — INVALID CODE');}
+}
+function renderSyncCodePanel(){
+  return`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gc);margin-bottom:9px">// CROSS-DEVICE SYNC</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:8px;line-height:1.8">Generate a sync code to copy all picks, history, and model weights to another device. Paste it on the other device to import.</div>
+    <button class="btn btn-o btn-fw" style="margin-bottom:10px" onclick="genSyncCode()">GENERATE + COPY SYNC CODE</button>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px">IMPORT CODE FROM ANOTHER DEVICE:</div>
+    <div style="display:flex;gap:6px">
+      <input id="sync-code-in" class="fi" placeholder="PASTE SYNC CODE" style="flex:1;font-size:9px;padding:6px 8px"/>
+      <button class="btn btn-n btn-sm" onclick="importSyncCode(document.getElementById('sync-code-in').value)">IMPORT</button>
+    </div>`;
+}
+// ══════════════════════════════════════════════════════════════
+// ═══ ADAPTIVE LEARNING ENGINE ═════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+function adaptiveTick(){
+  const allPreds=getP().filter(p=>p.outcome!=='pending');
+  if(allPreds.length<5){
+    const st={lastRun:Date.now(),betsAnalyzed:0,status:'INSUFFICIENT_DATA',msg:'Need at least 5 settled bets to begin adaptive learning. Lock picks and record outcomes.'};
+    S.s('adaptive_state',st);return st;
+  }
+  const W30=allPreds.slice(-30);
+  const W10=allPreds.slice(-10);
+  const overallAcc=W30.filter(p=>p.outcome==='win').length/W30.length;
+  const recentAcc=W10.length>=5?W10.filter(p=>p.outcome==='win').length/W10.length:overallAcc;
+
+  // Per-sport performance
+  const sportPerf={};
+  for(const sport of['MLB','NHL','NBA']){
+    const sp=W30.filter(p=>p.sport===sport);if(!sp.length)continue;
+    const w=sp.filter(p=>p.outcome==='win').length;
+    sportPerf[sport]={acc:w/sp.length,n:sp.length,wins:w,losses:sp.length-w};
+  }
+
+  // Calibration buckets: predicted win% vs actual win rate
+  const bkts={low:{lo:.50,hi:.57,sp:0,n:0,w:0},mid:{lo:.57,hi:.63,sp:0,n:0,w:0},high:{lo:.63,hi:.70,sp:0,n:0,w:0},elite:{lo:.70,hi:1.01,sp:0,n:0,w:0}};
+  for(const p of W30){
+    const pr=p.winProb||0.5;const win=p.outcome==='win'?1:0;
+    for(const[,d]of Object.entries(bkts)){if(pr>=d.lo&&pr<d.hi){d.sp+=pr;d.n++;d.w+=win;break;}}
+  }
+  const calErrors={};
+  for(const[bk,d]of Object.entries(bkts)){
+    if(!d.n)continue;
+    calErrors[bk]={predicted:d.sp/d.n,actual:d.w/d.n,n:d.n,error:(d.sp/d.n)-(d.w/d.n)};
+  }
+
+  // Bet type performance
+  const typePerf={};
+  for(const bt of['ML','RL','OU','PL','PARLAY']){
+    const tp=W30.filter(p=>p.betType===bt);if(!tp.length)continue;
+    const tw=tp.filter(p=>p.outcome==='win').length;
+    typePerf[bt]={acc:tw/tp.length,n:tp.length,wins:tw};
+  }
+
+  // Weight adjustment signals (calibration-based gradient)
+  const eliteErr=calErrors.elite?.error||0;   // +: overconfident, -: underconfident
+  const midActual=calErrors.mid?.actual||overallAcc;
+  const highActual=calErrors.high?.actual||overallAcc;
+  const LR=0.12;// learning rate — small for stability
+
+  // MC: if elite picks (high simulation agreement) are over-predicted → reduce MC weight
+  const mcSignal=eliteErr>0.08?0.93:eliteErr>0.04?0.97:eliteErr<-0.06?1.05:1.0;
+  // BAY: if mid-confidence picks are actually hitting (Bayesian conservative range) → boost BAY
+  const baySignal=midActual>0.60?1.06:midActual>0.55?1.02:midActual<0.47?0.95:1.0;
+  // ELO: tracks overall accuracy as it's a balanced estimator
+  const eloSignal=overallAcc>0.57?1.03:overallAcc<0.47?0.94:1.0;
+
+  function updateWeights(ens,ms,bs,es){
+    const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+    const rMC=clamp(ens.mc*(1-LR)+ens.mc*ms*LR,0.10,0.70);
+    const rBAY=clamp(ens.bay*(1-LR)+ens.bay*bs*LR,0.10,0.55);
+    const rELO=clamp(ens.elo*(1-LR)+ens.elo*es*LR,0.10,0.55);
+    const s=rMC+rBAY+rELO;
+    return{mc:rMC/s,bay:rBAY/s,elo:rELO/s};
+  }
+
+  const prevENS={...ENS};
+  ENS=updateWeights(ENS,mcSignal,baySignal,eloSignal);
+  S.s('ens',ENS);
+
+  // Sport-specific: if a sport is outperforming, slightly boost its dominant component
+  if(sportPerf.NHL?.n>=5){
+    const adj=sportPerf.NHL.acc>0.58?1.04:sportPerf.NHL.acc<0.47?0.93:1.0;
+    NHL_ENS=updateWeights(NHL_ENS,adj,baySignal,eloSignal);
+    NHL_ENS.hv=0;S.s('nhl_ens',NHL_ENS);
+  }
+  if(sportPerf.NBA?.n>=5){
+    const adj=sportPerf.NBA.acc>0.58?1.04:sportPerf.NBA.acc<0.47?0.93:1.0;
+    NBA_ENS=updateWeights(NBA_ENS,adj,baySignal,eloSignal);
+    S.s('nba_ens',NBA_ENS);
+  }
+
+  // EV threshold auto-tune
+  const hiEV=W30.filter(p=>p.decOdds&&p.winProb&&(p.winProb-(1/p.decOdds))>0.04);
+  const hiEVAcc=hiEV.length>=5?hiEV.filter(p=>p.outcome==='win').length/hiEV.length:null;
+  let evAdj=null;
+  if(hiEVAcc!==null){
+    const cur=+(S.g('evt')||2);
+    if(hiEVAcc<0.47&&cur<5){evAdj=Math.min(5,+(cur+0.5).toFixed(1));S.s('evt',evAdj);}
+    else if(hiEVAcc>0.63&&cur>1){evAdj=Math.max(1,+(cur-0.5).toFixed(1));S.s('evt',evAdj);}
+  }
+
+  // Generate findings
+  const findings=[];
+  const deltaPct=(a,b)=>((b-a)*100).toFixed(1);
+  if(Math.abs(ENS.mc-prevENS.mc)>0.004){
+    const dir=ENS.mc>prevENS.mc?'UP':'DOWN';
+    findings.push({type:ENS.mc>prevENS.mc?'up':'down',component:'MONTE CARLO',msg:`MC weight nudged ${dir} → ${(ENS.mc*100).toFixed(0)}%. Calibration signal: elite-tier drift was ${eliteErr>0?'+':''}${(eliteErr*100).toFixed(1)}%`});
+  }
+  if(Math.abs(ENS.bay-prevENS.bay)>0.004){
+    const dir=ENS.bay>prevENS.bay?'UP':'DOWN';
+    findings.push({type:ENS.bay>prevENS.bay?'up':'down',component:'BAYESIAN',msg:`BAY weight nudged ${dir} → ${(ENS.bay*100).toFixed(0)}%. Mid-tier actual win rate: ${(midActual*100).toFixed(0)}%`});
+  }
+  if(Math.abs(ENS.elo-prevENS.elo)>0.004){
+    const dir=ENS.elo>prevENS.elo?'UP':'DOWN';
+    findings.push({type:ENS.elo>prevENS.elo?'up':'down',component:'ELO',msg:`ELO weight nudged ${dir} → ${(ENS.elo*100).toFixed(0)}%. Overall 30-bet accuracy: ${(overallAcc*100).toFixed(0)}%`});
+  }
+  if(evAdj!==null)findings.push({type:'calibration',component:'EV THRESHOLD',msg:`EV threshold auto-adjusted to ${evAdj}% — high-EV pick accuracy: ${(hiEVAcc*100).toFixed(0)}%`});
+  for(const[sport,perf]of Object.entries(sportPerf)){
+    if(perf.acc>=0.63)findings.push({type:'strength',component:sport,msg:`${sport} model STRONG — ${(perf.acc*100).toFixed(0)}% win rate on last ${perf.n} bets. Weights reinforced.`});
+    else if(perf.acc<0.44)findings.push({type:'weakness',component:sport,msg:`${sport} underperforming — ${(perf.acc*100).toFixed(0)}% win rate. Model weights de-emphasized for this sport.`});
+  }
+  for(const[bt,perf]of Object.entries(typePerf)){
+    if(perf.n>=5){
+      if(perf.acc>=0.64)findings.push({type:'strength',component:bt+' BET TYPE',msg:`${bt} bets hitting ${(perf.acc*100).toFixed(0)}% — market edge confirmed. Continue targeting this market.`});
+      else if(perf.acc<0.42)findings.push({type:'weakness',component:bt+' BET TYPE',msg:`${bt} struggling at ${(perf.acc*100).toFixed(0)}%. Model is likely finding phantom value here — reduce ${bt} exposure.`});
+    }
+  }
+  // Streak detection
+  let streak=0;for(let i=W10.length-1;i>=0;i--){if(W10[i].outcome==='loss')streak++;else break;}
+  if(streak>=3)findings.push({type:'alert',component:'STREAK',msg:`${streak}-game losing streak detected — model is in recalibration. Weights are being adjusted.`});
+  if(recentAcc>overallAcc+0.08)findings.push({type:'insight',component:'MOMENTUM',msg:`Recent 10-bet accuracy (${(recentAcc*100).toFixed(0)}%) is trending ABOVE 30-bet baseline (${(overallAcc*100).toFixed(0)}%) — model is improving.`});
+  else if(recentAcc<overallAcc-0.08)findings.push({type:'alert',component:'REGRESSION',msg:`Recent 10-bet accuracy (${(recentAcc*100).toFixed(0)}%) is falling BELOW 30-bet baseline (${(overallAcc*100).toFixed(0)}%) — auto-recalibrating.`});
+
+  // Load previous state and append to history
+  const prev=S.g('adaptive_state')||{};
+  const history=((prev.history)||[]).slice(-15);
+  history.push({ts:Date.now(),overallAcc,recentAcc,weights:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},n:W30.length});
+
+  const state={
+    lastRun:Date.now(),betsAnalyzed:W30.length,totalBets:allPreds.length,
+    overallAcc,recentAcc,sportPerf,typePerf,calErrors,
+    weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo}},
+    findings,history,evThreshold:+(S.g('evt')||2),status:'OK'
+  };
+  S.s('adaptive_state',state);
+  return state;
+}
+
+// ── Morning/status report card ────────────────────────────────
+function renderMorningReport(){
+  const mst=getMSTNow();const h=mst.getHours();
+  const preds=getP();
+  const now=Date.now();
+  const settled36=preds.filter(p=>p.outcome!=='pending'&&p.settledAt&&(now-p.settledAt)<129600000);
+  const wins36=settled36.filter(p=>p.outcome==='win').length;
+  const settled8=preds.filter(p=>p.outcome!=='pending'&&p.settledAt&&(now-p.settledAt)<28800000);
+  const wins8=settled8.filter(p=>p.outcome==='win').length;
+  const lastUpd=S.g('last_upd')||'—';
+  const adSt=S.g('adaptive_state')||{};
+  const schedule=[
+    {time:'12:00 AM MST',desc:'AUTO-SETTLE ALL SPORTS + RELOAD SCHEDULES'},
+    {time:'10:00 AM MST',desc:'NBA/NHL STATS + PLAYER DATA REFRESH'},
+    {time:'10:00 PM MST',desc:"TOMORROW'S PICKS PRE-GENERATED"},
+    {time:'6:00–11:00 PM MST',desc:'LIVE SCORE TRACKER ACTIVE (30-SEC POLLING)'},
+    {time:'EVERY MINUTE',desc:'MIDNIGHT SCHEDULER TICK (CHECKMIDMST)'},
+    {time:'ON SETTLEMENT',desc:'ADAPTIVE ENGINE AUTO-CYCLES — WEIGHTS UPDATE'},
+  ];
+  return`<div class="card" style="margin-top:14px;padding:13px;border:1px solid rgba(255,204,0,.22)">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gc);margin-bottom:10px">// MORNING REPORT — WHAT HAPPENED WHILE YOU WERE AWAY</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center;min-width:70px">
+        <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${wins36>settled36-wins36?'var(--nc)':'var(--hc)'}">${wins36}W/${settled36-wins36}L</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">LAST 36H</div>
+      </div>
+      <div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center;min-width:70px">
+        <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${wins8>settled8-wins8?'var(--nc)':'var(--hc)'}">${wins8}W/${settled8-wins8}L</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">LAST 8H</div>
+      </div>
+      <div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center;min-width:70px">
+        <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:var(--ic)">${preds.filter(p=>p.outcome==='pending').length}</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">PENDING</div>
+      </div>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--t2);line-height:2;margin-bottom:10px">
+      MODEL LAST REFRESHED: ${lastUpd}<br>
+      ADAPTIVE ENGINE: ${adSt.lastRun?new Date(adSt.lastRun).toLocaleString():'NOT YET RUN'}<br>
+      ${adSt.overallAcc?`30-BET MODEL ACC: ${(adSt.overallAcc*100).toFixed(1)}%`:''}<br>
+      EV THRESHOLD: ${(+(S.g('evt')||2)).toFixed(1)}%<br>
+      PICKS IN LOCAL DB: ${preds.length} · IDB SHADOW: ACTIVE
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--pc);margin-bottom:6px">// SCHEDULED ENGINE EVENTS</div>
+    ${schedule.map(s=>`<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(77,121,255,.08)">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--gc);flex:0 0 130px;white-space:nowrap">${s.time}</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t2)">${s.desc}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 // ═══ INIT ════════════════════════════════════════════════════
 (async function INIT(){
   startSplash();
@@ -3256,6 +3582,7 @@ function startNBALive(){if(_nbaLiveIv)clearInterval(_nbaLiveIv);refreshNBALive()
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
+  try{await idbRecoverPicks();}catch(e){console.error('idbRecover',e);}
   try{await syncPicksFromBackend();}catch(e){console.error('syncPicks',e);}
   try{loadGames(todayESPN());}catch(e){console.error('loadGames',e);}
   try{renderR();}catch(e){console.error('renderR',e);}
@@ -3266,6 +3593,7 @@ function startNBALive(){if(_nbaLiveIv)clearInterval(_nbaLiveIv);refreshNBALive()
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}
   try{renderOverallHistory();}catch(e){console.error('renderOverallHistory',e);}
+  try{adaptiveTick();}catch(e){console.error('adaptiveTick',e);}
   try{renderAdaptiveLearning();}catch(e){console.error('renderAdaptiveLearning',e);}
   try{checkMidMST();setInterval(checkMidMST,60000);}catch(e){console.error('scheduler',e);}
   const mn=document.getElementById('mn');if(mn)mn.style.display='none';
