@@ -262,11 +262,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- HOME -->
 <div id="sp-home" class="spane act">
   <div class="sa" style="padding:16px">
-    <div class="sh"><span class="p">🏠</span> TODAY'S BEST PICKS</div>
-    <div id="home-picks" class="fr" style="margin-top:12px"></div>
-    <div class="sh" style="margin-top:24px"><span class="p">📡</span> TONIGHT'S GAMES</div>
+    <div id="free-pick-banner" style="margin-bottom:16px"></div>
+    <div class="sh"><span class="p">⚡</span> TODAY'S TOP PICKS</div>
+    <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
+    <div class="sh" style="margin-top:20px"><span class="p">📡</span> TONIGHT'S GAMES</div>
     <div id="home-games" style="margin-top:12px;display:grid;gap:10px"></div>
-    <div class="sh" style="margin-top:24px"><span class="p">🎯</span> HIGH CONFIDENCE LOCKED</div>
+    <div class="sh" style="margin-top:20px"><span class="p">🎯</span> LOCKED PICKS TRACKER</div>
     <div id="home-tracker" style="margin-top:12px;display:grid;gap:8px"></div>
     <div style="text-align:center;margin-top:24px;color:var(--t3);font-size:10px;letter-spacing:3px">SELECT A SPORT TAB ABOVE FOR FULL ANALYSIS</div>
   </div>
@@ -278,13 +279,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <nav class="inav" id="mlb-in">
     <button class="nb act" onclick="T('mlb','picks')">⚡ PICKS</button>
     <button class="nb" onclick="T('mlb','games')">📅 TODAY</button>
-    <button class="nb" onclick="T('mlb','tmrw')">🌅 TMRW</button>
     <button class="nb" onclick="T('mlb','parlay')">🎰 PARLAY</button>
     <button class="nb" onclick="T('mlb','live')">📡 LIVE</button>
+    <button class="nb" onclick="T('mlb','nrfi')">🔴 NRFI</button>
     <button class="nb" onclick="T('mlb','history')">📋 HISTORY</button>
     <button class="nb" onclick="T('mlb','ranks')">📊 RANKS</button>
     <button class="nb" onclick="T('mlb','model')">🧠 MODEL</button>
-    <button class="nb" onclick="T('mlb','standings')">🏆 STANDINGS</button>
     <button class="nb" onclick="T('mlb','set')">⚙</button>
   </nav>
   <div class="sa" id="mlb-sa">
@@ -313,13 +313,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div id="espn-status" style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:8px"></div>
       <div id="games-l"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="mlb-tab-tmrw" class="tab">
+    <div id="mlb-tab-nrfi" class="tab">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div><div class="sh" style="margin:0"><span class="p">🌅</span> TOMORROW</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)" id="td"></div></div>
-        <button class="btn btn-p btn-sm" onclick="loadTmrw()">↻ ESPN</button>
+        <div class="sh" style="margin:0"><span class="p">🔴</span> NO RUN FIRST INNING (NRFI)</div>
+        <button class="btn btn-p btn-sm" onclick="renderNRFI()">↻ CALC</button>
       </div>
-      <div id="tmrw-top" style="display:none;background:rgba(10,0,24,.8);border:1px solid rgba(204,0,255,.2);border-radius:2px;padding:9px;margin-bottom:9px"><div id="tmrw-best" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
-      <div id="tmrw-l"><div class="loading"><span class="spi"></span></div></div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(204,0,255,.25);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">
+        NRFI = NO RUN SCORED BY EITHER TEAM IN THE 1ST INNING<br>
+        MODEL: STARTER ERA/FIP × TEAM 1ST-INN SCORING RATE × PARK FACTOR<br>
+        <span style="color:var(--t3)">ELITE ≥70% · GOOD 62-70% · FAIR 55-62% · FADE &lt;55%</span>
+      </div>
+      <div id="nrfi-list"><div class="loading"><span class="spi"></span> LOAD TODAY'S GAMES FIRST</div></div>
     </div>
     <div id="mlb-tab-parlay" class="tab">
       <div class="sh"><span class="p">🎰</span> PARLAY BUILDER</div>
@@ -383,15 +387,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div class="sh" style="margin-top:12px"><span class="p">📈</span> ADAPTIVE LEARNING</div>
       <div id="lrn"></div>
     </div>
-    <div id="mlb-tab-standings" class="tab">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="sh" style="margin:0"><span class="p">🏆</span> MLB STANDINGS</div>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-o btn-sm" onclick="renderStandings('div')">DIV</button>
-        </div>
-      </div>
-      <div id="standings-content"><div class="loading"><span class="spi"></span></div></div>
-    </div>
     <div id="mlb-tab-set" class="tab">
       <div class="sh"><span class="p">⚙</span> SYSTEM CONFIG</div>
       <div class="sg">
@@ -405,7 +400,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       </div>
       <div class="sg"><div class="sgt">// DATA MANAGEMENT</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-o btn-sm" onclick="doExp()">EXPORT</button>
+          <button class="btn btn-o btn-sm" onclick="doExp('csv')">EXPORT CSV</button>
+          <button class="btn btn-o btn-sm" onclick="doExp('json')">EXPORT JSON</button>
           <button class="btn btn-o btn-sm" onclick="doImp()">IMPORT</button>
           <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="if(confirm('RESET ALL DATA?'))doReset()">RESET</button>
         </div>
@@ -416,13 +412,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <nav id="mn" style="display:flex">
     <button class="mb act" onclick="T('mlb','picks')"><span class="mbi">⚡</span>PICKS</button>
     <button class="mb" onclick="T('mlb','games')"><span class="mbi">📅</span>TODAY</button>
-    <button class="mb" onclick="T('mlb','tmrw')"><span class="mbi">🌅</span>TMRW</button>
     <button class="mb" onclick="T('mlb','parlay')"><span class="mbi">🎰</span>PARLAY</button>
     <button class="mb" onclick="T('mlb','live')"><span class="mbi">📡</span>LIVE</button>
+    <button class="mb" onclick="T('mlb','nrfi')"><span class="mbi">🔴</span>NRFI</button>
     <button class="mb" onclick="T('mlb','history')"><span class="mbi">📋</span>HIST</button>
     <button class="mb" onclick="T('mlb','ranks')"><span class="mbi">📊</span>RANKS</button>
     <button class="mb" onclick="T('mlb','model')"><span class="mbi">🧠</span>MODEL</button>
-    <button class="mb" onclick="T('mlb','standings')"><span class="mbi">🏆</span>STND</button>
     <button class="mb" onclick="T('mlb','set')"><span class="mbi">⚙</span>SET</button>
   </nav>
 </div>
@@ -453,6 +448,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <button class="nb" onclick="T('nhl','puck')">📡 MONEYPUCK</button>
       <button class="nb" onclick="T('nhl','live')">📡 LIVE</button>
       <button class="nb" onclick="T('nhl','history')">📋 HISTORY</button>
+      <button class="nb" onclick="T('nhl','model')">🧠 MODEL</button>
       <button class="nb" onclick="T('nhl','config')">⚙ CONFIG</button>
     </nav>
     <div class="sa" id="nhl-sa">
@@ -527,6 +523,28 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
         <div id="nhl-live-scores-main"></div>
         <div class="sh" style="margin-top:12px"><span class="i">🎟</span> ACTIVE NHL BETS</div>
         <div id="nhl-live-bets"></div>
+      </div>
+      <div id="nhl-tab-model" class="tab">
+        <div class="sh"><span class="p">🧠</span> NHL MODEL ARCHITECTURE</div>
+        <div class="g3" style="margin-bottom:12px">
+          <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Poisson 5K sims. xGF/60 + GSAx + PP/PK. Home ice advantage baked in.</div></div>
+          <div class="card cp"><div class="ct">BAYESIAN</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Beta-binomial posterior. Series history + GSAx prior. Updates each game.</div></div>
+          <div class="card cn"><div class="ct">ELO + MOV</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">K=20. Margin-of-victory multiplier. HockeyViz xGF calibration.</div></div>
+          <div class="card cm"><div class="ct">MONEYPUCK</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">HDCF%, xGF%, GSAx, PP xG vs PK xGA. Series-adjusted.</div></div>
+          <div class="card cg"><div class="ct">MARKOV</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Win streak momentum. Hot/cold detection via HMM smoothing.</div></div>
+          <div class="card cr"><div class="ct">RF ENSEMBLE</div><div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Random Forest feature blend. Goalie performance × matchup × fatigue.</div></div>
+        </div>
+        <div class="sh"><span class="p">⚖</span> WEIGHTS</div>
+        <div class="card" style="margin-bottom:10px">
+          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nhl-wmc-v">50%</span></div><input type="range" id="nhl-w-mc2" min="10" max="70" value="50" oninput="document.getElementById('nhl-wmc-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nhl-wby-v">20%</span></div><input type="range" id="nhl-w-bay2" min="5" max="50" value="20" oninput="document.getElementById('nhl-wby-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nhl-welo-v">30%</span></div><input type="range" id="nhl-w-elo2" min="5" max="50" value="30" oninput="document.getElementById('nhl-welo-v').textContent=this.value+'%'">
+          <button class="btn btn-p btn-sm" style="margin-top:7px" onclick="applyNHLWeightsModel()">APPLY</button>
+        </div>
+        <div class="sh"><span class="n">📋</span> NHL BET LOG</div>
+        <div id="nhl-model-bet-log"><div class="loading"><span class="spi"></span></div></div>
       </div>
       <div id="nhl-tab-config" class="tab">
         <div class="sh"><span class="i">⚙</span> NHL ENGINE CONFIG</div>
@@ -1324,7 +1342,7 @@ function renderPicks(picks){
     <div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin:4px 0">MC: ${(top.ens.mc*100).toFixed(0)}% · BAY: ${(top.ens.bay*100).toFixed(0)}% · ELO: ${(top.ens.elo*100).toFixed(0)}%${top.ens.mc!==top.ens.p?' · ESPN:blended':''}</div>
     ${top2?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">WHY NOT ${top2.lb}: Win ${(top2.p*100).toFixed(1)}% EV${top2.ev2>=0?'+':''}${(top2.ev2*100).toFixed(1)}% — lower ensemble confidence vs top pick's ${(top.ev2*100).toFixed(1)}% edge</div>`:''}
     ${top3?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">WHY NOT ${top3.lb}: Win ${(top3.p*100).toFixed(1)}% EV${top3.ev2>=0?'+':''}${(top3.ev2*100).toFixed(1)}% — model ranks it #3 behind stronger edges</div>`:''}
-    <button class="btn btn-p" style="margin-top:9px;width:100%;padding:5px" onclick="lockPick('${top.ha}','${top.awa}','${bt(top)}','${betOn(top)}',${top.p.toFixed(3)},'${top.ml}',${top.d2.toFixed(3)},'${today()}')">🔒 LOCK PICK OF THE DAY</button>
+    <button class="btn btn-p" style="margin-top:9px;width:100%;padding:5px" onclick="lockPick('${top.ha}','${top.awa}','${bt(top)}','${betOn(top)}',${top.p.toFixed(3)},'${top.ml}',${top.d2.toFixed(3)},'${today()}')">[ LOCK PICK OF THE DAY ]</button>
   </div>`;
   // Top 3
   if(picks.length>=2){
@@ -1338,7 +1356,7 @@ function renderPicks(picks){
         <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin:2px 0">${pk.ha} vs ${pk.awa}</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--nc)">${(pk.p*100).toFixed(1)}% · EV${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}%</div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">MC:${(pk.ens.mc*100).toFixed(0)}% BAY:${(pk.ens.bay*100).toFixed(0)}%</div>
-        <button class="btn btn-o btn-fw" style="margin-top:6px;padding:3px 6px;font-size:8px" onclick="lockPick('${pk.ha}','${pk.awa}','${bt(pk)}','${betOn(pk)}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}')">🔒 LOCK</button>
+        <button class="btn btn-o btn-fw" style="margin-top:6px;padding:3px 6px;font-size:8px" onclick="lockPick('${pk.ha}','${pk.awa}','${bt(pk)}','${betOn(pk)}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}')">LOCK</button>
       </div>`;
     });
     html+='</div>';
@@ -1354,7 +1372,7 @@ function renderPicks(picks){
         <div class="pkt2">${pk.lb}</div>
         <div class="pkd">WIN: <strong style="color:var(--t)">${(pk.p*100).toFixed(1)}%</strong> · EV: <strong style="color:${pk.ev2>=0?'var(--nc)':'var(--hc)'}">${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}%</strong> · <span style="color:var(--t3)">${pk.ml}</span></div>
       </div>
-      <button class="btn btn-o" style="padding:3px 8px;font-size:8px;align-self:center;flex-shrink:0" onclick="lockPick('${pk.ha}','${pk.awa}','${bt(pk)}','${betOn(pk)}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}')">🔒</button>
+      <button class="btn btn-o" style="padding:3px 8px;font-size:8px;align-self:center;flex-shrink:0" onclick="lockPick('${pk.ha}','${pk.awa}','${bt(pk)}','${betOn(pk)}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}')">LOCK</button>
     </div>`;
   });
   el.innerHTML=html;
@@ -1375,7 +1393,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
       const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
       const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
-      saveDailyLog(log);updHdr();toast(`🔒 LOCKED → API: ${betOn} ${ml}`);return;
+      saveDailyLog(log);updHdr();toast(`// LOCKED → API: ${betOn} ${ml}`);return;
     }
   }
   const preds=getP();
@@ -1384,7 +1402,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
-  saveDailyLog(log);updHdr();toast(`🔒 LOCKED (offline): ${betOn} ${ml}`);
+  saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);
 }
 function skipPick(hA,awA,lb,p){
   const log=getDailyLog();const d=today();if(!log[d])log[d]={recs:[],locked:[],assessed:false};
@@ -1864,7 +1882,7 @@ function renderNHLPicks(){
         const bc=t===3?'pkb-g':t===2?'pkb-p':'pkb-n';
         const col=t===3?'var(--gc)':t===2?'var(--pc)':'var(--nc)';
         const lbl=t===3?'ELITE':t===2?'LOCK':'LEAN';
-        html+=`<div class="pk" style="border-left:2px solid ${col}"><div class="pkb ${bc}">${lbl}</div><div style="flex:1"><div class="pkt">${h.name||g.h} vs ${aw.name||g.a} · G${g.gn}</div><div class="pkt2">${lb}</div><div class="pkd">WIN: <strong style="color:var(--t)">${(p*100).toFixed(1)}%</strong> · EV: <strong style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(1)}%</strong></div><div style="font-size:9px;color:var(--t3);margin-top:3px">${g.ctx||''}</div></div><button class="btn btn-sm" style="margin-left:8px" onclick="lockPick('${g.h}','${g.a}','PL','${betOn}',${p.toFixed(4)},'${ml}',${d2.toFixed(4)},'${today}')">🔒</button></div>`;
+        html+=`<div class="pk" style="border-left:2px solid ${col}"><div class="pkb ${bc}">${lbl}</div><div style="flex:1"><div class="pkt">${h.name||g.h} vs ${aw.name||g.a} · G${g.gn}</div><div class="pkt2">${lb}</div><div class="pkd">WIN: <strong style="color:var(--t)">${(p*100).toFixed(1)}%</strong> · EV: <strong style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(1)}%</strong></div><div style="font-size:9px;color:var(--t3);margin-top:3px">${g.ctx||''}</div></div><button class="btn btn-o btn-sm" style="margin-left:8px" onclick="lockPick('${g.h}','${g.a}','PL','${betOn}',${p.toFixed(4)},'${ml}',${d2.toFixed(4)},'${today}')">LOCK</button></div>`;
       });
     }
     el.innerHTML=html||'<div class="empty">NO QUALIFYING PICKS — CHECK THRESHOLDS OR GAME DATA</div>';
@@ -1988,7 +2006,7 @@ function renderProps(){
   // Filter to only show props for teams playing tonight
   const filtered=activeTeams.length?PROPS.filter(pk=>activeTeams.includes(pk.tm)):PROPS;
   if(!filtered.length){el.innerHTML='<div class="empty">NO PROPS AVAILABLE FOR TONIGHT\'S TEAMS</div>';return;}
-  el.innerHTML=filtered.map(pk=>{const t=tier(pk.p,pk.e);const gc=gradeC[pk.grade]||'var(--t2)';const isOver=pk.ln.startsWith('-')||pk.p>=.5;return`<div class="prw" style="border-left:3px solid ${gc}"><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div class="pr-n">${pk.pl}</div><span class="tag" style="background:var(--p3);color:var(--pc);border:1px solid var(--pc)">${pk.tm}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${pk.gm}</span><span style="font-family:var(--mono);font-size:7px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${pk.grade}</span></div><div class="pr-d">${pk.pr}</div><div class="pr-d" style="color:var(--t3)">${pk.nt}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${pk.tm}','${pk.pl}','${pk.pr}',${isOver},${pk.p},'${pk.ln}')">🔒 LOCK PROP</button></div><div style="text-align:right;flex-shrink:0"><div class="mono" style="font-size:15px;font-weight:700;color:var(--vc)">${pk.ln}</div><div class="mono" style="font-size:10px;color:var(--t2)">${(pk.p*100).toFixed(0)}%</div><div style="font-size:9px;color:${pk.e>=0?'var(--nc)':'var(--hc)'}">EV ${pk.e>=0?'+':''}${(pk.e*100).toFixed(1)}%</div></div></div>`;}).join('');
+  el.innerHTML=filtered.map(pk=>{const t=tier(pk.p,pk.e);const gc=gradeC[pk.grade]||'var(--t2)';const isOver=pk.ln.startsWith('-')||pk.p>=.5;return`<div class="prw" style="border-left:3px solid ${gc}"><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div class="pr-n">${pk.pl}</div><span class="tag" style="background:var(--p3);color:var(--pc);border:1px solid var(--pc)">${pk.tm}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${pk.gm}</span><span style="font-family:var(--mono);font-size:7px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${pk.grade}</span></div><div class="pr-d">${pk.pr}</div><div class="pr-d" style="color:var(--t3)">${pk.nt}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${pk.tm}','${pk.pl}','${pk.pr}',${isOver},${pk.p},'${pk.ln}')">LOCK PROP</button></div><div style="text-align:right;flex-shrink:0"><div class="mono" style="font-size:15px;font-weight:700;color:var(--vc)">${pk.ln}</div><div class="mono" style="font-size:10px;color:var(--t2)">${(pk.p*100).toFixed(0)}%</div><div style="font-size:9px;color:${pk.e>=0?'var(--nc)':'var(--hc)'}">EV ${pk.e>=0?'+':''}${(pk.e*100).toFixed(1)}%</div></div></div>`;}).join('');
 }
 function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:9px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(204,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:12px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(204,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:12px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(204,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
@@ -2082,7 +2100,19 @@ function renderNHLLockedBets(){
   const el=document.getElementById('nhl-locked');if(!el)return;
   const picks=getP().filter(p=>p.sport==='NHL'||p.betType==='PL');
   if(!picks.length){el.innerHTML='<div class="empty">NO LOCKED NHL BETS</div>';return;}
-  el.innerHTML=picks.map(p=>`<div class="pk" style="border-left:2px solid ${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--nc)'}"><div style="flex:1"><div class="pkt">${p.homeTeam||p.h||''} vs ${p.awayTeam||p.a||''}</div><div class="pkt2">BET: ${p.betOn||p.d||''} · ML: ${p.ml||''}</div><div class="pkd">WIN%: <strong>${p.p?(p.p*100).toFixed(1)+'%':'—'}</strong> · STATUS: <strong style="color:${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--t2)'}">${p.result||'PENDING'}</strong>${p.date?' · '+p.date:''}</div></div><button class="btn btn-sm btn-d" onclick="removePick('${p.id}')">✕</button></div>`).join('');
+  el.innerHTML=picks.map(p=>{
+    const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--pc)';
+    const st=p.outcome==='pending'?'PENDING':p.outcome?.toUpperCase()||'PENDING';
+    return`<div class="pk" style="border-left:2px solid ${oColor}">
+      <div style="flex:1">
+        <div class="pkt">${p.hA||''} vs ${p.awA||''}</div>
+        <div class="pkt2">BET: ${p.betOn||''} · ${p.ml||''}</div>
+        <div class="pkd">WIN%: <strong>${p.winProb?(p.winProb*100).toFixed(1)+'%':'—'}</strong> · <strong style="color:${oColor}">${st}</strong>${p.date?' · '+p.date:''}</div>
+        ${p.outcome==='pending'?`<div style="display:flex;gap:4px;margin-top:5px"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button></div>`:''}
+      </div>
+      <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc);align-self:start;flex-shrink:0" onclick="removePick('${p.id}')">✕</button>
+    </div>`;
+  }).join('');
 }
 
 // ═══ MLB STANDINGS ═══════════════════════════════════════════
@@ -2231,13 +2261,52 @@ function renderR(){let teams=Object.values(TEAMS);if(rF!=='all')teams=teams.filt
 function renderEW(){const mc=+document.getElementById('w-mc')?.value||40,by=+document.getElementById('w-bay')?.value||35,elo=+document.getElementById('w-elo')?.value||25;const sum=mc+by+elo;const el=document.getElementById('ews');if(el){el.textContent=`SUM: ${sum}% ${sum!==100?'⚠ NORMALIZES':'✓'}`;el.style.color=sum===100?'var(--nc)':'var(--vc)';}}
 function applyEW(){const mc=+document.getElementById('w-mc')?.value||50,by=+document.getElementById('w-bay')?.value||20,elo=+document.getElementById('w-elo')?.value||30;const s=mc+by+elo;ENS={mc:mc/s,bay:by/s,elo:elo/s};S.s('ens',ENS);loadGames();toast('// WEIGHTS APPLIED');}
 function applyNHLWeights(){const mc=+document.getElementById('nhl-w-mc')?.value||50;const bay=+document.getElementById('nhl-w-bay')?.value||20;const elo=+document.getElementById('nhl-w-elo')?.value||30;const s=mc+bay+elo||100;NHL_ENS={mc:mc/s,bay:bay/s,elo:elo/s,hv:0};S.s('nhl_ens',NHL_ENS);toast('// NHL WEIGHTS APPLIED');}
+function applyNHLWeightsModel(){
+  const mc=+document.getElementById('nhl-w-mc2')?.value||50;
+  const bay=+document.getElementById('nhl-w-bay2')?.value||20;
+  const elo=+document.getElementById('nhl-w-elo2')?.value||30;
+  const s=mc+bay+elo||100;
+  NHL_ENS={mc:mc/s,bay:bay/s,elo:elo/s,hv:0};
+  S.s('nhl_ens',NHL_ENS);
+  // Sync config sliders too
+  const mcEl=document.getElementById('nhl-w-mc'),bayEl=document.getElementById('nhl-w-bay'),eloEl=document.getElementById('nhl-w-elo');
+  if(mcEl)mcEl.value=mc;if(bayEl)bayEl.value=bay;if(eloEl)eloEl.value=elo;
+  // Re-render picks with new weights
+  try{renderNHLPicks();}catch(e){}
+  // Render bet log
+  const bl=document.getElementById('nhl-model-bet-log');
+  if(bl){renderHistoryForSport('NHL','nhl-model-bet-log',null);bl.innerHTML='<div style="color:var(--nc);font-family:var(--mono);font-size:10px">// WEIGHTS APPLIED — PICKS RECALCULATED</div>';}
+  toast('// NHL WEIGHTS APPLIED');
+}
 function applyNBAWeights(){const mc=+document.getElementById('nba-w-mc')?.value||50;const bay=+document.getElementById('nba-w-bay')?.value||20;const elo=+document.getElementById('nba-w-elo')?.value||30;const s=mc+bay+elo||100;NBA_ENS={mc:mc/s,bay:bay/s,elo:elo/s};S.s('nba_ens',NBA_ENS);toast('// NBA WEIGHTS APPLIED');}
 function renderCal(){const el=document.getElementById('cal');if(!el)return;const p=getP().filter(x=>x.outcome!=='pending'&&x.betType==='ML');if(p.length<10){el.innerHTML='<div class="empty" style="padding:12px">NEED 10+ SETTLED ML BETS</div>';return;}const bins=[{lo:.50,hi:.55},{lo:.55,hi:.60},{lo:.60,hi:.65},{lo:.65,hi:.70},{lo:.70,hi:1}];let html='';for(const b of bins){const inB=p.filter(x=>x.winProb>=b.lo&&x.winProb<b.hi);if(inB.length<2)continue;const act=inB.filter(x=>x.outcome==='win').length/inB.length;const pred=(b.lo+b.hi)/2;html+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div class="mono" style="font-size:9px;color:var(--t2);width:52px">${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%</div><div style="flex:1;height:8px;background:rgba(204,0,255,.1);border-radius:1px;overflow:hidden;position:relative"><div style="height:100%;width:${pred*100}%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div><div style="position:absolute;top:0;left:0;height:100%;width:${act*100}%;background:var(--pc);opacity:.7"></div></div><div class="mono" style="font-size:9px;width:30px;text-align:right;color:${Math.abs(act-pred)>.05?'var(--hc)':'var(--nc)'}">${(act*100).toFixed(0)}%</div><div style="font-size:8px;color:var(--t3)">n=${inB.length}</div></div>`;}el.innerHTML=html?`<div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:8px">PURPLE=PREDICTED · NEON=ACTUAL</div>`+html:'<div class="empty">NO DATA</div>';}
 function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const sa=selfAssess();const p=getP().filter(x=>x.outcome!=='pending');let html=`<div class="g4" style="margin-bottom:10px">`;['ML','RL','OU','PARLAY'].forEach(bt=>{const bp=p.filter(x=>x.betType===bt);const bw=bp.filter(x=>x.outcome==='win').length;const bA=bp.length?bw/bp.length:null;html+=`<div class="card cp" style="text-align:center;padding:9px"><div class="ct">${bt}</div><div class="mono" style="font-size:19px;font-weight:700;color:${bA===null?'var(--t3)':bA>=.55?'var(--nc)':bA>=.45?'var(--vc)':'var(--hc)'}">${bA===null?'--':(bA*100).toFixed(0)+'%'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">${bw}W/${bp.length-bw}L</div></div>`;});html+='</div>';for(const w of sa.warns)html+=`<div class="sa-warn">// ${w}</div>`;for(const ins of sa.insights)html+=`<div class="sa-ins">// ${ins}</div>`;el.innerHTML=html;}
 
 // ═══ SETTINGS + UTILS ════════════════════════════════════════
 function saveSet(){S.s('hfa',+document.getElementById('s-hfa')?.value||4);S.s('elk',+document.getElementById('s-elk')?.value||20);S.s('evt',+document.getElementById('s-evt')?.value||2);toast('// CONFIG SAVED');}
-function doExp(){const d={preds:getP(),elo:ELO,ens:ENS,daily_log:getDailyLog()};const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_${today()}.json`;a.click();toast('// EXPORTED');}
+function doExp(fmt='csv'){
+  const preds=getP();
+  if(fmt==='csv'){
+    const hdr=['Date','Sport','Home','Away','BetType','BetOn','ML','WinProb','DecOdds','Outcome','HomeScore','AwayScore','LockedAt'];
+    const rows=preds.map(p=>[
+      p.date||'',p.sport||'',p.hA||'',p.awA||'',p.betType||'',p.betOn||'',p.ml||'',
+      p.winProb!=null?(p.winProb*100).toFixed(1)+'%':'',
+      p.decOdds!=null?p.decOdds.toFixed(3):'',
+      p.outcome||'pending',
+      p.hScore!=null?p.hScore:'',p.aScore!=null?p.aScore:'',
+      p.lockedAt?new Date(p.lockedAt).toLocaleString():''
+    ].map(v=>String(v).includes(',')?`"${v}"`:v).join(','));
+    const csv=[hdr.join(','),...rows].join('\n');
+    const b=new Blob([csv],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_picks_${today()}.csv`;a.click();
+    toast('// EXPORTED CSV');
+  }else{
+    const d={preds,elo:ELO,ens:ENS,daily_log:getDailyLog()};
+    const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_${today()}.json`;a.click();
+    toast('// EXPORTED JSON');
+  }
+}
 function doImp(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const fr=new FileReader();fr.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.preds)saveP(d.preds);if(d.elo){ELO=d.elo;S.s('elo',ELO);}if(d.ens)ENS=d.ens;if(d.daily_log)saveDailyLog(d.daily_log);updHdr();renderR();toast('// IMPORTED');}catch{toast('// IMPORT FAILED');}};fr.readAsText(e.target.files[0]);};i.click();}
 function doReset(){['preds','elo','ens','last_upd','last_upd_date','last_nhl_upd','last_nhl_upd_date','daily_log','nhl_edge_date'].forEach(k=>S.d(k));ELO={};PAR=[];buildMLB();initELO();updHdr();renderR();toast('// SYSTEM RESET');}
 function toast(msg){const el=document.getElementById('toast');if(!el)return;el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);}
@@ -2635,7 +2704,7 @@ function renderNBAProps(){
   const activeNBATeams=NBA_TONIGHT.flatMap(g=>[g.h,g.a]);
   const filtered=activeNBATeams.length?props.filter(p=>activeNBATeams.includes(p.t)):props;
   if(!filtered.length){el.innerHTML='<div class="empty">NO NBA PROPS AVAILABLE FOR TONIGHT\'S TEAMS</div>';return;}
-  el.innerHTML=filtered.map(p=>`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px"><div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · CONF: ${p.conf}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.basis}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${p.t}','${p.player}','${p.line}',${p.over},${p.conf/100},'${p.over?'-115':'+100'}')">🔒 LOCK PROP</button></div>`).join('');
+  el.innerHTML=filtered.map(p=>`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px"><div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · CONF: ${p.conf}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.basis}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${p.t}','${p.player}','${p.line}',${p.over},${p.conf/100},'${p.over?'-115':'+100'}')">LOCK PROP</button></div>`).join('');
 }
 
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
@@ -2689,9 +2758,83 @@ function lockNBAParlay(w,p,ml,d){
   saveP(preds);updHdr();toast('// NBA PARLAY LOCKED');
 }
 
+// ═══ NRFI (NO RUN FIRST INNING) ══════════════════════════════
+// Calculates probability that NEITHER team scores in the 1st inning
+// Uses starter ERA/FIP, 1st-inning scoring rate, park factor
+function nrfiProb(hA, awA, espnGame){
+  const h=TEAMS[hA],aw=TEAMS[awA];
+  if(!h||!aw)return 0.5;
+  // Average MLB 1st-inning scoring rate ≈ 0.52 runs/team
+  const AVG_1ST=0.52;
+  const hPit=espnGame?.hPitERA||PIT[hA]?.era||h.pit.ERA||4.50;
+  const aPit=espnGame?.aPitERA||PIT[awA]?.era||aw.pit.ERA||4.50;
+  const pf=h.pf||1.0;
+  // Estimate 1st-inning expected runs for each team
+  // Home offense vs Away starter; Away offense vs Home starter
+  const hOffRate=(h.bat.RG/9)*(aw.pit.RAG/4.5)*pf;
+  const aOffRate=(aw.bat.RG/9)*(h.pit.RAG/4.5)*pf;
+  // Adjust for starter quality (ERA relative to league avg 4.30)
+  const hPitAdj=Math.max(0.5,Math.min(1.8,4.30/Math.max(1,hPit)));
+  const aPitAdj=Math.max(0.5,Math.min(1.8,4.30/Math.max(1,aPit)));
+  // Expected 1st-inning runs (scale to single inning)
+  const hExp1st=AVG_1ST*(aOffRate/AVG_1ST)*aPitAdj;
+  const aExp1st=AVG_1ST*(hOffRate/AVG_1ST)*hPitAdj;
+  // Poisson P(X=0) = e^(-lambda)
+  const hNoScore=Math.exp(-Math.max(0.1,hExp1st));
+  const aNoScore=Math.exp(-Math.max(0.1,aExp1st));
+  // Both teams score 0 in 1st
+  return Math.min(0.85,Math.max(0.30,hNoScore*aNoScore));
+}
+function renderNRFI(){
+  const el=document.getElementById('nrfi-list');if(!el)return;
+  if(!ESPN_GAMES||!ESPN_GAMES.length){
+    el.innerHTML='<div class="empty">NO GAMES LOADED — GO TO TODAY TAB FIRST<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames().then(()=>setTimeout(renderNRFI,1000))">LOAD GAMES</button></div>';
+    return;
+  }
+  const rows=[];
+  for(const g of ESPN_GAMES){
+    if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])continue;
+    if(g.status==='post')continue; // skip completed games
+    const p=nrfiProb(g.hA,g.awA,g);
+    const hPit=g.hPit||PIT[g.hA]?.name||'TBD';
+    const aPit=g.aPit||PIT[g.awA]?.name||'TBD';
+    const hPitERA=g.hPitERA||PIT[g.hA]?.era||4.5;
+    const aPitERA=g.aPitERA||PIT[g.awA]?.era||4.5;
+    rows.push({hA:g.hA,awA:g.awA,p,gt:g.gt,hPit,aPit,hPitERA,aPitERA,status:g.status});
+  }
+  rows.sort((a,b)=>b.p-a.p);
+  if(!rows.length){el.innerHTML='<div class="empty">NO UPCOMING GAMES</div>';return;}
+  const gradeNRFI=(p)=>{if(p>=.70)return{lbl:'ELITE',col:'var(--gc)',cls:'pkb-g'};if(p>=.62)return{lbl:'LOCK',col:'var(--pc)',cls:'pkb-p'};if(p>=.55)return{lbl:'LEAN',col:'var(--nc)',cls:'pkb-n'};return{lbl:'FADE',col:'var(--hc)',cls:'pkb-h'};};
+  el.innerHTML=rows.map(r=>{
+    const g=gradeNRFI(r.p);
+    const conf=(r.p*100).toFixed(1);
+    const live=r.status==='in';
+    return`<div class="pk" style="border-left:2px solid ${g.col}">
+      <div class="pkb ${g.cls}">${g.lbl}</div>
+      <div style="flex:1">
+        <div class="pkt">${r.awA} @ ${r.hA}${live?' <span class="status-live"></span>':''}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">NRFI PROBABILITY: <strong style="color:${g.col}">${conf}%</strong></div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">
+          SP: ${r.hA} ${r.hPit} (${r.hPitERA} ERA) vs ${r.awA} ${r.aPit} (${r.aPitERA} ERA)
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">⏰ ${r.gt}</div>
+        <div style="margin-top:5px;font-family:var(--mono);font-size:9px;line-height:1.6;color:var(--t2)">
+          MODEL: Poisson 1st-inn · ERA/FIP × Off-Rate × Park Factor<br>
+          ${r.p>=.65?`ELITE MATCHUP: Both starters dominant — NRFI in this range hits ~${Math.round(r.p*100)}%`:r.p>=.58?`SOLID SETUP: Strong starters, lean NRFI`:r.p>=.52?`MODERATE: Average starters, marginal edge`:`FADE: Weak starters or high-scoring matchup`}
+        </div>
+      </div>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${g.col}">${conf}%</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">NRFI</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // ═══ SPORT HISTORY RENDERERS ═════════════════════════════════
 function renderHistoryForSport(sport,summId,listId){
   const preds=getP().filter(p=>p.sport===sport);
+  if(!preds.length&&listId){const el=document.getElementById(listId);if(el)el.innerHTML='<div class="empty">NO '+sport+' BETS RECORDED YET</div>';return;}
   const settled=preds.filter(p=>p.outcome!=='pending');
   const wins=settled.filter(p=>p.outcome==='win').length;
   const losses=settled.filter(p=>p.outcome==='loss').length;
@@ -2701,7 +2844,7 @@ function renderHistoryForSport(sport,summId,listId){
   let streak=0,streakType='';
   for(let i=settled.length-1;i>=0;i--){const o=settled[i].outcome;if(!streakType){streakType=o;streak=1;}else if(o===streakType)streak++;else break;}
   const byType={};for(const p of settled){if(!byType[p.betType])byType[p.betType]={w:0,l:0};if(p.outcome==='win')byType[p.betType].w++;else byType[p.betType].l++;}
-  const sumEl=document.getElementById(summId);
+  const sumEl=summId?document.getElementById(summId):null;
   if(sumEl){
     const accColor=acc===null?'var(--t3)':acc>=.55?'var(--nc)':acc>=.45?'var(--vc)':'var(--hc)';
     sumEl.innerHTML=`<div class="g4" style="gap:8px;margin-bottom:10px">
@@ -2712,7 +2855,7 @@ function renderHistoryForSport(sport,summId,listId){
     </div>
     <div class="g4" style="gap:8px;margin-bottom:12px">${Object.entries(byType).map(([bt,r])=>{const a=r.w+r.l?r.w/(r.w+r.l):null;return`<div class="card cp" style="text-align:center;padding:8px"><div class="ct mono" style="font-size:9px">${bt}</div><div class="mono" style="font-size:16px;font-weight:700;color:${a===null?'var(--t3)':a>=.55?'var(--nc)':'var(--hc)'}">${a===null?'--':(a*100).toFixed(0)+'%'}</div><div style="font-size:8px;color:var(--t3);font-family:var(--mono)">${r.w}W/${r.l}L</div></div>`;}).join('')}</div>`;
   }
-  const listEl=document.getElementById(listId);
+  const listEl=listId?document.getElementById(listId):null;
   if(listEl){
     const sorted=[...preds].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
     if(!sorted.length){listEl.innerHTML='<div class="empty">NO BETS RECORDED</div>';return;}
@@ -2911,17 +3054,65 @@ function prepareDayEnd(){const yesterday=new Date(getMSTNow());yesterday.setDate
 function renderHomePage(){
   const el=document.getElementById('home-picks');
   const gel=document.getElementById('home-games');
+  const freeBanner=document.getElementById('free-pick-banner');
   if(!el)return;
   const picks=[];
   // NHL picks
-  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,p:Math.max(r.p,1-r.p),det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||''});}}catch(e){}
+  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
   // NBA picks
-  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const hN=NBA_BBREF[g.h]?g.h:g.h;const aN=NBA_BBREF[g.a]?g.a:g.a;const fav=r.p>=.5?hN:aN;picks.push({sport:'🏀 NBA',mu:`${aN} @ ${hN}`,pick:fav,p:Math.max(r.p,1-r.p),det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||''});}}catch(e){}
-  // MLB picks
-  try{const mg=GAMES.filter(g=>g.hP&&g.aP).slice(0,6);for(const g of mg){const r=ensemble(g);const fav=r.p>=.5?g.hT:g.aT;picks.push({sport:'⚾ MLB',mu:`${g.aT} @ ${g.hT}`,pick:fav,p:Math.max(r.p,1-r.p),det:'Poisson+Bayesian',col:'var(--hc)',ctx:''});}}catch(e){}
+  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏀 NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  // MLB picks (from ESPN games)
+  try{
+    for(const g of ESPN_GAMES){
+      if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])continue;
+      const ens=mlbEns(g.hA,g.awA,g);const p=ens.p;
+      if(p<0.55&&(1-p)<0.55)continue;
+      const fav=p>=.5?g.hA:g.awA;const fp=Math.max(p,1-p);const ml=p2ml(fp);const d2=ml2d(ml);
+      picks.push({sport:'⚾ MLB',mu:`${g.awA} @ ${g.hA}`,pick:fav,abbr:fav,p:fp,det:'Poisson+MC+ELO',col:'var(--hc)',ctx:'',ml,ev2:ev(fp,d2),betType:'ML',hA:g.hA,awA:g.awA,d2});
+    }
+  }catch(e){}
   picks.sort((a,b)=>b.p-a.p);
+  // ── Free Pick of Day banner ─────────────────────────────────────
+  if(freeBanner){
+    const fp=picks[0];
+    if(fp){
+      const t=tier(fp.p,fp.ev2);
+      const tCol=t===3?'var(--gc)':t===2?'var(--pc)':'var(--nc)';
+      const tLbl=t===3?'★ ELITE PICK':t===2?'// LOCK OF THE DAY':'// FREE PICK';
+      // Check if today's free pick was already locked
+      const fpLocked=getP().find(pk=>pk.hA===fp.hA&&pk.awA===fp.awA&&pk.betOn===fp.abbr&&pk.date===today());
+      freeBanner.innerHTML=`<div style="background:linear-gradient(135deg,rgba(14,0,35,1),rgba(0,0,20,.95));border:1px solid ${tCol};border-left:4px solid ${tCol};border-radius:3px;padding:14px;position:relative;overflow:hidden;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))">
+        <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,${tCol},transparent)"></div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:3px;color:${tCol};margin-bottom:6px">${tLbl} · ${today()}</div>
+        <div style="font-family:var(--orb);font-size:18px;font-weight:900;letter-spacing:2px;color:var(--t);margin-bottom:4px">${fp.pick}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t2);margin-bottom:8px">${fp.sport} · ${fp.mu}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t)">WIN: ${(fp.p*100).toFixed(1)}%</span>
+          <span style="font-family:var(--mono);font-size:11px;color:${fp.ev2>=0?'var(--nc)':'var(--hc)'}">EV ${fp.ev2>=0?'+':''}${(fp.ev2*100).toFixed(1)}%</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ODDS: ${fp.ml}</span>
+          ${fpLocked?`<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border:1px solid var(--nc);color:var(--nc);border-radius:2px">LOCKED ✓</span>`:`<button class="btn btn-p" style="padding:4px 12px;font-size:9px;margin-left:auto" onclick="lockPick('${fp.hA}','${fp.awA}','${fp.betType}','${fp.abbr}',${fp.p.toFixed(3)},'${fp.ml}',${fp.d2.toFixed(3)},'${today()}');setTimeout(renderHomePage,500)">LOCK FREE PICK</button>`}
+        </div>
+      </div>`;
+    }else{
+      freeBanner.innerHTML='';
+    }
+  }
   if(!picks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
-  else{el.innerHTML=picks.map((pk,i)=>`<div class="card" style="border-left:3px solid ${pk.col};position:relative">${i===0?'<div style="position:absolute;top:8px;right:8px;color:var(--gc);font-size:9px;letter-spacing:2px">★ TOP PICK</div>':''}<div style="color:var(--t3);font-size:9px;letter-spacing:2px;margin-bottom:6px">${pk.sport}</div><div style="text-align:center;font-size:12px;color:var(--t2);margin-bottom:8px">${pk.mu}</div><div style="text-align:center;color:${pk.col};font-size:14px;font-weight:700;letter-spacing:3px;margin-bottom:6px">${pk.pick}</div><div style="text-align:center"><span style="font-size:22px;font-weight:700;color:var(--t)">${(pk.p*100).toFixed(1)}%</span> <span style="font-size:9px;color:var(--t3)">${pk.det}</span></div>${pk.ctx?`<div style="text-align:center;font-size:9px;color:var(--t3);margin-top:6px;letter-spacing:1px">${pk.ctx}</div>`:''}</div>`).join('');}
+  else{
+    el.innerHTML=picks.slice(0,6).map((pk,i)=>{
+      const t=tier(pk.p,pk.ev2);
+      const tCol=t===3?'var(--gc)':t===2?'var(--pc)':'var(--nc)';
+      return`<div class="card" style="border-left:3px solid ${tCol};position:relative">
+        ${i===0?'<div style="position:absolute;top:6px;right:8px;color:var(--gc);font-size:8px;letter-spacing:2px;font-family:var(--mono)">★ #1</div>':''}
+        <div style="font-family:var(--mono);color:var(--t3);font-size:9px;letter-spacing:2px;margin-bottom:4px">${pk.sport}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${pk.mu}</div>
+        <div style="font-family:var(--orb);color:${tCol};font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:4px">${pk.pick}</div>
+        <div><span style="font-size:20px;font-weight:700;color:var(--t);font-family:var(--mono)">${(pk.p*100).toFixed(1)}%</span> <span style="font-size:9px;color:var(--t3)">${pk.det}</span></div>
+        ${pk.ctx?`<div style="font-size:9px;color:var(--t3);margin-top:4px;letter-spacing:1px">${pk.ctx}</div>`:''}
+        <div style="font-family:var(--mono);font-size:9px;color:${pk.ev2>=0?'var(--nc)':'var(--hc)'};margin-top:4px">EV ${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}% · ${pk.ml}</div>
+      </div>`;
+    }).join('');
+  }
   // tonight's games summary
   if(!gel)return;
   const allG=[
@@ -2932,9 +3123,25 @@ function renderHomePage(){
   else{gel.innerHTML=allG.map(g=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${g.col}"><div><span style="color:var(--t3);font-size:9px;letter-spacing:2px">${g.sport}</span><div style="font-size:13px;margin-top:4px">${g.mu}</div>${g.ctx?`<div style="font-size:9px;color:var(--t3);margin-top:2px">${g.ctx}</div>`:''}</div><div style="text-align:right"><div style="font-size:12px;color:${g.col}">${g.time}</div><div style="font-size:9px;color:var(--t3)">${g.net}</div></div></div>`).join('');}
   const tracker=document.getElementById('home-tracker');
   if(tracker){
-    const hp=getP().filter(p=>p.p>=0.60);
-    if(!hp.length){tracker.innerHTML='<div class="empty">NO HIGH CONFIDENCE BETS LOCKED</div>';}
-    else{tracker.innerHTML=hp.map(p=>`<div class="card" style="border-left:3px solid ${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--gc)'}"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--t3);font-size:9px;letter-spacing:2px">${p.sport||'?'} · ${p.date||''}</span><span style="color:${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--gc)'};font-size:10px;font-weight:700">${p.result||'● LIVE'}</span></div><div style="font-size:13px;margin-bottom:4px">${p.homeTeam||p.h||''} vs ${p.awayTeam||p.a||''}</div><div style="color:var(--nc);font-weight:700;font-size:12px">${p.betOn||p.d||''} · ${(p.p*100).toFixed(1)}%</div></div>`).join('');}
+    const allPicks=getP();
+    const hp=allPicks.filter(p=>(p.winProb||0)>=0.60);
+    if(!hp.length){tracker.innerHTML='<div class="empty">NO HIGH CONFIDENCE BETS LOCKED YET</div>';}
+    else{
+      const sorted=[...hp].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0)).slice(0,8);
+      tracker.innerHTML=sorted.map(p=>{
+        const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';
+        const st=p.outcome==='win'?'✓ WIN':p.outcome==='loss'?'✗ LOSS':'● PENDING';
+        const sport=p.sport||'?';
+        return`<div class="card" style="border-left:3px solid ${oColor}">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+            <span style="font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--t3)">${sport} · ${p.date||''}</span>
+            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${oColor}">${st}</span>
+          </div>
+          <div style="font-size:13px;margin-bottom:4px">${p.hA==='PARLAY'||p.hA==='NBA-PARLAY'?'PARLAY':((p.hA||'')+(p.awA?' vs '+p.awA:''))}</div>
+          <div style="font-family:var(--mono);color:var(--nc);font-weight:700;font-size:11px">${p.betOn||''} · ${p.winProb?(p.winProb*100).toFixed(1)+'%':'--'} · ${p.ml||''}</div>
+        </div>`;
+      }).join('');
+    }
   }
   if(window._homeRefTimer)clearInterval(window._homeRefTimer);
   window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
@@ -2962,8 +3169,8 @@ function T(sport,tabId){
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='standings')renderStandings();if(tabId==='set')updateAPIStatus();if(tabId==='tmrw')loadTmrw();}
-  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='config'){}}
+  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();}
+  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');}if(tabId==='config'){}}
   if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks')renderNBAPicks();if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();}
   document.getElementById(saId)?.scrollTo(0,0);
