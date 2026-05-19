@@ -215,7 +215,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="sl" id="splash-logo" style="padding:0;background:none;-webkit-text-fill-color:unset">
       <img src="clairvoyance-logo.svg" id="splash-logo-img"
            style="width:min(700px,90vw);height:auto;opacity:0;transform:scale(.85);transition:opacity 1s cubic-bezier(.34,1.56,.64,1),transform 1s cubic-bezier(.34,1.56,.64,1);filter:drop-shadow(0 0 28px rgba(204,0,255,.55)) drop-shadow(0 0 60px rgba(0,240,255,.2));display:block"
-           alt="CLAIRVOYANCE"/>
+           alt="CLAIRVOYANCE"
+           onerror="this.style.display='none';document.getElementById('splash-logo-txt').style.display='block'"/>
+      <div id="splash-logo-txt" style="display:none;opacity:0;transform:scale(.85);transition:opacity 1s cubic-bezier(.34,1.56,.64,1),transform 1s cubic-bezier(.34,1.56,.64,1);font-family:'Orbitron',sans-serif;font-size:clamp(28px,8vw,56px);font-weight:900;letter-spacing:6px;background:linear-gradient(135deg,#cc00ff 0%,#4d79ff 40%,#00f0ff 70%,#ff0080 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;text-shadow:none;filter:drop-shadow(0 0 18px rgba(204,0,255,.6))">CLAIRVOYANCE</div>
     </div>
     <div class="sk" id="splash-skip" onclick="endSplash()">[[ TAP TO ENTER ]]</div>
   </div>
@@ -696,12 +698,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <nav class="inav" id="ovr-in">
     <button class="nb act" onclick="T('ovr','dash')">📊 DASHBOARD</button>
     <button class="nb" onclick="T('ovr','history')">📋 ALL BETS</button>
+    <button class="nb" onclick="T('ovr','ten')">🎾 TENNIS</button>
     <button class="nb" onclick="T('ovr','adaptive')">🧠 ADAPTIVE</button>
   </nav>
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
       <div class="sh"><span class="p">📊</span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>SPORTS: MLB · NHL · NBA · PARLAY | TYPES: ML · RL/PL · OU · PARLAY</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>SPORTS: MLB · NHL · NBA · TENNIS · PARLAY | TYPES: ML · RL/PL · OU · PARLAY · PROP</div>
       <div id="ovr-dashboard"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-history" class="tab">
@@ -710,6 +713,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
         <button class="btn btn-p btn-sm" onclick="renderOverallHistory()">↻</button>
       </div>
       <div id="ovr-history-list"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+    <div id="ovr-tab-ten" class="tab">
+      <div class="sh"><span class="p">🎾</span> TENNIS — MODEL PERFORMANCE</div>
+      <div id="ovr-ten-content"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-adaptive" class="tab">
       <div class="sh"><span class="i">🧠</span> ADAPTIVE LEARNING ENGINE</div>
@@ -803,10 +810,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
             </select>
           </div>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <div style="flex:1"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">PLAYER 1</div><select id="h2h-p1" class="fi" style="padding:6px 8px;font-size:10px"></select></div>
-          <div style="flex:1"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">PLAYER 2</div><select id="h2h-p2" class="fi" style="padding:6px 8px;font-size:10px"></select></div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <div style="flex:1"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">PLAYER 1 (TYPE TO SEARCH)</div>
+            <input id="h2h-p1" class="fi" list="h2h-p1-list" placeholder="e.g. J.Sinner" autocomplete="off" style="padding:6px 8px;font-size:10px;width:100%"/>
+            <datalist id="h2h-p1-list"></datalist>
+          </div>
+          <div style="flex:1"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">PLAYER 2 (TYPE TO SEARCH)</div>
+            <input id="h2h-p2" class="fi" list="h2h-p2-list" placeholder="e.g. C.Alcaraz" autocomplete="off" style="padding:6px 8px;font-size:10px;width:100%"/>
+            <datalist id="h2h-p2-list"></datalist>
+          </div>
         </div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:8px">⚡ WORKS ACROSS ATP + WTA — ALL ${Object.keys(ATP_DB).length+Object.keys(WTA_DB).length} PLAYERS</div>
         <button class="btn btn-p btn-fw" onclick="runH2H()">[ ANALYZE MATCHUP ]</button>
       </div>
       <div id="h2h-result"></div>
@@ -1112,6 +1126,8 @@ async function loadGames(dateStr){
   }
 
   ESPN_GAMES=games;
+  // Async weather fetch for all home parks (non-blocking)
+  try{fetchAllParkWeather(games.map(g=>g.hA).filter(Boolean));}catch(e){}
   for(const g of games){
     if(g.hPit&&g.hPit!=='TBD'&&TEAMS[g.hA])PIT[g.hA]={name:g.hPit,era:g.hPitERA||4.5,whip:1.30};
     if(g.aPit&&g.aPit!=='TBD'&&TEAMS[g.awA])PIT[g.awA]={name:g.aPit,era:g.aPitERA||4.5,whip:1.30};
@@ -1387,8 +1403,9 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div style="text-align:right"><div class="np mono" style="font-size:11px">${statusDot}${statusTxt}</div></div>
     </div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin-top:4px">
-      🎯 PROJ: ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1)+' (Total: '+(mc.avgT).toFixed(1)+')'  :'CALCULATING…'}
+      🎯 PROJ: ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1)+' (Total: '+(mc.avgT).toFixed(1)+') [5K MC]':'CALCULATING…'}
     </div>
+    ${weatherBadge(_WX_CACHE[hA],hA)}
     </div>
     <div class="brow">
       <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${hA}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${hA}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
@@ -1406,7 +1423,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
 function getP(){return S.g('preds',[])||[];}
 function saveP(a){S.s('preds',a);idbSavePicks(a);}// shadow to IndexedDB
 function getDailyLog(){return S.g('daily_log',{})||{};}
-function saveDailyLog(d){S.s('daily_log',d);}
+function saveDailyLog(d){S.s('daily_log',d);idbSaveDailyLog(d);/* always expand, never reduce */}
 
 // Sync localStorage picks FROM backend (called on init)
 async function syncPicksFromBackend(){
@@ -1510,7 +1527,8 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   }
   const preds=getP();
   const id=`${dateKey}_${hA}_${awA}_${type}_${betOn.replace(/\s/g,'')}`;
-  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:type==='NBA'?'NBA':type==='PL'?'NHL':'MLB',betType:type,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null});saveP(preds);}
+  const sportTag=type==='NBA'?'NBA':type==='PL'?'NHL':type==='TEN'?'TEN':'MLB';
+  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,betType:type,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,surface:type==='TEN'?'clay':null});saveP(preds);}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
@@ -2569,10 +2587,11 @@ const NBA_TEAMS={
   NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
   CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
 };
+// May 19 2026: ECF Game 1 (NY vs CLE) + WCF Game 2 (OKC vs SA — OKC leads 1-0 after winning G1)
 const NBA_TONIGHT=[
-  {h:'OKC',a:'SA',time:'8:00 PM ET',net:'TNT',gn:1,ctx:'WCF — SERIES 0-0',hL:-175,aL:148,ou:222.5}
+  {h:'NY',a:'CLE',time:'7:30 PM ET',net:'TNT',gn:1,ctx:'ECF — SERIES 0-0',hL:-145,aL:125,ou:212.5},
+  {h:'OKC',a:'SA',time:'9:30 PM ET',net:'TNT',gn:2,ctx:'WCF — SERIES 1-0 OKC',hL:-195,aL:163,ou:219.5}
 ];
-// ECF: NY vs CLE starts 5/19 — no game tonight (5/18)
 const NBA_PLAYERS=[
   {n:'Shai Gilgeous-Alexander',t:'OKC',ppg:32.1,rpg:5.4,apg:6.8,efg:.548,usage:34.5,rating:'ELITE'},
   {n:'Victor Wembanyama',t:'SA',ppg:26.8,rpg:11.2,apg:4.1,efg:.542,usage:31.2,rating:'ELITE'},
@@ -2945,9 +2964,10 @@ function renderNRFI(){
         <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">
           SP: ${r.hA} ${r.hPit} (${r.hPitERA} ERA) vs ${r.awA} ${r.aPit} (${r.aPitERA} ERA)
         </div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--ic);margin-top:2px">PROJ: ${r.hA} ${proj.hProj} – ${r.awA} ${proj.aProj} · TOTAL: ${proj.total}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--ic);margin-top:2px">🎯 PROJ: ${r.hA} ${proj.hProj} – ${r.awA} ${proj.aProj} · TOTAL: ${proj.total} [${proj.method||'MC'}]</div>
         ${pkn?`<div style="font-family:var(--mono);font-size:8px;color:var(--mc);margin-top:2px">${pkn.note}</div>`:''}
-        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">⏰ ${r.gt} · Poisson 1st-inn · ERA×OffRate×ParkFactor</div>
+        ${weatherBadge(_WX_CACHE[r.hA],r.hA)}
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">⏰ ${r.gt} · 5K Poisson MC · ERA×OffRate×ParkFactor+Weather</div>
       </div>
     </div>`;
   }).join('');
@@ -3058,7 +3078,7 @@ function renderOverallHistory(){
   const el=document.getElementById('ovr-history-list');if(!el)return;
   const all=[...getP()].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
   if(!all.length){el.innerHTML='<div class="empty">NO BETS RECORDED YET</div>';return;}
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',default:'var(--t3)'};
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',PROP:'var(--gc)',default:'var(--t3)'};
   el.innerHTML=all.map(p=>{
     const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':p.outcome==='push'?'var(--gc)':'var(--t3)';
     const sc=sportColor[p.sport]||sportColor.default;
@@ -3076,6 +3096,57 @@ function renderOverallHistory(){
   }).join('');
 }
 
+function renderTennisOverall(){
+  const el=document.getElementById('ovr-ten-content');if(!el)return;
+  const tenPicks=getP().filter(p=>p.sport==='TEN');
+  const settled=tenPicks.filter(p=>p.outcome!=='pending');
+  const wins=settled.filter(p=>p.outcome==='win').length;
+  const acc=settled.length?wins/settled.length:null;
+  const accCol=acc===null?'var(--t3)':acc>=.60?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
+  // Surface breakdown
+  const surfaces={hard:[],clay:[],grass:[]};
+  for(const p of settled){const s=p.surface||'hard';if(surfaces[s])surfaces[s].push(p);}
+  const surfRows=Object.entries(surfaces).filter(([,a])=>a.length>0).map(([s,a])=>{
+    const sw=a.filter(p=>p.outcome==='win').length;
+    const sc={hard:'var(--ic)',clay:'var(--mc)',grass:'var(--nc)'}[s]||'var(--t3)';
+    return`<div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${s.toUpperCase()}</div><div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${sc}">${a.length?((sw/a.length)*100).toFixed(0):'--'}%</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${sw}W ${a.length-sw}L</div></div>`;
+  });
+  // Today's tennis picks recap
+  const allTen=[...TEN_TODAY_ATP,...TEN_TODAY_WTA].map(m=>{
+    const db=ATP_DB[m.p1]?ATP_DB:WTA_DB;const p1=db[m.p1],p2=db[m.p2];if(!p1||!p2)return null;
+    const wp=tennisMatchWinProbFull(p1,p2,m.surface,m.bo5);
+    const ev1=tennisEV(wp,m.p1ml);const ev2=tennisEV(1-wp,m.p2ml);
+    const pick=ev1>ev2?m.p1:m.p2;const pickP=ev1>ev2?wp:1-wp;const pickEV=Math.max(ev1||0,ev2||0);
+    return{match:m,pick,pickP,pickEV,surface:m.surface,tour:ATP_DB[m.p1]?'ATP':'WTA'};
+  }).filter(Boolean);
+  let html=`<div class="card" style="margin-bottom:12px;padding:13px">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">// TENNIS PERFORMANCE SUMMARY</div>
+    <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:10px">
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:26px;font-weight:700;color:${accCol}">${acc!==null?(acc*100).toFixed(1)+'%':'N/A'}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">WIN RATE</div></div>
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:26px;font-weight:700;color:var(--ic)">${settled.length}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">SETTLED</div></div>
+      <div style="text-align:center"><div style="font-family:var(--orb);font-size:26px;font-weight:700;color:var(--vc)">${tenPicks.filter(p=>p.outcome==='pending').length}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">PENDING</div></div>
+    </div>
+  </div>`;
+  if(surfRows.length){html+=`<div class="card" style="margin-bottom:10px;padding:12px"><div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--mc);margin-bottom:8px">// BY SURFACE</div><div style="display:flex;gap:6px">${surfRows.join('')}</div></div>`;}
+  html+=`<div class="card" style="margin-bottom:10px;padding:12px"><div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--nc);margin-bottom:8px">// TODAY'S MODEL PICKS (${allTen.length} MATCHES)</div>
+  ${allTen.map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(77,121,255,.1)">
+    <div><span style="font-family:var(--mono);font-size:8px;padding:1px 4px;border:1px solid ${t.tour==='ATP'?'var(--ic)':'var(--pc)'};color:${t.tour==='ATP'?'var(--ic)':'var(--pc)'};border-radius:2px;margin-right:6px">${t.tour}</span><span style="font-family:var(--orb);font-size:12px;font-weight:700">${t.pick}</span></div>
+    <div style="text-align:right"><div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--nc)">${(t.pickP*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">EV +${(t.pickEV*100).toFixed(1)}%</div></div>
+  </div>`).join('')}
+  </div>`;
+  // Locked tennis bets history
+  if(tenPicks.length){
+    html+=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:8px;margin-top:4px">// LOCKED TENNIS BETS (${tenPicks.length})</div>`;
+    html+=tenPicks.sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0)).map(p=>{
+      const oCol=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';
+      return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oCol};padding:9px">
+        <div style="display:flex;justify-content:space-between"><div><div style="font-family:var(--orb);font-size:12px;font-weight:700">${p.betOn}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:2px">${p.date} · ${p.ml} · ${(p.winProb*100).toFixed(1)}%</div></div><span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border:1px solid ${oCol};color:${oCol};border-radius:2px">${p.outcome==='pending'?'PENDING':p.outcome.toUpperCase()}</span></div>
+        ${p.outcome==='pending'?`<div style="display:flex;gap:5px;margin-top:6px"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button></div>`:''}
+      </div>`;
+    }).join('');
+  }
+  el.innerHTML=html;
+}
 function renderAdaptiveLearning(){
   const el=document.getElementById('ovr-adaptive');if(!el)return;
   const state=adaptiveTick();
@@ -3243,6 +3314,20 @@ function renderHomePage(){
   try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
   // NBA picks
   try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏀 NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  // Tennis picks
+  try{
+    const allTenMat=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
+    for(const m of allTenMat){
+      const db=ATP_DB[m.p1]?ATP_DB:WTA_DB;const p1=db[m.p1],p2=db[m.p2];if(!p1||!p2)continue;
+      const wp=tennisMatchWinProbFull(p1,p2,m.surface,m.bo5);
+      const ev1=tennisEV(wp,m.p1ml);const ev2=tennisEV(1-wp,m.p2ml);
+      const pick=ev1>=ev2?m.p1:m.p2;const pWin=ev1>=ev2?wp:1-wp;const pML=ev1>=ev2?m.p1ml:m.p2ml;
+      const pEV=Math.max(ev1||0,ev2||0);if(pEV<0.03||pWin<0.55)continue;
+      const ml=pML>0?`+${pML}`:String(pML);const d2=pML>0?pML/100+1:100/Math.abs(pML)+1;
+      const opp=pick===m.p1?m.p2:m.p1;
+      picks.push({sport:'🎾 TEN',mu:`${pick} vs ${opp}`,pick,abbr:pick,p:pWin,det:'5-ELO+MC Clay',col:'var(--mc)',ctx:m.tournament,ml,ev2:pEV,betType:'ML',hA:pick,awA:opp,d2});
+    }
+  }catch(e){}
   // MLB picks (from ESPN games)
   try{
     for(const g of ESPN_GAMES){
@@ -3297,9 +3382,11 @@ function renderHomePage(){
   }
   // tonight's games summary
   if(!gel)return;
+  const tenGames=TEN_TODAY_ATP.concat(TEN_TODAY_WTA).slice(0,3).map(m=>({sport:'🎾 TEN',mu:`${m.p1} vs ${m.p2}`,time:'All Day',net:'Tennis Channel',ctx:m.tournament,col:'var(--mc)'}));
   const allG=[
     ...TONIGHT.map(g=>({sport:'🏒 NHL',mu:`${NHL[g.a]?.name||g.a} @ ${NHL[g.h]?.name||g.h}`,time:g.time,net:g.net,ctx:g.ctx||'',col:'var(--nc)'})),
     ...NBA_TONIGHT.map(g=>({sport:'🏀 NBA',mu:`${g.a} @ ${g.h}`,time:g.time,net:g.net,ctx:g.ctx||'',col:'var(--gc)'})),
+    ...tenGames,
   ];
   if(!allG.length){gel.innerHTML='<div class="empty">NO LIVE GAMES TONIGHT</div>';}
   else{gel.innerHTML=allG.map(g=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${g.col}"><div><span style="color:var(--t3);font-size:9px;letter-spacing:2px">${g.sport}</span><div style="font-size:13px;margin-top:4px">${g.mu}</div>${g.ctx?`<div style="font-size:9px;color:var(--t3);margin-top:2px">${g.ctx}</div>`:''}</div><div style="text-align:right"><div style="font-size:12px;color:${g.col}">${g.time}</div><div style="font-size:9px;color:var(--t3)">${g.net}</div></div></div>`).join('');}
@@ -3354,7 +3441,7 @@ function T(sport,tabId){
   if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');}if(tabId==='config'){}}
   if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks')renderNBAPicks();if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='config'){}}
-  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();}
+  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();}
   if(sport==='ten'){if(tabId==='picks')renderTennisPicks();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams')renderSlam('fo');if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live')refreshTennisLive();if(tabId==='model')renderTennisModel();}
   document.getElementById(saId)?.scrollTo(0,0);
 }
@@ -3362,7 +3449,7 @@ function T(sport,tabId){
 // ═══ SPLASH ═══════════════════════════════════════════════════
 let splashDone=false;
 function endSplash(){if(splashDone)return;splashDone=true;const sp=document.getElementById('splash');const app=document.getElementById('app');if(sp){sp.style.transition='opacity .7s';sp.style.opacity='0';setTimeout(()=>sp.remove(),800);}if(app)app.classList.add('ready');}
-function startSplash(){const canvas=document.getElementById('matrix-c');const ctx=canvas?.getContext('2d');if(!ctx)return;canvas.width=window.innerWidth;canvas.height=window.innerHeight;const cols=Math.floor(canvas.width/14);const drops=Array(cols).fill(1);const chars='CLAIRVOYANCEEDGEPRO01アイウエオカキクケコ数字量子予測確率統計';const colors=['#cc00ff','#4d79ff','#00e5ff','#ff0080'];function drawMatrix(){ctx.fillStyle='rgba(2,0,8,.05)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle=colors[Math.floor(Math.random()*colors.length)];ctx.font='13px monospace';for(let i=0;i<drops.length;i++){ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*14,drops[i]*14);if(drops[i]*14>canvas.height&&Math.random()>.975)drops[i]=0;drops[i]++;}}const matIV=setInterval(drawMatrix,50);const vbEl=document.getElementById('vbars');if(vbEl){vbEl.style.opacity='1';const barEls=vbEl.querySelectorAll('.vbar');barEls.forEach((b,i)=>{b.style.height=(20+Math.random()*80)+'%';});setInterval(()=>{barEls.forEach(b=>{b.style.height=(10+Math.random()*90)+'%';});},380);}const BOOT=['> INITIALIZING CLAIRVOYANCE v4…',`> BACKEND: ${API_ONLINE()?API_BASE:'OFFLINE MODE (localStorage)'}`,`> CONNECTING ESPN SCOREBOARD API…`,'> LOADING NHL EDGE MODULE…','> CALIBRATING MONTE CARLO (4K×)…','> LOADING HOCKEYVIZ + MONEYPUCK…','> ALL SYSTEMS ONLINE — READY'];const bl=document.getElementById('boot-lines');const bf=document.getElementById('boot-fill');let i=0;function nextLine(){if(i>=BOOT.length){setTimeout(()=>{const li=document.getElementById('splash-logo-img');if(li){li.style.opacity='1';li.style.transform='scale(1)';}document.getElementById('splash-sub')?.classList.add('v');setTimeout(()=>document.getElementById('splash-skip')?.classList.add('v'),600);setTimeout(endSplash,3500);},300);clearInterval(matIV);return;}const div=document.createElement('div');div.className='bll';div.textContent=BOOT[i];bl.appendChild(div);requestAnimationFrame(()=>requestAnimationFrame(()=>div.classList.add('v')));if(bf)bf.style.width=`${Math.round((i+1)/BOOT.length*100)}%`;i++;setTimeout(nextLine,270+Math.random()*110);}setTimeout(nextLine,250);}
+function startSplash(){const canvas=document.getElementById('matrix-c');const ctx=canvas?.getContext('2d');if(!ctx)return;canvas.width=window.innerWidth;canvas.height=window.innerHeight;const cols=Math.floor(canvas.width/14);const drops=Array(cols).fill(1);const chars='CLAIRVOYANCEEDGEPRO01アイウエオカキクケコ数字量子予測確率統計';const colors=['#cc00ff','#4d79ff','#00e5ff','#ff0080'];function drawMatrix(){ctx.fillStyle='rgba(2,0,8,.05)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle=colors[Math.floor(Math.random()*colors.length)];ctx.font='13px monospace';for(let i=0;i<drops.length;i++){ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*14,drops[i]*14);if(drops[i]*14>canvas.height&&Math.random()>.975)drops[i]=0;drops[i]++;}}const matIV=setInterval(drawMatrix,50);const vbEl=document.getElementById('vbars');if(vbEl){vbEl.style.opacity='1';const barEls=vbEl.querySelectorAll('.vbar');barEls.forEach((b,i)=>{b.style.height=(20+Math.random()*80)+'%';});setInterval(()=>{barEls.forEach(b=>{b.style.height=(10+Math.random()*90)+'%';});},380);}const BOOT=['> CLAIRVOYANCE // BETTING INTELLIGENCE ENGINE','> INITIALIZING v4.2 — ADAPTIVE MODEL ACTIVE',`> BACKEND: ${API_ONLINE()?API_BASE:'OFFLINE — localStorage+IDB MODE'}`,`> CONNECTING ESPN SCOREBOARD API…`,'> LOADING NHL EDGE + MONEYPUCK MODULE…','> CALIBRATING MONTE CARLO (5K×) POISSON SIMS…','> WEATHER ENGINE — OPEN-METEO API LINKED…','> TENNIS ENGINE — 5 ELO SYSTEMS ACTIVE…','> ALL SYSTEMS ONLINE — CLAIRVOYANCE READY'];const bl=document.getElementById('boot-lines');const bf=document.getElementById('boot-fill');let i=0;function nextLine(){if(i>=BOOT.length){setTimeout(()=>{const li=document.getElementById('splash-logo-img');const lt=document.getElementById('splash-logo-txt');if(li&&li.style.display!=='none'){li.style.opacity='1';li.style.transform='scale(1)';}if(lt&&lt.style.display!=='none'){lt.style.opacity='1';lt.style.transform='scale(1)';}document.getElementById('splash-sub')?.classList.add('v');setTimeout(()=>document.getElementById('splash-skip')?.classList.add('v'),600);setTimeout(endSplash,3500);},300);clearInterval(matIV);return;}const div=document.createElement('div');div.className='bll';div.textContent=BOOT[i];bl.appendChild(div);requestAnimationFrame(()=>requestAnimationFrame(()=>div.classList.add('v')));if(bf)bf.style.width=`${Math.round((i+1)/BOOT.length*100)}%`;i++;setTimeout(nextLine,270+Math.random()*110);}setTimeout(nextLine,250);}
 
 // ═══ NHL/NBA LIVE TRACKER ════════════════════════════════════
 let _nhlLiveIv=null,_nbaLiveIv=null;
@@ -3388,7 +3475,19 @@ async function refreshNHLLive(){
 function startNHLLive(){if(_nhlLiveIv)clearInterval(_nhlLiveIv);refreshNHLLive();_nhlLiveIv=setInterval(refreshNHLLive,30000);}
 function renderNHLLiveBets(){const el=document.getElementById('nhl-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NHL'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NHL BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:12px;font-weight:700">${p.hA} vs ${p.awA}</div><div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
 function renderNBALiveBets(){const el=document.getElementById('nba-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NBA'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NBA BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:12px;font-weight:700">${p.hA} vs ${p.awA}</div><div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
-function lockProp(team,player,line,over,conf,ml){const prop={id:`prop_${Date.now()}`,team,player,line,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today()};LOCKED_PROPS.push(prop);localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);renderPropsTracker();}
+function lockProp(team,player,line,over,conf,ml){
+  const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'NBA');
+  const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
+  const prop={id:`prop_${Date.now()}`,team,player,line,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
+    sport,betType:'PROP',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,winProb:conf||0.60,
+    hA:team,awA:team,decOdds:dec,wager:0};
+  LOCKED_PROPS.push(prop);
+  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
+  // Also add to main picks store so it shows in bet history
+  const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);
+  renderPropsTracker();
+}
 function renderPropsTracker(){const targets=['nhl-props-tracker','nba-props-tracker'];targets.forEach(id=>{const el=document.getElementById(id);if(!el)return;if(!LOCKED_PROPS.length){el.innerHTML='<div class="empty">NO LOCKED PROPS</div>';return;}el.innerHTML=LOCKED_PROPS.map((p,i)=>{const oc=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:11px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · ${p.team} · ${p.ml}</div></div><div style="display:flex;gap:4px;align-items:center"><span style="font-family:var(--mono);font-size:8px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${p.outcome.toUpperCase()}</span><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:18px;height:18px;cursor:pointer;font-size:9px" onclick="LOCKED_PROPS.splice(${i},1);localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));renderPropsTracker()">×</button></div></div></div>`;}).join('');});}
 async function refreshNBALive(){
   try{
@@ -3413,6 +3512,70 @@ async function refreshNBALive(){
 function startNBALive(){if(_nbaLiveIv)clearInterval(_nbaLiveIv);refreshNBALive();_nbaLiveIv=setInterval(refreshNBALive,30000);}
 
 // ══════════════════════════════════════════════════════════════
+// ═══ WEATHER ENGINE — OPEN-METEO API ═════════════════════════
+// ══════════════════════════════════════════════════════════════
+const PARK_COORDS={
+  COL:{lat:39.756,lon:-104.994},BOS:{lat:42.346,lon:-71.097},CHC:{lat:41.948,lon:-87.656},
+  NYY:{lat:40.829,lon:-73.926},NYM:{lat:40.757,lon:-73.846},MIA:{lat:25.778,lon:-80.220},
+  CIN:{lat:39.097,lon:-84.507},LAD:{lat:34.073,lon:-118.240},SF:{lat:37.778,lon:-122.389},
+  SD:{lat:32.707,lon:-117.157},HOU:{lat:29.757,lon:-95.355},ATL:{lat:33.735,lon:-84.490},
+  PHI:{lat:39.906,lon:-75.166},PIT:{lat:40.447,lon:-80.005},STL:{lat:38.623,lon:-90.193},
+  MIN:{lat:44.981,lon:-93.278},DET:{lat:42.337,lon:-83.049},CLE:{lat:41.496,lon:-81.685},
+  MIL:{lat:43.028,lon:-87.971},KC:{lat:39.052,lon:-94.481},TOR:{lat:43.641,lon:-79.389},
+  BAL:{lat:39.284,lon:-76.622},WAS:{lat:38.873,lon:-77.008},TEX:{lat:32.751,lon:-97.082},
+  OAK:{lat:37.751,lon:-122.200},SEA:{lat:47.591,lon:-122.332},ARI:{lat:33.446,lon:-112.067},
+  TB:{lat:27.768,lon:-82.653},CWS:{lat:41.830,lon:-87.634},LAA:{lat:33.800,lon:-117.883},
+};
+// Roof/covered parks — weather less relevant
+const ROOF_PARKS=new Set(['MIA','MIN','ARI','TB','TOR','HOU','SEA']);
+let _WX_CACHE={};// {abbr: {wind,precip,temp,ts}}
+async function fetchParkWeather(abbr){
+  if(!PARK_COORDS[abbr])return null;
+  if(_WX_CACHE[abbr]&&Date.now()-_WX_CACHE[abbr].ts<3600000)return _WX_CACHE[abbr];
+  try{
+    const{lat,lon}=PARK_COORDS[abbr];
+    const gameHr=Math.min(new Date().getHours()+3,23);// project game time
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=windspeed_10m,winddirection_10m,precipitation_probability,temperature_2m&wind_speed_unit=mph&forecast_days=1&timezone=auto`;
+    const r=await fetch(url,{signal:AbortSignal.timeout?AbortSignal.timeout(4000):undefined});
+    if(!r.ok)return null;
+    const d=await r.json();
+    const wx={wind:Math.round(d.hourly?.windspeed_10m?.[gameHr]||0),windDir:Math.round(d.hourly?.winddirection_10m?.[gameHr]||0),precip:Math.round(d.hourly?.precipitation_probability?.[gameHr]||0),temp:Math.round(d.hourly?.temperature_2m?.[gameHr]||70),roof:ROOF_PARKS.has(abbr),ts:Date.now()};
+    _WX_CACHE[abbr]=wx;return wx;
+  }catch(e){return null;}
+}
+async function fetchAllParkWeather(homeTeams){
+  await Promise.allSettled(homeTeams.map(a=>fetchParkWeather(a)));
+}
+function weatherImpact(wx,hA){
+  if(!wx||wx.roof)return{ouAdj:0,nrfiAdj:0,label:'',icon:''};
+  const wind=wx.wind||0;const precip=wx.precip||0;
+  let ouAdj=0,nrfiAdj=0,label='',icon='';
+  // Wind effect: high wind at open parks increases scoring (batted ball carry)
+  if(wind>=20&&!ROOF_PARKS.has(hA)){
+    ouAdj=wind>=30?0.7:0.4;nrfiAdj=-0.03;
+    icon='💨';label=`${wind}MPH WIND`;
+  }else if(wind>=12){ouAdj=0.2;nrfiAdj=-0.01;icon='💨';label=`${wind}MPH`;}
+  // Rain: suppresses scoring slightly
+  if(precip>=70){ouAdj-=0.4;nrfiAdj+=0.03;icon+=(icon?'+':'')+'🌧';label+=(label?' · ':'')+'HIGH RAIN RISK';}
+  else if(precip>=40){ouAdj-=0.2;nrfiAdj+=0.01;icon+=(icon?'+':'')+'🌦';label+=(label?' · ':'')+'RAIN POSSIBLE';}
+  // Temperature: cold air → fewer HRs
+  const temp=wx.temp||72;
+  if(temp<45){ouAdj-=0.3;label+=(label?' · ':'')+'COLD';}
+  else if(temp>90){ouAdj+=0.2;label+=(label?' · ':'')+'HOT';}
+  return{ouAdj:+ouAdj.toFixed(2),nrfiAdj:+nrfiAdj.toFixed(3),label,icon};
+}
+function weatherBadge(wx,hA){
+  if(!wx)return'';
+  const imp=weatherImpact(wx,hA);
+  const windStr=wx.wind?`${wx.wind}mph`:'';
+  const precipStr=wx.precip?`💧${wx.precip}%`:'';
+  const tempStr=`${wx.temp}°F`;
+  const col=imp.ouAdj>0.3?'var(--hc)':imp.ouAdj<-0.3?'var(--ic)':imp.precip>=60?'var(--vc)':'var(--t3)';
+  if(!wx.wind&&!wx.precip)return'';
+  return`<div style="font-family:var(--mono);font-size:9px;color:${col};margin-top:3px">${imp.icon||'🌤'} ${windStr}${precipStr?' · '+precipStr:''} · ${tempStr}${imp.label?' — '+imp.label:''}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
 // ═══ MLB SCORE PROJECTIONS + NRFI YES/NO + HOME PARK FACTORS ═
 // ══════════════════════════════════════════════════════════════
 // Park names + altitude/climate context
@@ -3425,16 +3588,34 @@ const PARK_NOTES={
   ATL:{note:'TRUIST PARK — SLIGHT HITTER-FRIENDLY'}
 };
 function projectMLBScore(hA,awA,espnGame){
+  // PRIMARY: 5000-sim Poisson Monte Carlo — avoids zero-stat bug when ESPN not loaded
+  const mc=mlbMC(hA,awA,5000);
+  if(mc&&mc.avgH>0&&!isNaN(mc.avgH)){
+    // Blend with pitcher ERA adjustment if available
+    const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||null;
+    const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||null;
+    let hProj=mc.avgH,aProj=mc.avgA;
+    if(hPitERA&&aPitERA){
+      // ERA-based nudge on top of MC baseline (±10% max)
+      const hPitMod=Math.max(0.90,Math.min(1.10,4.50/Math.max(1,aPitERA)));
+      const aPitMod=Math.max(0.90,Math.min(1.10,4.50/Math.max(1,hPitERA)));
+      hProj=mc.avgH*hPitMod;aProj=mc.avgA*aPitMod;
+    }
+    // Weather adjustment (wind impact)
+    const wx=_WX_CACHE[hA];
+    if(wx){const wImp=weatherImpact(wx,hA);hProj+=wImp.ouAdj/2;aProj+=wImp.ouAdj/2;}
+    return{hProj:+Math.max(1.0,hProj).toFixed(1),aProj:+Math.max(1.0,aProj).toFixed(1),total:+Math.max(2.0,hProj+aProj).toFixed(1),method:'MC'};
+  }
+  // FALLBACK: park-factor stat model (when TEAMS not populated from API yet)
   const h=TEAMS[hA],aw=TEAMS[awA];
-  if(!h||!aw)return{hProj:4.5,aProj:4.0,total:8.5};
-  const pf=h.pf||1.0;
-  const hfaRuns=(S.g('hfa')||4)/162;// home runs per game from HFA setting
-  const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||h.pit.ERA||4.50;
-  const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||aw.pit.ERA||4.50;
-  // Projected runs: team offense × opp pitching (ERA-based)  const hProj=Math.max(1.0,h.bat.RG*(aPitERA/4.50)*pf+hfaRuns);
-  const aProj=Math.max(1.0,aw.bat.RG*(hPitERA/4.50)/pf);
-  const total=hProj+aProj;
-  return{hProj:+hProj.toFixed(1),aProj:+aProj.toFixed(1),total:+total.toFixed(1)};
+  if(!h||!aw)return{hProj:4.5,aProj:4.0,total:8.5,method:'DEFAULT'};
+  const pf=h.pf||1.0;const hfaRuns=0.024;
+  const hPitERA2=espnGame?.hPitERA||PIT[hA]?.era||h.pit.ERA||4.50;
+  const aPitERA2=espnGame?.aPitERA||PIT[awA]?.era||aw.pit.ERA||4.50;
+  const rgH=h.bat.RG>0?h.bat.RG:4.5;const rgA=aw.bat.RG>0?aw.bat.RG:4.2;
+  const hProj=Math.max(1.0,rgH*(aPitERA2/4.50)*pf+hfaRuns);
+  const aProj=Math.max(1.0,rgA*(hPitERA2/4.50)/pf);
+  return{hProj:+hProj.toFixed(1),aProj:+aProj.toFixed(1),total:+(hProj+aProj).toFixed(1),method:'STAT'};
 }
 // NRFI yes/no recommendation
 function nrfiRec(prob){
@@ -3480,6 +3661,29 @@ const ATP_DB={
  'K.Khachanov': {rank:23,hardElo:1920,clayElo:1900,grassElo:1890,formElo:1890,serveElo:1940,returnElo:1880,fs:.63,fsw:.74,ssw:.52,ace:4.5,df:2.2,hold:.82,brk:.37,retw:.38,hw:.71,cw:.69,gw:.67,age:28,cty:'RUS',fat:2},
  'B.Coric':     {rank:28,hardElo:1880,clayElo:1890,grassElo:1850,formElo:1870,serveElo:1870,returnElo:1880,fs:.61,fsw:.72,ssw:.52,ace:3.5,df:2.1,hold:.80,brk:.39,retw:.39,hw:.70,cw:.71,gw:.65,age:28,cty:'CRO',fat:1},
  'D.Shapovalov':{rank:30,hardElo:1890,clayElo:1870,grassElo:1920,formElo:1870,serveElo:1930,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.66,gw:.72,age:26,cty:'CAN',fat:1},
+ // ── Extended ATP Roster (ranks 21-60) ───────────────────────────
+ 'A.Bublik':    {rank:25,hardElo:1910,clayElo:1870,grassElo:1940,formElo:1890,serveElo:2010,returnElo:1810,fs:.67,fsw:.77,ssw:.50,ace:9.1,df:3.5,hold:.84,brk:.32,retw:.33,hw:.71,cw:.62,gw:.73,age:27,cty:'KAZ',fat:1},
+ 'A.Tabilo':    {rank:26,hardElo:1900,clayElo:1930,grassElo:1850,formElo:1920,serveElo:1870,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.8,df:2.0,hold:.80,brk:.42,retw:.41,hw:.70,cw:.74,gw:.63,age:27,cty:'CHI',fat:1},
+ 'J.Mensik':    {rank:24,hardElo:1920,clayElo:1890,grassElo:1900,formElo:1950,serveElo:1940,returnElo:1890,fs:.63,fsw:.74,ssw:.53,ace:5.2,df:2.2,hold:.82,brk:.39,retw:.39,hw:.73,cw:.68,gw:.70,age:19,cty:'CZE',fat:1},
+ 'F.Marozsan':  {rank:27,hardElo:1880,clayElo:1910,grassElo:1840,formElo:1900,serveElo:1860,returnElo:1890,fs:.59,fsw:.71,ssw:.52,ace:3.5,df:2.3,hold:.79,brk:.41,retw:.40,hw:.69,cw:.73,gw:.62,age:24,cty:'HUN',fat:2},
+ 'R.Bautista-Agut':{rank:29,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1870,serveElo:1870,returnElo:1890,fs:.61,fsw:.72,ssw:.52,ace:3.2,df:1.8,hold:.80,brk:.40,retw:.40,hw:.70,cw:.72,gw:.67,age:37,cty:'ESP',fat:2},
+ 'L.Sonego':    {rank:31,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1880,serveElo:1910,returnElo:1860,fs:.62,fsw:.73,ssw:.52,ace:4.8,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.73,gw:.67,age:30,cty:'ITA',fat:2},
+ 'M.Berrettini': {rank:40,hardElo:1900,clayElo:1890,grassElo:1950,formElo:1870,serveElo:2000,returnElo:1840,fs:.65,fsw:.76,ssw:.53,ace:7.5,df:2.8,hold:.84,brk:.35,retw:.36,hw:.72,cw:.68,gw:.77,age:29,cty:'ITA',fat:3},
+ 'S.Baez':      {rank:33,hardElo:1860,clayElo:1920,grassElo:1800,formElo:1870,serveElo:1830,returnElo:1900,fs:.59,fsw:.71,ssw:.52,ace:2.5,df:2.2,hold:.78,brk:.43,retw:.42,hw:.66,cw:.75,gw:.58,age:23,cty:'ARG',fat:1},
+ 'T.Etcheverry':{rank:34,hardElo:1850,clayElo:1920,grassElo:1790,formElo:1860,serveElo:1820,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.8,df:2.5,hold:.77,brk:.42,retw:.41,hw:.65,cw:.75,gw:.57,age:25,cty:'ARG',fat:2},
+ 'C.Norrie':    {rank:36,hardElo:1870,clayElo:1880,grassElo:1900,formElo:1860,serveElo:1870,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.5,df:2.0,hold:.79,brk:.40,retw:.40,hw:.70,cw:.70,gw:.72,age:30,cty:'GBR',fat:2},
+ 'F.Tiafoe':    {rank:21,hardElo:1920,clayElo:1880,grassElo:1900,formElo:1930,serveElo:1940,returnElo:1880,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.82,brk:.38,retw:.38,hw:.72,cw:.65,gw:.70,age:27,cty:'USA',fat:2},
+ 'J.Struff':    {rank:38,hardElo:1860,clayElo:1870,grassElo:1870,formElo:1850,serveElo:1940,returnElo:1820,fs:.65,fsw:.74,ssw:.52,ace:6.5,df:2.8,hold:.83,brk:.35,retw:.36,hw:.69,cw:.68,gw:.70,age:35,cty:'GER',fat:2},
+ 'J.Machac':    {rank:32,hardElo:1880,clayElo:1870,grassElo:1870,formElo:1900,serveElo:1890,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.0,hold:.81,brk:.38,retw:.39,hw:.70,cw:.68,gw:.68,age:24,cty:'CZE',fat:1},
+ 'C.OConnell':   {rank:45,hardElo:1840,clayElo:1830,grassElo:1860,formElo:1850,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:4.8,df:2.3,hold:.81,brk:.37,retw:.37,hw:.68,cw:.63,gw:.69,age:30,cty:'AUS',fat:1},
+ 'A.Mannarino': {rank:43,hardElo:1850,clayElo:1870,grassElo:1840,formElo:1850,serveElo:1840,returnElo:1870,fs:.59,fsw:.71,ssw:.52,ace:2.8,df:2.0,hold:.78,brk:.41,retw:.41,hw:.68,cw:.71,gw:.64,age:37,cty:'FRA',fat:2},
+ 'R.Hijikata':  {rank:50,hardElo:1830,clayElo:1830,grassElo:1850,formElo:1840,serveElo:1870,returnElo:1830,fs:.62,fsw:.72,ssw:.51,ace:4.2,df:2.4,hold:.80,brk:.36,retw:.37,hw:.67,cw:.63,gw:.68,age:24,cty:'AUS',fat:1},
+ 'Y.Nishioka':  {rank:48,hardElo:1840,clayElo:1860,grassElo:1800,formElo:1840,serveElo:1820,returnElo:1870,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.0,hold:.77,brk:.42,retw:.42,hw:.67,cw:.69,gw:.60,age:29,cty:'JPN',fat:1},
+ 'J.Wolf':      {rank:46,hardElo:1840,clayElo:1820,grassElo:1830,formElo:1840,serveElo:1870,returnElo:1820,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.81,brk:.36,retw:.37,hw:.68,cw:.62,gw:.65,age:26,cty:'USA',fat:1},
+ 'F.Fognini':   {rank:55,hardElo:1820,clayElo:1850,grassElo:1810,formElo:1810,serveElo:1820,returnElo:1840,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.77,brk:.41,retw:.41,hw:.66,cw:.70,gw:.61,age:38,cty:'ITA',fat:3},
+ 'P.Carreno-Busta':{rank:37,hardElo:1860,clayElo:1900,grassElo:1840,formElo:1850,serveElo:1840,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.2,df:2.0,hold:.78,brk:.41,retw:.41,hw:.69,cw:.73,gw:.63,age:34,cty:'ESP',fat:2},
+ 'B.van de Zandschulp':{rank:39,hardElo:1860,clayElo:1870,grassElo:1830,formElo:1850,serveElo:1860,returnElo:1860,fs:.61,fsw:.72,ssw:.52,ace:4.0,df:2.3,hold:.79,brk:.39,retw:.39,hw:.69,cw:.69,gw:.63,age:30,cty:'NED',fat:1},
+ 'M.McDonald':  {rank:41,hardElo:1850,clayElo:1820,grassElo:1840,formElo:1850,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.2,hold:.81,brk:.37,retw:.37,hw:.68,cw:.62,gw:.66,age:30,cty:'USA',fat:1},
 };
 const WTA_DB={
  'A.Sabalenka': {rank:1,hardElo:2080,clayElo:2020,grassElo:2000,formElo:2100,serveElo:2010,returnElo:1990,fs:.63,fsw:.73,ssw:.55,ace:3.2,df:3.5,hold:.82,brk:.44,retw:.43,hw:.82,cw:.75,gw:.73,age:27,cty:'BLR',fat:1},
@@ -3502,6 +3706,24 @@ const WTA_DB={
  'S.Kenin':     {rank:25,hardElo:1880,clayElo:1890,grassElo:1860,formElo:1870,serveElo:1860,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.8,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.65,age:26,cty:'USA',fat:1},
  'C.Wozniacki': {rank:20,hardElo:1890,clayElo:1870,grassElo:1880,formElo:1870,serveElo:1860,returnElo:1890,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.5,hold:.77,brk:.43,retw:.42,hw:.72,cw:.68,gw:.69,age:35,cty:'DEN',fat:2},
  'K.Muchova':   {rank:21,hardElo:1910,clayElo:1920,grassElo:1900,formElo:1890,serveElo:1870,returnElo:1900,fs:.58,fsw:.70,ssw:.51,ace:2.2,df:3.0,hold:.77,brk:.44,retw:.43,hw:.72,cw:.74,gw:.69,age:29,cty:'CZE',fat:2},
+ // ── Extended WTA Roster (ranks 22-50) ────────────────────────────
+ 'O.Jabeur':    {rank:22,hardElo:1900,clayElo:1920,grassElo:1950,formElo:1880,serveElo:1890,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.0,df:3.2,hold:.76,brk:.44,retw:.43,hw:.72,cw:.74,gw:.75,age:31,cty:'TUN',fat:2},
+ 'C.Garcia':    {rank:23,hardElo:1900,clayElo:1910,grassElo:1880,formElo:1890,serveElo:1910,returnElo:1880,fs:.61,fsw:.71,ssw:.52,ace:3.2,df:3.0,hold:.78,brk:.42,retw:.41,hw:.73,cw:.74,gw:.67,age:31,cty:'FRA',fat:2},
+ 'L.Fernandez': {rank:24,hardElo:1890,clayElo:1880,grassElo:1870,formElo:1890,serveElo:1870,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.8,hold:.76,brk:.44,retw:.43,hw:.71,cw:.70,gw:.67,age:23,cty:'CAN',fat:1},
+ 'M.Frech':     {rank:26,hardElo:1880,clayElo:1890,grassElo:1850,formElo:1880,serveElo:1870,returnElo:1880,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:2.9,hold:.77,brk:.42,retw:.42,hw:.70,cw:.71,gw:.64,age:24,cty:'POL',fat:1},
+ 'E.Alexandrova':{rank:27,hardElo:1890,clayElo:1870,grassElo:1880,formElo:1880,serveElo:1890,returnElo:1870,fs:.61,fsw:.71,ssw:.52,ace:3.5,df:2.8,hold:.78,brk:.41,retw:.41,hw:.72,cw:.68,gw:.68,age:30,cty:'RUS',fat:1},
+ 'D.Collins':   {rank:28,hardElo:1890,clayElo:1860,grassElo:1870,formElo:1880,serveElo:1900,returnElo:1870,fs:.62,fsw:.72,ssw:.52,ace:3.5,df:3.2,hold:.79,brk:.40,retw:.40,hw:.73,cw:.67,gw:.68,age:32,cty:'USA',fat:2},
+ 'A.Potapova':  {rank:29,hardElo:1880,clayElo:1880,grassElo:1860,formElo:1880,serveElo:1880,returnElo:1870,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:3.0,hold:.77,brk:.42,retw:.42,hw:.70,cw:.70,gw:.64,age:24,cty:'RUS',fat:1},
+ 'Y.Putintseva': {rank:30,hardElo:1870,clayElo:1880,grassElo:1840,formElo:1870,serveElo:1850,returnElo:1880,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.9,hold:.75,brk:.43,retw:.43,hw:.68,cw:.71,gw:.62,age:30,cty:'KAZ',fat:2},
+ 'B.Haddad-Maia':{rank:31,hardElo:1870,clayElo:1890,grassElo:1870,formElo:1860,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:3.1,hold:.76,brk:.42,retw:.42,hw:.70,cw:.72,gw:.67,age:29,cty:'BRA',fat:1},
+ 'V.Kudermetova':{rank:32,hardElo:1880,clayElo:1880,grassElo:1850,formElo:1860,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.8,df:3.2,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.64,age:28,cty:'RUS',fat:2},
+ 'J.Ostapenko':  {rank:33,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1870,serveElo:1910,returnElo:1840,fs:.63,fsw:.72,ssw:.51,ace:4.5,df:4.0,hold:.78,brk:.39,retw:.38,hw:.70,cw:.73,gw:.67,age:28,cty:'LAT',fat:2},
+ 'A.Anisimova':  {rank:34,hardElo:1870,clayElo:1860,grassElo:1870,formElo:1860,serveElo:1880,returnElo:1860,fs:.61,fsw:.71,ssw:.52,ace:3.0,df:3.0,hold:.77,brk:.41,retw:.41,hw:.70,cw:.67,gw:.68,age:23,cty:'USA',fat:1},
+ 'N.Osaka':      {rank:35,hardElo:1890,clayElo:1820,grassElo:1840,formElo:1860,serveElo:1920,returnElo:1840,fs:.63,fsw:.72,ssw:.52,ace:3.5,df:3.5,hold:.78,brk:.39,retw:.39,hw:.74,cw:.62,gw:.66,age:28,cty:'JPN',fat:2},
+ 'L.Papadakis':  {rank:36,hardElo:1860,clayElo:1850,grassElo:1850,formElo:1860,serveElo:1890,returnElo:1840,fs:.62,fsw:.71,ssw:.51,ace:3.8,df:2.9,hold:.78,brk:.39,retw:.39,hw:.70,cw:.66,gw:.67,age:28,cty:'RUS',fat:2},
+ 'R.Sramkova':   {rank:37,hardElo:1860,clayElo:1870,grassElo:1840,formElo:1860,serveElo:1860,returnElo:1860,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.42,retw:.42,hw:.68,cw:.70,gw:.63,age:27,cty:'SVK',fat:1},
+ 'D.Yastremska': {rank:38,hardElo:1860,clayElo:1860,grassElo:1840,formElo:1860,serveElo:1880,returnElo:1840,fs:.61,fsw:.71,ssw:.51,ace:3.5,df:3.2,hold:.77,brk:.40,retw:.40,hw:.69,cw:.68,gw:.65,age:25,cty:'UKR',fat:2},
+ 'A.Rus':        {rank:40,hardElo:1840,clayElo:1860,grassElo:1820,formElo:1840,serveElo:1840,returnElo:1850,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.8,hold:.75,brk:.42,retw:.42,hw:.66,cw:.69,gw:.60,age:34,cty:'NED',fat:2},
 };
 
 // ── ELO / Surface lookup ──────────────────────────────────────
@@ -3539,7 +3761,7 @@ function simSet(p1hold,p2hold){
     if(g1===6&&g2===6)return Math.random()<(p1hold/(p1hold+p2hold))?1:0;
   }
 }
-function tennisMatchWinProb(p1,p2,surface,bo5=false,N=1500){
+function tennisMatchWinProb(p1,p2,surface,bo5=false,N=3000){
   // p1,p2 = player objects from ATP_DB/WTA_DB
   if(!p1||!p2)return 0.5;
   const setsToWin=bo5?3:2;
@@ -3563,7 +3785,7 @@ function tennisMatchWinProbFull(p1,p2,surface,bo5=false){
   const elo1=getPlayerElo(p1,surface);const elo2=getPlayerElo(p2,surface);
   const eloP=1/(1+Math.pow(10,(elo2-elo1)/400));
   // Serve/return MC component
-  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,1200);
+  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,3000);
   // Form adjustment
   const formDiff=(p1.formElo-p2.formElo)/400;
   const formP=1/(1+Math.pow(10,-formDiff));
@@ -3641,10 +3863,15 @@ function renderTennisPicks(){
   el.innerHTML=html;
 }
 // ── Render: Rankings table ────────────────────────────────────
-function renderTennisRankings(tour,sortBy){
+function renderTennisRankings(tour,sortBy,filterStr){
   const elId=tour==='atp'?'atp-rankings':'wta-rankings';
   const el=document.getElementById(elId);if(!el)return;
-  const db=getDB(tour);const players=Object.entries(db);
+  const db=getDB(tour);let players=Object.entries(db);
+  // Filter by search string if provided
+  if(filterStr&&filterStr.trim()){
+    const q=filterStr.trim().toLowerCase();
+    players=players.filter(([name,p])=>name.toLowerCase().includes(q)||p.cty.toLowerCase().includes(q));
+  }
   players.sort((a,b)=>{
     const pa=a[1],pb=b[1];
     if(sortBy==='clay')return pb.clayElo-pa.clayElo;
@@ -3652,25 +3879,108 @@ function renderTennisRankings(tour,sortBy){
     if(sortBy==='form')return pb.formElo-pa.formElo;
     if(sortBy==='serve')return pb.serveElo-pa.serveElo;
     if(sortBy==='return')return pb.returnElo-pa.returnElo;
-    return pb.hardElo-pa.hardElo;// default hard
+    if(sortBy==='rank')return pa[1].rank-pb[1].rank;
+    return pb.hardElo-pa.hardElo;
   });
-  const surfLabel={hard:'HARD ELO',clay:'CLAY ELO',grass:'GRASS ELO',form:'FORM ELO (90D)',serve:'SERVE ELO',return:'RETURN ELO'};
-  const eloFn=(p)=>{if(sortBy==='clay')return p.clayElo;if(sortBy==='grass')return p.grassElo;if(sortBy==='form')return p.formElo;if(sortBy==='serve')return p.serveElo;if(sortBy==='return')return p.returnElo;return p.hardElo;};
-  let html=`<div style="overflow-x:auto"><table class="dt">
-    <tr><th>#</th><th>PLAYER</th><th>${surfLabel[sortBy]||'ELO'}</th><th>HARD</th><th>CLAY</th><th>GRASS</th><th>HOLD%</th><th>BRK%</th><th>ACE/G</th></tr>
-    ${players.map(([name,p],i)=>`<tr>
+  const surfLabel={hard:'HARD ELO',clay:'CLAY ELO',grass:'GRASS ELO',form:'FORM ELO (90D)',serve:'SERVE ELO',return:'RETURN ELO',rank:'ATP RANK'};
+  const eloFn=(p,s)=>{if(s==='clay')return p.clayElo;if(s==='grass')return p.grassElo;if(s==='form')return p.formElo;if(s==='serve')return p.serveElo;if(s==='return')return p.returnElo;return p.hardElo;};
+  const eloColor=(s)=>s==='clay'?'var(--mc)':s==='grass'?'var(--nc)':s==='form'?'var(--vc)':s==='serve'?'var(--pc)':s==='return'?'var(--hc)':'var(--ic)';
+  const searchId=tour==='atp'?'atp-search':'wta-search';
+  const existing=document.getElementById(searchId)?.value||filterStr||'';
+  let html=`<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+    <input id="${searchId}" class="fi" placeholder="🔍 SEARCH PLAYER / COUNTRY" value="${existing}" oninput="renderTennisRankings('${tour}','${sortBy}',this.value)" style="flex:1;padding:5px 8px;font-size:9px"/>
+    <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${players.length} PLAYERS</span>
+  </div>
+  <div style="overflow-x:auto"><table class="dt">
+    <tr>
+      <th onclick="renderTennisRankings('${tour}','rank','${existing}')" style="cursor:pointer">#</th>
+      <th>PLAYER</th>
+      <th onclick="renderTennisRankings('${tour}','${sortBy}','${existing}')" style="cursor:pointer;color:${eloColor(sortBy)}">${surfLabel[sortBy]||'ELO'} ↕</th>
+      <th onclick="renderTennisRankings('${tour}','hard','${existing}')" style="cursor:pointer">HARD</th>
+      <th onclick="renderTennisRankings('${tour}','clay','${existing}')" style="cursor:pointer">CLAY</th>
+      <th onclick="renderTennisRankings('${tour}','grass','${existing}')" style="cursor:pointer">GRASS</th>
+      <th onclick="renderTennisRankings('${tour}','form','${existing}')" style="cursor:pointer">FORM</th>
+      <th onclick="renderTennisRankings('${tour}','serve','${existing}')" style="cursor:pointer">SRV</th>
+      <th onclick="renderTennisRankings('${tour}','return','${existing}')" style="cursor:pointer">RET</th>
+      <th>HOLD</th><th>BRK</th><th>ACE</th>
+    </tr>
+    ${players.map(([name,p],i)=>{const eloV=eloFn(p,sortBy);const ec=eloColor(sortBy);return`<tr>
       <td style="color:var(--t3)">${i+1}</td>
-      <td><div style="font-family:var(--orb);font-size:12px;font-weight:700">${name}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${p.cty} · R${p.rank}</div></td>
-      <td style="color:var(--ic);font-weight:700">${eloFn(p)}</td>
-      <td style="color:var(--nc)">${(p.hw*100).toFixed(0)}%</td>
-      <td style="color:var(--mc)">${(p.cw*100).toFixed(0)}%</td>
-      <td style="color:var(--vc)">${(p.gw*100).toFixed(0)}%</td>
+      <td><div style="font-family:var(--orb);font-size:11px;font-weight:700;white-space:nowrap">${name}</div><div style="font-family:var(--mono);font-size:7px;color:var(--t3)">${p.cty} · R${p.rank}</div></td>
+      <td style="color:${ec};font-weight:700">${eloV}</td>
+      <td style="color:var(--ic)">${p.hardElo}</td>
+      <td style="color:var(--mc)">${p.clayElo}</td>
+      <td style="color:var(--nc)">${p.grassElo}</td>
+      <td style="color:var(--vc)">${p.formElo}</td>
+      <td style="color:var(--pc)">${p.serveElo}</td>
+      <td style="color:var(--hc)">${p.returnElo}</td>
       <td>${(p.hold*100).toFixed(0)}%</td>
       <td>${(p.brk*100).toFixed(0)}%</td>
       <td>${p.ace.toFixed(1)}</td>
-    </tr>`).join('')}
+    </tr>`;}).join('')}
   </table></div>`;
   el.innerHTML=html;
+}
+// ── Roland Garros 2026 Draw ───────────────────────────────────
+const RG_DRAW={
+  men:{qf:[
+    {p1:'C.Alcaraz',p2:'A.Zverev',round:'QF — Top Half',odds:{p1:-160,p2:138}},
+    {p1:'J.Sinner',p2:'H.Rune',round:'QF — Top Half',odds:{p1:-280,p2:230}},
+    {p1:'N.Djokovic',p2:'C.Ruud',round:'QF — Bottom Half',odds:{p1:-145,p2:122}},
+    {p1:'D.Medvedev',p2:'T.Fritz',round:'QF — Bottom Half',odds:{p1:-190,p2:158}},
+  ],sf:[
+    {p1:'C.Alcaraz',p2:'J.Sinner',round:'SF — Projected',projected:true},
+    {p1:'N.Djokovic',p2:'D.Medvedev',round:'SF — Projected',projected:true},
+  ],final:{p1:'C.Alcaraz',p2:'J.Sinner',round:'FINAL — Projected',projected:true}},
+  women:{qf:[
+    {p1:'I.Swiatek',p2:'C.Gauff',round:'QF — Top Half',odds:{p1:-220,p2:182}},
+    {p1:'A.Sabalenka',p2:'J.Paolini',round:'QF — Top Half',odds:{p1:-260,p2:212}},
+    {p1:'E.Rybakina',p2:'D.Kasatkina',round:'QF — Bottom Half',odds:{p1:-200,p2:166}},
+    {p1:'M.Keys',p2:'M.Andreeva',round:'QF — Bottom Half',odds:{p1:-150,p2:128}},
+  ],sf:[
+    {p1:'I.Swiatek',p2:'A.Sabalenka',round:'SF — Projected',projected:true},
+    {p1:'E.Rybakina',p2:'M.Keys',round:'SF — Projected',projected:true},
+  ],final:{p1:'I.Swiatek',p2:'A.Sabalenka',round:'FINAL — Projected',projected:true}},
+};
+function renderRGBracket(tour,surf){
+  const draw=RG_DRAW[tour==='men'?'men':'women'];const db=tour==='men'?ATP_DB:WTA_DB;
+  const sc='var(--mc)';// clay
+  let html=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--mc);margin-bottom:10px">// ${tour==='men'?'♂ ATP':'♀ WTA'} DRAW — ROLAND GARROS 2026</div>`;
+  // QF matchups with win probabilities
+  html+=`<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:6px">QUARTERFINALS</div>`;
+  html+=draw.qf.map(m=>{
+    const p1=db[m.p1],p2=db[m.p2];
+    const wp=p1&&p2?tennisMatchWinProbFull(p1,p2,'clay',tour==='men'):0.5;
+    const favColor=wp>=0.5?'var(--nc)':'var(--hc)';
+    return`<div class="card" style="margin-bottom:7px;border-left:2px solid ${sc}">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px">${m.round}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${wp>=0.5?'var(--nc)':'var(--t)'}">${m.p1}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(wp*100).toFixed(1)}% WIN · ${m.odds?m.odds.p1>0?'+'+m.odds.p1:m.odds.p1:''}</div></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">VS</div>
+        <div style="text-align:right"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${wp<0.5?'var(--nc)':'var(--t)'}">${m.p2}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${((1-wp)*100).toFixed(1)}% WIN · ${m.odds?m.odds.p2>0?'+'+m.odds.p2:m.odds.p2:''}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+  html+=`<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin:10px 0 6px">SEMIFINALS (PROJECTED)</div>`;
+  html+=draw.sf.map(m=>{
+    const p1=db[m.p1],p2=db[m.p2];
+    const wp=p1&&p2?tennisMatchWinProbFull(p1,p2,'clay',tour==='men'):0.5;
+    return`<div class="card" style="margin-bottom:7px;border-left:2px solid rgba(204,163,0,.4)">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px">${m.round}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${wp>=0.5?'var(--nc)':'var(--t)'}">${m.p1} <span style="color:var(--t3);font-size:10px">${(wp*100).toFixed(1)}%</span></div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">VS</div><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${wp<0.5?'var(--nc)':'var(--t)'}">${m.p2} <span style="color:var(--t3);font-size:10px">${((1-wp)*100).toFixed(1)}%</span></div></div>
+    </div>`;
+  }).join('');
+  if(draw.final){
+    const f=draw.final;const p1=db[f.p1],p2=db[f.p2];
+    const wp=p1&&p2?tennisMatchWinProbFull(p1,p2,'clay',tour==='men'):0.5;
+    html+=`<div style="font-family:var(--mono);font-size:8px;color:var(--gc);margin:10px 0 6px">PROJECTED FINAL 🏆</div>`;
+    html+=`<div class="card" style="border:1px solid var(--gc);border-left:3px solid var(--gc)">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--gc);margin-bottom:5px">${f.round}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:${wp>=0.5?'var(--gc)':'var(--t)'}">${f.p1}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">VS</div><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:${wp<0.5?'var(--gc)':'var(--t)'}">${f.p2}</div></div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:6px">PREDICTED: ${wp>=0.5?f.p1:f.p2} ${(Math.max(wp,1-wp)*100).toFixed(1)}% WIN PROBABILITY</div>
+    </div>`;
+  }
+  return html;
 }
 // ── Render: Grand Slam ────────────────────────────────────────
 function renderSlam(code){
@@ -3678,14 +3988,22 @@ function renderSlam(code){
   const s=SLAMS[code];if(!s){el.innerHTML='<div class="empty">TBD</div>';return;}
   const surf=s.surface;const sc={hard:'var(--ic)',clay:'var(--mc)',grass:'var(--nc)',indoor:'var(--pc)'}[surf]||'var(--t3)';
   // Contender analysis for this slam
-  const atpConts=Object.entries(ATP_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,8);
-  const wtaConts=Object.entries(WTA_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,8);
+  const atpConts=Object.entries(ATP_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
+  const wtaConts=Object.entries(WTA_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
   let html=`<div class="stanley" style="margin-bottom:14px">
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--gc);margin-bottom:4px">GRAND SLAM · ${surf.toUpperCase()} COURT</div>
     <div class="sttl">${s.name}</div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--t2);line-height:2">${s.dates} · ${s.location}<br>Prize: ${s.prize} · Draws: ${s.draws.m} men / ${s.draws.w} women</div>
-  </div>
-  <div class="sh"><span style="color:${sc}">♂</span> ATP CONTENDERS — ${surf.toUpperCase()}</div>
+  </div>`;
+  // Roland Garros bracket — active tournament
+  if(code==='fo'){
+    html+=`<div class="sh"><span style="color:var(--mc)">🎾</span> ROLAND GARROS DRAW — QUARTERFINAL STAGE</div>`;
+    html+=renderRGBracket('men',surf);
+    html+=`<div style="margin-top:16px"></div>`;
+    html+=renderRGBracket('women',surf);
+    html+=`<div style="height:16px"></div>`;
+  }
+  html+=`<div class="sh"><span style="color:${sc}">♂</span> ATP CONTENDERS — ${surf.toUpperCase()}</div>
   <div style="overflow-x:auto"><table class="dt">
     <tr><th>#</th><th>PLAYER</th><th>${surf.toUpperCase()} ELO</th><th>WIN%</th><th>LAST 90D ELO</th></tr>
     ${atpConts.map(([n,p],i)=>
@@ -3709,26 +4027,31 @@ function renderSlam(code){
 }
 // ── H2H ──────────────────────────────────────────────────────
 function populateH2HPickers(){
-  const tour=document.getElementById('h2h-tour')?.value||'atp';
-  const db=getDB(tour);
-  const names=Object.keys(db).sort((a,b)=>db[a].rank-db[b].rank);
-  ['h2h-p1','h2h-p2'].forEach((id,idx)=>{
-    const sel=document.getElementById(id);if(!sel)return;
-    sel.innerHTML=names.map((n,i)=>`<option value="${n}" ${i===idx?'selected':''}>${n}</option>`).join('');
+  // Populate datalists from BOTH ATP + WTA (search across all players)
+  const allNames=[...Object.keys(ATP_DB),...Object.keys(WTA_DB)].sort();
+  ['h2h-p1-list','h2h-p2-list'].forEach(id=>{
+    const dl=document.getElementById(id);if(!dl)return;
+    dl.innerHTML=allNames.map(n=>`<option value="${n}"></option>`).join('');
   });
+  // Pre-fill with defaults
+  const p1i=document.getElementById('h2h-p1');const p2i=document.getElementById('h2h-p2');
+  if(p1i&&!p1i.value)p1i.value='J.Sinner';
+  if(p2i&&!p2i.value)p2i.value='C.Alcaraz';
 }
 function runH2H(){
   const el=document.getElementById('h2h-result');if(!el)return;
-  const tour=document.getElementById('h2h-tour')?.value||'atp';
   const surface=document.getElementById('h2h-surface')?.value||'hard';
   const bo5=document.getElementById('h2h-bo')?.value==='5';
-  const p1name=document.getElementById('h2h-p1')?.value;
-  const p2name=document.getElementById('h2h-p2')?.value;
-  if(p1name===p2name){el.innerHTML='<div class="empty">SELECT DIFFERENT PLAYERS</div>';return;}
-  el.innerHTML='<div class="loading"><span class="spi"></span> RUNNING MONTE CARLO...</div>';
+  const p1name=(document.getElementById('h2h-p1')?.value||'').trim();
+  const p2name=(document.getElementById('h2h-p2')?.value||'').trim();
+  if(!p1name||!p2name){el.innerHTML='<div class="empty">ENTER BOTH PLAYER NAMES</div>';return;}
+  if(p1name===p2name){el.innerHTML='<div class="empty">ENTER DIFFERENT PLAYERS</div>';return;}
+  el.innerHTML='<div class="loading"><span class="spi"></span> RUNNING 3000 MONTE CARLO SIMS...</div>';
   setTimeout(()=>{
-    const db=getDB(tour);const p1=db[p1name],p2=db[p2name];
-    if(!p1||!p2){el.innerHTML='<div class="empty">PLAYER DATA NOT FOUND</div>';return;}
+    // Search across both ATP + WTA databases
+    const p1=ATP_DB[p1name]||WTA_DB[p1name]||Object.values(ATP_DB).find((_,k)=>Object.keys(ATP_DB)[k]===p1name)||Object.values(WTA_DB).find((_,k)=>Object.keys(WTA_DB)[k]===p1name);
+    const p2=ATP_DB[p2name]||WTA_DB[p2name];
+    if(!p1||!p2){el.innerHTML=`<div class="empty">PLAYER NOT FOUND: CHECK SPELLING<br><div style="font-size:9px;margin-top:6px;color:var(--t3)">Available: ${[...Object.keys(ATP_DB),...Object.keys(WTA_DB)].slice(0,8).join(', ')}…</div></div>`;return;}
     const wp=tennisMatchWinProbFull(p1,p2,surface,bo5);
     const surfColor={hard:'var(--ic)',clay:'var(--mc)',grass:'var(--nc)'}[surface]||'var(--t3)';
     const p1ELO=getPlayerElo(p1,surface),p2ELO=getPlayerElo(p2,surface);
@@ -3810,7 +4133,7 @@ function renderTennisModel(){
     {title:'FEATURE ENGINEERING',color:'var(--ic)',items:['Surface Win% (lifetime + recent 52-week)','First Serve% · First Serve Points Won','Second Serve Points Won · Ace/Game','Double Faults/Game · Hold Rate · Break Rate','Return Points Won · Pressure-Point Conversion','Breakpoint Save% · Breakpoint Conversion%','Fatigue Score (match count + court time)','Travel distance estimate']},
     {title:'PLAYER RATING SYSTEMS',color:'var(--nc)',items:['Surface-Specific ELO (hard/clay/grass/indoor)','Recent Form ELO (90-day weighted, λ=0.94)','Serve ELO (service dominance rating)','Return ELO (return strength rating)','yELO (year-weighted for current season)','H2H ELO adjustment (surface-filtered, recent)']},
     {title:'MATCHUP MODELING',color:'var(--mc)',items:['Logistic regression on ELO differential','Serve vs Return style clash analysis','Surface edge calculation','Fatigue & injury adjustment','Head-to-head context (recent + same surface)','Home country boost (Grand Slam context)']},
-    {title:'PROBABILITY ENGINE',color:'var(--vc)',items:['Monte Carlo: Point → Game → Set → Match (1500 sims)','Serve win rate: fs_pct×fs_won + (1-fs_pct)×ss_won','Return modifier: opponent return ability','tennisPgame(): exact deuce-structure formula','Set simulation with tiebreak probability','BO3 and BO5 match formats supported','Bayesian weight blend: ELO 30% + MC 40% + Form 15% + Serve 10% + Fatigue 5%']},
+    {title:'PROBABILITY ENGINE',color:'var(--vc)',items:['Monte Carlo: Point → Game → Set → Match (3000 sims)','Serve win rate: fs_pct×fs_won + (1-fs_pct)×ss_won','Return modifier: opponent return ability','tennisPgame(): exact deuce-structure formula','Set simulation with tiebreak probability','BO3 and BO5 match formats supported','Bayesian weight blend: ELO 30% + MC 40% + Form 15% + Serve 10% + Fatigue 5%']},
     {title:'MARKET COMPARISON',color:'var(--gc)',items:['Moneyline → decimal odds conversion','Implied probability with vig removal','EV = model_prob × decimal_odds - 1','Threshold: EV ≥ 3% + Win prob ≥ 55%','Both sides evaluated for value opportunities']},
     {title:'BET SELECTION + EV FILTER',color:'var(--hc)',items:['Filter: EV ≥ 3%, Win prob ≥ 55%','Tier: ELITE (EV≥10%) LOCK (6-10%) LEAN (3-6%)','Surface confidence weighting','Live value detection (momentum + serve collapse)']},
     {title:'BANKROLL & RISK ENGINE',color:'var(--t2)',items:['Kelly criterion sizing (fractional Kelly 0.25×)','Max single bet: 5% of bankroll','Correlation filter: no same-tournament parlays','Drawdown protection: reduce after 3+ losses','Streak detection via adaptive learning engine']},
@@ -3824,7 +4147,7 @@ function renderTennisModel(){
 // ══════════════════════════════════════════════════════════════
 // ═══ INDEXEDDB PERSISTENCE — survives cache clears ═══════════
 // ══════════════════════════════════════════════════════════════
-const _IDB_NAME='clairvoyance_v1',_IDB_VER=1;let _idb=null;
+const _IDB_NAME='clairvoyance_v1',_IDB_VER=2;let _idb=null;
 async function openIDB(){
   if(_idb)return _idb;
   return new Promise((res,rej)=>{
@@ -3833,10 +4156,43 @@ async function openIDB(){
       const db=e.target.result;
       if(!db.objectStoreNames.contains('picks'))db.createObjectStore('picks',{keyPath:'id'});
       if(!db.objectStoreNames.contains('meta'))db.createObjectStore('meta',{keyPath:'k'});
+      // v2: add daily_log store — always-expanding history backup
+      if(!db.objectStoreNames.contains('daily_log'))db.createObjectStore('daily_log',{keyPath:'k'});
     };
     req.onsuccess=e=>{_idb=e.target.result;res(_idb);};
     req.onerror=()=>rej(req.error);
   });
+}
+// Save daily log to IDB (merges — never reduces)
+async function idbSaveDailyLog(d){
+  try{
+    const db=await openIDB();
+    const tx=db.transaction('daily_log','readwrite');
+    const st=tx.objectStore('daily_log');
+    // Merge: read existing IDB log first so we don't lose old days
+    const existing=await new Promise(res=>{const r=st.get('log');r.onsuccess=()=>res(r.result?.v?JSON.parse(r.result.v):{});r.onerror=()=>res({});});
+    const merged={...existing,...d};// d always wins on conflict (has latest outcomes)
+    st.put({k:'log',v:JSON.stringify(merged)});
+  }catch(e){console.warn('[IDB-LOG]',e);}
+}
+async function idbLoadDailyLog(){
+  try{
+    const db=await openIDB();
+    return new Promise((res,rej)=>{
+      const req=db.transaction('daily_log','readonly').objectStore('daily_log').get('log');
+      req.onsuccess=()=>res(req.result?.v?JSON.parse(req.result.v):{});
+      req.onerror=rej;
+    });
+  }catch(e){return{};}
+}
+async function idbRecoverDailyLog(){
+  const idbLog=await idbLoadDailyLog();
+  if(!Object.keys(idbLog).length)return;
+  const local=getDailyLog();
+  const merged={...idbLog,...local};// local wins on conflict
+  if(Object.keys(idbLog).length>Object.keys(local).length){
+    S.s('daily_log',merged);toast(`// IDB: RECOVERED ${Object.keys(merged).length} DAYS OF HISTORY`);
+  }
 }
 async function idbSavePicks(picks){
   try{
@@ -3914,7 +4270,7 @@ function adaptiveTick(){
 
   // Per-sport performance
   const sportPerf={};
-  for(const sport of['MLB','NHL','NBA']){
+  for(const sport of['MLB','NHL','NBA','TEN']){
     const sp=W30.filter(p=>p.sport===sport);if(!sp.length)continue;
     const w=sp.filter(p=>p.outcome==='win').length;
     sportPerf[sport]={acc:w/sp.length,n:sp.length,wins:w,losses:sp.length-w};
@@ -4113,6 +4469,7 @@ function renderMorningReport(){
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
   try{await idbRecoverPicks();}catch(e){console.error('idbRecover',e);}
+  try{await idbRecoverDailyLog();}catch(e){console.error('idbRecoverLog',e);}
   try{await syncPicksFromBackend();}catch(e){console.error('syncPicks',e);}
   try{loadGames(todayESPN());}catch(e){console.error('loadGames',e);}
   try{renderR();}catch(e){console.error('renderR',e);}
