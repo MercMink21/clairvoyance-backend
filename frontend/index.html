@@ -282,6 +282,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <nav class="inav" id="mlb-in">
     <button class="nb act" onclick="T('mlb','picks')">⚡ PICKS</button>
     <button class="nb" onclick="T('mlb','games')">📅 TODAY</button>
+    <button class="nb" onclick="T('mlb','props')">🎯 PROPS</button>
     <button class="nb" onclick="T('mlb','parlay')">🎰 PARLAY</button>
     <button class="nb" onclick="T('mlb','live')">📡 LIVE</button>
     <button class="nb" onclick="T('mlb','nrfi')">🔴 NRFI</button>
@@ -327,6 +328,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
         <span style="color:var(--t3)">ELITE ≥70% · GOOD 62-70% · FAIR 55-62% · FADE &lt;55%</span>
       </div>
       <div id="nrfi-list"><div class="loading"><span class="spi"></span> LOAD TODAY'S GAMES FIRST</div></div>
+    </div>
+    <div id="mlb-tab-props" class="tab">
+      <div class="sh"><span class="g">🎯</span> MLB PLAYER PROPS — MAY 19</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,204,0,.3);border-radius:2px;padding:11px 13px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:var(--gc);line-height:1.7">SOURCE: LINEMATE · ROTOWIRE · COVERS · BETMGM · DRAFTKINGS<br>GRADES: ELITE ≥70% · LOCK 62-70% · GOOD 55-62% · FAIR 50-55%</div>
+      <div id="mlb-props-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn btn-o btn-sm act" onclick="renderMLBProps('all')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderMLBProps('pitcher')">⚾ PITCHERS</button>
+        <button class="btn btn-o btn-sm" onclick="renderMLBProps('batter')">🏏 BATTERS</button>
+        <button class="btn btn-o btn-sm" onclick="renderMLBProps('hr')">💥 HOME RUNS</button>
+        <button class="btn btn-o btn-sm" onclick="renderMLBProps('top')">⭐ TOP PICKS</button>
+      </div>
+      <div id="mlb-props"><div class="loading"><span class="spi"></span></div></div>
+      <div class="sh" style="margin-top:14px"><span class="g">📌</span> LOCKED MLB PROPS</div>
+      <div id="mlb-props-tracker"><div class="empty">NO LOCKED PROPS</div></div>
     </div>
     <div id="mlb-tab-parlay" class="tab">
       <div class="sh"><span class="p">🎰</span> PARLAY BUILDER</div>
@@ -415,6 +430,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <nav id="mn" style="display:flex">
     <button class="mb act" onclick="T('mlb','picks')"><span class="mbi">⚡</span>PICKS</button>
     <button class="mb" onclick="T('mlb','games')"><span class="mbi">📅</span>TODAY</button>
+    <button class="mb" onclick="T('mlb','props')"><span class="mbi">🎯</span>PROPS</button>
     <button class="mb" onclick="T('mlb','parlay')"><span class="mbi">🎰</span>PARLAY</button>
     <button class="mb" onclick="T('mlb','live')"><span class="mbi">📡</span>LIVE</button>
     <button class="mb" onclick="T('mlb','nrfi')"><span class="mbi">🔴</span>NRFI</button>
@@ -2654,19 +2670,29 @@ const NBA_TEAMS={
 const NBA_TONIGHT=[
   {h:'NY',a:'CLE',time:'8:00 PM ET',net:'ESPN',gn:1,ctx:'ECF — SERIES 0-0',hL:-250,aL:205,ou:217.5}
 ];
+// NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
 const NBA_PLAYERS=[
+  // NY Knicks (ECF)
+  {n:'Jalen Brunson',t:'NY',ppg:30.4,rpg:4.1,apg:7.8,efg:.516,usage:33.8,rating:'ELITE'},
+  {n:'Karl-Anthony Towns',t:'NY',ppg:23.8,rpg:11.4,apg:3.2,efg:.558,usage:28.1,rating:'LOCK'},
+  {n:'Mikal Bridges',t:'NY',ppg:18.4,rpg:5.2,apg:3.8,efg:.528,usage:24.6,rating:'GOOD'},
+  {n:'OG Anunoby',t:'NY',ppg:16.8,rpg:5.4,apg:1.8,efg:.544,usage:22.1,rating:'GOOD'},
+  {n:'Josh Hart',t:'NY',ppg:11.2,rpg:8.8,apg:4.4,efg:.502,usage:18.4,rating:'GOOD'},
+  {n:'Sam Merrill',t:'NY',ppg:9.4,rpg:2.1,apg:1.2,efg:.561,usage:14.2,rating:'FAIR'},
+  {n:'Mitchell Robinson',t:'NY',ppg:7.8,rpg:9.4,apg:0.8,efg:.648,usage:12.4,rating:'FAIR'},
+  // CLE Cavaliers (ECF)
+  {n:'Donovan Mitchell',t:'CLE',ppg:28.6,rpg:4.8,apg:5.2,efg:.504,usage:32.1,rating:'ELITE'},
+  {n:'James Harden',t:'CLE',ppg:19.6,rpg:5.4,apg:8.2,efg:.498,usage:29.8,rating:'GOOD'},
+  {n:'Evan Mobley',t:'CLE',ppg:17.8,rpg:9.6,apg:3.4,efg:.548,usage:24.2,rating:'LOCK'},
+  {n:'Jarrett Allen',t:'CLE',ppg:14.2,rpg:8.8,apg:1.4,efg:.612,usage:18.6,rating:'GOOD'},
+  {n:'Max Strus',t:'CLE',ppg:9.8,rpg:4.2,apg:1.6,efg:.488,usage:15.4,rating:'FAIR'},
+  // WCF teams (for reference)
   {n:'Shai Gilgeous-Alexander',t:'OKC',ppg:32.1,rpg:5.4,apg:6.8,efg:.548,usage:34.5,rating:'ELITE'},
   {n:'Victor Wembanyama',t:'SA',ppg:26.8,rpg:11.2,apg:4.1,efg:.542,usage:31.2,rating:'ELITE'},
-  {n:'Jalen Brunson',t:'NY',ppg:30.4,rpg:4.1,apg:7.8,efg:.516,usage:33.8,rating:'ELITE'},
-  {n:'Donovan Mitchell',t:'CLE',ppg:28.6,rpg:4.8,apg:5.2,efg:.504,usage:32.1,rating:'ELITE'},
   {n:"De'Aaron Fox",t:'SA',ppg:22.4,rpg:4.2,apg:8.8,efg:.521,usage:28.6,rating:'LOCK'},
-  {n:'Karl-Anthony Towns',t:'NY',ppg:23.8,rpg:11.4,apg:3.2,efg:.558,usage:28.1,rating:'LOCK'},
   {n:'Jalen Williams',t:'OKC',ppg:21.4,rpg:4.8,apg:5.2,efg:.534,usage:27.4,rating:'LOCK'},
-  {n:'Evan Mobley',t:'CLE',ppg:17.8,rpg:9.6,apg:3.4,efg:.548,usage:24.2,rating:'LOCK'},
   {n:'Chet Holmgren',t:'OKC',ppg:17.2,rpg:8.8,apg:2.6,efg:.562,usage:23.8,rating:'GOOD'},
-  {n:'Mikal Bridges',t:'NY',ppg:18.4,rpg:5.2,apg:3.8,efg:.528,usage:24.6,rating:'GOOD'},
   {n:'Stephon Castle',t:'SA',ppg:16.2,rpg:4.8,apg:5.4,efg:.511,usage:22.4,rating:'GOOD'},
-  {n:'James Harden',t:'CLE',ppg:19.6,rpg:5.4,apg:8.2,efg:.498,usage:29.8,rating:'GOOD'}
 ];
 
 // ═══ NBA BBREF 2025-26 PLAYOFFS — Per Game, Per 100 Poss, Totals, Advanced ═══
@@ -2892,26 +2918,153 @@ function renderNBAPicks(){
   });
   el.innerHTML=picks.map(p=>`<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:var(--orb);font-size:15px;font-weight:900;color:var(--nc)">${p.g.h} vs ${p.g.a}</div><span class="${p.c}" style="font-size:8px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-bottom:6px">${p.g.ctx} · ${p.g.time}</div><div style="font-family:var(--mono);font-size:11px;color:var(--vc);margin-bottom:4px">▶ LEAN: ${p.fav} ML | CONF: ${p.conf}% | EV: ${p.eV>0?'+':''}${(p.eV*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">SCORE GAP: ${Math.abs(p.hS-p.aS)} pts | ${p.favT.star||''} matchup advantage</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-top:3px">${p.favT.note||''}</div></div>`).join('')||'<div class="empty">NO NBA GAMES TODAY</div>';
 }
+// ── NBA PROPS: Real lines from Linemate/Covers/SBDime (May 19 2026, CLE@NY ECF G1) ──
+const NBA_PROPS_DATA=[
+  // ⭐ ELITE tier — highest confidence, positive EV
+  {player:'Jalen Brunson',t:'NY',stat:'PTS',line:27.5,over:true,ml:'-105',conf:74,hitRate:'80%',basis:'31.4 PPG at MSG in playoffs · 80% hit rate at home this postseason · CLE allows 28.6 to PG spot',grade:'ELITE',src:'Covers/SBDime'},
+  {player:'Karl-Anthony Towns',t:'NY',stat:'3PM',line:1.5,over:true,ml:'+145',conf:70,hitRate:'73%',basis:'Hit 3PM O1.5 in 4 of 5 home playoff games · 48.3% from 3 this postseason · +145 is great value',grade:'ELITE',src:'Covers'},
+  {player:'Mitchell Robinson',t:'NY',stat:'REB',line:8.0,over:true,ml:'-110',conf:69,hitRate:'76%',basis:'Averaged 13+16 reb vs CLE in reg season in 17-19 min · generated more rebound chances than minutes played',grade:'ELITE',src:'TWSN'},
+  {player:'Evan Mobley',t:'CLE',stat:'BLK',line:1.5,over:true,ml:'-115',conf:68,hitRate:'71%',basis:'2.6 BPG playoffs · NY attacks rim heavily with Brunson drives + KAT post-ups — Mobley anchors paint',grade:'ELITE',src:'Model'},
+  // 🔒 LOCK tier
+  {player:'Jalen Brunson',t:'NY',stat:'AST',line:6.5,over:true,ml:'+110',basis:'7.8 APG playoffs · CLE help forces Brunson to kick out · multiple scoring options demand distribution',hitRate:'72%',conf:66,grade:'LOCK',src:'Covers'},
+  {player:'Jarrett Allen',t:'CLE',stat:'PTS',line:12.5,over:true,ml:'-115',basis:'17.3 PPG in last 3 games of R2 vs Det · KAT not elite in post D — Allen runs PnR freely',hitRate:'69%',conf:65,grade:'LOCK',src:'Covers'},
+  {player:'Evan Mobley',t:'CLE',stat:'REB',line:8.5,over:false,ml:'+104',basis:'7.3 RPG in playoffs · went UNDER in 4 of last 5 games · NY outrebounds opponents +5.2/game',hitRate:'70%',conf:65,grade:'LOCK',src:'SBDime'},
+  {player:'Josh Hart',t:'NY',stat:'REB',line:8.5,over:true,ml:'-110',basis:'8.8 RPG playoffs · board crasher elite — CLE undersized without Mobley help at the 4',hitRate:'67%',conf:64,grade:'LOCK',src:'Model'},
+  {player:'James Harden',t:'CLE',stat:'STL',line:1.0,over:true,ml:'-289',basis:'Recorded steal in 12 of 14 playoffs games · 1.9 SPG over last 14 · near-lock despite juice',hitRate:'86%',conf:63,grade:'LOCK',src:'DKNetwork'},
+  // ✅ GOOD tier
+  {player:'Karl-Anthony Towns',t:'NY',stat:'PTS',line:18.5,over:true,ml:'-108',basis:'23.8 PPG playoffs · CLE has no true center to body KAT — post + mid-range flows freely',hitRate:'65%',conf:62,grade:'GOOD',src:'SBDime'},
+  {player:'Karl-Anthony Towns',t:'NY',stat:'REB',line:11.5,over:false,ml:'-137',basis:'11.4 RPG in playoffs but CLE crashes hard with Mobley/Allen — over is tighter than it looks',hitRate:'60%',conf:61,grade:'GOOD',src:'SBDime'},
+  {player:'Donovan Mitchell',t:'CLE',stat:'PTS',line:26.5,over:true,ml:'-110',basis:'28.6 PPG playoffs · ECF debut at MSG — Mitchell thrives in big moments, hits 27+ in 60% of away playoff games',hitRate:'62%',conf:62,grade:'GOOD',src:'SBDime'},
+  {player:'Donovan Mitchell',t:'CLE',stat:'3PM',line:2.5,over:true,ml:'-157',basis:'2.4 3PM in playoffs · NY allows 2.8 3PM to opposing SG — Mitchell volume stays high in ECF opener',hitRate:'61%',conf:60,grade:'GOOD',src:'SBDime'},
+  {player:'Josh Hart',t:'NY',stat:'3PM',line:2.0,over:true,ml:'-105',basis:'CLE defense invites corner 3s · Hart drew 8 3PT attempts vs CLE in last reg-season meeting · hot at MSG',hitRate:'64%',conf:62,grade:'GOOD',src:'TWSN'},
+  {player:'OG Anunoby',t:'NY',stat:'PTS',line:16.5,over:true,ml:'-116',basis:'16.8 PPG playoffs · CLE help rotations create open looks on backcuts — Anunoby off-ball scoring',hitRate:'60%',conf:60,grade:'GOOD',src:'SBDime'},
+  {player:'Sam Merrill',t:'NY',stat:'3PM',line:2.0,over:true,ml:'-144',basis:'Pure shooter · Brunson draws heavy attention — Merrill spot-up looks in MSG · hit 3PM in 5 straight home games',hitRate:'65%',conf:61,grade:'GOOD',src:'TWSN'},
+  // ⚠️ FADE / UNDER plays
+  {player:'James Harden',t:'CLE',stat:'PTS',line:18.5,over:false,ml:'-103',basis:'18.1 PPG last 15 road playoff games · NY D built to take away Harden scoring lanes · 10, 16, 18, 19 pts recent road games',hitRate:'67%',conf:63,grade:'GOOD',src:'DKNetwork'},
+  {player:'James Harden',t:'CLE',stat:'AST',line:6.5,over:false,ml:'-110',basis:'NY allows just 24.7 opp AST/game (5th fewest) · Bridges + Anunoby disrupt Harden ball-handler reads',hitRate:'65%',conf:62,grade:'GOOD',src:'DKNetwork'},
+  {player:'Jarrett Allen',t:'CLE',stat:'REB',line:7.5,over:false,ml:'-115',basis:'7.3 RPG in playoffs · went UNDER in 4 of last 5 games · KAT + Robinson dominate boards',hitRate:'68%',conf:63,grade:'GOOD',src:'SBDime'},
+  // 📊 FAIR tier — supplemental lines
+  {player:'Mikal Bridges',t:'NY',stat:'PTS',line:12.5,over:true,ml:'-126',basis:'18.4 PPG but ECF G1 shot volume may dip — Brunson/KAT usage peaks in opener at MSG',hitRate:'55%',conf:57,grade:'FAIR',src:'SBDime'},
+  {player:'OG Anunoby',t:'NY',stat:'REB',line:5.5,over:false,ml:'-113',basis:'5.4 RPG in playoffs — CLE goes small late which may suppress his rebound total',hitRate:'56%',conf:57,grade:'FAIR',src:'SBDime'},
+  {player:'Max Strus',t:'CLE',stat:'3PM',line:2.5,over:true,ml:'+121',basis:'9.8 PPG · NY closes out hard on all shooters · Strus wide-open if CLE spreads floor vs NY help',hitRate:'53%',conf:55,grade:'FAIR',src:'SBDime'},
+];
 function renderNBAProps(){
   const el=document.getElementById('nba-props');if(!el)return;
-  const props=[
-    {player:'Jalen Brunson',t:'NY',line:'PTS O/U 30.5',over:true,conf:71,basis:'30.4 PPG playoffs · 33.8% USG · ECF G1 pressure brings out Brunson best — CLE perimeter D not elite',grade:'ELITE'},
-    {player:'Karl-Anthony Towns',t:'NY',line:'REB O/U 10.5',over:true,conf:67,basis:'11.4 RPG playoffs · Mobley only big on CLE — KAT crash dominance in MSG',grade:'LOCK'},
-    {player:'Donovan Mitchell',t:'CLE',line:'PTS O/U 28.5',over:true,conf:64,basis:'28.6 PPG playoffs · Mitchell ECF debut — elevated clutch production expected vs NY',grade:'LOCK'},
-    {player:'Evan Mobley',t:'CLE',line:'BLK O/U 1.5',over:true,conf:66,basis:'2.6 BPG in playoffs · NY drives to rim with Brunson/KAT — Mobley elite deterrent',grade:'LOCK'},
-    {player:'Karl-Anthony Towns',t:'NY',line:'PTS O/U 22.5',over:true,conf:62,basis:'23.8 PPG playoffs · CLE has no true answer for KAT at center — post + mid-range all game',grade:'GOOD'},
-    {player:'James Harden',t:'CLE',line:'AST O/U 7.5',over:true,conf:61,basis:'8.2 APG playoffs · NY help D rotates aggressively — Harden orchestration creates kick-outs',grade:'GOOD'},
-    {player:'Mikal Bridges',t:'NY',line:'PTS O/U 17.5',over:false,conf:59,basis:'CLE perimeter D solid + 18.4 PPG but vol dips in big spots — Brunson dominates ball',grade:'FAIR'},
-    {player:'Jalen Brunson',t:'NY',line:'AST O/U 7.5',over:true,conf:60,basis:'7.8 APG · CLE help forces doubles — Brunson distributes in ECF opener at MSG',grade:'GOOD'}
-  ];
   const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
-  // Filter to only show props for tonight's NBA teams
   const activeNBATeams=NBA_TONIGHT.flatMap(g=>[g.h,g.a]);
-  const filtered=activeNBATeams.length?props.filter(p=>activeNBATeams.includes(p.t)):props;
-  if(!filtered.length){el.innerHTML='<div class="empty">NO NBA PROPS AVAILABLE FOR TONIGHT\'S TEAMS</div>';return;}
-  el.innerHTML=filtered.map(p=>`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px"><div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · CONF: ${p.conf}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.basis}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${p.t}','${p.player}','${p.line}',${p.over},${p.conf/100},'${p.over?'-115':'+100'}')">LOCK PROP</button></div>`).join('');
+  const filtered=activeNBATeams.length?NBA_PROPS_DATA.filter(p=>activeNBATeams.includes(p.t)):NBA_PROPS_DATA;
+  if(!filtered.length){el.innerHTML='<div class="empty">NO NBA PROPS FOR TONIGHT</div>';return;}
+  // Sort: ELITE first, then by conf
+  const order={ELITE:0,LOCK:1,GOOD:2,FAIR:3,FADE:4};
+  const sorted=[...filtered].sort((a,b)=>(order[a.grade]||4)-(order[b.grade]||4)||b.conf-a.conf);
+  el.innerHTML=sorted.map(p=>{
+    const mlLabel=parseFloat(p.ml)>0?`+${p.ml}`:p.ml;
+    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+        <div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-family:var(--mono);font-size:8px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">HIT:${p.hitRate||'--'}</span>
+          <span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span>
+        </div>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} ${p.stat} · <span style="color:${parseFloat(p.ml)>0?'var(--nc)':'var(--t2)'}">${mlLabel}</span> · ${p.conf}%</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:4px">${p.basis}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">SRC: ${p.src||'Model'}</span>
+        <button class="btn btn-o btn-sm" onclick="lockProp('${p.t}','${p.player}','${p.stat} ${p.over?'O':'U'}${p.line}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-115'}')">LOCK</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
+// ═══ MLB PROPS DATA (May 19 2026) — Sources: Linemate/Rotowire/Covers/BetMGM/DraftKings ═══
+const MLB_PROPS_DATA=[
+  // ⭐ PITCHER STRIKEOUT PROPS
+  {player:'Parker Messick',t:'CLE',opp:'DET',pos:'SP',stat:'K',line:5.5,over:true,ml:'-135',conf:72,hitRate:'100%',basis:'58 K in 53.2 IP this season · 2.35 ERA · 6+ K in each of last 4 starts · DET struggling offense',grade:'ELITE',src:'Rotowire/BetMGM'},
+  {player:'Chase Burns',t:'CIN',opp:'PHI',pos:'SP',stat:'Hits Allowed',line:4.5,over:false,ml:'+120',conf:68,hitRate:'75%',basis:'Under 4.5 hits allowed in 3 straight starts · PHI struggles vs RHP · Burns elite command + stuff',grade:'LOCK',src:'TheLines/BetMGM'},
+  {player:'Nolan McLean',t:'NYM',opp:'WSH',pos:'SP',stat:'K',line:5.5,over:true,ml:'-150',conf:66,hitRate:'67%',basis:'WSH strikeout rate among worst in NL · McLean high spin rate misses bats · home start at Citi',grade:'LOCK',src:'BetMGM'},
+  {player:'Jesus Luzardo',t:'PHI',opp:'CIN',pos:'SP',stat:'K',line:6.5,over:true,ml:'-138',conf:65,hitRate:'72%',basis:'CIN 2nd-highest K rate vs LHP since May 1 · Luzardo 80th pctile K-rate · 61 K in 49.1 IP',grade:'LOCK',src:'TheLines/FD'},
+  {player:'Jacob Misiorowski',t:'MIL',opp:'CHC',pos:'SP',stat:'K',line:7.5,over:false,ml:'-130',conf:64,hitRate:'69%',basis:'CHC drawn MLB-best 224 BBs · ranks 13th in Ks · patient lineup suppresses K totals vs power arms',grade:'LOCK',src:'Rotowire/DK'},
+  {player:'Foster Griffin',t:'WSH',opp:'NYM',pos:'SP',stat:'K',line:5.5,over:false,ml:'-160',basis:'NYM patient offense · Griffin soft stuff generates weak contact more than Ks · park neutral',hitRate:'62%',conf:62,grade:'GOOD',src:'BetMGM'},
+  // 💥 HOME RUN PROPS
+  {player:'Aaron Judge',t:'NYY',opp:'TOR',pos:'RF',stat:'HR',line:0.5,over:true,ml:'+210',conf:55,hitRate:'28%',basis:'29 HR pace · TOR starter Okamoto vul to RHB power · Judge 5 HR in last 12 home games',grade:'GOOD',src:'BetMGM'},
+  {player:'Ben Rice',t:'NYY',opp:'TOR',pos:'1B',stat:'HR',line:0.5,over:true,ml:'+270',conf:52,hitRate:'35%',basis:'Hit HR in 6 of last 8 home games (+230% ROI) · TOR rotation weak to LHB power at home',grade:'GOOD',src:'BetMGM'},
+  {player:'Kazuma Okamoto',t:'TOR',opp:'NYY',pos:'DH',stat:'HR',line:0.5,over:true,ml:'+340',conf:48,hitRate:'30%',basis:'HR in 4 of last 9 away games · Yankee Stadium favorable to LHB · NYY pitching vul',grade:'FAIR',src:'BetMGM'},
+  {player:'Daulton Varsho',t:'TOR',opp:'NYY',pos:'CF',stat:'HR',line:0.5,over:true,ml:'+333',conf:46,hitRate:'27%',basis:'Pop vs RHP · Yankee Stadium HR-friendly · spot value at this price',grade:'FAIR',src:'BetMGM'},
+  {player:'Juan Soto',t:'NYM',opp:'WSH',pos:'RF',stat:'HR',line:0.5,over:true,ml:'+260',conf:49,hitRate:'26%',basis:'WSH starter Griffin vul to LHB HR · Soto 18 HR pace · Nationals Park favorable',grade:'FAIR',src:'BetMGM'},
+  {player:'Brandon Lowe',t:'TB',opp:'STL',pos:'2B',stat:'HR',line:0.5,over:true,ml:'+620',conf:42,hitRate:'18%',basis:'Facing LHP Liberatore · warm weather at Busch · Lowe vs same-handed pitchers historically good',grade:'FAIR',src:'TheLines/DK'},
+  // 🏏 TOTAL BASES PROPS
+  {player:'Elly De La Cruz',t:'CIN',opp:'PHI',pos:'SS',stat:'TB',line:1.5,over:true,ml:'+120',conf:69,hitRate:'82%',basis:'.324/.844 OPS since May 1 · 2+ bases in 9 of last 11 games · Luzardo 5.07 ERA friendly matchup',grade:'ELITE',src:'Rotowire/FD'},
+  {player:'Cody Bellinger',t:'NYY',opp:'TOR',pos:'CF',stat:'Hits',line:0.5,over:true,ml:'-190',conf:70,hitRate:'88%',basis:'Hit in 22 of last 25 home games (+29% ROI) · switch hitter thrives at Yankee Stadium',grade:'ELITE',src:'BetMGM'},
+  {player:'Munetaka Murakami',t:'CWS',opp:'MIN',pos:'1B',stat:'HRR',line:1.5,over:true,ml:'+105',conf:65,hitRate:'74%',basis:'2.29 projected HRR · plus odds with model edge · power bat vs MIN rotation',grade:'LOCK',src:'Covers'},
+  {player:'Andrew Benintendi',t:'CWS',opp:'MIN',pos:'DH',stat:'HRR',line:1.5,over:true,ml:'+149',conf:62,hitRate:'68%',basis:'1.82 projected HRR · hit HRR O1.5 in 7 of 10 recent games',grade:'LOCK',src:'Covers'},
+  {player:'Mark Vientos',t:'NYM',opp:'WSH',pos:'3B',stat:'Hits',line:0.5,over:true,ml:'-250',basis:'Multi-hit in 68% of games at Citi · Griffin gives up hits · straight bet value',hitRate:'72%',conf:62,grade:'LOCK',src:'BetMGM'},
+  {player:'Taylor Ward',t:'BAL',opp:'TB',pos:'LF',stat:'TB',line:1.5,over:true,ml:'+180',conf:60,hitRate:'64%',basis:'1.53 projected TB · Rays pitching has been vulnerable · Tropicana park neutral',grade:'GOOD',src:'Covers'},
+  {player:'Kyle Manzardo',t:'CLE',opp:'DET',pos:'1B',stat:'RBI',line:0.5,over:true,ml:'+170',conf:60,hitRate:'68%',basis:'0.68 projected RBI · hitting behind Messick dominant starts = more opportunities',grade:'GOOD',src:'Covers'},
+  {player:'Byron Buxton',t:'MIN',opp:'CWS',pos:'CF',stat:'RBI',line:0.5,over:true,ml:'+175',conf:58,hitRate:'71%',basis:'0.71 projected RBI · when healthy Buxton produces vs weak CWS arms',grade:'GOOD',src:'Covers'},
+  {player:'CJ Abrams',t:'WSH',opp:'NYM',pos:'SS',stat:'RBI',line:0.5,over:true,ml:'+175',conf:57,hitRate:'65%',basis:'0.65 projected RBI · hits well at Nationals Park · protected in lineup',grade:'GOOD',src:'Covers'},
+  // ⚠️ UNDER/FADE PLAYS
+  {player:'George Springer',t:'TOR',opp:'NYY',pos:'RF',stat:'Hits',line:0.5,over:false,ml:'+185',basis:'Hitless in 15 of last 25 away games · NYY pitching elite at home · Springer road struggles persist',hitRate:'60%',conf:60,grade:'GOOD',src:'BetMGM'},
+  {player:'Tyler Heineman',t:'TOR',opp:'NYY',pos:'C',stat:'TB',line:1.5,over:false,ml:'',basis:'Hit TB UNDER in 12 of last 15 games (+54% ROI) · backup bat in Yankee stadium vs elite arms',hitRate:'80%',conf:65,grade:'LOCK',src:'BetMGM'},
+  {player:'Jesus Sanchez',t:'TOR',opp:'NYY',pos:'LF',stat:'Runs',line:0.5,over:false,ml:'',basis:'Runs UNDER in 14 of 15 away games (+44% ROI) · NYY starters dominant at home',hitRate:'93%',conf:68,grade:'LOCK',src:'BetMGM'},
+];
+function renderMLBProps(filter){
+  const el=document.getElementById('mlb-props');if(!el)return;
+  const tracker=document.getElementById('mlb-props-tracker');
+  const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
+  // Update filter button states
+  document.querySelectorAll('#mlb-props-filter button').forEach(b=>{b.classList.remove('act');if(b.textContent.toLowerCase().includes((filter||'all').slice(0,3)))b.classList.add('act');});
+  // Filter
+  let data=[...MLB_PROPS_DATA];
+  if(filter==='pitcher')data=data.filter(p=>p.pos==='SP');
+  else if(filter==='batter')data=data.filter(p=>p.pos!=='SP');
+  else if(filter==='hr')data=data.filter(p=>p.stat==='HR');
+  else if(filter==='top')data=data.filter(p=>p.grade==='ELITE'||p.grade==='LOCK');
+  // Sort by grade then conf
+  const order={ELITE:0,LOCK:1,GOOD:2,FAIR:3,FADE:4};
+  data.sort((a,b)=>(order[a.grade]||4)-(order[b.grade]||4)||b.conf-a.conf);
+  el.innerHTML=data.map(p=>{
+    const mlLabel=p.ml?(parseFloat(p.ml)>0?`+${p.ml}`:p.ml):'—';
+    const dirColor=p.over?'var(--nc)':'var(--hc)';
+    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+        <div>
+          <span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span>
+          <span style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-left:5px">${p.t} vs ${p.opp}</span>
+          <span style="font-family:var(--mono);font-size:8px;margin-left:4px;padding:1px 4px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">${p.pos}</span>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          ${p.hitRate?`<span style="font-family:var(--mono);font-size:8px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">HIT:${p.hitRate}</span>`:''}
+          <span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span>
+        </div>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:${dirColor};margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} ${p.stat} <span style="color:var(--t2);font-size:10px">· ${mlLabel} · ${p.conf}% CONF</span></div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:4px">${p.basis}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">SRC: ${p.src||'Model'}</span>
+        <button class="btn btn-o btn-sm" onclick="lockMLBProp('${p.t}','${p.opp}','${p.player}','${p.stat} ${p.over?'O':'U'}${p.line}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-115'}')">LOCK</button>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty">NO PROPS MATCH FILTER</div>';
+  // Render locked MLB props tracker
+  if(tracker){
+    const mlbLocked=LOCKED_PROPS.filter(p=>p.sport==='MLB'||p.betType==='PROP'&&['CIN','PHI','CLE','DET','NYM','WSH','TOR','NYY','TB','STL','BAL','NYM','ATL','MIA','MIL','CHC','CWS','MIN'].includes(p.team));
+    if(!mlbLocked.length){tracker.innerHTML='<div class="empty">NO LOCKED MLB PROPS</div>';return;}
+    const oc_map={'win':'var(--nc)','loss':'var(--hc)','pending':'var(--gc)'};
+    tracker.innerHTML=mlbLocked.map((p,i)=>{const oc=oc_map[p.outcome]||'var(--gc)';return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:11px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.betOn} · ${p.team}</div></div><span style="font-family:var(--mono);font-size:8px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${(p.outcome||'pending').toUpperCase()}</span></div></div>`;}).join('');
+  }
+}
+function lockMLBProp(team,opp,player,betOn,over,conf,ml){
+  const dec=ml?ml2d(ml):1.87;
+  const prop={id:`prop_mlb_${Date.now()}`,team,player,line:betOn,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
+    sport:'MLB',betType:'PROP',betOn:`${player} ${betOn}`,winProb:conf||0.60,
+    hA:team,awA:opp,decOdds:dec,wager:0};
+  LOCKED_PROPS.push(prop);
+  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
+  const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  toast(`// MLB PROP LOCKED: ${player} ${betOn}`);
+  renderMLBProps('all');
+}
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
 let NBA_PAR=[];
 function renderNBAParlayG(){
@@ -3500,7 +3653,7 @@ function T(sport,tabId){
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();}
+  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');}if(tabId==='config'){}}
   if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks')renderNBAPicks();if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();}
@@ -4733,6 +4886,7 @@ function renderMorningReport(){
   try{renderNBAPlayers();}catch(e){console.error('renderNBAPlayers',e);}
   try{renderNBAPicks();}catch(e){console.error('renderNBAPicks',e);}
   try{renderNBAProps();}catch(e){console.error('renderNBAProps',e);}
+  try{renderMLBProps('all');}catch(e){console.error('renderMLBProps',e);}
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
