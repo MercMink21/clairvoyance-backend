@@ -226,8 +226,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
   </div>
-  <div class="logo" style="padding:0;display:flex;align-items:center;gap:8px">
-  <svg viewBox="0 0 56 56" width="42" height="42" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0">
+  <div class="logo" style="padding:0;display:flex;align-items:center;justify-content:center">
+  <svg viewBox="0 0 56 56" width="40" height="40" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs>
       <radialGradient id="clbg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#0c001e"/><stop offset="100%" stop-color="#010006"/></radialGradient>
       <radialGradient id="clir" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#cc00ff"/><stop offset="40%" stop-color="#4d00cc"/><stop offset="70%" stop-color="#1a0044"/><stop offset="100%" stop-color="#000011"/></radialGradient>
@@ -235,14 +235,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <filter id="clgl" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
     <circle cx="28" cy="28" r="26" fill="url(#clbg)" stroke="url(#clhx)" stroke-width="1.5"/>
-    <g transform="translate(28,26)" filter="url(#clgl)">
+    <g transform="translate(28,28)" filter="url(#clgl)">
       <ellipse cx="0" cy="0" rx="16" ry="10" fill="none" stroke="url(#clhx)" stroke-width="1.2" opacity="0.9"/>
       <circle cx="0" cy="0" r="7" fill="url(#clir)"/>
       <circle cx="0" cy="0" r="3.5" fill="#000"/><circle cx="0" cy="0" r="3.5" fill="none" stroke="#00f0ff" stroke-width="1.2" opacity="0.9"/>
       <circle cx="0" cy="0" r="1.8" fill="rgba(204,0,255,0.7)"/><circle cx="0" cy="0" r="0.9" fill="#fff" opacity="0.9"/>
       <circle cx="-1.2" cy="-1.2" r="0.7" fill="rgba(255,255,255,0.4)"/>
     </g>
-    <text x="28" y="50" text-anchor="middle" font-family="'Courier New',monospace" font-weight="900" font-size="5" letter-spacing="0.5" fill="#00f0ff" opacity="0.8">CLAIRVOYANCE</text>
   </svg>
 </div>
   <div class="hdr-r">
@@ -389,7 +388,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
         <div class="sh" style="margin:0"><span class="p">🏆</span> MLB STANDINGS</div>
         <div style="display:flex;gap:4px">
           <button class="btn btn-o btn-sm" onclick="renderStandings('div')">DIV</button>
-          <button class="btn btn-o btn-sm" onclick="renderStandings('wc')">WILD CARD</button>
         </div>
       </div>
       <div id="standings-content"><div class="loading"><span class="spi"></span></div></div>
@@ -706,6 +704,101 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <script>
 'use strict';
 function debounce(fn,ms=300){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
+
+// ═══ MODEL UPGRADES ══════════════════════════════════════════
+// D2: Logistic regression sigmoid — blend multiple feature scores into probability
+function sigmoid(x){return 1/(1+Math.exp(-x));}
+function logitBlend(features){
+  // features: array of [weight, value] pairs; returns probability 0-1
+  const z=features.reduce((s,[w,v])=>s+w*v,0);
+  return sigmoid(z);
+}
+
+// D3: ELO with margin-of-victory multiplier (538 methodology)
+function eloMOV(winner_elo,loser_elo,margin){
+  const eloDiff=winner_elo-loser_elo;
+  return Math.log(Math.abs(margin)+1)*(2.2/((eloDiff*.001)+2.2));
+}
+function updateElo(winnerKey,loserKey,margin=1,K=20){
+  if(!ELO[winnerKey])ELO[winnerKey]=1500;
+  if(!ELO[loserKey])ELO[loserKey]=1500;
+  const eW=ELO[winnerKey],eL=ELO[loserKey];
+  const exp=1/(1+Math.pow(10,(eL-eW)/400));
+  const mov=eloMOV(eW,eL,margin);
+  ELO[winnerKey]=Math.round(eW+K*mov*(1-exp));
+  ELO[loserKey]=Math.round(eL+K*mov*(0-exp));
+}
+
+// D4: Markov chain team momentum model
+const MARKOV_STATES={hot:0,neutral:1,cold:2};
+function teamMarkovState(streak){
+  if(streak>=3)return'hot';
+  if(streak<=-3)return'cold';
+  return'neutral';
+}
+function markovWinProb(homeStreak,awayStreak){
+  const adj={hot:.04,neutral:0,cold:-.04};
+  return (adj[teamMarkovState(homeStreak)]-adj[teamMarkovState(awayStreak)]);
+}
+
+// D5: HMM-inspired hot/cold streak probability via exponential smoothing
+function hmmStreakProb(results){
+  if(!results||!results.length)return 0.5;
+  const n=Math.min(results.length,10);
+  const recent=results.slice(-n);
+  let ewma=recent[0],alpha=0.3;
+  for(let i=1;i<recent.length;i++)ewma=alpha*recent[i]+(1-alpha)*ewma;
+  return Math.max(0.35,Math.min(0.75,ewma));
+}
+
+// D6: Gradient-boosted feature ensemble (Random Forest approximation)
+function rfEnsemble(features){
+  const {homeAdv=0,eloDiff=0,recentForm=0,pitcherAdv=0,bullpenAdv=0,weatherAdj=0,marketLine=0.5}=features;
+  const trees=[
+    sigmoid(0.3+homeAdv*2.0+eloDiff*0.002),
+    sigmoid(pitcherAdv*3.0+bullpenAdv*2.0+recentForm),
+    sigmoid(weatherAdj*1.5+homeAdv*1.5+eloDiff*0.001),
+    marketLine,
+  ];
+  const weights=[0.30,0.30,0.20,0.20];
+  return trees.reduce((s,t,i)=>s+t*weights[i],0);
+}
+
+// D8: Time series exponentially weighted moving average
+function ewma(values,alpha=0.25){
+  if(!values||!values.length)return null;
+  return values.reduce((acc,v,i)=>i===0?v:alpha*v+(1-alpha)*acc);
+}
+function teamMomentum(teamKey){
+  const preds=getP().filter(p=>p.sport&&(p.hA===teamKey||p.awA===teamKey)&&p.outcome!=='pending');
+  if(!preds.length)return 0;
+  const results=preds.slice(-10).map(p=>{
+    const won=(p.betOn===teamKey&&p.outcome==='win')||(p.betOn!==teamKey&&p.outcome==='loss');
+    return won?1:0;
+  });
+  const trend=ewma(results)-0.5;
+  return trend;
+}
+
+// D9: WAR approximation for players
+function warApprox(player,sport){
+  if(sport==='MLB'){
+    const obp=player.obp||0.320,slg=player.slg||0.400,era=player.era||4.50;
+    const batWAR=((obp+slg-0.650)/0.160)*2.5;
+    const pitWAR=player.era?(4.50-era)/0.50*1.5:0;
+    return Math.round((batWAR+pitWAR)*10)/10;
+  }
+  if(sport==='NHL'){
+    const pts=player.pts||0,gp=player.gp||1;
+    return Math.round((pts/gp-0.60)*3.0*10)/10;
+  }
+  if(sport==='NBA'){
+    const pts=player.pts||0,reb=player.reb||0,ast=player.ast||0;
+    return Math.round(((pts+reb*0.7+ast*0.6)-18)/4*10)/10;
+  }
+  return 0;
+}
+
 // ═══ BACKEND API CONFIG ══════════════════════════════════════
 // Set this to your Railway/Render URL once deployed.
 // While empty, the app falls back to localStorage (offline mode).
@@ -752,11 +845,6 @@ const NHL={
     edge:{spd:21.2,shotLoc:{slot:38,high:32,low:30},zoneOff:54.1,zoneDef:45.9,ppTime:3.8,pkTime:3.5,sh_pct:11.2,save_pct_5v5:.928,save_pct_pp:.862,save_pct_pk:.912},
     g1:'Carter Hart',g2:'Adin Hill',series:'CONF FINALS (W)',sw:0,sl:0,sxgf:12.75,saxgf:12.72,shdcf:51,sahdcf:49,ssog:93,sasog:118,
     key:['Mitch Marner (18pts — #1 PO scorer)','Jack Eichel (15pts)','Pavel Dorofeyev (9G)','Shea Theodore (D)'],note:'Marner leads ALL playoffs 18pts. Hart 8W-4L .917 SV% 2.37 GAA. 51% xGF vs COL WCF.'},
-  ANA:{n:'Anaheim Ducks',hv:{off:.2,fin:-.4,pp:.6,def:-.2,pk:-.5,offN:'High-volume transition — young legs generate chances.',finN:'Below-avg finishing. Outshooting VGK 118-93 series.',ppN:'Strong R1 PP vs EDM, VGK PK has neutralized in R2.',defN:'Below-avg structure — youth creates breakdowns.',pkN:'Weakest PK remaining. VGK exploiting gaps.'},
-    xgf5:.487,cf5:.493,hdcf:49.0,gf60:2.89,ga60:3.12,pp:.183,pk:.798,gsax:2.1,sv:.906,hdsv:.901,gaa:2.98,
-    edge:{spd:22.1,shotLoc:{slot:35,high:30,low:35},zoneOff:49.8,zoneDef:50.2,ppTime:3.2,pkTime:4.2,sh_pct:9.8,save_pct_5v5:.905,save_pct_pp:.812,save_pct_pk:.878},
-    g1:'Lukas Dostal',g2:'John Gibson',series:'ELIMINATED (2-4)',sw:2,sl:4,sxgf:12.72,saxgf:12.75,shdcf:49,sahdcf:51,ssog:118,sasog:93,
-    key:['Leo Carlsson','Cutter Gauthier','Mason McTavish','Troy Terry'],note:'Even underlying xGF. Must score 5+ to overcome Hart.'},
   MTL:{n:'Montreal Canadiens',hv:{off:.9,fin:1.8,pp:.5,def:.7,pk:.4,offN:'Suzuki 12pts (4G/8A) leads MTL. Hutson 13pts from D (2G/11A). Newhook 6G. Demidov rookie impact.',finN:'Cinderella run continues into ECF vs CAR. Dobes must contain elite CAR defense.',ppN:'4/20 series (20%) — declining from RS. Hutson QB on PP can be deadly when clicking.',defN:'Dobes carrying save-above-expected. Hutson/Dobson/Carrier solid LD core. Matheson physical.',pkN:'2nd-most penalties all playoffs. CAR PP dangerous with Gostisbehere.'},
     xgf5:.490,cf5:.470,hdcf:47.2,gf60:3.08,ga60:2.59,pp:.198,pk:.804,gsax:8.08,sv:.906,hdsv:.921,gaa:2.59,
     edge:{spd:21.8,shotLoc:{slot:40,high:32,low:28},zoneOff:52.1,zoneDef:47.9,ppTime:3.9,pkTime:3.8,sh_pct:13.8,save_pct_5v5:.929,save_pct_pp:.832,save_pct_pk:.892},
@@ -771,12 +859,11 @@ const NHL={
 const TONIGHT=[
   {h:'CAR',a:'MTL',time:'TBD',net:'ESPN',gn:1,ctx:'ECF — CAR vs MTL · SERIES 0-0',hL:-185,aL:158,ou:5.5}
 ];
-const VGK_COL_DATES=['2026-05-20','2026-05-22','2026-05-24','2026-05-26','2026-05-28','2026-05-30','2026-06-01'];
+const ECF_DATES=['2026-05-21','2026-05-23','2026-05-25','2026-05-27','2026-05-29','2026-05-31','2026-06-02'];
 // ═══ MONEYPUCK EMBEDDED DATA (updates daily at midnight) ════
 const MP_DATA={
   MTL:{xgf_pct:49.0,hdcf_pct:47.2,fenwick:47.0,adj_gsax:8.08,pp_xg:1.54,pk_xga:1.12,goals_for:3.08,goals_against:2.33,sog:25.4,opp_sog:27.2},
   VGK:{xgf_pct:51.0,hdcf_pct:50.0,fenwick:49.0,adj_gsax:4.2,pp_xg:1.62,pk_xga:.88,goals_for:3.67,goals_against:2.58,sog:27.5,opp_sog:29.4},
-  ANA:{xgf_pct:48.8,hdcf_pct:49.0,fenwick:49.2,adj_gsax:2.1,pp_xg:1.44,pk_xga:1.28,goals_for:2.89,goals_against:3.12,sog:33.5,opp_sog:28.9},
   COL:{xgf_pct:57.0,hdcf_pct:53.5,fenwick:57.0,adj_gsax:2.03,pp_xg:1.98,pk_xga:.82,goals_for:4.11,goals_against:2.56,sog:32.6,opp_sog:26.1},
   CAR:{xgf_pct:56.0,hdcf_pct:52.3,fenwick:58.0,adj_gsax:11.22,pp_xg:1.74,pk_xga:.78,goals_for:3.0,goals_against:1.25,sog:33.9,opp_sog:25.1}
 };
@@ -926,24 +1013,88 @@ async function loadGames(dateStr){
   if(isToday)autoSettleFromESPN(games);
 }
 async function loadTmrw(){
-  if(!Object.keys(TEAMS).length)buildMLB();
-  const d=tomorrowESPN();const dd=tomorrow();
-  const de=document.getElementById('td');if(de)de.textContent=`// TARGET: ${dd}`;
-  const el=document.getElementById('tmrw-l');if(el)el.innerHTML='<div class="loading"><span class="spi"></span> ESPN…</div>';
-  const events=await fetchESPN(d);
-  if(!events||!events.length){if(el)el.innerHTML=`<div class="empty">NO ESPN GAMES FOR ${dd}</div>`;return;}
-  const games=events.map(parseESPNGame).filter(Boolean);
-  let html='',best=[];
-  for(const g of games){
-    if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])continue;
-    html+=mlbCard(g.hA,g.awA,g.gt,dd,g);
-    const ens=mlbEns(g.hA,g.awA,g);const hML=g.hML||p2ml(ens.p),hD=ml2d(hML),hEV=ev(ens.p,hD);
-    if(tier(ens.p,hEV)>=2)best.push({abbr:g.hA,p:ens.p,ml:hML,ev2:hEV,t:tier(ens.p,hEV)});
+  const el=document.getElementById('tmrw-l');
+  const tb=document.getElementById('tmrw-top');
+  const bb=document.getElementById('tmrw-best');
+  if(el)el.innerHTML='<div class="loading"><span class="spi"></span> Loading tomorrow\'s games…</div>';
+
+  const d=tomorrowESPN(); // already defined, returns YYYYMMDD
+  const dd=tomorrow();    // YYYY-MM-DD
+
+  try{
+    const resp=await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${d}`,{mode:'cors',cache:'no-store'});
+    if(!resp.ok)throw new Error(resp.status);
+    const data=await resp.json();
+    const events=data.events||[];
+
+    if(!events.length){
+      if(el)el.innerHTML=`<div class="empty">NO MLB GAMES SCHEDULED FOR ${dd}</div>`;
+      return;
+    }
+
+    const rows=[];
+    for(const ev of events){
+      const comp=ev.competitions?.[0];if(!comp)continue;
+      const home=comp.competitors?.find(c=>c.homeAway==='home');
+      const away=comp.competitors?.find(c=>c.homeAway==='away');
+      if(!home||!away)continue;
+      const hN=home.team?.abbreviation||'?';
+      const aN=away.team?.abbreviation||'?';
+      const hFull=home.team?.displayName||hN;
+      const aFull=away.team?.displayName||aN;
+      const startTime=ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'TBD';
+
+      // Get starting pitchers if available
+      const hP=comp.situation?.homeStartingPitcher||home.probablePitcher?.displayName||'TBD';
+      const aP=comp.situation?.awayStartingPitcher||away.probablePitcher?.displayName||'TBD';
+
+      // Run ensemble prediction
+      let ens=null;try{ens=ensemble({hT:hN,aT:aN,hP,aP,hA:hN,awA:aN});}catch(e){}
+      const p=ens?.p||0.5;
+      const favTeam=p>=0.5?hFull:aFull;
+      const favP=Math.max(p,1-p);
+      const ml=p2ml(favP);
+      const ev2=ml2d(ml);
+      const edge=ev(favP,ev2);
+
+      rows.push({hN,aN,hFull,aFull,startTime,hP,aP,p,favTeam,favP,ml,edge});
+    }
+
+    // Best picks (edge > 0 and confidence > 55%)
+    const best=rows.filter(r=>r.edge>0&&r.favP>0.55).sort((a,b)=>b.favP-a.favP);
+
+    if(tb&&bb&&best.length){
+      tb.style.display='block';
+      bb.innerHTML=best.slice(0,3).map(r=>`<div class="card" style="flex:1;min-width:160px;border-left:3px solid var(--gc)">
+        <div style="font-size:9px;color:var(--t3);letter-spacing:2px">BEST BET · ${dd}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gc);margin:4px 0">${r.favTeam}</div>
+        <div style="font-size:11px">${r.aN} @ ${r.hN}</div>
+        <div style="font-size:10px;color:var(--nc)">${(r.favP*100).toFixed(1)}% · ML ${r.ml} · EV ${r.edge>=0?'+':''}${(r.edge*100).toFixed(1)}%</div>
+      </div>`).join('');
+    }else if(tb){tb.style.display='none';}
+
+    if(el)el.innerHTML=`<div style="font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">MLB — ${dd} (${rows.length} GAMES)</div>`+rows.map(r=>{
+      const favCol=r.favP>0.65?'var(--gc)':r.favP>0.58?'var(--nc)':'var(--t2)';
+      return`<div class="card" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+          <div>
+            <div style="font-size:13px;font-weight:700">${r.aN} @ ${r.hN}</div>
+            <div style="font-size:10px;color:var(--t3);margin-top:3px">SP: ${r.aN} ${r.aP} vs ${r.hN} ${r.hP}</div>
+            <div style="font-size:9px;color:var(--t3);margin-top:2px">⏰ ${r.startTime}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:700;color:${favCol}">${r.favTeam}</div>
+            <div style="font-size:11px;color:var(--t2)">${(r.favP*100).toFixed(1)}% · ${r.ml}</div>
+            <div style="font-size:10px;color:${r.edge>=0?'var(--nc)':'var(--hc)'}">EV ${r.edge>=0?'+':''}${(r.edge*100).toFixed(1)}%</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  }catch(err){
+    if(el)el.innerHTML=`<div class="empty">FAILED TO LOAD TOMORROW'S GAMES (${err.message}) — CHECK CONNECTION</div>`;
+    console.error('loadTmrw:',err);
   }
-  if(el)el.innerHTML=html||'<div class="empty">NO MATCHUPS</div>';
-  const tb=document.getElementById('tmrw-top'),bb=document.getElementById('tmrw-best');
-  if(best.length&&tb&&bb){tb.style.display='block';best.sort((a,b)=>b.ev2-a.ev2);bb.innerHTML=best.slice(0,5).map(p=>`<div class="${p.t===3?'chip-g':'chip-p'} chip" style="min-width:78px"><div class="cht">${p.abbr}</div><div class="cho">${p.ml}</div><div class="chp">${(p.p*100).toFixed(1)}% EV${p.ev2>=0?'+':''}${(p.ev2*100).toFixed(1)}%</div></div>`).join('');}
-  else if(tb)tb.style.display='none';
 }
 // ═══ AUTO-SETTLEMENT ════════════════════════════════════════
 function autoSettleFromESPN(games){
@@ -1033,7 +1184,7 @@ function eloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400))}
 function getBayes(a){const t=TEAMS[a];if(!t)return{m:.5};let al=t.s.W+1,bl=t.s.L+1;for(const p of getP()){if(p.outcome==='pending'||p.sport==='NHL')continue;const iH=p.hA===a,iA=p.awA===a;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}return{m:al/(al+bl)};}
 function pAdj(sp){if(!sp)return 1;const e=Math.max(.7,Math.min(1.3,(4.5-sp.era)/4.5+1));const w=Math.max(.8,Math.min(1.2,(1.35-(sp.whip||1.35))/1.35+1));return(e+w)/2;}
 function adjLam(oT,dT,pf,home,spA){return Math.max(.5,oT.bat.RG*(dT.pit.RAG/4.5)*(home?1.04:.96)*pf/spA);}
-function mlbMC(hA,awA,n=4000){
+function mlbMC(hA,awA,n=5000){
   const h=TEAMS[hA],aw=TEAMS[awA];if(!h||!aw)return null;
   const hL=adjLam(h,aw,h.pf,true,pAdj(PIT[awA]));const awL=adjLam(aw,h,h.pf,false,pAdj(PIT[hA]));
   let hw=0,aw2=0,ts=0,hT=0,aT=0,rT=0;const mD={};
@@ -1294,6 +1445,14 @@ function renderHistory(){
     saSummary.innerHTML=html;
   }
   const hl=document.getElementById('hist-list');if(!hl)return;
+  // Enrich today's log records with live ESPN scores
+  const todayLog=log[today()]||{recs:[]};
+  if(todayLog.recs&&todayLog.recs.length&&ESPN_GAMES&&ESPN_GAMES.length){
+    todayLog.recs.forEach(rec=>{
+      const live=ESPN_GAMES.find(g=>(g.hA===rec.ha&&g.awA===rec.awa)||(g.hA===rec.awa&&g.awA===rec.ha));
+      if(live)rec.currentScore=`${live.awA} ${live.aScore} - ${live.hScore} ${live.hA} (${live.detail||live.status})`;
+    });
+  }
   const dates=Object.keys(log).sort((a,b)=>b.localeCompare(a)).slice(0,30);
   const fmtDate=d=>{if(!d)return'—';try{const[y,m,dy]=d.split('-');return`${m}/${dy}/${y}`;}catch{return d;}};
   if(!dates.length){hl.innerHTML='<div class="empty">NO HISTORY YET<br>LOCK PICKS TO BUILD HISTORY</div>';return;}
@@ -1312,9 +1471,10 @@ function renderHistory(){
           const badgeCls=r.outcome==='win'?'ab-w':r.outcome==='loss'?'ab-l':r.locked?'ab-p':'ab-s';
           const badgeIcon=r.outcome==='win'?'✓':r.outcome==='loss'?'✗':r.locked?'⏳':'⊘';
           const status=r.outcome==='win'?'WIN':r.outcome==='loss'?'LOSS':r.locked?'PENDING':'SKIPPED';
+          const scoreDisplay=r.currentScore||r.finalScore||(r.hScore!=null?`${r.ha} ${r.hScore} — ${r.awa} ${r.aScore}`:null);
           return`<div class="ar">
             <div class="ab ${badgeCls}">${badgeIcon}</div>
-            <div style="flex:1;min-width:0"><div style="font-family:var(--orb);font-size:12px;font-weight:700">${r.ha} vs ${r.awa}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t2)">${r.lb} · ${r.ml} · ${(r.p*100).toFixed(1)}% (T${r.tier})</div>${r.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin-top:2px">FINAL: ${r.ha} ${r.hScore} — ${r.awa} ${r.aScore}</div>`:''}</div>
+            <div style="flex:1;min-width:0"><div style="font-family:var(--orb);font-size:12px;font-weight:700">${r.ha} vs ${r.awa}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t2)">${r.lb} · ${r.ml} · ${(r.p*100).toFixed(1)}% (T${r.tier})</div>${scoreDisplay?`<div style="font-family:var(--mono);font-size:10px;color:var(--gc);margin-top:2px">SCORE: ${scoreDisplay}</div>`:''}</div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:${r.outcome==='win'?'var(--nc)':r.outcome==='loss'?'var(--hc)':'var(--t3)'}">${status}</div>
               ${r.locked&&r.outcome==='pending'?`<div style="display:flex;gap:3px;margin-top:4px"><button class="btn btn-o btn-sm" style="color:var(--nc);border-color:var(--nc)" onclick="recRFromLog('${date}','${r.id}','win')">W</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recRFromLog('${date}','${r.id}','loss')">L</button></div>`:''}
@@ -1813,19 +1973,24 @@ function renderGoalies(){
 function renderProps(){
   const el=document.getElementById('props');if(!el)return;
   const gradeC={ELITE:'var(--vc)',GOOD:'var(--nc)',FAIR:'var(--gc)',FADE:'var(--hc)'};
+  // Only show props for today's TONIGHT teams
+  const activeTeams=TONIGHT.flatMap(g=>[g.h,g.a]);
   const PROPS=[
-    {gm:'VGK vs COL·G1',pl:'Nathan MacKinnon',tm:'COL',pr:'POINT (ANY)',ln:'-105',p:.58,e:.048,grade:'ELITE',nt:'13pts in 9PO GP (7G 6A) · 57% OZ start · COL best offense vs VGK'},
-    {gm:'VGK vs COL·G1',pl:'Mitch Marner',tm:'VGK',pr:'POINT (ANY)',ln:'-110',p:.55,e:.042,grade:'ELITE',nt:'18pts in 12PO GP — #1 all playoffs · 7G 11A · Marner dominates WCF matchup'},
-    {gm:'VGK vs COL·G1',pl:'Martin Necas',tm:'COL',pr:'POINT (ANY)',ln:'+150',p:.40,e:.018,grade:'GOOD',nt:'11pts in 9PO GP (1G 10A) · Pure playmaker on MacKinnon line · G1 value'},
-    {gm:'VGK vs COL·G1',pl:'Jack Eichel',tm:'VGK',pr:'POINT (ANY)',ln:'+120',p:.46,e:.028,grade:'GOOD',nt:'15pts in 12PO GP (1G 14A) · VGK #1C · Primary setup man feeding Marner'},
-    {gm:'VGK vs COL·G1',pl:'Carter Hart',tm:'VGK',pr:'SAVES O/U 27.5',ln:'-115',p:.54,e:.038,grade:'ELITE',nt:'COL 32.6 SOG/game · Hart 8W-4L .917 SV% · High volume incoming G1'},
-    {gm:'VGK vs COL·G1',pl:'Gabriel Landeskog',tm:'COL',pr:'ANYTIME GOAL',ln:'+195',p:.33,e:.010,grade:'FAIR',nt:'8pts in 9PO GP (3G 5A) · Back from 3yr knee IR · Net-front threat · G1 rust factor'},
-    {gm:'VGK vs COL·G1',pl:'Ivan Barbashev',tm:'VGK',pr:'ANYTIME GOAL',ln:'+185',p:.34,e:.012,grade:'FAIR',nt:'9pts in 12PO GP (3G) · Energy line scorer · Hard forechecking vs COL D'},
-    {gm:'VGK vs COL·G1',pl:'Pavel Dorofeyev',tm:'VGK',pr:'ANYTIME GOAL',ln:'+155',p:.38,e:.016,grade:'GOOD',nt:'9G in 12PO GP — leads VGK in goals · Pure finisher · COL weak vs slot shots'}
+    {gm:'CAR vs MTL·G1',pl:'Nick Suzuki',tm:'MTL',pr:'POINT (ANY)',ln:'+130',p:.44,e:.022,grade:'GOOD',nt:'12pts in 13PO GP (4G/8A) · MTL captain drives offense vs CAR'},
+    {gm:'CAR vs MTL·G1',pl:'Lane Hutson',tm:'MTL',pr:'POINT (ANY)',ln:'+115',p:.46,e:.028,grade:'GOOD',nt:'13pts from D (2G/11A) · QB on PP · Elite playmaker in ECF'},
+    {gm:'CAR vs MTL·G1',pl:'Taylor Hall',tm:'CAR',pr:'POINT (ANY)',ln:'-105',p:.52,e:.032,grade:'ELITE',nt:'12pts in 12PO GP (3G/9A) · CAR top-6 catalyst vs MTL ECF'},
+    {gm:'CAR vs MTL·G1',pl:'Logan Stankoven',tm:'CAR',pr:'ANYTIME GOAL',ln:'+145',p:.41,e:.020,grade:'GOOD',nt:'7G in 8GP (3rd line eruption) · Pure finisher · MTL PK 2nd-most penalties'},
+    {gm:'CAR vs MTL·G1',pl:'Frederik Andersen',tm:'CAR',pr:'SAVES O/U 22.5',ln:'-120',p:.55,e:.038,grade:'ELITE',nt:'8-0 .950 SV% 1.12 GAA — PERFECT record · MTL 25.4 SOG/G'},
+    {gm:'CAR vs MTL·G1',pl:'Ivan Demidov',tm:'MTL',pr:'ANYTIME GOAL',ln:'+225',p:.30,e:.008,grade:'FAIR',nt:'Rookie impact · MTL 3rd/4th line energy · G1 value spot vs CAR'},
+    {gm:'CAR vs MTL·G1',pl:'Jackson Blake',tm:'CAR',pr:'POINT (ANY)',ln:'+125',p:.46,e:.026,grade:'GOOD',nt:'11pts in 12PO GP (4G/7A) · CAR breakout postseason'},
+    {gm:'CAR vs MTL·G1',pl:'Sebastian Aho',tm:'CAR',pr:'POINT (ANY)',ln:'-115',p:.54,e:.036,grade:'ELITE',nt:'CAR #1C · Net-front PP presence · vs MTL ECF G1'}
   ];
-  el.innerHTML=PROPS.map(pk=>{const t=tier(pk.p,pk.e);const gc=gradeC[pk.grade]||'var(--t2)';const isOver=pk.ln.startsWith('-')||pk.p>=.5;return`<div class="prw" style="border-left:3px solid ${gc}"><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div class="pr-n">${pk.pl}</div><span class="tag" style="background:var(--p3);color:var(--pc);border:1px solid var(--pc)">${pk.tm}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${pk.gm}</span><span style="font-family:var(--mono);font-size:7px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${pk.grade}</span></div><div class="pr-d">${pk.pr}</div><div class="pr-d" style="color:var(--t3)">${pk.nt}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${pk.tm}','${pk.pl}','${pk.pr}',${isOver},${pk.p},'${pk.ln}')">🔒 LOCK PROP</button></div><div style="text-align:right;flex-shrink:0"><div class="mono" style="font-size:15px;font-weight:700;color:var(--vc)">${pk.ln}</div><div class="mono" style="font-size:10px;color:var(--t2)">${(pk.p*100).toFixed(0)}%</div><div style="font-size:9px;color:${pk.e>=0?'var(--nc)':'var(--hc)'}">EV ${pk.e>=0?'+':''}${(pk.e*100).toFixed(1)}%</div></div></div>`;}).join('');
+  // Filter to only show props for teams playing tonight
+  const filtered=activeTeams.length?PROPS.filter(pk=>activeTeams.includes(pk.tm)):PROPS;
+  if(!filtered.length){el.innerHTML='<div class="empty">NO PROPS AVAILABLE FOR TONIGHT\'S TEAMS</div>';return;}
+  el.innerHTML=filtered.map(pk=>{const t=tier(pk.p,pk.e);const gc=gradeC[pk.grade]||'var(--t2)';const isOver=pk.ln.startsWith('-')||pk.p>=.5;return`<div class="prw" style="border-left:3px solid ${gc}"><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div class="pr-n">${pk.pl}</div><span class="tag" style="background:var(--p3);color:var(--pc);border:1px solid var(--pc)">${pk.tm}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${pk.gm}</span><span style="font-family:var(--mono);font-size:7px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${pk.grade}</span></div><div class="pr-d">${pk.pr}</div><div class="pr-d" style="color:var(--t3)">${pk.nt}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${pk.tm}','${pk.pl}','${pk.pr}',${isOver},${pk.p},'${pk.ln}')">🔒 LOCK PROP</button></div><div style="text-align:right;flex-shrink:0"><div class="mono" style="font-size:15px;font-weight:700;color:var(--vc)">${pk.ln}</div><div class="mono" style="font-size:10px;color:var(--t2)">${(pk.p*100).toFixed(0)}%</div><div style="font-size:9px;color:${pk.e>=0?'var(--nc)':'var(--hc)'}">EV ${pk.e>=0?'+':''}${(pk.e*100).toFixed(1)}%</div></div></div>`;}).join('');
 }
-function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='ANA'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:9px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(204,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
+function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:9px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(204,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:12px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(204,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:12px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(204,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
@@ -1840,20 +2005,59 @@ function lockParlay(w,p,ml,d){const preds=getP();preds.push({id:`p_${today()}_${
 
 // ═══ LIVE TRACKER ═══════════════════════════════════════════
 function igWP(hs,as,inn,top,prior){const outs=(inn-1)*3+(top?0:1.5);const done=Math.min(outs/27,.95);const diff=hs-as;const sP=diff===0?.5:diff>0?.5+Math.min(.45,diff*.12*(1+done)):.5-Math.min(.45,Math.abs(diff)*.12*(1+done));return Math.min(.97,Math.max(.03,prior*(1-done)+sP*done));}
-async function startLive(){if(LIV)clearInterval(LIV);await updLive();LIV=setInterval(updLive,60000);const s=document.getElementById('ls');if(s)s.textContent=`// LIVE · ${new Date().toLocaleTimeString()}`;}
+async function startLive(){if(LIV)clearInterval(LIV);await updLive();LIV=setInterval(updLive,45000);const s=document.getElementById('ls');if(s)s.textContent=`// LIVE · ${new Date().toLocaleTimeString()}`;}
 async function updLive(){
-  // Try backend first, fallback to ESPN direct
-  let liveGames=[],finalGames=[];
-  if(API_ONLINE()){
-    const gs=await api('GET',`/mlb/schedule?game_date=${today()}`);
-    if(gs){liveGames=gs.filter(g=>g.status==='STATUS_IN_PROGRESS').map(g=>({hA:g.home_team,awA:g.away_team,hScore:g.home_score||0,aScore:g.away_score||0,status:'in'}));finalGames=gs.filter(g=>g.status==='STATUS_FINAL').map(g=>({hA:g.home_team,awA:g.away_team,hScore:g.home_score||0,aScore:g.away_score||0,status:'post'}));}
-  } else {
-    const events=await fetchESPN(todayESPN())||[];const parsed=events.map(parseESPNGame).filter(Boolean);liveGames=parsed.filter(g=>g.status==='in');finalGames=parsed.filter(g=>g.status==='post');
+  const el=document.getElementById('live-l')||document.getElementById('lg');if(!el)return;
+  const ts=document.getElementById('ls');
+  if(ts)ts.textContent=`// REFRESHING · ${new Date().toLocaleTimeString()}`;
+  try{
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',{mode:'cors',cache:'no-store'});
+    if(!r.ok)throw new Error(r.status);
+    const d=await r.json();
+    const events=d.events||[];
+    ESPN_GAMES=events.map(ev=>{
+      const comp=ev.competitions?.[0]||{};
+      const home=comp.competitors?.find(c=>c.homeAway==='home')||{};
+      const away=comp.competitors?.find(c=>c.homeAway==='away')||{};
+      const st=ev.status?.type?.name||'';
+      return{
+        id:ev.id,
+        hA:home.team?.abbreviation||'',awA:away.team?.abbreviation||'',
+        hFull:home.team?.displayName||'',aFull:away.team?.displayName||'',
+        hScore:parseInt(home.score||0),aScore:parseInt(away.score||0),
+        status:st.includes('Final')||st.includes('final')?'post':st.includes('progress')||st.includes('In')?'in':'pre',
+        detail:ev.status?.type?.shortDetail||ev.status?.type?.description||'',
+        inning:ev.status?.period||0,
+        situation:comp.situation?.shortDownDistanceText||''
+      };
+    });
+    if(ts)ts.textContent=`// LIVE · ${new Date().toLocaleTimeString()} · ${events.length} GAMES`;
+    autoSettleFromESPN(ESPN_GAMES);
+
+    if(!events.length){el.innerHTML='<div class="empty">NO MLB GAMES TODAY</div>';return;}
+    el.innerHTML=ESPN_GAMES.map(g=>{
+      const live=g.status==='in';const final=g.status==='post';
+      const col=live?'var(--vc)':final?'var(--t3)':'var(--t2)';
+      const lbl=live?'● LIVE':final?'FINAL':'UPCOMING';
+      const leader=g.hScore>g.aScore?g.hFull:g.aScore>g.hScore?g.aFull:'TIED';
+      return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${col}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-size:13px;font-weight:700">${g.awA} @ ${g.hA}</div>
+            <div style="font-size:9px;color:${col};margin-top:2px;letter-spacing:2px">${lbl}${g.detail?' · '+g.detail:''}</div>
+          </div>
+          <div style="text-align:right;min-width:80px">
+            <div style="font-size:20px;font-weight:900;font-family:var(--orb)">${g.aScore} – ${g.hScore}</div>
+            ${(live||final)&&g.hScore!==g.aScore?`<div style="font-size:9px;color:var(--gc)">${leader}</div>`:''}
+          </div>
+        </div>
+        ${g.situation?`<div style="font-size:9px;color:var(--t3);margin-top:4px">${g.situation}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){
+    if(el)el.innerHTML=`<div class="empty">LIVE DATA UNAVAILABLE — ${e.message}</div>`;
+    if(ts)ts.textContent='// OFFLINE';
   }
-  if(finalGames.length)autoSettleFromESPN([...liveGames,...finalGames]);
-  const le=document.getElementById('lg');let lh='';
-  for(const g of liveGames){if(!TEAMS[g.hA]||!TEAMS[g.awA])continue;const ens=mlbEns(g.hA,g.awA);const lp=igWP(g.hScore||0,g.aScore||0,1,true,ens.p);const fc=lp>=.6?'var(--nc)':lp<=.4?'var(--hc)':'var(--vc)';lh+=`<div class="card" style="margin-bottom:7px;padding:11px;border-color:rgba(255,0,128,.3)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-family:var(--orb);font-size:14px;font-weight:700;letter-spacing:1px"><span style="color:var(--pc)">${g.hA}</span> <span style="color:var(--t3);font-size:9px">vs</span> <span style="color:var(--pc)">${g.awA}</span></div><span style="font-size:8px;background:var(--h3);border:1px solid var(--hc);color:var(--hc);padding:2px 5px;font-family:var(--mono);border-radius:2px">● LIVE</span></div><div class="mono" style="font-size:26px;font-weight:700;text-align:center;color:var(--vc)">${g.hScore??'0'} — ${g.aScore??'0'}</div><div style="height:6px;background:rgba(204,0,255,.15);border-radius:2px;overflow:hidden;margin:8px 0"><div style="height:100%;width:${(lp*100).toFixed(0)}%;background:${fc};transition:width .5s"></div></div><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px"><span style="color:${fc}">${g.hA}: ${(lp*100).toFixed(1)}%</span><span style="color:var(--t2)">${g.awA}: ${((1-lp)*100).toFixed(1)}%</span></div></div>`;}
-  if(le)le.innerHTML=lh||'<div class="empty">NO LIVE GAMES</div>';
+  // Also update pending bets panel
   const preds=getP().filter(p=>p.outcome==='pending');
   const pe=document.getElementById('pnd');if(pe)pe.innerHTML=preds.length?preds.map(p=>`<div class="card cp" style="margin-bottom:6px;padding:10px"><div style="display:flex;justify-content:space-between;align-items:start"><div style="font-family:var(--orb);font-size:13px;font-weight:700;letter-spacing:1px;color:var(--pc)">${p.hA==='PARLAY'?'PARLAY':p.hA+' vs '+p.awA}</div><button class="btn btn-sm" style="font-size:8px;color:var(--t3);border-color:var(--t3);padding:2px 6px" onclick="removePick('${p.id}')">✕ REMOVE</button></div><div class="mono" style="font-size:10px;color:var(--t2);margin-top:3px">${p.betType} · ${p.betOn} · ${p.ml}</div><div style="display:flex;gap:5px;margin-top:7px"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button></div></div>`).join(''):'<div class="empty">NO PENDING BETS</div>';
 }
@@ -1876,7 +2080,7 @@ function removePick(id){
 }
 function renderNHLLockedBets(){
   const el=document.getElementById('nhl-locked');if(!el)return;
-  const picks=getP().filter(p=>p.sport==='NHL'||p.type==='PL');
+  const picks=getP().filter(p=>p.sport==='NHL'||p.betType==='PL');
   if(!picks.length){el.innerHTML='<div class="empty">NO LOCKED NHL BETS</div>';return;}
   el.innerHTML=picks.map(p=>`<div class="pk" style="border-left:2px solid ${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--nc)'}"><div style="flex:1"><div class="pkt">${p.homeTeam||p.h||''} vs ${p.awayTeam||p.a||''}</div><div class="pkt2">BET: ${p.betOn||p.d||''} · ML: ${p.ml||''}</div><div class="pkd">WIN%: <strong>${p.p?(p.p*100).toFixed(1)+'%':'—'}</strong> · STATUS: <strong style="color:${p.result==='W'?'var(--vc)':p.result==='L'?'var(--hc)':'var(--t2)'}">${p.result||'PENDING'}</strong>${p.date?' · '+p.date:''}</div></div><button class="btn btn-sm btn-d" onclick="removePick('${p.id}')">✕</button></div>`).join('');
 }
@@ -1904,6 +2108,7 @@ function _renderStandingsESPN(d){
   if(!leagues.length){_renderStandingsStatic();return;}
 
   const getVal=(stats,name)=>{const s=stats?.find(x=>x.name===name||x.shortDisplayName===name);return s?+s.value:null;};
+  const getDisp=(stats,name)=>{const s=stats?.find(x=>x.name===name||x.shortDisplayName===name);return s?.displayValue||null;};
   const allEntries=[];
   const divMap={};
 
@@ -1915,10 +2120,15 @@ function _renderStandingsESPN(d){
         const stats=entry.stats||[];
         const w=getVal(stats,'wins')||0;
         const l=getVal(stats,'losses')||0;
+        const pct=getVal(stats,'winPercent')||(w+l?w/(w+l):0);
         const rs=getVal(stats,'pointsFor')||getVal(stats,'runsScored')||Math.round((w+l)*4.5+w*.3);
         const ra=getVal(stats,'pointsAgainst')||getVal(stats,'runsAllowed')||Math.round(rs-(w-l)*0.8);
         const gb=getVal(stats,'gamesBehind');
-        const row={abbr,name:entry.team?.displayName||abbr,div:divName,w,l,pct:w+l?w/(w+l):0,rs,ra,rd:rs-ra,gb,elo:ELO[abbr]||1500};
+        const home=getDisp(stats,'Home')||'—';
+        const away=getDisp(stats,'Road')||'—';
+        const l10=getDisp(stats,'Last Ten Games')||getDisp(stats,'l10')||'—';
+        const streak=getDisp(stats,'streak')||'—';
+        const row={abbr,name:entry.team?.displayName||abbr,div:divName,w,l,pct,rs,ra,rd:rs-ra,gb,home,away,l10,streak,elo:ELO[abbr]||1500};
         allEntries.push(row);
         if(!divMap[divName])divMap[divName]=[];
         divMap[divName].push(row);
@@ -1928,21 +2138,16 @@ function _renderStandingsESPN(d){
 
   if(!allEntries.length){_renderStandingsStatic();return;}
 
-  if(_standMode==='wc'){
-    _renderWCFromEntries(allEntries);
-    return;
-  }
-
-  // Division view
+  // Division view only (_standMode==='wc' removed)
   const thS=(col,lbl)=>`<th style="cursor:pointer;white-space:nowrap" onclick="_sortStnd('${col}')">${lbl}${_stndSort===col?(_stndDir>0?'▲':'▼'):''}</th>`;
   let html='';
   for(const[div,rows] of Object.entries(divMap)){
-    const sorted=[...rows].sort((a,b)=>_stndDir*(b[_stndSort]??0)-(a[_stndSort]??0));
+    const sorted=[...rows].sort((a,b)=>b.pct-a.pct);
     const leader=sorted[0];
     html+=`<div style="margin-bottom:16px">
       <div style="font-family:var(--orb);font-size:11px;font-weight:700;letter-spacing:3px;color:var(--pc);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid rgba(204,0,255,.2)">${div}</div>
       <div style="overflow-x:auto"><table class="dt" style="min-width:100%;border-collapse:collapse"><thead><tr>
-        ${thS('w','#')}${thS('abbr','TEAM')}${thS('w','W')}${thS('l','L')}${thS('pct','PCT')}${thS('gb','GB')}${thS('rs','RS')}${thS('ra','RA')}${thS('rd','DIFF')}${thS('elo','ELO')}
+        <th>#</th><th>TEAM</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>HOME</th><th>AWAY</th><th>L10</th><th>STRK</th>
       </tr></thead><tbody>
       ${sorted.map((t,i)=>{
         const gbTxt=i===0?'—':(t.gb!=null?t.gb.toFixed(1):((leader.w-t.w+t.l-leader.l)/2).toFixed(1));
@@ -1953,10 +2158,10 @@ function _renderStandingsESPN(d){
           <td class="nh mono" style="text-align:right">${t.l}</td>
           <td class="mono" style="text-align:right">${t.pct.toFixed(3).replace('0.','.') }</td>
           <td class="mono" style="text-align:right;color:${i===0?'var(--gc)':'var(--t2)'}">${gbTxt}</td>
-          <td class="mono" style="text-align:right">${t.rs}</td>
-          <td class="mono" style="text-align:right">${t.ra}</td>
-          <td class="mono ${t.rd>=0?'nn':'nh'}" style="text-align:right">${t.rd>=0?'+':''}${t.rd}</td>
-          <td class="mono nv" style="text-align:right">${t.elo}</td>
+          <td class="mono" style="text-align:right;font-size:9px">${t.home}</td>
+          <td class="mono" style="text-align:right;font-size:9px">${t.away}</td>
+          <td class="mono" style="text-align:right;font-size:9px">${t.l10}</td>
+          <td class="mono" style="text-align:right;font-size:9px">${t.streak}</td>
         </tr>`;
       }).join('')}
       </tbody></table></div></div>`;
@@ -2253,7 +2458,7 @@ function nbaTeamScore(abbr){
 }
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
-function nbaMC(hA,awA,n=4000){
+function nbaMC(hA,awA,n=5000){
   const h=NBA_BBREF[hA],aw=NBA_BBREF[awA];
   const ht=NBA_TEAMS[hA],awt=NBA_TEAMS[awA];
   if(!ht||!awt)return null;
@@ -2426,7 +2631,11 @@ function renderNBAProps(){
     {player:'Stephon Castle',t:'SA',line:'PTS O/U 15.5',over:false,conf:58,basis:'OKC perimeter D elite (10.2 STL/game) · Castle still a rookie under pressure moments',grade:'FAIR'}
   ];
   const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
-  el.innerHTML=props.map(p=>`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px"><div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · CONF: ${p.conf}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.basis}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${p.t}','${p.player}','${p.line}',${p.over},${p.conf/100},'${p.over?'-115':'+100'}')">🔒 LOCK PROP</button></div>`).join('');
+  // Filter to only show props for tonight's NBA teams
+  const activeNBATeams=NBA_TONIGHT.flatMap(g=>[g.h,g.a]);
+  const filtered=activeNBATeams.length?props.filter(p=>activeNBATeams.includes(p.t)):props;
+  if(!filtered.length){el.innerHTML='<div class="empty">NO NBA PROPS AVAILABLE FOR TONIGHT\'S TEAMS</div>';return;}
+  el.innerHTML=filtered.map(p=>`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px"><div><span style="font-family:var(--orb);font-size:12px;font-weight:700">${p.player}</span> <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${p.t}</span></div><span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--gc);margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · CONF: ${p.conf}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${p.basis}</div><button class="btn btn-o btn-sm" style="margin-top:5px" onclick="lockProp('${p.t}','${p.player}','${p.line}',${p.over},${p.conf/100},'${p.over?'-115':'+100'}')">🔒 LOCK PROP</button></div>`).join('');
 }
 
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
@@ -2687,6 +2896,10 @@ function checkMidMST(){
     },3000);
   }
   if(h===10&&m<3&&lastTenDate!==mstDate){lastTenDate=mstDate;try{renderNBAStats();renderNBAPlayers();renderNBAPicks();}catch(e){}toast('// 10AM DATA REFRESH COMPLETE');}
+  // E1: 10 PM MST — pre-generate tomorrow's picks
+  if(h===22&&m<2&&lastTenDate!==mstDate+'_22'){lastTenDate=mstDate+'_22';try{loadTmrw();}catch(e){}toast('// 10PM: TOMORROW\'S PICKS GENERATED');}
+  // E2: During game hours (18-24 MST): ensure live trackers active
+  if(h>=18&&h<=23){if(!LIV){try{startLive();}catch(e){}}}
   const nm=new Date(mst);nm.setDate(nm.getDate()+(h>=0?1:0));nm.setHours(0,0,0,0);const diff=nm-mst;
   const ne=document.getElementById('upd-nx');if(ne)ne.textContent=`${Math.floor(diff/3600000)}H ${Math.floor((diff%3600000)/60000)}M`;
   const lastDate=S.g('last_upd_date');const st=document.getElementById('upd-st');
@@ -2749,7 +2962,7 @@ function T(sport,tabId){
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='standings')renderStandings();if(tabId==='set')updateAPIStatus();}
+  if(sport==='mlb'){if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='standings')renderStandings();if(tabId==='set')updateAPIStatus();if(tabId==='tmrw')loadTmrw();}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='config'){}}
   if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks')renderNBAPicks();if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();}
