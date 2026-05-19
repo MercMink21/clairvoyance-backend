@@ -968,9 +968,26 @@ let ENS={mc:.50,bay:.20,elo:.30};
 let NHL_ENS={mc:.50,bay:.20,elo:.30,hv:.00};
 let NBA_ENS={mc:.50,bay:.20,elo:.30};
 let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props')||'[]');}catch{return[];}})();
+// ── Seed historical prop results (WCF G1 May 18 2026) ─────────
+(function seedHistoricalProps(){
+  const hist=[
+    {id:'prop_hist_wemby_pra_g1',team:'SA',player:'Victor Wembanyama',line:'PTS+REB+AST O/U 37.5',over:true,conf:.68,ml:'-115',lockedAt:1747616400000,outcome:'win',date:'2026-05-18',sport:'NBA',betType:'PROP',betOn:'Victor Wembanyama OVER PTS+REB+AST 37.5',winProb:.68,hA:'SA',awA:'OKC',decOdds:1.869,wager:0,note:'WCF G1: Wemby 41 pts+24 reb+4 ast=69 total. SA won 122-115 2OT.'},
+    {id:'prop_hist_jwill_pts_g1',team:'OKC',player:'Jalen Williams',line:'PTS O/U 21.5',over:true,conf:.63,ml:'-115',lockedAt:1747616400000,outcome:'win',date:'2026-05-18',sport:'NBA',betType:'PROP',betOn:'Jalen Williams OVER PTS 21.5',winProb:.63,hA:'SA',awA:'OKC',decOdds:1.869,wager:0,note:'WCF G1 2OT: Williams scored 22+ pts in the double-overtime loss.'}
+  ];
+  hist.forEach(h=>{
+    if(!LOCKED_PROPS.find(p=>p.id===h.id)){LOCKED_PROPS.push(h);}
+  });
+  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
+  // also seed into main preds store so history tab shows them
+  try{
+    const preds=JSON.parse(localStorage.getItem('preds')||'[]');
+    hist.forEach(h=>{if(!preds.find(p=>p.id===h.id)){preds.push(h);}});
+    localStorage.setItem('preds',JSON.stringify(preds));
+  }catch(e){}
+})();
 let PIT={},TEAMS={},ELO={},PAR=[],rC='elo',rF='all',ns='xgf5',LIV=null,ESPN_GAMES=[],NHL_EDGE={teams:{},goalies:[],skaters:[],zonetime:{}},MONEYPUCK={};
 // ═══ MLB DATA ═══════════════════════════════════════════════
-const MLB={ARI:{n:"Arizona Diamondbacks",div:"NL West",pf:1.05,bat:{RG:4.24,Op:91,OBP:.296,SLG:.387,ISO:.091,BABIP:.295,wOBA:.315,wRC:91,BB_pct:8.2,K_pct:22.1},pit:{ERA:4.46,Ep:92,W:1.301,K9:7.6,B9:3.4,RAG:4.83,FIP:4.38,xFIP:4.51,HR9:1.1},fld:{DE:.713,F:.987,DRS:2,OAA:-1},s:{W:20,L:21,WL:.488,SRS:-.3,RD:-12,pyth:.49}},OAK:{n:"Athletics",div:"AL West",pf:.99,bat:{RG:4.39,Op:97,OBP:.325,SLG:.399,ISO:.074,BABIP:.302,wOBA:.322,wRC:97,BB_pct:9.8,K_pct:21.4},pit:{ERA:4.45,Ep:104,W:1.444,K9:8.1,B9:4.4,RAG:4.59,FIP:4.22,xFIP:4.35,HR9:1.0},fld:{DE:.704,F:.993,DRS:5,OAA:3},s:{W:21,L:20,WL:.512,SRS:-.2,RD:8,pyth:.51}},ATL:{n:"Atlanta Braves",div:"NL East",pf:1.0,bat:{RG:5.55,Op:122,OBP:.335,SLG:.452,ISO:.147,BABIP:.308,wOBA:.358,wRC:122,BB_pct:9.5,K_pct:20.1},pit:{ERA:3.11,Ep:131,W:1.147,K9:8.9,B9:3.5,RAG:3.4,FIP:3.28,xFIP:3.41,HR9:.85},fld:{DE:.739,F:.988,DRS:22,OAA:15},s:{W:29,L:13,WL:.69,SRS:2.0,RD:71,pyth:.67}},BAL:{n:"Baltimore Orioles",div:"AL East",pf:1.02,bat:{RG:4.33,Op:97,OBP:.314,SLG:.377,ISO:.103,BABIP:.289,wOBA:.318,wRC:97,BB_pct:7.8,K_pct:21.9},pit:{ERA:4.71,Ep:88,W:1.449,K9:8.5,B9:3.8,RAG:5.35,FIP:4.81,xFIP:4.72,HR9:1.3},fld:{DE:.673,F:.982,DRS:-8,OAA:-5},s:{W:19,L:24,WL:.442,SRS:-1.0,RD:-28,pyth:.44}},BOS:{n:"Boston Red Sox",div:"AL East",pf:1.08,bat:{RG:3.83,Op:91,OBP:.313,SLG:.351,ISO:.085,BABIP:.294,wOBA:.311,wRC:91,BB_pct:9.1,K_pct:20.8},pit:{ERA:3.95,Ep:104,W:1.281,K9:8.1,B9:3.3,RAG:4.15,FIP:3.88,xFIP:3.94,HR9:.95},fld:{DE:.708,F:.988,DRS:4,OAA:2},s:{W:17,L:24,WL:.415,SRS:-.4,RD:-18,pyth:.46}},CHC:{n:"Chicago Cubs",div:"NL Central",pf:1.0,bat:{RG:5.17,Op:122,OBP:.344,SLG:.412,ISO:.128,BABIP:.310,wOBA:.345,wRC:122,BB_pct:10.2,K_pct:19.8},pit:{ERA:3.85,Ep:99,W:1.206,K9:8.2,B9:3.2,RAG:4.12,FIP:3.91,xFIP:4.02,HR9:1.0},fld:{DE:.723,F:.987,DRS:14,OAA:8},s:{W:27,L:15,WL:.643,SRS:1.0,RD:48,pyth:.62}},CWS:{n:"Chicago White Sox",div:"AL Central",pf:1.01,bat:{RG:4.32,Op:101,OBP:.321,SLG:.394,ISO:.113,BABIP:.299,wOBA:.326,wRC:101,BB_pct:8.8,K_pct:22.4},pit:{ERA:4.26,Ep:103,W:1.364,K9:8.1,B9:4.1,RAG:4.63,FIP:4.18,xFIP:4.28,HR9:1.05},fld:{DE:.706,F:.986,DRS:-2,OAA:-3},s:{W:20,L:21,WL:.488,SRS:-.4,RD:-5,pyth:.48}},CIN:{n:"Cincinnati Reds",div:"NL Central",pf:1.03,bat:{RG:4.0,Op:89,OBP:.305,SLG:.379,ISO:.094,BABIP:.291,wOBA:.312,wRC:89,BB_pct:7.9,K_pct:23.8},pit:{ERA:4.65,Ep:94,W:1.481,K9:7.7,B9:4.7,RAG:4.93,FIP:4.72,xFIP:4.68,HR9:1.2},fld:{DE:.703,F:.99,DRS:1,OAA:0},s:{W:22,L:20,WL:.524,SRS:-1.0,RD:2,pyth:.50}},CLE:{n:"Cleveland Guardians",div:"AL Central",pf:.98,bat:{RG:4.16,Op:95,OBP:.322,SLG:.365,ISO:.082,BABIP:.298,wOBA:.315,wRC:95,BB_pct:9.4,K_pct:18.9},pit:{ERA:3.85,Ep:109,W:1.28,K9:9.4,B9:3.5,RAG:4.11,FIP:3.79,xFIP:3.88,HR9:.88},fld:{DE:.699,F:.988,DRS:8,OAA:5},s:{W:23,L:21,WL:.523,SRS:.1,RD:12,pyth:.52}},COL:{n:"Colorado Rockies",div:"NL West",pf:1.18,bat:{RG:4.19,Op:91,OBP:.316,SLG:.395,ISO:.105,BABIP:.305,wOBA:.318,wRC:91,BB_pct:8.2,K_pct:22.0},pit:{ERA:4.81,Ep:99,W:1.423,K9:7.7,B9:3.4,RAG:5.07,FIP:4.95,xFIP:4.88,HR9:1.3},fld:{DE:.685,F:.985,DRS:-18,OAA:-12},s:{W:16,L:26,WL:.381,SRS:-1.1,RD:-45,pyth:.39}},DET:{n:"Detroit Tigers",div:"AL Central",pf:.97,bat:{RG:4.21,Op:100,OBP:.324,SLG:.392,ISO:.108,BABIP:.298,wOBA:.322,wRC:100,BB_pct:9.0,K_pct:21.5},pit:{ERA:3.99,Ep:108,W:1.333,K9:8.7,B9:3.7,RAG:4.31,FIP:4.02,xFIP:4.15,HR9:.98},fld:{DE:.686,F:.983,DRS:-12,OAA:-8},s:{W:19,L:23,WL:.452,SRS:-.1,RD:2,pyth:.50}},HOU:{n:"Houston Astros",div:"AL West",pf:.99,bat:{RG:4.63,Op:111,OBP:.33,SLG:.421,ISO:.138,BABIP:.302,wOBA:.344,wRC:111,BB_pct:9.8,K_pct:19.5},pit:{ERA:5.61,Ep:77,W:1.585,K9:9.0,B9:5.2,RAG:5.65,FIP:5.42,xFIP:5.18,HR9:1.5},fld:{DE:.678,F:.99,DRS:-5,OAA:-4},s:{W:16,L:27,WL:.372,SRS:-1.2,RD:-38,pyth:.40}},KC:{n:"Kansas City Royals",div:"AL Central",pf:.97,bat:{RG:4.14,Op:101,OBP:.319,SLG:.394,ISO:.115,BABIP:.296,wOBA:.322,wRC:101,BB_pct:8.4,K_pct:21.0},pit:{ERA:4.33,Ep:98,W:1.364,K9:8.7,B9:4.4,RAG:4.5,FIP:4.28,xFIP:4.35,HR9:1.1},fld:{DE:.71,F:.991,DRS:12,OAA:7},s:{W:19,L:23,WL:.452,SRS:-.2,RD:-2,pyth:.50}},LAA:{n:"Los Angeles Angels",div:"AL West",pf:.96,bat:{RG:4.21,Op:101,OBP:.321,SLG:.388,ISO:.108,BABIP:.298,wOBA:.322,wRC:101,BB_pct:8.8,K_pct:22.8},pit:{ERA:4.58,Ep:93,W:1.436,K9:8.7,B9:4.7,RAG:4.91,FIP:4.65,xFIP:4.72,HR9:1.2},fld:{DE:.695,F:.984,DRS:-6,OAA:-3},s:{W:16,L:27,WL:.372,SRS:-.7,RD:-32,pyth:.41}},LAD:{n:"Los Angeles Dodgers",div:"NL West",pf:.94,bat:{RG:4.95,Op:120,OBP:.342,SLG:.43,ISO:.142,BABIP:.308,wOBA:.352,wRC:120,BB_pct:10.8,K_pct:20.2},pit:{ERA:3.48,Ep:116,W:1.141,K9:9.1,B9:2.9,RAG:3.55,FIP:3.42,xFIP:3.58,HR9:.88},fld:{DE:.72,F:.99,DRS:28,OAA:18},s:{W:24,L:18,WL:.571,SRS:1.3,RD:38,pyth:.59}},MIA:{n:"Miami Marlins",div:"NL East",pf:.96,bat:{RG:4.19,Op:98,OBP:.322,SLG:.372,ISO:.092,BABIP:.301,wOBA:.319,wRC:98,BB_pct:8.8,K_pct:21.9},pit:{ERA:4.04,Ep:103,W:1.261,K9:8.5,B9:3.8,RAG:4.33,FIP:3.98,xFIP:4.12,HR9:.92},fld:{DE:.711,F:.982,DRS:2,OAA:1},s:{W:19,L:23,WL:.452,SRS:-.1,RD:-4,pyth:.50}},MIL:{n:"Milwaukee Brewers",div:"NL Central",pf:.98,bat:{RG:5.15,Op:95,OBP:.334,SLG:.358,ISO:.082,BABIP:.322,wOBA:.338,wRC:95,BB_pct:11.2,K_pct:19.5},pit:{ERA:3.45,Ep:121,W:1.244,K9:9.8,B9:3.7,RAG:3.72,FIP:3.38,xFIP:3.45,HR9:.78},fld:{DE:.695,F:.988,DRS:5,OAA:3},s:{W:23,L:16,WL:.59,SRS:1.6,RD:42,pyth:.58}},MIN:{n:"Minnesota Twins",div:"AL Central",pf:1.0,bat:{RG:4.69,Op:96,OBP:.324,SLG:.381,ISO:.102,BABIP:.298,wOBA:.319,wRC:96,BB_pct:9.2,K_pct:22.5},pit:{ERA:4.51,Ep:98,W:1.358,K9:7.7,B9:3.8,RAG:4.9,FIP:4.48,xFIP:4.52,HR9:1.18},fld:{DE:.699,F:.986,DRS:-4,OAA:-2},s:{W:19,L:23,WL:.452,SRS:-.4,RD:-8,pyth:.49}},NYM:{n:"New York Mets",div:"NL East",pf:.96,bat:{RG:3.63,Op:82,OBP:.291,SLG:.343,ISO:.082,BABIP:.285,wOBA:.302,wRC:82,BB_pct:7.8,K_pct:23.5},pit:{ERA:3.8,Ep:106,W:1.264,K9:9.5,B9:3.5,RAG:4.2,FIP:3.75,xFIP:3.88,HR9:.92},fld:{DE:.695,F:.986,DRS:4,OAA:2},s:{W:16,L:25,WL:.39,SRS:-.7,RD:-18,pyth:.45}},NYY:{n:"New York Yankees",div:"AL East",pf:1.01,bat:{RG:5.19,Op:114,OBP:.333,SLG:.44,ISO:.148,BABIP:.305,wOBA:.350,wRC:114,BB_pct:9.8,K_pct:21.2},pit:{ERA:3.12,Ep:137,W:1.144,K9:8.9,B9:3.1,RAG:3.42,FIP:3.08,xFIP:3.22,HR9:.78},fld:{DE:.716,F:.986,DRS:18,OAA:12},s:{W:27,L:16,WL:.628,SRS:1.6,RD:55,pyth:.63}},PHI:{n:"Philadelphia Phillies",div:"NL East",pf:1.04,bat:{RG:4.1,Op:92,OBP:.301,SLG:.394,ISO:.118,BABIP:.290,wOBA:.316,wRC:92,BB_pct:7.8,K_pct:23.8},pit:{ERA:4.46,Ep:98,W:1.401,K9:9.6,B9:3.0,RAG:4.83,FIP:4.42,xFIP:4.38,HR9:1.18},fld:{DE:.65,F:.987,DRS:-22,OAA:-15},s:{W:20,L:22,WL:.476,SRS:-.6,RD:-12,pyth:.47}},PIT:{n:"Pittsburgh Pirates",div:"NL Central",pf:.95,bat:{RG:4.98,Op:104,OBP:.337,SLG:.39,ISO:.095,BABIP:.316,wOBA:.334,wRC:104,BB_pct:10.5,K_pct:20.2},pit:{ERA:3.67,Ep:115,W:1.215,K9:8.9,B9:3.6,RAG:4.19,FIP:3.72,xFIP:3.82,HR9:.88},fld:{DE:.711,F:.985,DRS:8,OAA:5},s:{W:23,L:19,WL:.548,SRS:.7,RD:28,pyth:.54}},SD:{n:"San Diego Padres",div:"NL West",pf:.95,bat:{RG:4.24,Op:87,OBP:.297,SLG:.37,ISO:.095,BABIP:.288,wOBA:.311,wRC:87,BB_pct:7.8,K_pct:23.2},pit:{ERA:4.13,Ep:99,W:1.243,K9:8.8,B9:3.2,RAG:4.22,FIP:4.08,xFIP:4.15,HR9:1.05},fld:{DE:.704,F:.993,DRS:12,OAA:8},s:{W:24,L:17,WL:.585,SRS:-.2,RD:18,pyth:.52}},SEA:{n:"Seattle Mariners",div:"AL West",pf:.95,bat:{RG:4.19,Op:103,OBP:.32,SLG:.38,ISO:.098,BABIP:.298,wOBA:.319,wRC:103,BB_pct:9.5,K_pct:22.1},pit:{ERA:3.67,Ep:108,W:1.221,K9:8.7,B9:2.5,RAG:3.91,FIP:3.62,xFIP:3.75,HR9:.88},fld:{DE:.687,F:.99,DRS:6,OAA:4},s:{W:21,L:22,WL:.488,SRS:.3,RD:5,pyth:.51}},SF:{n:"San Francisco Giants",div:"NL West",pf:.94,bat:{RG:3.45,Op:90,OBP:.292,SLG:.369,ISO:.098,BABIP:.286,wOBA:.309,wRC:90,BB_pct:8.4,K_pct:22.5},pit:{ERA:3.98,Ep:99,W:1.327,K9:8.1,B9:3.9,RAG:4.36,FIP:3.95,xFIP:4.05,HR9:.98},fld:{DE:.704,F:.985,DRS:4,OAA:3},s:{W:18,L:24,WL:.429,SRS:-.9,RD:-22,pyth:.45}},STL:{n:"St. Louis Cardinals",div:"NL Central",pf:.99,bat:{RG:4.68,Op:104,OBP:.319,SLG:.387,ISO:.112,BABIP:.299,wOBA:.328,wRC:104,BB_pct:8.8,K_pct:21.8},pit:{ERA:4.24,Ep:93,W:1.365,K9:7.3,B9:3.8,RAG:4.56,FIP:4.32,xFIP:4.42,HR9:1.12},fld:{DE:.703,F:.988,DRS:2,OAA:1},s:{W:24,L:17,WL:.585,SRS:.3,RD:22,pyth:.53}},TB:{n:"Tampa Bay Rays",div:"AL East",pf:.98,bat:{RG:4.54,Op:101,OBP:.33,SLG:.379,ISO:.098,BABIP:.305,wOBA:.328,wRC:101,BB_pct:10.2,K_pct:20.5},pit:{ERA:3.48,Ep:119,W:1.153,K9:7.9,B9:3.1,RAG:3.95,FIP:3.42,xFIP:3.52,HR9:.85},fld:{DE:.731,F:.98,DRS:24,OAA:16},s:{W:28,L:13,WL:.683,SRS:.7,RD:52,pyth:.63}},TEX:{n:"Texas Rangers",div:"AL West",pf:1.06,bat:{RG:3.71,Op:104,OBP:.315,SLG:.369,ISO:.095,BABIP:.292,wOBA:.318,wRC:104,BB_pct:8.5,K_pct:21.2},pit:{ERA:3.6,Ep:103,W:1.213,K9:8.8,B9:3.2,RAG:3.74,FIP:3.55,xFIP:3.65,HR9:.88},fld:{DE:.717,F:.988,DRS:10,OAA:7},s:{W:20,L:22,WL:.476,SRS:.2,RD:2,pyth:.50}},TOR:{n:"Toronto Blue Jays",div:"AL East",pf:.97,bat:{RG:4.17,Op:89,OBP:.308,SLG:.376,ISO:.102,BABIP:.292,wOBA:.312,wRC:89,BB_pct:8.2,K_pct:22.8},pit:{ERA:4.19,Ep:106,W:1.305,K9:9.1,B9:3.1,RAG:4.55,FIP:4.12,xFIP:4.22,HR9:1.05},fld:{DE:.677,F:.982,DRS:-12,OAA:-8},s:{W:18,L:24,WL:.429,SRS:-.4,RD:-14,pyth:.46}},WSN:{n:"Washington Nationals",div:"NL East",pf:.93,bat:{RG:5.4,Op:111,OBP:.325,SLG:.411,ISO:.128,BABIP:.318,wOBA:.346,wRC:111,BB_pct:9.2,K_pct:21.5},pit:{ERA:4.77,Ep:85,W:1.422,K9:7.6,B9:3.8,RAG:5.57,FIP:4.88,xFIP:4.92,HR9:1.3},fld:{DE:.692,F:.974,DRS:-18,OAA:-12},s:{W:20,L:22,WL:.476,SRS:.3,RD:2,pyth:.50}}};
+const MLB={ARI:{n:"Arizona Diamondbacks",div:"NL West",pf:1.05,bat:{RG:4.24,Op:91,OBP:.296,SLG:.387,ISO:.091,BABIP:.295,wOBA:.315,wRC:91,BB_pct:8.2,K_pct:22.1},pit:{ERA:4.46,Ep:92,W:1.301,K9:7.6,B9:3.4,RAG:4.83,FIP:4.38,xFIP:4.51,HR9:1.1},fld:{DE:.713,F:.987,DRS:2,OAA:-1},s:{W:20,L:21,WL:.488,SRS:-.3,RD:-12,pyth:.49}},OAK:{n:"Athletics",div:"AL West",pf:.99,bat:{RG:4.39,Op:97,OBP:.325,SLG:.399,ISO:.074,BABIP:.302,wOBA:.322,wRC:97,BB_pct:9.8,K_pct:21.4},pit:{ERA:4.45,Ep:104,W:1.444,K9:8.1,B9:4.4,RAG:4.59,FIP:4.22,xFIP:4.35,HR9:1.0},fld:{DE:.704,F:.993,DRS:5,OAA:3},s:{W:21,L:20,WL:.512,SRS:-.2,RD:8,pyth:.51}},ATL:{n:"Atlanta Braves",div:"NL East",pf:1.0,bat:{RG:5.55,Op:122,OBP:.335,SLG:.452,ISO:.147,BABIP:.308,wOBA:.358,wRC:122,BB_pct:9.5,K_pct:20.1},pit:{ERA:3.11,Ep:131,W:1.147,K9:8.9,B9:3.5,RAG:3.4,FIP:3.28,xFIP:3.41,HR9:.85},fld:{DE:.739,F:.988,DRS:22,OAA:15},s:{W:29,L:13,WL:.69,SRS:2.0,RD:71,pyth:.67}},BAL:{n:"Baltimore Orioles",div:"AL East",pf:1.02,bat:{RG:4.33,Op:97,OBP:.314,SLG:.377,ISO:.103,BABIP:.289,wOBA:.318,wRC:97,BB_pct:7.8,K_pct:21.9},pit:{ERA:4.71,Ep:88,W:1.449,K9:8.5,B9:3.8,RAG:5.35,FIP:4.81,xFIP:4.72,HR9:1.3},fld:{DE:.673,F:.982,DRS:-8,OAA:-5},s:{W:19,L:24,WL:.442,SRS:-1.0,RD:-28,pyth:.44}},BOS:{n:"Boston Red Sox",div:"AL East",pf:1.08,bat:{RG:3.83,Op:91,OBP:.313,SLG:.351,ISO:.085,BABIP:.294,wOBA:.311,wRC:91,BB_pct:9.1,K_pct:20.8},pit:{ERA:3.95,Ep:104,W:1.281,K9:8.1,B9:3.3,RAG:4.15,FIP:3.88,xFIP:3.94,HR9:.95},fld:{DE:.708,F:.988,DRS:4,OAA:2},s:{W:17,L:24,WL:.415,SRS:-.4,RD:-18,pyth:.46}},CHC:{n:"Chicago Cubs",div:"NL Central",pf:1.0,bat:{RG:5.17,Op:122,OBP:.344,SLG:.412,ISO:.128,BABIP:.310,wOBA:.345,wRC:122,BB_pct:10.2,K_pct:19.8},pit:{ERA:3.85,Ep:99,W:1.206,K9:8.2,B9:3.2,RAG:4.12,FIP:3.91,xFIP:4.02,HR9:1.0},fld:{DE:.723,F:.987,DRS:14,OAA:8},s:{W:27,L:15,WL:.643,SRS:1.0,RD:48,pyth:.62}},CWS:{n:"Chicago White Sox",div:"AL Central",pf:1.01,bat:{RG:4.32,Op:101,OBP:.321,SLG:.394,ISO:.113,BABIP:.299,wOBA:.326,wRC:101,BB_pct:8.8,K_pct:22.4},pit:{ERA:4.26,Ep:103,W:1.364,K9:8.1,B9:4.1,RAG:4.63,FIP:4.18,xFIP:4.28,HR9:1.05},fld:{DE:.706,F:.986,DRS:-2,OAA:-3},s:{W:20,L:21,WL:.488,SRS:-.4,RD:-5,pyth:.48}},CIN:{n:"Cincinnati Reds",div:"NL Central",pf:1.03,bat:{RG:4.0,Op:89,OBP:.305,SLG:.379,ISO:.094,BABIP:.291,wOBA:.312,wRC:89,BB_pct:7.9,K_pct:23.8},pit:{ERA:4.65,Ep:94,W:1.481,K9:7.7,B9:4.7,RAG:4.93,FIP:4.72,xFIP:4.68,HR9:1.2},fld:{DE:.703,F:.99,DRS:1,OAA:0},s:{W:22,L:20,WL:.524,SRS:-1.0,RD:2,pyth:.50}},CLE:{n:"Cleveland Guardians",div:"AL Central",pf:.98,bat:{RG:4.16,Op:95,OBP:.322,SLG:.365,ISO:.082,BABIP:.298,wOBA:.315,wRC:95,BB_pct:9.4,K_pct:18.9},pit:{ERA:3.85,Ep:109,W:1.28,K9:9.4,B9:3.5,RAG:4.11,FIP:3.79,xFIP:3.88,HR9:.88},fld:{DE:.699,F:.988,DRS:8,OAA:5},s:{W:23,L:21,WL:.523,SRS:.1,RD:12,pyth:.52}},COL:{n:"Colorado Rockies",div:"NL West",pf:1.18,bat:{RG:4.19,Op:91,OBP:.316,SLG:.395,ISO:.105,BABIP:.305,wOBA:.318,wRC:91,BB_pct:8.2,K_pct:22.0},pit:{ERA:4.81,Ep:99,W:1.423,K9:7.7,B9:3.4,RAG:5.07,FIP:4.95,xFIP:4.88,HR9:1.3},fld:{DE:.685,F:.985,DRS:-18,OAA:-12},s:{W:16,L:26,WL:.381,SRS:-1.1,RD:-45,pyth:.39}},DET:{n:"Detroit Tigers",div:"AL Central",pf:.97,bat:{RG:4.21,Op:100,OBP:.324,SLG:.392,ISO:.108,BABIP:.298,wOBA:.322,wRC:100,BB_pct:9.0,K_pct:21.5},pit:{ERA:3.99,Ep:108,W:1.333,K9:8.7,B9:3.7,RAG:4.31,FIP:4.02,xFIP:4.15,HR9:.98},fld:{DE:.686,F:.983,DRS:-12,OAA:-8},s:{W:19,L:23,WL:.452,SRS:-.1,RD:2,pyth:.50}},HOU:{n:"Houston Astros",div:"AL West",pf:.99,bat:{RG:4.63,Op:111,OBP:.33,SLG:.421,ISO:.138,BABIP:.302,wOBA:.344,wRC:111,BB_pct:9.8,K_pct:19.5},pit:{ERA:5.61,Ep:77,W:1.585,K9:9.0,B9:5.2,RAG:5.65,FIP:5.42,xFIP:5.18,HR9:1.5},fld:{DE:.678,F:.99,DRS:-5,OAA:-4},s:{W:16,L:27,WL:.372,SRS:-1.2,RD:-38,pyth:.40}},KC:{n:"Kansas City Royals",div:"AL Central",pf:.97,bat:{RG:4.14,Op:101,OBP:.319,SLG:.394,ISO:.115,BABIP:.296,wOBA:.322,wRC:101,BB_pct:8.4,K_pct:21.0},pit:{ERA:4.33,Ep:98,W:1.364,K9:8.7,B9:4.4,RAG:4.5,FIP:4.28,xFIP:4.35,HR9:1.1},fld:{DE:.71,F:.991,DRS:12,OAA:7},s:{W:19,L:23,WL:.452,SRS:-.2,RD:-2,pyth:.50}},LAA:{n:"Los Angeles Angels",div:"AL West",pf:.96,bat:{RG:4.21,Op:101,OBP:.321,SLG:.388,ISO:.108,BABIP:.298,wOBA:.322,wRC:101,BB_pct:8.8,K_pct:22.8},pit:{ERA:4.58,Ep:93,W:1.436,K9:8.7,B9:4.7,RAG:4.91,FIP:4.65,xFIP:4.72,HR9:1.2},fld:{DE:.695,F:.984,DRS:-6,OAA:-3},s:{W:16,L:27,WL:.372,SRS:-.7,RD:-32,pyth:.41}},LAD:{n:"Los Angeles Dodgers",div:"NL West",pf:.94,bat:{RG:4.95,Op:120,OBP:.342,SLG:.43,ISO:.142,BABIP:.308,wOBA:.352,wRC:120,BB_pct:10.8,K_pct:20.2},pit:{ERA:3.48,Ep:116,W:1.141,K9:9.1,B9:2.9,RAG:3.55,FIP:3.42,xFIP:3.58,HR9:.88},fld:{DE:.72,F:.99,DRS:28,OAA:18},s:{W:24,L:18,WL:.571,SRS:1.3,RD:38,pyth:.59}},MIA:{n:"Miami Marlins",div:"NL East",pf:.96,bat:{RG:4.19,Op:98,OBP:.322,SLG:.372,ISO:.092,BABIP:.301,wOBA:.319,wRC:98,BB_pct:8.8,K_pct:21.9},pit:{ERA:4.04,Ep:103,W:1.261,K9:8.5,B9:3.8,RAG:4.33,FIP:3.98,xFIP:4.12,HR9:.92},fld:{DE:.711,F:.982,DRS:2,OAA:1},s:{W:19,L:23,WL:.452,SRS:-.1,RD:-4,pyth:.50}},MIL:{n:"Milwaukee Brewers",div:"NL Central",pf:.98,bat:{RG:5.15,Op:95,OBP:.334,SLG:.358,ISO:.082,BABIP:.322,wOBA:.338,wRC:95,BB_pct:11.2,K_pct:19.5},pit:{ERA:3.45,Ep:121,W:1.244,K9:9.8,B9:3.7,RAG:3.72,FIP:3.38,xFIP:3.45,HR9:.78},fld:{DE:.695,F:.988,DRS:5,OAA:3},s:{W:23,L:16,WL:.59,SRS:1.6,RD:42,pyth:.58}},MIN:{n:"Minnesota Twins",div:"AL Central",pf:1.0,bat:{RG:4.69,Op:96,OBP:.324,SLG:.381,ISO:.102,BABIP:.298,wOBA:.319,wRC:96,BB_pct:9.2,K_pct:22.5},pit:{ERA:4.51,Ep:98,W:1.358,K9:7.7,B9:3.8,RAG:4.9,FIP:4.48,xFIP:4.52,HR9:1.18},fld:{DE:.699,F:.986,DRS:-4,OAA:-2},s:{W:19,L:23,WL:.452,SRS:-.4,RD:-8,pyth:.49}},NYM:{n:"New York Mets",div:"NL East",pf:.96,bat:{RG:3.63,Op:82,OBP:.291,SLG:.343,ISO:.082,BABIP:.285,wOBA:.302,wRC:82,BB_pct:7.8,K_pct:23.5},pit:{ERA:3.8,Ep:106,W:1.264,K9:9.5,B9:3.5,RAG:4.2,FIP:3.75,xFIP:3.88,HR9:.92},fld:{DE:.695,F:.986,DRS:4,OAA:2},s:{W:16,L:25,WL:.39,SRS:-.7,RD:-18,pyth:.45}},NYY:{n:"New York Yankees",div:"AL East",pf:1.01,bat:{RG:5.19,Op:114,OBP:.333,SLG:.44,ISO:.148,BABIP:.305,wOBA:.350,wRC:114,BB_pct:9.8,K_pct:21.2},pit:{ERA:3.12,Ep:137,W:1.144,K9:8.9,B9:3.1,RAG:3.42,FIP:3.08,xFIP:3.22,HR9:.78},fld:{DE:.716,F:.986,DRS:18,OAA:12},s:{W:27,L:16,WL:.628,SRS:1.6,RD:55,pyth:.63}},PHI:{n:"Philadelphia Phillies",div:"NL East",pf:1.04,bat:{RG:4.1,Op:92,OBP:.301,SLG:.394,ISO:.118,BABIP:.290,wOBA:.316,wRC:92,BB_pct:7.8,K_pct:23.8},pit:{ERA:4.46,Ep:98,W:1.401,K9:9.6,B9:3.0,RAG:4.83,FIP:4.42,xFIP:4.38,HR9:1.18},fld:{DE:.65,F:.987,DRS:-22,OAA:-15},s:{W:20,L:22,WL:.476,SRS:-.6,RD:-12,pyth:.47}},PIT:{n:"Pittsburgh Pirates",div:"NL Central",pf:.95,bat:{RG:4.98,Op:104,OBP:.337,SLG:.39,ISO:.095,BABIP:.316,wOBA:.334,wRC:104,BB_pct:10.5,K_pct:20.2},pit:{ERA:3.67,Ep:115,W:1.215,K9:8.9,B9:3.6,RAG:4.19,FIP:3.72,xFIP:3.82,HR9:.88},fld:{DE:.711,F:.985,DRS:8,OAA:5},s:{W:23,L:19,WL:.548,SRS:.7,RD:28,pyth:.54}},SD:{n:"San Diego Padres",div:"NL West",pf:.95,bat:{RG:4.24,Op:87,OBP:.297,SLG:.37,ISO:.095,BABIP:.288,wOBA:.311,wRC:87,BB_pct:7.8,K_pct:23.2},pit:{ERA:4.13,Ep:99,W:1.243,K9:8.8,B9:3.2,RAG:4.22,FIP:4.08,xFIP:4.15,HR9:1.05},fld:{DE:.704,F:.993,DRS:12,OAA:8},s:{W:24,L:17,WL:.585,SRS:-.2,RD:18,pyth:.52}},SEA:{n:"Seattle Mariners",div:"AL West",pf:.95,bat:{RG:4.19,Op:103,OBP:.32,SLG:.38,ISO:.098,BABIP:.298,wOBA:.319,wRC:103,BB_pct:9.5,K_pct:22.1},pit:{ERA:3.67,Ep:108,W:1.221,K9:8.7,B9:2.5,RAG:3.91,FIP:3.62,xFIP:3.75,HR9:.88},fld:{DE:.687,F:.99,DRS:6,OAA:4},s:{W:21,L:22,WL:.488,SRS:.3,RD:5,pyth:.51}},SF:{n:"San Francisco Giants",div:"NL West",pf:.94,bat:{RG:3.45,Op:90,OBP:.292,SLG:.369,ISO:.098,BABIP:.286,wOBA:.309,wRC:90,BB_pct:8.4,K_pct:22.5},pit:{ERA:3.98,Ep:99,W:1.327,K9:8.1,B9:3.9,RAG:4.36,FIP:3.95,xFIP:4.05,HR9:.98},fld:{DE:.704,F:.985,DRS:4,OAA:3},s:{W:18,L:24,WL:.429,SRS:-.9,RD:-22,pyth:.45}},STL:{n:"St. Louis Cardinals",div:"NL Central",pf:.99,bat:{RG:4.68,Op:104,OBP:.319,SLG:.387,ISO:.112,BABIP:.299,wOBA:.328,wRC:104,BB_pct:8.8,K_pct:21.8},pit:{ERA:4.24,Ep:93,W:1.365,K9:7.3,B9:3.8,RAG:4.56,FIP:4.32,xFIP:4.42,HR9:1.12},fld:{DE:.703,F:.988,DRS:2,OAA:1},s:{W:24,L:17,WL:.585,SRS:.3,RD:22,pyth:.53}},TB:{n:"Tampa Bay Rays",div:"AL East",pf:.98,bat:{RG:4.54,Op:101,OBP:.33,SLG:.379,ISO:.098,BABIP:.305,wOBA:.328,wRC:101,BB_pct:10.2,K_pct:20.5},pit:{ERA:3.48,Ep:119,W:1.153,K9:7.9,B9:3.1,RAG:3.95,FIP:3.42,xFIP:3.52,HR9:.85},fld:{DE:.731,F:.98,DRS:24,OAA:16},s:{W:31,L:15,WL:.674,SRS:.7,RD:52,pyth:.63}},TEX:{n:"Texas Rangers",div:"AL West",pf:1.06,bat:{RG:3.71,Op:104,OBP:.315,SLG:.369,ISO:.095,BABIP:.292,wOBA:.318,wRC:104,BB_pct:8.5,K_pct:21.2},pit:{ERA:3.6,Ep:103,W:1.213,K9:8.8,B9:3.2,RAG:3.74,FIP:3.55,xFIP:3.65,HR9:.88},fld:{DE:.717,F:.988,DRS:10,OAA:7},s:{W:20,L:22,WL:.476,SRS:.2,RD:2,pyth:.50}},TOR:{n:"Toronto Blue Jays",div:"AL East",pf:.97,bat:{RG:4.17,Op:89,OBP:.308,SLG:.376,ISO:.102,BABIP:.292,wOBA:.312,wRC:89,BB_pct:8.2,K_pct:22.8},pit:{ERA:4.19,Ep:106,W:1.305,K9:9.1,B9:3.1,RAG:4.55,FIP:4.12,xFIP:4.22,HR9:1.05},fld:{DE:.677,F:.982,DRS:-12,OAA:-8},s:{W:18,L:24,WL:.429,SRS:-.4,RD:-14,pyth:.46}},WSN:{n:"Washington Nationals",div:"NL East",pf:.93,bat:{RG:5.4,Op:111,OBP:.325,SLG:.411,ISO:.128,BABIP:.318,wOBA:.346,wRC:111,BB_pct:9.2,K_pct:21.5},pit:{ERA:4.77,Ep:85,W:1.422,K9:7.6,B9:3.8,RAG:5.57,FIP:4.88,xFIP:4.92,HR9:1.3},fld:{DE:.692,F:.974,DRS:-18,OAA:-12},s:{W:20,L:22,WL:.476,SRS:.3,RD:2,pyth:.50}}};
 const IDS={109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:'CIN',114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',158:'MIL',142:'MIN',121:'NYM',147:'NYY',143:'PHI',134:'PIT',133:'OAK',135:'SD',137:'SF',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSN',136:'SEA'};
 const WC_FALLBACK={AL:[{t:'Houston Astros',a:'HOU',w:28,l:18,gb:0,pct:.609},{t:'Seattle Mariners',a:'SEA',w:27,l:19,gb:1,pct:.587},{t:'Toronto Blue Jays',a:'TOR',w:25,l:21,gb:3,pct:.543},{t:'Boston Red Sox',a:'BOS',w:24,l:22,gb:4,pct:.522},{t:'Tampa Bay Rays',a:'TB',w:22,l:24,gb:6,pct:.478}],NL:[{t:'San Francisco Giants',a:'SF',w:27,l:19,gb:0,pct:.587},{t:'Arizona Diamondbacks',a:'ARI',w:26,l:20,gb:1,pct:.565},{t:'Miami Marlins',a:'MIA',w:24,l:22,gb:3,pct:.522},{t:'Chicago Cubs',a:'CHC',w:23,l:23,gb:4,pct:.500},{t:'Cincinnati Reds',a:'CIN',w:22,l:24,gb:5,pct:.478}]};
 // ESPN Team ID → abbr mapping (verified from ESPN teams API 2025-26)
@@ -1000,9 +1017,9 @@ const NHL={
     g1:'Frederik Andersen',g2:'Pyotr Kochetkov',series:'CONF FINALS (E)',sw:0,sl:0,
     key:['Taylor Hall (12pts PO)','Jackson Blake (11pts PO)','Logan Stankoven (7G)','Sebastian Aho','Nikolaj Ehlers'],note:'Andersen 8-0 .950 SV% 1.12 GAA — PERFECT record. Stankoven/Blake both elite. ECF vs G7 winner.'}
 };
-const TONIGHT=[
-  {h:'CAR',a:'MTL',time:'TBD',net:'ESPN',gn:1,ctx:'ECF — CAR vs MTL · SERIES 0-0',hL:-185,aL:158,ou:5.5}
-];
+// May 19-20: NO NHL games. WCF Game 1: COL vs VGK on May 21.
+const TONIGHT=[];
+const WCF_NEXT={h:'COL',a:'VGK',time:'8:00 PM ET',net:'ESPN',gn:1,ctx:'WCF — SERIES 0-0',date:'2026-05-21',hL:-140,aL:118,ou:5.5};
 const ECF_DATES=['2026-05-21','2026-05-23','2026-05-25','2026-05-27','2026-05-29','2026-05-31','2026-06-02'];
 // ═══ MONEYPUCK EMBEDDED DATA (updates daily at midnight) ════
 const MP_DATA={
@@ -2000,6 +2017,10 @@ function renderNHLTonight(){
 function renderNHLPicks(){
   const el=document.getElementById('nhl-picks');if(!el)return;
   try{
+    if(!TONIGHT.length){
+      el.innerHTML=`<div class="empty">NO NHL GAMES MAY 19-20<br><span style="font-size:10px;color:var(--t3);display:block;margin-top:6px">Next game: COL vs VGK — WCF G1 — May 21 8:00 PM ET (ESPN)</span><span style="font-size:9px;color:var(--t3);display:block;margin-top:3px">Colorado leads West · Vegas defending champs · COL -140 opens</span></div>`;
+      return;
+    }
     let html='';
     for(const g of TONIGHT){
       const h=NHL[g.h],aw=NHL[g.a];if(!h||!aw)continue;
@@ -2071,7 +2092,18 @@ async function renderNHLGames(){
 }
 function renderNHLGamesOffline(){
   const el=document.getElementById('nhl-games');if(!el)return;
-  if(!TONIGHT.length){el.innerHTML='<div class="empty">NO GAMES SCHEDULED</div>';return;}
+  if(!TONIGHT.length){
+    // Show next game info when no games tonight
+    const nextHtml=WCF_NEXT?`<div class="card" style="margin-top:10px;border-left:2px solid var(--ic)">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--ic);letter-spacing:2px;margin-bottom:6px">NEXT GAME</div>
+      <div style="font-family:var(--orb);font-size:14px;font-weight:700">${WCF_NEXT.h} vs ${WCF_NEXT.a}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t2)">${WCF_NEXT.ctx} · Game ${WCF_NEXT.gn}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${WCF_NEXT.date} · ${WCF_NEXT.time} ${WCF_NEXT.net}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">O/U ${WCF_NEXT.ou} · ${WCF_NEXT.h} ${WCF_NEXT.hL>0?'+':''}${WCF_NEXT.hL}</div>
+    </div>`:'';
+    el.innerHTML=`<div class="empty">NO NHL GAMES MAY 19-20<br><span style="font-size:10px;color:var(--t3)">Next: ${WCF_NEXT?`COL vs VGK — WCF G1 — ${WCF_NEXT.date}`:'TBD'}</span></div>${nextHtml}`;
+    return;
+  }
   let html='';
   for(const g of TONIGHT){
     const h=NHL[g.h],aw=NHL[g.a];if(!h||!aw)continue;
@@ -2493,14 +2525,15 @@ async function triggerNHL(){if(!API_ONLINE()){toast('// NO BACKEND');return;}awa
 async function doUpdate(){
   const btn=document.getElementById('sync-btn');if(btn){btn.textContent='↻ SYNCING';btn.style.color='var(--vc)';}
   const st=document.getElementById('upd-st');if(st){st.textContent='SYNCING…';st.style.color='var(--vc)';}
-  toast('// SYNCING…');
+  toast('// SYNCING ALL SPORTS…');
   if(API_ONLINE()){
     await api('POST','/admin/pipeline');
-    await new Promise(r=>setTimeout(r,2000));// wait 2s for pipeline
+    await new Promise(r=>setTimeout(r,2000));
     await syncPicksFromBackend();
     await renderNHLEdge('team');renderMoneyPuck();
     toast('// BACKEND PIPELINE TRIGGERED');
   } else {
+    // MLB
     await loadGames(todayESPN());
     try{
       const[hR,pR]=await Promise.all([
@@ -2510,8 +2543,38 @@ async function doUpdate(){
       let ok=0;if(hR.ok){applyMLB(await hR.json(),'hit');ok++;}if(pR.ok){applyMLB(await pR.json(),'pit');ok++;}
       if(ok>0){initELO();buildMLB();renderR();}
     }catch(e){console.error('MLB stats:',e);}
+    // NBA — auto-settle yesterday's games
+    try{
+      const nbaSbR=await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${todayESPN()}&limit=10`,{mode:'cors',cache:'no-cache'});
+      if(nbaSbR.ok){
+        const nbaD=await nbaSbR.json();
+        const preds=getP();let changed=false;
+        for(const ev of(nbaD.events||[])){
+          const st2=ev.status?.type?.name;
+          if(st2!=='STATUS_FINAL')continue;
+          const comps=ev.competitions?.[0];if(!comps)continue;
+          const home=comps.competitors?.find(c=>c.homeAway==='home');
+          const away=comps.competitors?.find(c=>c.homeAway==='away');
+          if(!home||!away)continue;
+          const hAbbr=home.team?.abbreviation,aAbbr=away.team?.abbreviation;
+          const hSc=parseInt(home.score||0),aSc=parseInt(away.score||0);
+          for(const p of preds){
+            if(p.outcome!=='pending'||p.sport!=='NBA')continue;
+            if(p.hA!==hAbbr&&p.awA!==aAbbr)continue;
+            let outcome=null;
+            if(p.betType==='ML'){if(p.betOn===hAbbr)outcome=hSc>aSc?'win':'loss';else if(p.betOn===aAbbr)outcome=aSc>hSc?'win':'loss';}
+            else if(p.betType==='OU'){const total=hSc+aSc;const ou=parseFloat(p.ou||0);if(ou>0)outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
+            if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`🏀 NBA SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
+          }
+          if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
+        }
+      }
+    }catch(e){console.warn('NBA settle:',e);}
+    // NHL
     await fetchNHLEdge();await autoSettleNHL();renderMoneyPuck();
-    toast('// OFFLINE SYNC COMPLETE');
+    // Re-render all tabs
+    try{renderNBAGames();renderNBAProps();renderNBAParlayG();renderMLBGames();renderNHLGames();}catch(e){}
+    toast('// OFFLINE SYNC COMPLETE — MLB·NBA·NHL REFRESHED');
   }
   const now=getMSTNow().toLocaleString();S.s('last_upd',now);S.s('last_upd_date',getMSTDate());
   if(st){st.textContent=`✓ SYNCED ${now.slice(0,16)} MST`;st.style.color='var(--nc)';}
@@ -2582,15 +2645,14 @@ function nhlRosterScore(abbr){
 // Conference Finals: OKC vs SA (WCF starts 5/18), NY vs CLE (ECF starts 5/19)
 // Verified via ESPN API — all eliminated teams removed
 const NBA_TEAMS={
-  OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:8,pl:0,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'8-0 playoffs. Swept PHX + LAL. SGA leading MVP race. OKC best net in league.'},
-  SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:8,pl:4,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'Wemby Year 3 dominant. Fox (acquired) elite playmaking. Beat MIN 4-2 in R2.'},
+  OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:8,pl:1,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'WCF — SA LEADS 1-0. Lost G1 115-122 2OT. SGA/JWill still elite — bounce-back game expected May 20.'},
+  SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:8,pl:4,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'WCF — SA LEADS 1-0. Won G1 122-115 in 2OT (May 18). Wemby 41 pts+24 reb. Fox elite late. G2 May 20.'},
   NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
   CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
 };
-// May 19 2026: ECF Game 1 (NY vs CLE) + WCF Game 2 (OKC vs SA — OKC leads 1-0 after winning G1)
+// May 19 2026: ECF Game 1 ONLY — NY vs CLE 8 PM ET. OKC vs SA G2 is May 20 (SA leads WCF 1-0, won G1 122-115 2OT).
 const NBA_TONIGHT=[
-  {h:'NY',a:'CLE',time:'7:30 PM ET',net:'TNT',gn:1,ctx:'ECF — SERIES 0-0',hL:-145,aL:125,ou:212.5},
-  {h:'OKC',a:'SA',time:'9:30 PM ET',net:'TNT',gn:2,ctx:'WCF — SERIES 1-0 OKC',hL:-195,aL:163,ou:219.5}
+  {h:'NY',a:'CLE',time:'8:00 PM ET',net:'ESPN',gn:1,ctx:'ECF — SERIES 0-0',hL:-250,aL:205,ou:217.5}
 ];
 const NBA_PLAYERS=[
   {n:'Shai Gilgeous-Alexander',t:'OKC',ppg:32.1,rpg:5.4,apg:6.8,efg:.548,usage:34.5,rating:'ELITE'},
@@ -2833,14 +2895,14 @@ function renderNBAPicks(){
 function renderNBAProps(){
   const el=document.getElementById('nba-props');if(!el)return;
   const props=[
-    {player:'Shai Gilgeous-Alexander',t:'OKC',line:'PTS O/U 32.5',over:true,conf:72,basis:'32.1 PPG playoffs · 34.5% USG · SA allows 109 ppg — G1 statement game expected',grade:'ELITE'},
-    {player:'Victor Wembanyama',t:'SA',line:'PTS+REB+BLK O/U 38.5',over:true,conf:68,basis:'26.8/11.2/4.8 in playoffs · Wemby dominant vs any size — OKC lacks true big',grade:'ELITE'},
-    {player:"De'Aaron Fox",t:'SA',line:'AST O/U 7.5',over:true,conf:64,basis:'8.8 APG playoffs · OKC help D creates kick-out lanes · Fox elite PnR',grade:'LOCK'},
-    {player:'Jalen Williams',t:'OKC',line:'PTS O/U 21.5',over:true,conf:63,basis:'21.4 PPG playoffs · SA weak on wing closeouts — Williams attack mode',grade:'LOCK'},
-    {player:'Chet Holmgren',t:'OKC',line:'BLK O/U 1.5',over:true,conf:67,basis:'Elite rim protector vs Wemby-heavy SA offense — 4.75 BPG team in playoffs',grade:'LOCK'},
-    {player:'Victor Wembanyama',t:'SA',line:'3PM O/U 2.5',over:false,conf:61,basis:'OKC closes hard on all shooters · Holmgren forces mid-range — Wemby 3pt volume dips',grade:'GOOD'},
-    {player:'Shai Gilgeous-Alexander',t:'OKC',line:'AST O/U 6.5',over:true,conf:60,basis:'6.8 APG vs SA switching defense — Fox can\'t guard SGA 1-on-1 forcing double-teams',grade:'GOOD'},
-    {player:'Stephon Castle',t:'SA',line:'PTS O/U 15.5',over:false,conf:58,basis:'OKC perimeter D elite (10.2 STL/game) · Castle still a rookie under pressure moments',grade:'FAIR'}
+    {player:'Jalen Brunson',t:'NY',line:'PTS O/U 30.5',over:true,conf:71,basis:'30.4 PPG playoffs · 33.8% USG · ECF G1 pressure brings out Brunson best — CLE perimeter D not elite',grade:'ELITE'},
+    {player:'Karl-Anthony Towns',t:'NY',line:'REB O/U 10.5',over:true,conf:67,basis:'11.4 RPG playoffs · Mobley only big on CLE — KAT crash dominance in MSG',grade:'LOCK'},
+    {player:'Donovan Mitchell',t:'CLE',line:'PTS O/U 28.5',over:true,conf:64,basis:'28.6 PPG playoffs · Mitchell ECF debut — elevated clutch production expected vs NY',grade:'LOCK'},
+    {player:'Evan Mobley',t:'CLE',line:'BLK O/U 1.5',over:true,conf:66,basis:'2.6 BPG in playoffs · NY drives to rim with Brunson/KAT — Mobley elite deterrent',grade:'LOCK'},
+    {player:'Karl-Anthony Towns',t:'NY',line:'PTS O/U 22.5',over:true,conf:62,basis:'23.8 PPG playoffs · CLE has no true answer for KAT at center — post + mid-range all game',grade:'GOOD'},
+    {player:'James Harden',t:'CLE',line:'AST O/U 7.5',over:true,conf:61,basis:'8.2 APG playoffs · NY help D rotates aggressively — Harden orchestration creates kick-outs',grade:'GOOD'},
+    {player:'Mikal Bridges',t:'NY',line:'PTS O/U 17.5',over:false,conf:59,basis:'CLE perimeter D solid + 18.4 PPG but vol dips in big spots — Brunson dominates ball',grade:'FAIR'},
+    {player:'Jalen Brunson',t:'NY',line:'AST O/U 7.5',over:true,conf:60,basis:'7.8 APG · CLE help forces doubles — Brunson distributes in ECF opener at MSG',grade:'GOOD'}
   ];
   const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
   // Filter to only show props for tonight's NBA teams
@@ -3634,96 +3696,211 @@ function nrfiRec(prob){
 //          hard_w,clay_w,grass_w,age,country,fatigue_7d}
 // ELO values seeded from TennisAbstract (May 2026 estimates)
 // Stats from ATP/WTA statistical leaders (serve/return)
+// ATP_DB: Real TennisAbstract ELO data (May 18 2026). hardElo/clayElo/grassElo from tennisabstract.com
 const ATP_DB={
- 'J.Sinner':    {rank:1,hardElo:2162,clayElo:2090,grassElo:2048,formElo:2195,serveElo:1980,returnElo:2100,fs:.64,fsw:.76,ssw:.55,ace:3.8,df:1.9,hold:.85,brk:.45,retw:.42,hw:.83,cw:.78,gw:.73,age:24,cty:'ITA',fat:1},
- 'C.Alcaraz':   {rank:2,hardElo:2140,clayElo:2155,grassElo:2130,formElo:2160,serveElo:2020,returnElo:2050,fs:.63,fsw:.75,ssw:.56,ace:4.2,df:2.1,hold:.84,brk:.49,retw:.43,hw:.81,cw:.82,gw:.79,age:22,cty:'ESP',fat:2},
- 'A.Zverev':    {rank:3,hardElo:2060,clayElo:2080,grassElo:1990,formElo:2090,serveElo:2010,returnElo:1980,fs:.62,fsw:.74,ssw:.54,ace:5.1,df:2.4,hold:.83,brk:.40,retw:.40,hw:.76,cw:.80,gw:.70,age:28,cty:'GER',fat:2},
- 'N.Djokovic':  {rank:4,hardElo:2080,clayElo:2090,grassElo:2100,formElo:2010,serveElo:1970,returnElo:2060,fs:.63,fsw:.73,ssw:.54,ace:3.2,df:1.8,hold:.84,brk:.46,retw:.44,hw:.80,cw:.81,gw:.82,age:38,cty:'SRB',fat:3},
- 'D.Medvedev':  {rank:5,hardElo:2050,clayElo:1970,grassElo:2000,formElo:2030,serveElo:1990,returnElo:2010,fs:.65,fsw:.74,ssw:.53,ace:4.8,df:2.0,hold:.84,brk:.41,retw:.40,hw:.80,cw:.70,gw:.73,age:29,cty:'RUS',fat:2},
- 'H.Rune':      {rank:6,hardElo:2000,clayElo:2020,grassElo:1960,formElo:2010,serveElo:1950,returnElo:1970,fs:.61,fsw:.73,ssw:.53,ace:3.9,df:2.5,hold:.82,brk:.42,retw:.40,hw:.73,cw:.76,gw:.68,age:22,cty:'DEN',fat:1},
- 'C.Ruud':      {rank:7,hardElo:1960,clayElo:2030,grassElo:1880,formElo:1980,serveElo:1870,returnElo:1950,fs:.60,fsw:.72,ssw:.53,ace:2.8,df:2.0,hold:.80,brk:.41,retw:.40,hw:.70,cw:.80,gw:.62,age:26,cty:'NOR',fat:2},
- 'A.Rublev':    {rank:8,hardElo:1980,clayElo:1990,grassElo:1920,formElo:1960,serveElo:1930,returnElo:1940,fs:.63,fsw:.73,ssw:.53,ace:3.2,df:2.2,hold:.82,brk:.40,retw:.39,hw:.74,cw:.75,gw:.68,age:27,cty:'RUS',fat:2},
- 'A.de Minaur': {rank:9,hardElo:1980,clayElo:1940,grassElo:1980,formElo:2000,serveElo:1890,returnElo:1990,fs:.66,fsw:.74,ssw:.56,ace:3.0,df:1.5,hold:.83,brk:.44,retw:.43,hw:.77,cw:.70,gw:.76,age:26,cty:'AUS',fat:1},
- 'T.Fritz':     {rank:10,hardElo:1960,clayElo:1900,grassElo:1940,formElo:1970,serveElo:1990,returnElo:1900,fs:.65,fsw:.75,ssw:.54,ace:5.8,df:2.3,hold:.84,brk:.38,retw:.38,hw:.76,cw:.66,gw:.73,age:28,cty:'USA',fat:1},
- 'T.Paul':      {rank:11,hardElo:1950,clayElo:1890,grassElo:1920,formElo:1960,serveElo:1900,returnElo:1920,fs:.62,fsw:.73,ssw:.54,ace:4.5,df:2.0,hold:.82,brk:.40,retw:.40,hw:.74,cw:.65,gw:.70,age:28,cty:'USA',fat:1},
- 'B.Shelton':   {rank:12,hardElo:1930,clayElo:1870,grassElo:1900,formElo:1950,serveElo:2000,returnElo:1870,fs:.63,fsw:.74,ssw:.53,ace:6.2,df:2.5,hold:.83,brk:.37,retw:.37,hw:.72,cw:.62,gw:.68,age:23,cty:'USA',fat:1},
- 'G.Dimitrov':  {rank:13,hardElo:1940,clayElo:1900,grassElo:1950,formElo:1920,serveElo:1940,returnElo:1900,fs:.63,fsw:.74,ssw:.54,ace:4.8,df:2.0,hold:.82,brk:.38,retw:.39,hw:.74,cw:.69,gw:.74,age:34,cty:'BUL',fat:2},
- 'A.Fils':      {rank:14,hardElo:1930,clayElo:1940,grassElo:1880,formElo:1950,serveElo:1910,returnElo:1920,fs:.61,fsw:.72,ssw:.53,ace:3.5,df:2.2,hold:.81,brk:.41,retw:.40,hw:.72,cw:.74,gw:.65,age:21,cty:'FRA',fat:1},
- 'F.Auger-Aliassime':{rank:15,hardElo:1920,clayElo:1880,grassElo:1930,formElo:1930,serveElo:1960,returnElo:1880,fs:.64,fsw:.74,ssw:.53,ace:5.5,df:2.2,hold:.83,brk:.37,retw:.38,hw:.72,cw:.65,gw:.72,age:25,cty:'CAN',fat:2},
- 'L.Musetti':   {rank:16,hardElo:1910,clayElo:1950,grassElo:1870,formElo:1920,serveElo:1900,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.8,df:2.3,hold:.80,brk:.41,retw:.40,hw:.70,cw:.75,gw:.64,age:23,cty:'ITA',fat:1},
- 'H.Hurkacz':   {rank:17,hardElo:1950,clayElo:1880,grassElo:1970,formElo:1910,serveElo:1990,returnElo:1880,fs:.65,fsw:.75,ssw:.53,ace:6.0,df:2.0,hold:.84,brk:.37,retw:.37,hw:.74,cw:.64,gw:.76,age:28,cty:'POL',fat:2},
- 'S.Tsitsipas': {rank:18,hardElo:1950,clayElo:1980,grassElo:1900,formElo:1900,serveElo:1940,returnElo:1930,fs:.62,fsw:.73,ssw:.53,ace:4.0,df:2.3,hold:.81,brk:.41,retw:.40,hw:.73,cw:.77,gw:.67,age:27,cty:'GRE',fat:2},
- 'U.Humbert':   {rank:19,hardElo:1920,clayElo:1900,grassElo:1940,formElo:1930,serveElo:1970,returnElo:1880,fs:.65,fsw:.75,ssw:.53,ace:5.5,df:1.9,hold:.83,brk:.37,retw:.38,hw:.72,cw:.68,gw:.72,age:27,cty:'FRA',fat:1},
- 'F.Cerundolo': {rank:20,hardElo:1890,clayElo:1940,grassElo:1840,formElo:1900,serveElo:1880,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.2,df:2.1,hold:.80,brk:.42,retw:.41,hw:.69,cw:.74,gw:.62,age:26,cty:'ARG',fat:1},
- 'S.Wawrinka':  {rank:35,hardElo:1840,clayElo:1870,grassElo:1820,formElo:1820,serveElo:1900,returnElo:1820,fs:.62,fsw:.73,ssw:.52,ace:4.1,df:2.8,hold:.81,brk:.36,retw:.37,hw:.68,cw:.70,gw:.65,age:40,cty:'SUI',fat:2},
- 'N.Kyrgios':   {rank:42,hardElo:1870,clayElo:1790,grassElo:1920,formElo:1840,serveElo:2030,returnElo:1800,fs:.66,fsw:.77,ssw:.53,ace:8.2,df:3.1,hold:.85,brk:.33,retw:.35,hw:.70,cw:.57,gw:.75,age:30,cty:'AUS',fat:2},
- 'J.Draper':    {rank:22,hardElo:1910,clayElo:1890,grassElo:1920,formElo:1940,serveElo:1920,returnElo:1890,fs:.62,fsw:.73,ssw:.53,ace:4.5,df:2.0,hold:.81,brk:.39,retw:.39,hw:.71,cw:.69,gw:.71,age:24,cty:'GBR',fat:1},
- 'K.Khachanov': {rank:23,hardElo:1920,clayElo:1900,grassElo:1890,formElo:1890,serveElo:1940,returnElo:1880,fs:.63,fsw:.74,ssw:.52,ace:4.5,df:2.2,hold:.82,brk:.37,retw:.38,hw:.71,cw:.69,gw:.67,age:28,cty:'RUS',fat:2},
- 'B.Coric':     {rank:28,hardElo:1880,clayElo:1890,grassElo:1850,formElo:1870,serveElo:1870,returnElo:1880,fs:.61,fsw:.72,ssw:.52,ace:3.5,df:2.1,hold:.80,brk:.39,retw:.39,hw:.70,cw:.71,gw:.65,age:28,cty:'CRO',fat:1},
- 'D.Shapovalov':{rank:30,hardElo:1890,clayElo:1870,grassElo:1920,formElo:1870,serveElo:1930,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.66,gw:.72,age:26,cty:'CAN',fat:1},
- // ── Extended ATP Roster (ranks 21-60) ───────────────────────────
- 'A.Bublik':    {rank:25,hardElo:1910,clayElo:1870,grassElo:1940,formElo:1890,serveElo:2010,returnElo:1810,fs:.67,fsw:.77,ssw:.50,ace:9.1,df:3.5,hold:.84,brk:.32,retw:.33,hw:.71,cw:.62,gw:.73,age:27,cty:'KAZ',fat:1},
- 'A.Tabilo':    {rank:26,hardElo:1900,clayElo:1930,grassElo:1850,formElo:1920,serveElo:1870,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.8,df:2.0,hold:.80,brk:.42,retw:.41,hw:.70,cw:.74,gw:.63,age:27,cty:'CHI',fat:1},
- 'J.Mensik':    {rank:24,hardElo:1920,clayElo:1890,grassElo:1900,formElo:1950,serveElo:1940,returnElo:1890,fs:.63,fsw:.74,ssw:.53,ace:5.2,df:2.2,hold:.82,brk:.39,retw:.39,hw:.73,cw:.68,gw:.70,age:19,cty:'CZE',fat:1},
- 'F.Marozsan':  {rank:27,hardElo:1880,clayElo:1910,grassElo:1840,formElo:1900,serveElo:1860,returnElo:1890,fs:.59,fsw:.71,ssw:.52,ace:3.5,df:2.3,hold:.79,brk:.41,retw:.40,hw:.69,cw:.73,gw:.62,age:24,cty:'HUN',fat:2},
- 'R.Bautista-Agut':{rank:29,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1870,serveElo:1870,returnElo:1890,fs:.61,fsw:.72,ssw:.52,ace:3.2,df:1.8,hold:.80,brk:.40,retw:.40,hw:.70,cw:.72,gw:.67,age:37,cty:'ESP',fat:2},
- 'L.Sonego':    {rank:31,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1880,serveElo:1910,returnElo:1860,fs:.62,fsw:.73,ssw:.52,ace:4.8,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.73,gw:.67,age:30,cty:'ITA',fat:2},
- 'M.Berrettini': {rank:40,hardElo:1900,clayElo:1890,grassElo:1950,formElo:1870,serveElo:2000,returnElo:1840,fs:.65,fsw:.76,ssw:.53,ace:7.5,df:2.8,hold:.84,brk:.35,retw:.36,hw:.72,cw:.68,gw:.77,age:29,cty:'ITA',fat:3},
- 'S.Baez':      {rank:33,hardElo:1860,clayElo:1920,grassElo:1800,formElo:1870,serveElo:1830,returnElo:1900,fs:.59,fsw:.71,ssw:.52,ace:2.5,df:2.2,hold:.78,brk:.43,retw:.42,hw:.66,cw:.75,gw:.58,age:23,cty:'ARG',fat:1},
- 'T.Etcheverry':{rank:34,hardElo:1850,clayElo:1920,grassElo:1790,formElo:1860,serveElo:1820,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.8,df:2.5,hold:.77,brk:.42,retw:.41,hw:.65,cw:.75,gw:.57,age:25,cty:'ARG',fat:2},
- 'C.Norrie':    {rank:36,hardElo:1870,clayElo:1880,grassElo:1900,formElo:1860,serveElo:1870,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.5,df:2.0,hold:.79,brk:.40,retw:.40,hw:.70,cw:.70,gw:.72,age:30,cty:'GBR',fat:2},
- 'F.Tiafoe':    {rank:21,hardElo:1920,clayElo:1880,grassElo:1900,formElo:1930,serveElo:1940,returnElo:1880,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.82,brk:.38,retw:.38,hw:.72,cw:.65,gw:.70,age:27,cty:'USA',fat:2},
- 'J.Struff':    {rank:38,hardElo:1860,clayElo:1870,grassElo:1870,formElo:1850,serveElo:1940,returnElo:1820,fs:.65,fsw:.74,ssw:.52,ace:6.5,df:2.8,hold:.83,brk:.35,retw:.36,hw:.69,cw:.68,gw:.70,age:35,cty:'GER',fat:2},
- 'J.Machac':    {rank:32,hardElo:1880,clayElo:1870,grassElo:1870,formElo:1900,serveElo:1890,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.0,hold:.81,brk:.38,retw:.39,hw:.70,cw:.68,gw:.68,age:24,cty:'CZE',fat:1},
- 'C.OConnell':   {rank:45,hardElo:1840,clayElo:1830,grassElo:1860,formElo:1850,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:4.8,df:2.3,hold:.81,brk:.37,retw:.37,hw:.68,cw:.63,gw:.69,age:30,cty:'AUS',fat:1},
- 'A.Mannarino': {rank:43,hardElo:1850,clayElo:1870,grassElo:1840,formElo:1850,serveElo:1840,returnElo:1870,fs:.59,fsw:.71,ssw:.52,ace:2.8,df:2.0,hold:.78,brk:.41,retw:.41,hw:.68,cw:.71,gw:.64,age:37,cty:'FRA',fat:2},
- 'R.Hijikata':  {rank:50,hardElo:1830,clayElo:1830,grassElo:1850,formElo:1840,serveElo:1870,returnElo:1830,fs:.62,fsw:.72,ssw:.51,ace:4.2,df:2.4,hold:.80,brk:.36,retw:.37,hw:.67,cw:.63,gw:.68,age:24,cty:'AUS',fat:1},
- 'Y.Nishioka':  {rank:48,hardElo:1840,clayElo:1860,grassElo:1800,formElo:1840,serveElo:1820,returnElo:1870,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.0,hold:.77,brk:.42,retw:.42,hw:.67,cw:.69,gw:.60,age:29,cty:'JPN',fat:1},
- 'J.Wolf':      {rank:46,hardElo:1840,clayElo:1820,grassElo:1830,formElo:1840,serveElo:1870,returnElo:1820,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.81,brk:.36,retw:.37,hw:.68,cw:.62,gw:.65,age:26,cty:'USA',fat:1},
- 'F.Fognini':   {rank:55,hardElo:1820,clayElo:1850,grassElo:1810,formElo:1810,serveElo:1820,returnElo:1840,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.77,brk:.41,retw:.41,hw:.66,cw:.70,gw:.61,age:38,cty:'ITA',fat:3},
- 'P.Carreno-Busta':{rank:37,hardElo:1860,clayElo:1900,grassElo:1840,formElo:1850,serveElo:1840,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.2,df:2.0,hold:.78,brk:.41,retw:.41,hw:.69,cw:.73,gw:.63,age:34,cty:'ESP',fat:2},
- 'B.van de Zandschulp':{rank:39,hardElo:1860,clayElo:1870,grassElo:1830,formElo:1850,serveElo:1860,returnElo:1860,fs:.61,fsw:.72,ssw:.52,ace:4.0,df:2.3,hold:.79,brk:.39,retw:.39,hw:.69,cw:.69,gw:.63,age:30,cty:'NED',fat:1},
- 'M.McDonald':  {rank:41,hardElo:1850,clayElo:1820,grassElo:1840,formElo:1850,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.2,hold:.81,brk:.37,retw:.37,hw:.68,cw:.62,gw:.66,age:30,cty:'USA',fat:1},
+ 'J.Sinner':         {rank:1, hardElo:2273,clayElo:2242,grassElo:2098,formElo:2280,serveElo:2050,returnElo:2180,fs:.64,fsw:.76,ssw:.55,ace:3.8,df:1.9,hold:.85,brk:.45,retw:.42,hw:.83,cw:.80,gw:.75,age:24,cty:'ITA',fat:1},
+ 'C.Alcaraz':        {rank:2, hardElo:2198,clayElo:2212,grassElo:2139,formElo:2210,serveElo:2020,returnElo:2060,fs:.63,fsw:.75,ssw:.56,ace:4.2,df:2.1,hold:.84,brk:.49,retw:.43,hw:.81,cw:.82,gw:.79,age:22,cty:'ESP',fat:2},
+ 'A.Zverev':         {rank:3, hardElo:2031,clayElo:2021,grassElo:1894,formElo:2040,serveElo:2010,returnElo:1980,fs:.62,fsw:.74,ssw:.54,ace:5.1,df:2.4,hold:.83,brk:.40,retw:.40,hw:.76,cw:.80,gw:.70,age:28,cty:'GER',fat:2},
+ 'N.Djokovic':       {rank:4, hardElo:2026,clayElo:1969,grassElo:1930,formElo:2010,serveElo:1970,returnElo:2060,fs:.63,fsw:.73,ssw:.54,ace:3.2,df:1.8,hold:.84,brk:.46,retw:.44,hw:.80,cw:.81,gw:.82,age:38,cty:'SRB',fat:3},
+ 'A.Fils':           {rank:5, hardElo:1950,clayElo:1955,grassElo:1796,formElo:1970,serveElo:1910,returnElo:1920,fs:.61,fsw:.72,ssw:.53,ace:3.5,df:2.2,hold:.81,brk:.41,retw:.40,hw:.72,cw:.74,gw:.65,age:21,cty:'FRA',fat:1},
+ 'D.Medvedev':       {rank:6, hardElo:1978,clayElo:1922,grassElo:1883,formElo:1990,serveElo:1990,returnElo:2010,fs:.65,fsw:.74,ssw:.53,ace:4.8,df:2.0,hold:.84,brk:.41,retw:.40,hw:.80,cw:.70,gw:.73,age:29,cty:'RUS',fat:2},
+ 'A.de Minaur':      {rank:7, hardElo:1944,clayElo:1905,grassElo:1932,formElo:1960,serveElo:1890,returnElo:1990,fs:.66,fsw:.74,ssw:.56,ace:3.0,df:1.5,hold:.83,brk:.44,retw:.43,hw:.77,cw:.70,gw:.76,age:26,cty:'AUS',fat:1},
+ 'C.Ruud':           {rank:8, hardElo:1884,clayElo:1970,grassElo:1710,formElo:1900,serveElo:1870,returnElo:1950,fs:.60,fsw:.72,ssw:.53,ace:2.8,df:2.0,hold:.80,brk:.41,retw:.40,hw:.70,cw:.80,gw:.62,age:26,cty:'NOR',fat:2},
+ 'T.Fritz':          {rank:9, hardElo:1940,clayElo:1868,grassElo:1912,formElo:1950,serveElo:1990,returnElo:1900,fs:.65,fsw:.75,ssw:.54,ace:5.8,df:2.3,hold:.84,brk:.38,retw:.38,hw:.76,cw:.66,gw:.73,age:28,cty:'USA',fat:1},
+ 'L.Musetti':        {rank:10,hardElo:1904,clayElo:1953,grassElo:1850,formElo:1920,serveElo:1900,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.8,df:2.3,hold:.80,brk:.41,retw:.40,hw:.70,cw:.75,gw:.64,age:23,cty:'ITA',fat:1},
+ 'H.Hurkacz':        {rank:11,hardElo:1927,clayElo:1831,grassElo:1962,formElo:1900,serveElo:1990,returnElo:1880,fs:.65,fsw:.75,ssw:.53,ace:6.0,df:2.0,hold:.84,brk:.37,retw:.37,hw:.74,cw:.64,gw:.76,age:28,cty:'POL',fat:2},
+ 'K.Khachanov':      {rank:12,hardElo:1907,clayElo:1881,grassElo:1858,formElo:1880,serveElo:1940,returnElo:1880,fs:.63,fsw:.74,ssw:.52,ace:4.5,df:2.2,hold:.82,brk:.37,retw:.38,hw:.71,cw:.69,gw:.67,age:28,cty:'RUS',fat:2},
+ 'S.Tsitsipas':      {rank:13,hardElo:1896,clayElo:1961,grassElo:1840,formElo:1890,serveElo:1940,returnElo:1930,fs:.62,fsw:.73,ssw:.53,ace:4.0,df:2.3,hold:.81,brk:.41,retw:.40,hw:.73,cw:.77,gw:.67,age:27,cty:'GRE',fat:2},
+ 'F.Tiafoe':         {rank:14,hardElo:1895,clayElo:1847,grassElo:1883,formElo:1910,serveElo:1940,returnElo:1880,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.82,brk:.38,retw:.38,hw:.72,cw:.65,gw:.70,age:27,cty:'USA',fat:2},
+ 'F.Auger-Aliassime':{rank:15,hardElo:1886,clayElo:1852,grassElo:1906,formElo:1900,serveElo:1960,returnElo:1880,fs:.64,fsw:.74,ssw:.53,ace:5.5,df:2.2,hold:.83,brk:.37,retw:.38,hw:.72,cw:.65,gw:.72,age:25,cty:'CAN',fat:2},
+ 'G.Dimitrov':       {rank:16,hardElo:1906,clayElo:1869,grassElo:1924,formElo:1900,serveElo:1940,returnElo:1900,fs:.63,fsw:.74,ssw:.54,ace:4.8,df:2.0,hold:.82,brk:.38,retw:.39,hw:.74,cw:.69,gw:.74,age:34,cty:'BUL',fat:2},
+ 'A.Rublev':         {rank:17,hardElo:1894,clayElo:1924,grassElo:1834,formElo:1880,serveElo:1930,returnElo:1940,fs:.63,fsw:.73,ssw:.53,ace:3.2,df:2.2,hold:.82,brk:.40,retw:.39,hw:.74,cw:.75,gw:.68,age:27,cty:'RUS',fat:2},
+ 'J.Mensik':         {rank:18,hardElo:1893,clayElo:1846,grassElo:1870,formElo:1930,serveElo:1940,returnElo:1890,fs:.63,fsw:.74,ssw:.53,ace:5.2,df:2.2,hold:.82,brk:.39,retw:.39,hw:.73,cw:.68,gw:.70,age:19,cty:'CZE',fat:1},
+ 'T.Paul':           {rank:19,hardElo:1876,clayElo:1839,grassElo:1841,formElo:1890,serveElo:1900,returnElo:1920,fs:.62,fsw:.73,ssw:.54,ace:4.5,df:2.0,hold:.82,brk:.40,retw:.40,hw:.74,cw:.65,gw:.70,age:28,cty:'USA',fat:1},
+ 'B.Shelton':        {rank:20,hardElo:1872,clayElo:1801,grassElo:1844,formElo:1920,serveElo:2000,returnElo:1870,fs:.63,fsw:.74,ssw:.53,ace:6.2,df:2.5,hold:.83,brk:.37,retw:.37,hw:.72,cw:.62,gw:.68,age:23,cty:'USA',fat:1},
+ 'F.Cerundolo':      {rank:21,hardElo:1862,clayElo:1924,grassElo:1795,formElo:1880,serveElo:1880,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.2,df:2.1,hold:.80,brk:.42,retw:.41,hw:.69,cw:.74,gw:.62,age:26,cty:'ARG',fat:1},
+ 'J.Draper':         {rank:22,hardElo:1871,clayElo:1832,grassElo:1860,formElo:1900,serveElo:1920,returnElo:1890,fs:.62,fsw:.73,ssw:.53,ace:4.5,df:2.0,hold:.81,brk:.39,retw:.39,hw:.71,cw:.69,gw:.71,age:24,cty:'GBR',fat:1},
+ 'A.Tabilo':         {rank:23,hardElo:1860,clayElo:1899,grassElo:1803,formElo:1880,serveElo:1870,returnElo:1900,fs:.60,fsw:.72,ssw:.52,ace:3.8,df:2.0,hold:.80,brk:.42,retw:.41,hw:.70,cw:.74,gw:.63,age:27,cty:'CHI',fat:1},
+ 'A.Bublik':         {rank:24,hardElo:1858,clayElo:1812,grassElo:1883,formElo:1860,serveElo:2010,returnElo:1810,fs:.67,fsw:.77,ssw:.50,ace:9.1,df:3.5,hold:.84,brk:.32,retw:.33,hw:.71,cw:.62,gw:.73,age:27,cty:'KAZ',fat:1},
+ 'F.Marozsan':       {rank:25,hardElo:1849,clayElo:1902,grassElo:1783,formElo:1870,serveElo:1860,returnElo:1890,fs:.59,fsw:.71,ssw:.52,ace:3.5,df:2.3,hold:.79,brk:.41,retw:.40,hw:.69,cw:.73,gw:.62,age:24,cty:'HUN',fat:2},
+ 'R.Bautista-Agut':  {rank:26,hardElo:1847,clayElo:1879,grassElo:1810,formElo:1840,serveElo:1870,returnElo:1890,fs:.61,fsw:.72,ssw:.52,ace:3.2,df:1.8,hold:.80,brk:.40,retw:.40,hw:.70,cw:.72,gw:.67,age:37,cty:'ESP',fat:2},
+ 'U.Humbert':        {rank:27,hardElo:1845,clayElo:1826,grassElo:1870,formElo:1880,serveElo:1970,returnElo:1880,fs:.65,fsw:.75,ssw:.53,ace:5.5,df:1.9,hold:.83,brk:.37,retw:.38,hw:.72,cw:.68,gw:.72,age:27,cty:'FRA',fat:1},
+ 'J.Machac':         {rank:28,hardElo:1843,clayElo:1835,grassElo:1830,formElo:1870,serveElo:1890,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.0,hold:.81,brk:.38,retw:.39,hw:.70,cw:.68,gw:.68,age:24,cty:'CZE',fat:1},
+ 'L.Sonego':         {rank:29,hardElo:1842,clayElo:1874,grassElo:1797,formElo:1840,serveElo:1910,returnElo:1860,fs:.62,fsw:.73,ssw:.52,ace:4.8,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.73,gw:.67,age:30,cty:'ITA',fat:2},
+ 'P.Carreno-Busta':  {rank:30,hardElo:1840,clayElo:1875,grassElo:1798,formElo:1830,serveElo:1840,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.2,df:2.0,hold:.78,brk:.41,retw:.41,hw:.69,cw:.73,gw:.63,age:34,cty:'ESP',fat:2},
+ 'B.Coric':          {rank:31,hardElo:1839,clayElo:1852,grassElo:1802,formElo:1840,serveElo:1870,returnElo:1880,fs:.61,fsw:.72,ssw:.52,ace:3.5,df:2.1,hold:.80,brk:.39,retw:.39,hw:.70,cw:.71,gw:.65,age:28,cty:'CRO',fat:1},
+ 'S.Baez':           {rank:32,hardElo:1835,clayElo:1905,grassElo:1758,formElo:1840,serveElo:1830,returnElo:1900,fs:.59,fsw:.71,ssw:.52,ace:2.5,df:2.2,hold:.78,brk:.43,retw:.42,hw:.66,cw:.75,gw:.58,age:23,cty:'ARG',fat:1},
+ 'D.Shapovalov':     {rank:33,hardElo:1835,clayElo:1808,grassElo:1853,formElo:1840,serveElo:1930,returnElo:1870,fs:.62,fsw:.73,ssw:.52,ace:4.5,df:2.5,hold:.81,brk:.38,retw:.38,hw:.70,cw:.66,gw:.72,age:26,cty:'CAN',fat:1},
+ 'T.Etcheverry':     {rank:34,hardElo:1832,clayElo:1903,grassElo:1752,formElo:1840,serveElo:1820,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.8,df:2.5,hold:.77,brk:.42,retw:.41,hw:.65,cw:.75,gw:.57,age:25,cty:'ARG',fat:2},
+ 'C.Norrie':         {rank:35,hardElo:1831,clayElo:1832,grassElo:1848,formElo:1830,serveElo:1870,returnElo:1880,fs:.60,fsw:.71,ssw:.52,ace:3.5,df:2.0,hold:.79,brk:.40,retw:.40,hw:.70,cw:.70,gw:.72,age:30,cty:'GBR',fat:2},
+ 'S.Wawrinka':       {rank:36,hardElo:1829,clayElo:1855,grassElo:1782,formElo:1810,serveElo:1900,returnElo:1820,fs:.62,fsw:.73,ssw:.52,ace:4.1,df:2.8,hold:.81,brk:.36,retw:.37,hw:.68,cw:.70,gw:.65,age:41,cty:'SUI',fat:2},
+ 'M.Berrettini':     {rank:37,hardElo:1828,clayElo:1836,grassElo:1882,formElo:1840,serveElo:2000,returnElo:1840,fs:.65,fsw:.76,ssw:.53,ace:7.5,df:2.8,hold:.84,brk:.35,retw:.36,hw:.72,cw:.68,gw:.77,age:29,cty:'ITA',fat:3},
+ 'J.Struff':         {rank:38,hardElo:1826,clayElo:1818,grassElo:1813,formElo:1820,serveElo:1940,returnElo:1820,fs:.65,fsw:.74,ssw:.52,ace:6.5,df:2.8,hold:.83,brk:.35,retw:.36,hw:.69,cw:.68,gw:.70,age:35,cty:'GER',fat:2},
+ 'B.van de Zandschulp':{rank:39,hardElo:1824,clayElo:1843,grassElo:1782,formElo:1830,serveElo:1860,returnElo:1860,fs:.61,fsw:.72,ssw:.52,ace:4.0,df:2.3,hold:.79,brk:.39,retw:.39,hw:.69,cw:.69,gw:.63,age:30,cty:'NED',fat:1},
+ 'M.McDonald':       {rank:40,hardElo:1822,clayElo:1788,grassElo:1801,formElo:1820,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.2,hold:.81,brk:.37,retw:.37,hw:.68,cw:.62,gw:.66,age:30,cty:'USA',fat:1},
+ 'A.Mannarino':      {rank:41,hardElo:1820,clayElo:1845,grassElo:1779,formElo:1820,serveElo:1840,returnElo:1870,fs:.59,fsw:.71,ssw:.52,ace:2.8,df:2.0,hold:.78,brk:.41,retw:.41,hw:.68,cw:.71,gw:.64,age:37,cty:'FRA',fat:2},
+ 'N.Kyrgios':        {rank:42,hardElo:1819,clayElo:1758,grassElo:1880,formElo:1810,serveElo:2030,returnElo:1800,fs:.66,fsw:.77,ssw:.53,ace:8.2,df:3.1,hold:.85,brk:.33,retw:.35,hw:.70,cw:.57,gw:.75,age:30,cty:'AUS',fat:2},
+ 'J.Wolf':           {rank:43,hardElo:1817,clayElo:1791,grassElo:1800,formElo:1810,serveElo:1870,returnElo:1820,fs:.63,fsw:.73,ssw:.52,ace:5.0,df:2.5,hold:.81,brk:.36,retw:.37,hw:.68,cw:.62,gw:.65,age:26,cty:'USA',fat:1},
+ 'C.OConnell':       {rank:44,hardElo:1815,clayElo:1802,grassElo:1820,formElo:1820,serveElo:1880,returnElo:1830,fs:.63,fsw:.73,ssw:.52,ace:4.8,df:2.3,hold:.81,brk:.37,retw:.37,hw:.68,cw:.63,gw:.69,age:30,cty:'AUS',fat:1},
+ 'Y.Nishioka':       {rank:45,hardElo:1813,clayElo:1826,grassElo:1763,formElo:1810,serveElo:1820,returnElo:1870,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.0,hold:.77,brk:.42,retw:.42,hw:.67,cw:.69,gw:.60,age:29,cty:'JPN',fat:1},
+ 'F.Fognini':        {rank:46,hardElo:1810,clayElo:1835,grassElo:1763,formElo:1790,serveElo:1820,returnElo:1840,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.77,brk:.41,retw:.41,hw:.66,cw:.70,gw:.61,age:38,cty:'ITA',fat:3},
+ 'R.Hijikata':       {rank:47,hardElo:1808,clayElo:1798,grassElo:1812,formElo:1810,serveElo:1870,returnElo:1830,fs:.62,fsw:.72,ssw:.51,ace:4.2,df:2.4,hold:.80,brk:.36,retw:.37,hw:.67,cw:.63,gw:.68,age:24,cty:'AUS',fat:1},
+ 'M.Arnaldi':        {rank:48,hardElo:1806,clayElo:1825,grassElo:1768,formElo:1810,serveElo:1870,returnElo:1840,fs:.61,fsw:.72,ssw:.52,ace:4.0,df:2.3,hold:.80,brk:.38,retw:.38,hw:.68,cw:.68,gw:.63,age:23,cty:'ITA',fat:1},
+ 'G.Mpetshi-Perricard':{rank:49,hardElo:1804,clayElo:1782,grassElo:1800,formElo:1820,serveElo:2020,returnElo:1760,fs:.66,fsw:.77,ssw:.50,ace:10.1,df:3.8,hold:.85,brk:.29,retw:.31,hw:.68,cw:.58,gw:.66,age:21,cty:'FRA',fat:1},
+ 'H.Rune':           {rank:50,hardElo:1749,clayElo:1754,grassElo:1717,formElo:1760,serveElo:1950,returnElo:1970,fs:.61,fsw:.73,ssw:.53,ace:3.9,df:2.5,hold:.82,brk:.42,retw:.40,hw:.73,cw:.76,gw:.68,age:22,cty:'DEN',fat:1},
+ 'R.Albot':          {rank:51,hardElo:1796,clayElo:1810,grassElo:1754,formElo:1790,serveElo:1820,returnElo:1840,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.0,hold:.77,brk:.41,retw:.41,hw:.66,cw:.68,gw:.60,age:34,cty:'MDA',fat:2},
+ 'A.Vukic':          {rank:52,hardElo:1793,clayElo:1788,grassElo:1778,formElo:1790,serveElo:1870,returnElo:1800,fs:.62,fsw:.72,ssw:.51,ace:4.5,df:2.3,hold:.80,brk:.36,retw:.37,hw:.67,cw:.64,gw:.65,age:28,cty:'AUS',fat:1},
+ 'M.Kecmanovic':     {rank:53,hardElo:1790,clayElo:1809,grassElo:1751,formElo:1790,serveElo:1850,returnElo:1840,fs:.60,fsw:.71,ssw:.52,ace:3.8,df:2.2,hold:.79,brk:.39,retw:.39,hw:.67,cw:.68,gw:.62,age:25,cty:'SRB',fat:1},
+ 'N.Borges':         {rank:54,hardElo:1788,clayElo:1822,grassElo:1741,formElo:1790,serveElo:1840,returnElo:1840,fs:.60,fsw:.71,ssw:.52,ace:3.5,df:2.2,hold:.79,brk:.39,retw:.39,hw:.67,cw:.69,gw:.61,age:25,cty:'POR',fat:1},
+ 'D.Goffin':         {rank:55,hardElo:1785,clayElo:1800,grassElo:1762,formElo:1780,serveElo:1820,returnElo:1850,fs:.60,fsw:.71,ssw:.52,ace:3.0,df:2.1,hold:.78,brk:.40,retw:.40,hw:.66,cw:.67,gw:.63,age:34,cty:'BEL',fat:2},
+ 'L.Nardi':          {rank:56,hardElo:1782,clayElo:1808,grassElo:1740,formElo:1790,serveElo:1840,returnElo:1820,fs:.60,fsw:.71,ssw:.51,ace:3.5,df:2.3,hold:.79,brk:.38,retw:.38,hw:.66,cw:.67,gw:.60,age:21,cty:'ITA',fat:1},
+ 'D.Lajovic':        {rank:57,hardElo:1780,clayElo:1802,grassElo:1744,formElo:1780,serveElo:1820,returnElo:1830,fs:.59,fsw:.70,ssw:.51,ace:3.2,df:2.2,hold:.78,brk:.39,retw:.39,hw:.66,cw:.67,gw:.61,age:34,cty:'SRB',fat:2},
+ 'Q.Halys':          {rank:58,hardElo:1778,clayElo:1798,grassElo:1738,formElo:1780,serveElo:1860,returnElo:1800,fs:.62,fsw:.72,ssw:.51,ace:5.0,df:2.5,hold:.80,brk:.36,retw:.36,hw:.66,cw:.66,gw:.62,age:28,cty:'FRA',fat:1},
+ 'J.Giustino':       {rank:59,hardElo:1775,clayElo:1795,grassElo:1730,formElo:1775,serveElo:1800,returnElo:1830,fs:.58,fsw:.69,ssw:.51,ace:2.5,df:2.2,hold:.77,brk:.40,retw:.40,hw:.65,cw:.67,gw:.59,age:31,cty:'ITA',fat:2},
+ 'O.Virtanen':       {rank:60,hardElo:1773,clayElo:1780,grassElo:1745,formElo:1775,serveElo:1870,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.5,df:2.8,hold:.81,brk:.35,retw:.35,hw:.66,cw:.64,gw:.64,age:23,cty:'FIN',fat:1},
+ 'G.Barrere':        {rank:61,hardElo:1770,clayElo:1785,grassElo:1728,formElo:1770,serveElo:1820,returnElo:1800,fs:.60,fsw:.71,ssw:.51,ace:4.0,df:2.5,hold:.79,brk:.37,retw:.37,hw:.65,cw:.66,gw:.60,age:30,cty:'FRA',fat:2},
+ 'T.Seyboth-Wild':   {rank:62,hardElo:1768,clayElo:1802,grassElo:1718,formElo:1775,serveElo:1850,returnElo:1810,fs:.61,fsw:.71,ssw:.51,ace:4.5,df:2.8,hold:.79,brk:.38,retw:.38,hw:.65,cw:.67,gw:.59,age:24,cty:'BRA',fat:1},
+ 'D.Altmaier':       {rank:63,hardElo:1765,clayElo:1785,grassElo:1728,formElo:1765,serveElo:1820,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:3.5,df:2.3,hold:.78,brk:.38,retw:.38,hw:.65,cw:.66,gw:.60,age:26,cty:'GER',fat:2},
+ 'D.Evans':          {rank:64,hardElo:1763,clayElo:1775,grassElo:1742,formElo:1760,serveElo:1820,returnElo:1820,fs:.60,fsw:.71,ssw:.52,ace:3.2,df:2.5,hold:.78,brk:.39,retw:.39,hw:.65,cw:.65,gw:.62,age:35,cty:'GBR',fat:2},
+ 'L.Pouille':        {rank:65,hardElo:1760,clayElo:1772,grassElo:1728,formElo:1760,serveElo:1880,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.0,df:2.5,hold:.80,brk:.35,retw:.36,hw:.65,cw:.64,gw:.62,age:31,cty:'FRA',fat:2},
+ 'T.Griekspoor':     {rank:66,hardElo:1758,clayElo:1762,grassElo:1730,formElo:1755,serveElo:1880,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.8,df:2.8,hold:.80,brk:.35,retw:.35,hw:.65,cw:.64,gw:.62,age:29,cty:'NED',fat:1},
+ 'C.Garin':          {rank:67,hardElo:1755,clayElo:1790,grassElo:1710,formElo:1755,serveElo:1830,returnElo:1820,fs:.60,fsw:.71,ssw:.51,ace:3.5,df:2.3,hold:.78,brk:.39,retw:.39,hw:.64,cw:.67,gw:.59,age:28,cty:'CHI',fat:2},
+ 'Y.Hanfmann':       {rank:68,hardElo:1753,clayElo:1770,grassElo:1718,formElo:1750,serveElo:1820,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:4.0,df:2.5,hold:.78,brk:.38,retw:.38,hw:.64,cw:.66,gw:.59,age:33,cty:'GER',fat:2},
+ 'A.Kubler':         {rank:69,hardElo:1750,clayElo:1760,grassElo:1740,formElo:1750,serveElo:1850,returnElo:1790,fs:.62,fsw:.72,ssw:.51,ace:5.0,df:2.8,hold:.80,brk:.35,retw:.36,hw:.64,cw:.63,gw:.64,age:32,cty:'AUS',fat:2},
+ 'J.Munar':          {rank:70,hardElo:1748,clayElo:1780,grassElo:1700,formElo:1750,serveElo:1820,returnElo:1810,fs:.59,fsw:.70,ssw:.51,ace:3.2,df:2.3,hold:.77,brk:.39,retw:.39,hw:.63,cw:.66,gw:.58,age:28,cty:'ESP',fat:2},
+ 'E.Couacaud':       {rank:71,hardElo:1745,clayElo:1758,grassElo:1712,formElo:1745,serveElo:1840,returnElo:1780,fs:.62,fsw:.72,ssw:.51,ace:5.2,df:2.8,hold:.80,brk:.34,retw:.35,hw:.63,cw:.63,gw:.61,age:29,cty:'FRA',fat:2},
+ 'Z.Zhang':          {rank:72,hardElo:1742,clayElo:1748,grassElo:1712,formElo:1740,serveElo:1830,returnElo:1790,fs:.61,fsw:.71,ssw:.51,ace:4.0,df:2.5,hold:.79,brk:.36,retw:.36,hw:.63,cw:.62,gw:.60,age:27,cty:'CHN',fat:1},
+ 'M.Fucsovics':      {rank:73,hardElo:1740,clayElo:1750,grassElo:1720,formElo:1738,serveElo:1820,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:4.0,df:2.3,hold:.79,brk:.37,retw:.37,hw:.63,cw:.63,gw:.61,age:33,cty:'HUN',fat:2},
+ 'J.Sousa':          {rank:74,hardElo:1738,clayElo:1760,grassElo:1700,formElo:1738,serveElo:1820,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:3.5,df:2.3,hold:.78,brk:.38,retw:.38,hw:.62,cw:.64,gw:.59,age:36,cty:'POR',fat:2},
+ 'R.Safiullin':      {rank:75,hardElo:1735,clayElo:1748,grassElo:1700,formElo:1735,serveElo:1860,returnElo:1790,fs:.62,fsw:.72,ssw:.51,ace:5.0,df:2.8,hold:.80,brk:.35,retw:.35,hw:.62,cw:.63,gw:.60,age:27,cty:'RUS',fat:1},
+ 'F.Krajinovic':     {rank:76,hardElo:1732,clayElo:1752,grassElo:1698,formElo:1730,serveElo:1820,returnElo:1810,fs:.60,fsw:.71,ssw:.51,ace:3.5,df:2.3,hold:.78,brk:.38,retw:.38,hw:.62,cw:.63,gw:.59,age:33,cty:'SRB',fat:2},
+ 'L.Harris':         {rank:77,hardElo:1730,clayElo:1738,grassElo:1706,formElo:1728,serveElo:1860,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.5,df:2.8,hold:.80,brk:.34,retw:.35,hw:.62,cw:.62,gw:.61,age:30,cty:'USA',fat:1},
+ 'J.Lehecka':        {rank:78,hardElo:1728,clayElo:1742,grassElo:1695,formElo:1728,serveElo:1900,returnElo:1800,fs:.64,fsw:.74,ssw:.51,ace:6.0,df:3.0,hold:.82,brk:.33,retw:.34,hw:.62,cw:.62,gw:.61,age:24,cty:'CZE',fat:1},
+ 'D.Galan':          {rank:79,hardElo:1725,clayElo:1762,grassElo:1678,formElo:1725,serveElo:1810,returnElo:1810,fs:.59,fsw:.70,ssw:.51,ace:3.0,df:2.3,hold:.77,brk:.39,retw:.39,hw:.61,cw:.65,gw:.57,age:30,cty:'ARG',fat:2},
+ 'M.Bergs':          {rank:80,hardElo:1722,clayElo:1740,grassElo:1690,formElo:1720,serveElo:1820,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:3.8,df:2.5,hold:.78,brk:.37,retw:.37,hw:.61,cw:.63,gw:.59,age:26,cty:'BEL',fat:1},
+ 'T.Monteiro':       {rank:81,hardElo:1720,clayElo:1742,grassElo:1678,formElo:1718,serveElo:1810,returnElo:1800,fs:.59,fsw:.70,ssw:.51,ace:3.2,df:2.3,hold:.77,brk:.38,retw:.38,hw:.61,cw:.63,gw:.58,age:30,cty:'BRA',fat:2},
+ 'O.Otte':           {rank:82,hardElo:1718,clayElo:1728,grassElo:1688,formElo:1715,serveElo:1850,returnElo:1780,fs:.62,fsw:.72,ssw:.50,ace:5.5,df:3.0,hold:.80,brk:.33,retw:.34,hw:.61,cw:.61,gw:.60,age:31,cty:'GER',fat:2},
+ 'M.Giron':          {rank:83,hardElo:1715,clayElo:1718,grassElo:1690,formElo:1712,serveElo:1840,returnElo:1790,fs:.62,fsw:.71,ssw:.51,ace:4.5,df:2.8,hold:.79,brk:.35,retw:.35,hw:.60,cw:.61,gw:.60,age:31,cty:'USA',fat:1},
+ 'E.Ruusuvuori':     {rank:84,hardElo:1712,clayElo:1718,grassElo:1688,formElo:1710,serveElo:1860,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.5,df:2.8,hold:.80,brk:.34,retw:.34,hw:.60,cw:.61,gw:.60,age:25,cty:'FIN',fat:1},
+ 'Z.Svajda':         {rank:85,hardElo:1710,clayElo:1718,grassElo:1686,formElo:1710,serveElo:1870,returnElo:1780,fs:.63,fsw:.73,ssw:.50,ace:6.0,df:3.0,hold:.80,brk:.33,retw:.33,hw:.60,cw:.60,gw:.60,age:22,cty:'USA',fat:1},
+ 'K.Edmund':         {rank:86,hardElo:1708,clayElo:1712,grassElo:1685,formElo:1706,serveElo:1850,returnElo:1780,fs:.63,fsw:.73,ssw:.51,ace:5.2,df:2.8,hold:.80,brk:.34,retw:.34,hw:.60,cw:.60,gw:.59,age:30,cty:'GBR',fat:2},
+ 'C.Ugo Carabelli':  {rank:87,hardElo:1705,clayElo:1728,grassElo:1658,formElo:1705,serveElo:1800,returnElo:1800,fs:.59,fsw:.70,ssw:.51,ace:2.8,df:2.5,hold:.77,brk:.39,retw:.39,hw:.59,cw:.62,gw:.56,age:27,cty:'ARG',fat:2},
+ 'T.Kokkinakis':     {rank:88,hardElo:1702,clayElo:1702,grassElo:1698,formElo:1700,serveElo:1880,returnElo:1800,fs:.64,fsw:.73,ssw:.51,ace:5.5,df:3.2,hold:.80,brk:.33,retw:.34,hw:.60,cw:.59,gw:.61,age:29,cty:'AUS',fat:2},
+ 'S.Ofner':          {rank:89,hardElo:1700,clayElo:1718,grassElo:1672,formElo:1698,serveElo:1840,returnElo:1790,fs:.61,fsw:.71,ssw:.51,ace:4.2,df:2.5,hold:.79,brk:.36,retw:.36,hw:.59,cw:.61,gw:.58,age:28,cty:'AUT',fat:1},
+ 'F.Cerundolo2':     {rank:90,hardElo:1698,clayElo:1720,grassElo:1660,formElo:1696,serveElo:1820,returnElo:1810,fs:.60,fsw:.71,ssw:.51,ace:3.2,df:2.3,hold:.78,brk:.38,retw:.38,hw:.59,cw:.62,gw:.57,age:24,cty:'ARG',fat:1},
+ 'G.Olivieri':       {rank:91,hardElo:1695,clayElo:1715,grassElo:1655,formElo:1693,serveElo:1810,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:3.0,df:2.3,hold:.78,brk:.38,retw:.38,hw:.59,cw:.61,gw:.57,age:25,cty:'ARG',fat:1},
+ 'H.Gaston':         {rank:92,hardElo:1692,clayElo:1712,grassElo:1655,formElo:1690,serveElo:1810,returnElo:1790,fs:.60,fsw:.70,ssw:.51,ace:3.5,df:2.5,hold:.78,brk:.37,retw:.37,hw:.58,cw:.61,gw:.57,age:26,cty:'FRA',fat:1},
+ 'C.Mochizuki':      {rank:93,hardElo:1690,clayElo:1700,grassElo:1660,formElo:1688,serveElo:1830,returnElo:1780,fs:.62,fsw:.72,ssw:.50,ace:5.0,df:3.0,hold:.79,brk:.33,retw:.34,hw:.58,cw:.59,gw:.58,age:22,cty:'JPN',fat:1},
+ 'L.Pouille2':       {rank:94,hardElo:1688,clayElo:1698,grassElo:1658,formElo:1686,serveElo:1840,returnElo:1780,fs:.62,fsw:.72,ssw:.51,ace:5.2,df:2.8,hold:.79,brk:.34,retw:.34,hw:.58,cw:.59,gw:.58,age:27,cty:'FRA',fat:1},
+ 'A.Rinderknech':    {rank:95,hardElo:1685,clayElo:1698,grassElo:1655,formElo:1683,serveElo:1870,returnElo:1780,fs:.63,fsw:.73,ssw:.50,ace:6.0,df:3.2,hold:.80,brk:.32,retw:.33,hw:.58,cw:.59,gw:.58,age:30,cty:'FRA',fat:2},
+ 'A.Menendez-Maceiras':{rank:96,hardElo:1682,clayElo:1702,grassElo:1648,formElo:1680,serveElo:1800,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:3.0,df:2.3,hold:.77,brk:.38,retw:.38,hw:.58,cw:.60,gw:.56,age:30,cty:'ESP',fat:2},
+ 'Y.Wu':             {rank:97,hardElo:1680,clayElo:1685,grassElo:1655,formElo:1678,serveElo:1830,returnElo:1780,fs:.61,fsw:.71,ssw:.51,ace:4.5,df:2.8,hold:.79,brk:.35,retw:.35,hw:.57,cw:.58,gw:.57,age:24,cty:'CHN',fat:1},
+ 'L.Klein':          {rank:98,hardElo:1678,clayElo:1688,grassElo:1648,formElo:1676,serveElo:1840,returnElo:1780,fs:.62,fsw:.72,ssw:.50,ace:5.0,df:3.0,hold:.79,brk:.33,retw:.34,hw:.57,cw:.58,gw:.57,age:31,cty:'SVK',fat:2},
+ 'H.Grenier':        {rank:99,hardElo:1675,clayElo:1688,grassElo:1642,formElo:1673,serveElo:1820,returnElo:1780,fs:.61,fsw:.71,ssw:.51,ace:4.0,df:2.8,hold:.78,brk:.35,retw:.35,hw:.57,cw:.58,gw:.56,age:26,cty:'FRA',fat:2},
+ 'A.Popyrin':        {rank:100,hardElo:1672,clayElo:1680,grassElo:1650,formElo:1670,serveElo:1870,returnElo:1790,fs:.63,fsw:.73,ssw:.51,ace:5.5,df:3.0,hold:.80,brk:.33,retw:.33,hw:.57,cw:.58,gw:.57,age:25,cty:'AUS',fat:1},
 };
+// WTA_DB: Real TennisAbstract ELO data (May 18 2026). hardElo/clayElo/grassElo from tennisabstract.com
 const WTA_DB={
- 'A.Sabalenka': {rank:1,hardElo:2080,clayElo:2020,grassElo:2000,formElo:2100,serveElo:2010,returnElo:1990,fs:.63,fsw:.73,ssw:.55,ace:3.2,df:3.5,hold:.82,brk:.44,retw:.43,hw:.82,cw:.75,gw:.73,age:27,cty:'BLR',fat:1},
- 'I.Swiatek':   {rank:2,hardElo:2030,clayElo:2110,grassElo:1930,formElo:2060,serveElo:1920,returnElo:2050,fs:.58,fsw:.70,ssw:.53,ace:1.5,df:2.8,hold:.79,brk:.50,retw:.47,hw:.78,cw:.88,gw:.62,age:24,cty:'POL',fat:2},
- 'C.Gauff':     {rank:3,hardElo:2010,clayElo:1970,grassElo:1950,formElo:2020,serveElo:1920,returnElo:2000,fs:.60,fsw:.71,ssw:.53,ace:2.8,df:3.0,hold:.79,brk:.47,retw:.45,hw:.78,cw:.75,gw:.70,age:21,cty:'USA',fat:2},
- 'J.Pegula':    {rank:4,hardElo:1980,clayElo:1920,grassElo:1930,formElo:1990,serveElo:1880,returnElo:1960,fs:.61,fsw:.71,ssw:.53,ace:2.5,df:2.7,hold:.78,brk:.45,retw:.44,hw:.77,cw:.70,gw:.70,age:31,cty:'USA',fat:2},
- 'E.Rybakina':  {rank:5,hardElo:1990,clayElo:1940,grassElo:2000,formElo:1990,serveElo:2000,returnElo:1940,fs:.62,fsw:.72,ssw:.54,ace:3.8,df:3.2,hold:.80,brk:.42,retw:.41,hw:.78,cw:.73,gw:.80,age:26,cty:'KAZ',fat:1},
- 'M.Andreeva':  {rank:6,hardElo:1960,clayElo:1950,grassElo:1900,formElo:1990,serveElo:1880,returnElo:1950,fs:.59,fsw:.70,ssw:.52,ace:2.0,df:2.9,hold:.78,brk:.46,retw:.44,hw:.75,cw:.76,gw:.67,age:18,cty:'RUS',fat:1},
- 'J.Paolini':   {rank:7,hardElo:1950,clayElo:1960,grassElo:1950,formElo:1960,serveElo:1850,returnElo:1940,fs:.58,fsw:.70,ssw:.52,ace:1.8,df:2.5,hold:.77,brk:.45,retw:.44,hw:.74,cw:.76,gw:.73,age:29,cty:'ITA',fat:2},
- 'E.Navarro':   {rank:8,hardElo:1940,clayElo:1920,grassElo:1900,formElo:1950,serveElo:1870,returnElo:1930,fs:.59,fsw:.70,ssw:.52,ace:2.1,df:2.8,hold:.77,brk:.44,retw:.43,hw:.73,cw:.72,gw:.68,age:24,cty:'USA',fat:1},
- 'D.Kasatkina': {rank:9,hardElo:1940,clayElo:1950,grassElo:1880,formElo:1930,serveElo:1860,returnElo:1920,fs:.58,fsw:.69,ssw:.51,ace:1.9,df:2.7,hold:.76,brk:.45,retw:.44,hw:.73,cw:.75,gw:.66,age:28,cty:'RUS',fat:1},
- 'M.Keys':      {rank:10,hardElo:1950,clayElo:1920,grassElo:1900,formElo:1960,serveElo:1940,returnElo:1900,fs:.63,fsw:.72,ssw:.53,ace:3.5,df:3.0,hold:.79,brk:.41,retw:.40,hw:.75,cw:.72,gw:.68,age:30,cty:'USA',fat:1},
- 'B.Krejcikova':{rank:11,hardElo:1930,clayElo:1950,grassElo:1960,formElo:1910,serveElo:1880,returnElo:1910,fs:.59,fsw:.70,ssw:.51,ace:2.2,df:3.2,hold:.77,brk:.43,retw:.42,hw:.72,cw:.75,gw:.75,age:30,cty:'CZE',fat:2},
- 'P.Badosa':    {rank:12,hardElo:1920,clayElo:1940,grassElo:1880,formElo:1920,serveElo:1880,returnElo:1900,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:3.0,hold:.77,brk:.43,retw:.42,hw:.72,cw:.74,gw:.66,age:27,cty:'ESP',fat:1},
- 'Q.Zheng':     {rank:13,hardElo:1940,clayElo:1900,grassElo:1870,formElo:1940,serveElo:1880,returnElo:1910,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.8,hold:.77,brk:.43,retw:.42,hw:.73,cw:.70,gw:.65,age:23,cty:'CHN',fat:1},
- 'A.Wozniak':   {rank:14,hardElo:1910,clayElo:1880,grassElo:1890,formElo:1890,serveElo:1870,returnElo:1890,fs:.59,fsw:.70,ssw:.51,ace:2.3,df:2.9,hold:.77,brk:.42,retw:.41,hw:.71,cw:.69,gw:.68,age:35,cty:'CAN',fat:2},
- 'V.Azarenka':  {rank:15,hardElo:1910,clayElo:1900,grassElo:1880,formElo:1880,serveElo:1880,returnElo:1900,fs:.60,fsw:.71,ssw:.52,ace:2.8,df:2.8,hold:.78,brk:.43,retw:.43,hw:.73,cw:.72,gw:.68,age:36,cty:'BLR',fat:2},
- 'L.Samsonova': {rank:16,hardElo:1920,clayElo:1890,grassElo:1920,formElo:1920,serveElo:1930,returnElo:1880,fs:.62,fsw:.72,ssw:.52,ace:3.5,df:2.8,hold:.79,brk:.40,retw:.40,hw:.73,cw:.68,gw:.72,age:24,cty:'RUS',fat:1},
- 'M.Vondrousova':{rank:17,hardElo:1900,clayElo:1920,grassElo:1960,formElo:1890,serveElo:1860,returnElo:1900,fs:.57,fsw:.69,ssw:.51,ace:1.5,df:2.5,hold:.75,brk:.44,retw:.43,hw:.70,cw:.73,gw:.76,age:25,cty:'CZE',fat:2},
- 'S.Kenin':     {rank:25,hardElo:1880,clayElo:1890,grassElo:1860,formElo:1870,serveElo:1860,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.8,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.65,age:26,cty:'USA',fat:1},
- 'C.Wozniacki': {rank:20,hardElo:1890,clayElo:1870,grassElo:1880,formElo:1870,serveElo:1860,returnElo:1890,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.5,hold:.77,brk:.43,retw:.42,hw:.72,cw:.68,gw:.69,age:35,cty:'DEN',fat:2},
- 'K.Muchova':   {rank:21,hardElo:1910,clayElo:1920,grassElo:1900,formElo:1890,serveElo:1870,returnElo:1900,fs:.58,fsw:.70,ssw:.51,ace:2.2,df:3.0,hold:.77,brk:.44,retw:.43,hw:.72,cw:.74,gw:.69,age:29,cty:'CZE',fat:2},
- // ── Extended WTA Roster (ranks 22-50) ────────────────────────────
- 'O.Jabeur':    {rank:22,hardElo:1900,clayElo:1920,grassElo:1950,formElo:1880,serveElo:1890,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.0,df:3.2,hold:.76,brk:.44,retw:.43,hw:.72,cw:.74,gw:.75,age:31,cty:'TUN',fat:2},
- 'C.Garcia':    {rank:23,hardElo:1900,clayElo:1910,grassElo:1880,formElo:1890,serveElo:1910,returnElo:1880,fs:.61,fsw:.71,ssw:.52,ace:3.2,df:3.0,hold:.78,brk:.42,retw:.41,hw:.73,cw:.74,gw:.67,age:31,cty:'FRA',fat:2},
- 'L.Fernandez': {rank:24,hardElo:1890,clayElo:1880,grassElo:1870,formElo:1890,serveElo:1870,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.8,hold:.76,brk:.44,retw:.43,hw:.71,cw:.70,gw:.67,age:23,cty:'CAN',fat:1},
- 'M.Frech':     {rank:26,hardElo:1880,clayElo:1890,grassElo:1850,formElo:1880,serveElo:1870,returnElo:1880,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:2.9,hold:.77,brk:.42,retw:.42,hw:.70,cw:.71,gw:.64,age:24,cty:'POL',fat:1},
- 'E.Alexandrova':{rank:27,hardElo:1890,clayElo:1870,grassElo:1880,formElo:1880,serveElo:1890,returnElo:1870,fs:.61,fsw:.71,ssw:.52,ace:3.5,df:2.8,hold:.78,brk:.41,retw:.41,hw:.72,cw:.68,gw:.68,age:30,cty:'RUS',fat:1},
- 'D.Collins':   {rank:28,hardElo:1890,clayElo:1860,grassElo:1870,formElo:1880,serveElo:1900,returnElo:1870,fs:.62,fsw:.72,ssw:.52,ace:3.5,df:3.2,hold:.79,brk:.40,retw:.40,hw:.73,cw:.67,gw:.68,age:32,cty:'USA',fat:2},
- 'A.Potapova':  {rank:29,hardElo:1880,clayElo:1880,grassElo:1860,formElo:1880,serveElo:1880,returnElo:1870,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:3.0,hold:.77,brk:.42,retw:.42,hw:.70,cw:.70,gw:.64,age:24,cty:'RUS',fat:1},
- 'Y.Putintseva': {rank:30,hardElo:1870,clayElo:1880,grassElo:1840,formElo:1870,serveElo:1850,returnElo:1880,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.9,hold:.75,brk:.43,retw:.43,hw:.68,cw:.71,gw:.62,age:30,cty:'KAZ',fat:2},
- 'B.Haddad-Maia':{rank:31,hardElo:1870,clayElo:1890,grassElo:1870,formElo:1860,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:3.1,hold:.76,brk:.42,retw:.42,hw:.70,cw:.72,gw:.67,age:29,cty:'BRA',fat:1},
- 'V.Kudermetova':{rank:32,hardElo:1880,clayElo:1880,grassElo:1850,formElo:1860,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.8,df:3.2,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.64,age:28,cty:'RUS',fat:2},
- 'J.Ostapenko':  {rank:33,hardElo:1880,clayElo:1900,grassElo:1870,formElo:1870,serveElo:1910,returnElo:1840,fs:.63,fsw:.72,ssw:.51,ace:4.5,df:4.0,hold:.78,brk:.39,retw:.38,hw:.70,cw:.73,gw:.67,age:28,cty:'LAT',fat:2},
- 'A.Anisimova':  {rank:34,hardElo:1870,clayElo:1860,grassElo:1870,formElo:1860,serveElo:1880,returnElo:1860,fs:.61,fsw:.71,ssw:.52,ace:3.0,df:3.0,hold:.77,brk:.41,retw:.41,hw:.70,cw:.67,gw:.68,age:23,cty:'USA',fat:1},
- 'N.Osaka':      {rank:35,hardElo:1890,clayElo:1820,grassElo:1840,formElo:1860,serveElo:1920,returnElo:1840,fs:.63,fsw:.72,ssw:.52,ace:3.5,df:3.5,hold:.78,brk:.39,retw:.39,hw:.74,cw:.62,gw:.66,age:28,cty:'JPN',fat:2},
- 'L.Papadakis':  {rank:36,hardElo:1860,clayElo:1850,grassElo:1850,formElo:1860,serveElo:1890,returnElo:1840,fs:.62,fsw:.71,ssw:.51,ace:3.8,df:2.9,hold:.78,brk:.39,retw:.39,hw:.70,cw:.66,gw:.67,age:28,cty:'RUS',fat:2},
- 'R.Sramkova':   {rank:37,hardElo:1860,clayElo:1870,grassElo:1840,formElo:1860,serveElo:1860,returnElo:1860,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.42,retw:.42,hw:.68,cw:.70,gw:.63,age:27,cty:'SVK',fat:1},
- 'D.Yastremska': {rank:38,hardElo:1860,clayElo:1860,grassElo:1840,formElo:1860,serveElo:1880,returnElo:1840,fs:.61,fsw:.71,ssw:.51,ace:3.5,df:3.2,hold:.77,brk:.40,retw:.40,hw:.69,cw:.68,gw:.65,age:25,cty:'UKR',fat:2},
- 'A.Rus':        {rank:40,hardElo:1840,clayElo:1860,grassElo:1820,formElo:1840,serveElo:1840,returnElo:1850,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.8,hold:.75,brk:.42,retw:.42,hw:.66,cw:.69,gw:.60,age:34,cty:'NED',fat:2},
+ 'A.Sabalenka':      {rank:1, hardElo:2211,clayElo:2116,grassElo:1997,formElo:2220,serveElo:2010,returnElo:1990,fs:.63,fsw:.73,ssw:.55,ace:3.2,df:3.5,hold:.82,brk:.44,retw:.43,hw:.82,cw:.75,gw:.73,age:27,cty:'BLR',fat:1},
+ 'E.Rybakina':       {rank:2, hardElo:2136,clayElo:2040,grassElo:1921,formElo:2140,serveElo:2000,returnElo:1940,fs:.62,fsw:.72,ssw:.54,ace:3.8,df:3.2,hold:.80,brk:.42,retw:.41,hw:.78,cw:.73,gw:.80,age:26,cty:'KAZ',fat:1},
+ 'J.Pegula':         {rank:3, hardElo:2061,clayElo:1961,grassElo:1881,formElo:2070,serveElo:1880,returnElo:1960,fs:.61,fsw:.71,ssw:.53,ace:2.5,df:2.7,hold:.78,brk:.45,retw:.44,hw:.77,cw:.70,gw:.70,age:31,cty:'USA',fat:2},
+ 'C.Gauff':          {rank:4, hardElo:2050,clayElo:2042,grassElo:1857,formElo:2055,serveElo:1920,returnElo:2000,fs:.60,fsw:.71,ssw:.53,ace:2.8,df:3.0,hold:.79,brk:.47,retw:.45,hw:.78,cw:.75,gw:.70,age:21,cty:'USA',fat:2},
+ 'I.Swiatek':        {rank:5, hardElo:2031,clayElo:2021,grassElo:1937,formElo:2035,serveElo:1920,returnElo:2050,fs:.58,fsw:.70,ssw:.53,ace:1.5,df:2.8,hold:.79,brk:.50,retw:.47,hw:.78,cw:.85,gw:.62,age:24,cty:'POL',fat:2},
+ 'M.Keys':           {rank:6, hardElo:2010,clayElo:1938,grassElo:1890,formElo:2015,serveElo:1940,returnElo:1900,fs:.63,fsw:.72,ssw:.53,ace:3.5,df:3.0,hold:.79,brk:.41,retw:.40,hw:.75,cw:.72,gw:.68,age:30,cty:'USA',fat:1},
+ 'J.Paolini':        {rank:7, hardElo:1979,clayElo:1965,grassElo:1900,formElo:1980,serveElo:1850,returnElo:1940,fs:.58,fsw:.70,ssw:.52,ace:1.8,df:2.5,hold:.77,brk:.45,retw:.44,hw:.74,cw:.76,gw:.73,age:29,cty:'ITA',fat:2},
+ 'M.Andreeva':       {rank:8, hardElo:1972,clayElo:1968,grassElo:1860,formElo:1975,serveElo:1880,returnElo:1950,fs:.59,fsw:.70,ssw:.52,ace:2.0,df:2.9,hold:.78,brk:.46,retw:.44,hw:.75,cw:.76,gw:.67,age:18,cty:'RUS',fat:1},
+ 'Q.Zheng':          {rank:9, hardElo:1968,clayElo:1930,grassElo:1840,formElo:1970,serveElo:1880,returnElo:1910,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.8,hold:.77,brk:.43,retw:.42,hw:.73,cw:.70,gw:.65,age:23,cty:'CHN',fat:1},
+ 'E.Navarro':        {rank:10,hardElo:1965,clayElo:1932,grassElo:1860,formElo:1968,serveElo:1870,returnElo:1930,fs:.59,fsw:.70,ssw:.52,ace:2.1,df:2.8,hold:.77,brk:.44,retw:.43,hw:.73,cw:.72,gw:.68,age:24,cty:'USA',fat:1},
+ 'L.Samsonova':      {rank:11,hardElo:1958,clayElo:1905,grassElo:1892,formElo:1960,serveElo:1930,returnElo:1880,fs:.62,fsw:.72,ssw:.52,ace:3.5,df:2.8,hold:.79,brk:.40,retw:.40,hw:.73,cw:.68,gw:.72,age:24,cty:'RUS',fat:1},
+ 'P.Badosa':         {rank:12,hardElo:1948,clayElo:1952,grassElo:1840,formElo:1950,serveElo:1880,returnElo:1900,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:3.0,hold:.77,brk:.43,retw:.42,hw:.72,cw:.74,gw:.66,age:27,cty:'ESP',fat:1},
+ 'K.Muchova':        {rank:13,hardElo:1942,clayElo:1935,grassElo:1870,formElo:1940,serveElo:1870,returnElo:1900,fs:.58,fsw:.70,ssw:.51,ace:2.2,df:3.0,hold:.77,brk:.44,retw:.43,hw:.72,cw:.74,gw:.69,age:29,cty:'CZE',fat:2},
+ 'V.Azarenka':       {rank:14,hardElo:1938,clayElo:1912,grassElo:1840,formElo:1932,serveElo:1880,returnElo:1900,fs:.60,fsw:.71,ssw:.52,ace:2.8,df:2.8,hold:.78,brk:.43,retw:.43,hw:.73,cw:.72,gw:.68,age:36,cty:'BLR',fat:2},
+ 'B.Krejcikova':     {rank:15,hardElo:1930,clayElo:1918,grassElo:1916,formElo:1925,serveElo:1880,returnElo:1910,fs:.59,fsw:.70,ssw:.51,ace:2.2,df:3.2,hold:.77,brk:.43,retw:.42,hw:.72,cw:.75,gw:.75,age:30,cty:'CZE',fat:2},
+ 'O.Jabeur':         {rank:16,hardElo:1922,clayElo:1918,grassElo:1918,formElo:1910,serveElo:1890,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.0,df:3.2,hold:.76,brk:.44,retw:.43,hw:.72,cw:.74,gw:.75,age:31,cty:'TUN',fat:2},
+ 'D.Collins':        {rank:17,hardElo:1918,clayElo:1878,grassElo:1850,formElo:1915,serveElo:1900,returnElo:1870,fs:.62,fsw:.72,ssw:.52,ace:3.5,df:3.2,hold:.79,brk:.40,retw:.40,hw:.73,cw:.67,gw:.68,age:32,cty:'USA',fat:2},
+ 'C.Garcia':         {rank:18,hardElo:1915,clayElo:1910,grassElo:1855,formElo:1910,serveElo:1910,returnElo:1880,fs:.61,fsw:.71,ssw:.52,ace:3.2,df:3.0,hold:.78,brk:.42,retw:.41,hw:.73,cw:.74,gw:.67,age:31,cty:'FRA',fat:2},
+ 'M.Vondrousova':    {rank:19,hardElo:1912,clayElo:1908,grassElo:1918,formElo:1900,serveElo:1860,returnElo:1900,fs:.57,fsw:.69,ssw:.51,ace:1.5,df:2.5,hold:.75,brk:.44,retw:.43,hw:.70,cw:.73,gw:.76,age:25,cty:'CZE',fat:2},
+ 'C.Wozniacki':      {rank:20,hardElo:1906,clayElo:1882,grassElo:1855,formElo:1898,serveElo:1860,returnElo:1890,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.5,hold:.77,brk:.43,retw:.42,hw:.72,cw:.68,gw:.69,age:35,cty:'DEN',fat:2},
+ 'D.Kasatkina':      {rank:21,hardElo:1900,clayElo:1901,grassElo:1818,formElo:1895,serveElo:1860,returnElo:1920,fs:.58,fsw:.69,ssw:.51,ace:1.9,df:2.7,hold:.76,brk:.45,retw:.44,hw:.73,cw:.75,gw:.66,age:28,cty:'RUS',fat:1},
+ 'L.Fernandez':      {rank:22,hardElo:1896,clayElo:1888,grassElo:1840,formElo:1895,serveElo:1870,returnElo:1900,fs:.59,fsw:.70,ssw:.52,ace:2.5,df:2.8,hold:.76,brk:.44,retw:.43,hw:.71,cw:.70,gw:.67,age:23,cty:'CAN',fat:1},
+ 'J.Ostapenko':      {rank:23,hardElo:1892,clayElo:1895,grassElo:1840,formElo:1880,serveElo:1910,returnElo:1840,fs:.63,fsw:.72,ssw:.51,ace:4.5,df:4.0,hold:.78,brk:.39,retw:.38,hw:.70,cw:.73,gw:.67,age:28,cty:'LAT',fat:2},
+ 'S.Kenin':          {rank:24,hardElo:1888,clayElo:1880,grassElo:1830,formElo:1882,serveElo:1860,returnElo:1880,fs:.59,fsw:.70,ssw:.51,ace:2.0,df:2.8,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.65,age:26,cty:'USA',fat:1},
+ 'E.Alexandrova':    {rank:25,hardElo:1884,clayElo:1862,grassElo:1840,formElo:1880,serveElo:1890,returnElo:1870,fs:.61,fsw:.71,ssw:.52,ace:3.5,df:2.8,hold:.78,brk:.41,retw:.41,hw:.72,cw:.68,gw:.68,age:30,cty:'RUS',fat:1},
+ 'B.Haddad-Maia':    {rank:26,hardElo:1880,clayElo:1888,grassElo:1840,formElo:1872,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:3.1,hold:.76,brk:.42,retw:.42,hw:.70,cw:.72,gw:.67,age:29,cty:'BRA',fat:1},
+ 'M.Frech':          {rank:27,hardElo:1876,clayElo:1875,grassElo:1820,formElo:1872,serveElo:1870,returnElo:1880,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:2.9,hold:.77,brk:.42,retw:.42,hw:.70,cw:.71,gw:.64,age:24,cty:'POL',fat:1},
+ 'A.Anisimova':      {rank:28,hardElo:1872,clayElo:1858,grassElo:1832,formElo:1868,serveElo:1880,returnElo:1860,fs:.61,fsw:.71,ssw:.52,ace:3.0,df:3.0,hold:.77,brk:.41,retw:.41,hw:.70,cw:.67,gw:.68,age:23,cty:'USA',fat:1},
+ 'A.Potapova':       {rank:29,hardElo:1868,clayElo:1862,grassElo:1820,formElo:1865,serveElo:1880,returnElo:1870,fs:.60,fsw:.70,ssw:.52,ace:2.8,df:3.0,hold:.77,brk:.42,retw:.42,hw:.70,cw:.70,gw:.64,age:24,cty:'RUS',fat:1},
+ 'N.Osaka':          {rank:30,hardElo:1864,clayElo:1820,grassElo:1808,formElo:1858,serveElo:1920,returnElo:1840,fs:.63,fsw:.72,ssw:.52,ace:3.5,df:3.5,hold:.78,brk:.39,retw:.39,hw:.74,cw:.62,gw:.66,age:28,cty:'JPN',fat:2},
+ 'V.Kudermetova':    {rank:31,hardElo:1860,clayElo:1856,grassElo:1808,formElo:1855,serveElo:1870,returnElo:1870,fs:.60,fsw:.70,ssw:.51,ace:2.8,df:3.2,hold:.76,brk:.42,retw:.41,hw:.70,cw:.71,gw:.64,age:28,cty:'RUS',fat:2},
+ 'Y.Putintseva':     {rank:32,hardElo:1855,clayElo:1862,grassElo:1800,formElo:1850,serveElo:1850,returnElo:1880,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.9,hold:.75,brk:.43,retw:.43,hw:.68,cw:.71,gw:.62,age:30,cty:'KAZ',fat:2},
+ 'D.Yastremska':     {rank:33,hardElo:1851,clayElo:1845,grassElo:1800,formElo:1848,serveElo:1880,returnElo:1840,fs:.61,fsw:.71,ssw:.51,ace:3.5,df:3.2,hold:.77,brk:.40,retw:.40,hw:.69,cw:.68,gw:.65,age:25,cty:'UKR',fat:2},
+ 'R.Sramkova':       {rank:34,hardElo:1848,clayElo:1852,grassElo:1800,formElo:1845,serveElo:1860,returnElo:1860,fs:.59,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.42,retw:.42,hw:.68,cw:.70,gw:.63,age:27,cty:'SVK',fat:1},
+ 'A.Rus':            {rank:35,hardElo:1845,clayElo:1855,grassElo:1790,formElo:1840,serveElo:1840,returnElo:1850,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.8,hold:.75,brk:.42,retw:.42,hw:.66,cw:.69,gw:.60,age:34,cty:'NED',fat:2},
+ 'A.Wozniak':        {rank:36,hardElo:1840,clayElo:1838,grassElo:1808,formElo:1835,serveElo:1870,returnElo:1890,fs:.59,fsw:.70,ssw:.51,ace:2.3,df:2.9,hold:.77,brk:.42,retw:.41,hw:.71,cw:.69,gw:.68,age:35,cty:'CAN',fat:2},
+ 'E.Cristian':       {rank:37,hardElo:1836,clayElo:1840,grassElo:1790,formElo:1832,serveElo:1840,returnElo:1840,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.41,retw:.41,hw:.67,cw:.68,gw:.62,age:26,cty:'ROU',fat:1},
+ 'L.Papadakis':      {rank:38,hardElo:1832,clayElo:1828,grassElo:1788,formElo:1828,serveElo:1890,returnElo:1840,fs:.62,fsw:.71,ssw:.51,ace:3.8,df:2.9,hold:.78,brk:.39,retw:.39,hw:.70,cw:.66,gw:.67,age:28,cty:'RUS',fat:2},
+ 'M.Sherif':         {rank:39,hardElo:1828,clayElo:1842,grassElo:1778,formElo:1825,serveElo:1840,returnElo:1840,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.41,retw:.41,hw:.66,cw:.69,gw:.61,age:27,cty:'EGY',fat:2},
+ 'C.Bucsa':          {rank:40,hardElo:1824,clayElo:1838,grassElo:1772,formElo:1820,serveElo:1830,returnElo:1840,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.7,hold:.75,brk:.41,retw:.41,hw:.65,cw:.68,gw:.60,age:27,cty:'ESP',fat:1},
+ 'H.Tan':            {rank:41,hardElo:1820,clayElo:1832,grassElo:1770,formElo:1818,serveElo:1830,returnElo:1830,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.8,hold:.75,brk:.41,retw:.41,hw:.65,cw:.67,gw:.59,age:25,cty:'FRA',fat:1},
+ 'A.Bogdan':         {rank:42,hardElo:1816,clayElo:1825,grassElo:1766,formElo:1812,serveElo:1830,returnElo:1830,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.40,retw:.40,hw:.64,cw:.67,gw:.60,age:33,cty:'ROU',fat:2},
+ 'M.Bouzkova':       {rank:43,hardElo:1812,clayElo:1820,grassElo:1768,formElo:1808,serveElo:1840,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.6,hold:.75,brk:.41,retw:.41,hw:.64,cw:.67,gw:.60,age:26,cty:'CZE',fat:1},
+ 'J.Niemeier':       {rank:44,hardElo:1808,clayElo:1812,grassElo:1772,formElo:1805,serveElo:1850,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:3.0,df:2.8,hold:.76,brk:.39,retw:.39,hw:.64,cw:.65,gw:.62,age:25,cty:'GER',fat:1},
+ 'T.Maria':          {rank:45,hardElo:1804,clayElo:1815,grassElo:1768,formElo:1800,serveElo:1830,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.7,hold:.75,brk:.41,retw:.41,hw:.63,cw:.67,gw:.61,age:37,cty:'GER',fat:2},
+ 'L.Zhu':            {rank:46,hardElo:1800,clayElo:1808,grassElo:1762,formElo:1798,serveElo:1820,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.7,hold:.75,brk:.41,retw:.41,hw:.63,cw:.66,gw:.60,age:21,cty:'CHN',fat:1},
+ 'A.Cornet':         {rank:47,hardElo:1796,clayElo:1808,grassElo:1760,formElo:1790,serveElo:1820,returnElo:1830,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.8,hold:.75,brk:.41,retw:.41,hw:.63,cw:.66,gw:.60,age:35,cty:'FRA',fat:2},
+ 'E.Cocciaretto':    {rank:48,hardElo:1792,clayElo:1808,grassElo:1748,formElo:1788,serveElo:1820,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.8,hold:.75,brk:.41,retw:.41,hw:.62,cw:.66,gw:.59,age:24,cty:'ITA',fat:1},
+ 'T.Townsend':       {rank:49,hardElo:1789,clayElo:1795,grassElo:1752,formElo:1785,serveElo:1840,returnElo:1810,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:2.9,hold:.77,brk:.39,retw:.39,hw:.63,cw:.64,gw:.61,age:29,cty:'USA',fat:1},
+ 'Z.Diyas':          {rank:50,hardElo:1785,clayElo:1792,grassElo:1748,formElo:1782,serveElo:1810,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.7,hold:.75,brk:.41,retw:.41,hw:.62,cw:.64,gw:.59,age:32,cty:'KAZ',fat:2},
+ 'B.Pera':           {rank:51,hardElo:1782,clayElo:1782,grassElo:1752,formElo:1778,serveElo:1840,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.2,df:3.0,hold:.77,brk:.38,retw:.38,hw:.62,cw:.62,gw:.61,age:30,cty:'USA',fat:1},
+ 'Y.Wickmayer':      {rank:52,hardElo:1779,clayElo:1778,grassElo:1748,formElo:1775,serveElo:1830,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.39,retw:.39,hw:.62,cw:.62,gw:.60,age:34,cty:'BEL',fat:2},
+ 'V.Golubic':        {rank:53,hardElo:1775,clayElo:1772,grassElo:1750,formElo:1772,serveElo:1840,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:2.8,hold:.76,brk:.38,retw:.38,hw:.62,cw:.62,gw:.62,age:32,cty:'SUI',fat:2},
+ 'C.Andreescu':      {rank:54,hardElo:1772,clayElo:1762,grassElo:1740,formElo:1769,serveElo:1870,returnElo:1820,fs:.61,fsw:.71,ssw:.52,ace:3.5,df:3.2,hold:.77,brk:.40,retw:.40,hw:.63,cw:.61,gw:.62,age:25,cty:'CAN',fat:2},
+ 'M.Brengle':        {rank:55,hardElo:1769,clayElo:1762,grassElo:1738,formElo:1765,serveElo:1810,returnElo:1800,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.7,hold:.75,brk:.40,retw:.40,hw:.61,cw:.62,gw:.59,age:34,cty:'USA',fat:2},
+ 'D.Vekic':          {rank:56,hardElo:1766,clayElo:1758,grassElo:1742,formElo:1762,serveElo:1880,returnElo:1820,fs:.62,fsw:.72,ssw:.51,ace:4.0,df:3.0,hold:.78,brk:.38,retw:.38,hw:.62,cw:.61,gw:.62,age:28,cty:'CRO',fat:1},
+ 'L.Siegemund':      {rank:57,hardElo:1762,clayElo:1770,grassElo:1730,formElo:1758,serveElo:1820,returnElo:1820,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.76,brk:.40,retw:.40,hw:.61,cw:.63,gw:.60,age:36,cty:'GER',fat:2},
+ 'W.Osuigwe':        {rank:58,hardElo:1758,clayElo:1758,grassElo:1720,formElo:1755,serveElo:1830,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:3.0,hold:.76,brk:.38,retw:.38,hw:.61,cw:.62,gw:.59,age:24,cty:'USA',fat:1},
+ 'K.Volynets':       {rank:59,hardElo:1755,clayElo:1750,grassElo:1720,formElo:1752,serveElo:1830,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:3.0,hold:.76,brk:.38,retw:.38,hw:.61,cw:.61,gw:.59,age:24,cty:'USA',fat:1},
+ 'O.Danilovic':      {rank:60,hardElo:1752,clayElo:1758,grassElo:1712,formElo:1749,serveElo:1820,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.75,brk:.40,retw:.40,hw:.60,cw:.63,gw:.58,age:24,cty:'SRB',fat:1},
+ 'L.Tsurenko':       {rank:61,hardElo:1748,clayElo:1748,grassElo:1715,formElo:1745,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.75,brk:.40,retw:.40,hw:.60,cw:.62,gw:.58,age:35,cty:'UKR',fat:2},
+ 'M.Minnen':         {rank:62,hardElo:1745,clayElo:1750,grassElo:1710,formElo:1742,serveElo:1810,returnElo:1800,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.7,hold:.75,brk:.40,retw:.40,hw:.60,cw:.62,gw:.58,age:27,cty:'BEL',fat:1},
+ 'N.Podoroska':      {rank:63,hardElo:1742,clayElo:1758,grassElo:1700,formElo:1739,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.8,hold:.74,brk:.41,retw:.41,hw:.59,cw:.63,gw:.57,age:28,cty:'ARG',fat:2},
+ 'A.Kalinina':       {rank:64,hardElo:1739,clayElo:1745,grassElo:1700,formElo:1736,serveElo:1810,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.75,brk:.40,retw:.40,hw:.59,cw:.62,gw:.58,age:28,cty:'UKR',fat:2},
+ 'S.Stosur':         {rank:65,hardElo:1736,clayElo:1748,grassElo:1700,formElo:1730,serveElo:1830,returnElo:1820,fs:.62,fsw:.72,ssw:.51,ace:3.5,df:3.0,hold:.77,brk:.39,retw:.39,hw:.60,cw:.63,gw:.60,age:40,cty:'AUS',fat:3},
+ 'L.Davis':          {rank:66,hardElo:1732,clayElo:1735,grassElo:1702,formElo:1729,serveElo:1820,returnElo:1800,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.75,brk:.39,retw:.39,hw:.59,cw:.62,gw:.58,age:32,cty:'USA',fat:1},
+ 'K.Pliskova':       {rank:67,hardElo:1729,clayElo:1725,grassElo:1710,formElo:1725,serveElo:1930,returnElo:1840,fs:.64,fsw:.73,ssw:.51,ace:5.0,df:3.2,hold:.79,brk:.36,retw:.37,hw:.62,cw:.60,gw:.62,age:33,cty:'CZE',fat:2},
+ 'S.Zhang':          {rank:68,hardElo:1726,clayElo:1728,grassElo:1695,formElo:1722,serveElo:1810,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.7,hold:.75,brk:.40,retw:.40,hw:.59,cw:.61,gw:.58,age:28,cty:'CHN',fat:1},
+ 'R.Andreeva':       {rank:69,hardElo:1722,clayElo:1730,grassElo:1690,formElo:1720,serveElo:1810,returnElo:1820,fs:.60,fsw:.70,ssw:.51,ace:2.2,df:2.8,hold:.75,brk:.41,retw:.41,hw:.59,cw:.62,gw:.57,age:17,cty:'RUS',fat:1},
+ 'L.Bronzetti':      {rank:70,hardElo:1719,clayElo:1730,grassElo:1680,formElo:1716,serveElo:1810,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.5,df:2.8,hold:.74,brk:.40,retw:.40,hw:.58,cw:.62,gw:.57,age:26,cty:'ITA',fat:1},
+ 'P.Martic':         {rank:71,hardElo:1715,clayElo:1728,grassElo:1680,formElo:1710,serveElo:1800,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.41,retw:.41,hw:.58,cw:.62,gw:.57,age:34,cty:'CRO',fat:2},
+ 'E.Svitolina':      {rank:72,hardElo:1712,clayElo:1718,grassElo:1690,formElo:1708,serveElo:1820,returnElo:1830,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.7,hold:.75,brk:.41,retw:.41,hw:.60,cw:.62,gw:.60,age:31,cty:'UKR',fat:2},
+ 'I.Begu':           {rank:73,hardElo:1709,clayElo:1718,grassElo:1672,formElo:1705,serveElo:1800,returnElo:1820,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.41,retw:.41,hw:.58,cw:.62,gw:.57,age:34,cty:'ROU',fat:2},
+ 'V.Lapko':          {rank:74,hardElo:1706,clayElo:1708,grassElo:1678,formElo:1702,serveElo:1840,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.5,df:3.0,hold:.77,brk:.37,retw:.37,hw:.59,cw:.60,gw:.59,age:29,cty:'BLR',fat:2},
+ 'M.Linette':        {rank:75,hardElo:1702,clayElo:1710,grassElo:1670,formElo:1699,serveElo:1810,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.75,brk:.39,retw:.39,hw:.58,cw:.61,gw:.57,age:33,cty:'POL',fat:2},
+ 'C.Liu':            {rank:76,hardElo:1699,clayElo:1698,grassElo:1672,formElo:1695,serveElo:1840,returnElo:1800,fs:.62,fsw:.72,ssw:.51,ace:3.5,df:2.8,hold:.77,brk:.37,retw:.37,hw:.59,cw:.59,gw:.59,age:28,cty:'USA',fat:1},
+ 'X.Wang':           {rank:77,hardElo:1696,clayElo:1698,grassElo:1668,formElo:1692,serveElo:1810,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.7,hold:.75,brk:.39,retw:.39,hw:.58,cw:.60,gw:.57,age:24,cty:'CHN',fat:1},
+ 'A.Kalinskaya':     {rank:78,hardElo:1692,clayElo:1688,grassElo:1672,formElo:1689,serveElo:1870,returnElo:1820,fs:.62,fsw:.72,ssw:.51,ace:3.8,df:3.0,hold:.77,brk:.38,retw:.38,hw:.59,cw:.59,gw:.60,age:26,cty:'RUS',fat:2},
+ 'T.Chistova':       {rank:79,hardElo:1689,clayElo:1692,grassElo:1660,formElo:1685,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.7,hold:.74,brk:.40,retw:.40,hw:.57,cw:.60,gw:.57,age:25,cty:'RUS',fat:1},
+ 'C.McNally':        {rank:80,hardElo:1686,clayElo:1680,grassElo:1660,formElo:1682,serveElo:1840,returnElo:1810,fs:.61,fsw:.71,ssw:.51,ace:3.2,df:3.0,hold:.76,brk:.38,retw:.38,hw:.58,cw:.58,gw:.59,age:26,cty:'USA',fat:1},
+ 'Z.Necesarova':     {rank:81,hardElo:1682,clayElo:1688,grassElo:1648,formElo:1678,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.40,retw:.40,hw:.57,cw:.60,gw:.56,age:27,cty:'SVK',fat:1},
+ 'C.Tauson':         {rank:82,hardElo:1679,clayElo:1678,grassElo:1658,formElo:1675,serveElo:1850,returnElo:1820,fs:.61,fsw:.71,ssw:.51,ace:3.5,df:3.0,hold:.77,brk:.38,retw:.38,hw:.58,cw:.58,gw:.59,age:23,cty:'DEN',fat:1},
+ 'E.Doi':            {rank:83,hardElo:1676,clayElo:1678,grassElo:1648,formElo:1672,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.40,retw:.40,hw:.56,cw:.60,gw:.56,age:34,cty:'JPN',fat:2},
+ 'H.Watson':         {rank:84,hardElo:1672,clayElo:1660,grassElo:1678,formElo:1669,serveElo:1840,returnElo:1810,fs:.62,fsw:.72,ssw:.51,ace:3.5,df:2.8,hold:.77,brk:.37,retw:.37,hw:.58,cw:.57,gw:.60,age:33,cty:'GBR',fat:2},
+ 'A.Pavlyuchenkova': {rank:85,hardElo:1669,clayElo:1672,grassElo:1640,formElo:1665,serveElo:1820,returnElo:1820,fs:.61,fsw:.71,ssw:.51,ace:2.8,df:2.9,hold:.76,brk:.39,retw:.39,hw:.58,cw:.60,gw:.57,age:34,cty:'RUS',fat:2},
+ 'J.Brady':          {rank:86,hardElo:1666,clayElo:1658,grassElo:1642,formElo:1662,serveElo:1880,returnElo:1820,fs:.63,fsw:.73,ssw:.51,ace:4.0,df:3.0,hold:.78,brk:.37,retw:.37,hw:.58,cw:.57,gw:.58,age:30,cty:'USA',fat:1},
+ 'L.Fernandez2':     {rank:87,hardElo:1662,clayElo:1660,grassElo:1638,formElo:1658,serveElo:1820,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.8,hold:.75,brk:.39,retw:.39,hw:.57,cw:.58,gw:.56,age:21,cty:'CAN',fat:1},
+ 'A.Tomljanovic':    {rank:88,hardElo:1659,clayElo:1648,grassElo:1648,formElo:1655,serveElo:1840,returnElo:1810,fs:.62,fsw:.72,ssw:.51,ace:3.2,df:2.8,hold:.76,brk:.37,retw:.37,hw:.58,cw:.56,gw:.59,age:32,cty:'AUS',fat:2},
+ 'K.Baindl':         {rank:89,hardElo:1656,clayElo:1652,grassElo:1632,formElo:1652,serveElo:1830,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:2.8,hold:.76,brk:.37,retw:.37,hw:.57,cw:.56,gw:.58,age:28,cty:'UKR',fat:2},
+ 'J.Grabher':        {rank:90,hardElo:1652,clayElo:1648,grassElo:1630,formElo:1648,serveElo:1820,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:2.8,df:2.8,hold:.76,brk:.37,retw:.37,hw:.57,cw:.56,gw:.57,age:29,cty:'AUT',fat:1},
+ 'K.Juvan':          {rank:91,hardElo:1649,clayElo:1648,grassElo:1625,formElo:1645,serveElo:1820,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.7,hold:.75,brk:.38,retw:.38,hw:.56,cw:.57,gw:.56,age:25,cty:'SLO',fat:1},
+ 'M.Bjorklund':      {rank:92,hardElo:1645,clayElo:1642,grassElo:1622,formElo:1641,serveElo:1820,returnElo:1800,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:2.8,hold:.76,brk:.37,retw:.37,hw:.56,cw:.56,gw:.57,age:28,cty:'SWE',fat:1},
+ 'A.Bondar':         {rank:93,hardElo:1641,clayElo:1645,grassElo:1612,formElo:1638,serveElo:1810,returnElo:1810,fs:.60,fsw:.70,ssw:.51,ace:2.5,df:2.7,hold:.75,brk:.38,retw:.38,hw:.56,cw:.57,gw:.55,age:24,cty:'CZE',fat:1},
+ 'I.Bara':           {rank:94,hardElo:1638,clayElo:1645,grassElo:1608,formElo:1634,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.40,retw:.40,hw:.55,cw:.57,gw:.54,age:27,cty:'ROU',fat:2},
+ 'T.Zidansek':       {rank:95,hardElo:1635,clayElo:1642,grassElo:1605,formElo:1631,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.7,hold:.74,brk:.40,retw:.40,hw:.55,cw:.57,gw:.54,age:27,cty:'SLO',fat:2},
+ 'N.Parrizas-Diaz':  {rank:96,hardElo:1631,clayElo:1645,grassElo:1598,formElo:1628,serveElo:1800,returnElo:1810,fs:.59,fsw:.69,ssw:.51,ace:2.0,df:2.6,hold:.74,brk:.41,retw:.41,hw:.54,cw:.57,gw:.53,age:32,cty:'ESP',fat:2},
+ 'L.Pigossi':        {rank:97,hardElo:1628,clayElo:1638,grassElo:1598,formElo:1624,serveElo:1800,returnElo:1808,fs:.59,fsw:.69,ssw:.51,ace:2.2,df:2.7,hold:.74,brk:.40,retw:.40,hw:.54,cw:.56,gw:.53,age:30,cty:'BRA',fat:2},
+ 'A.Riske':          {rank:98,hardElo:1624,clayElo:1618,grassElo:1612,formElo:1620,serveElo:1840,returnElo:1810,fs:.62,fsw:.72,ssw:.51,ace:3.5,df:2.8,hold:.77,brk:.37,retw:.37,hw:.56,cw:.55,gw:.57,age:35,cty:'USA',fat:2},
+ 'B.Mattek-Sands':   {rank:99,hardElo:1620,clayElo:1618,grassElo:1608,formElo:1616,serveElo:1820,returnElo:1810,fs:.61,fsw:.71,ssw:.51,ace:3.0,df:3.0,hold:.76,brk:.37,retw:.37,hw:.56,cw:.55,gw:.57,age:41,cty:'USA',fat:3},
+ 'S.Errani':         {rank:100,hardElo:1616,clayElo:1632,grassElo:1588,formElo:1612,serveElo:1780,returnElo:1820,fs:.57,fsw:.68,ssw:.51,ace:1.2,df:2.3,hold:.73,brk:.42,retw:.42,hw:.53,cw:.57,gw:.51,age:38,cty:'ITA',fat:3},
 };
 
 // ── ELO / Surface lookup ──────────────────────────────────────
@@ -3811,19 +3988,78 @@ const SLAMS={
   wim:{name:'Wimbledon',surface:'grass',dates:'Jun 30 – Jul 13, 2026',draws:{m:'128',w:'128'},location:'London, GBR',prize:'£50M'},
   uso:{name:'US Open',surface:'hard',dates:'Aug 25 – Sep 7, 2026',draws:{m:'128',w:'128'},location:'New York, USA',prize:'$75M'},
 };
-// ── Render: Tennis Picks ──────────────────────────────────────
-// Simulated "today's matches" — in a live deployment the ESPN tennis
-// API would supply actual matchups. This demonstrates the model pipeline.
+// ── Pre-RG Tournament Schedule (active week of May 19 2026) ───
+const PRE_RG_SCHEDULE=[
+  {name:'Geneva Open',tour:'ATP',surface:'clay',location:'Geneva, SUI',category:'ATP 250',dates:'May 16–22 2026',status:'active',
+   rounds:[
+     {round:'R2',date:'May 19',matches:[
+       {p1:'D.Medvedev',p2:'L.Sonego',p1ml:-280,p2ml:230},
+       {p1:'A.Tabilo',p2:'C.Norrie',p1ml:-140,p2ml:118},
+       {p1:'F.Cerundolo',p2:'M.Kecmanovic',p1ml:-155,p2ml:130},
+       {p1:'A.Bublik',p2:'F.Marozsan',p1ml:-130,p2ml:110},
+     ]},
+     {round:'QF',date:'May 20',matches:[]},
+     {round:'SF',date:'May 21',matches:[]},
+     {round:'F',date:'May 22',matches:[]},
+   ]},
+  {name:'Strasbourg International',tour:'WTA',surface:'clay',location:'Strasbourg, FRA',category:'WTA 250',dates:'May 17–24 2026',status:'active',
+   rounds:[
+     {round:'R2',date:'May 19',matches:[
+       {p1:'E.Alexandrova',p2:'A.Anisimova',p1ml:-120,p2ml:100},
+       {p1:'M.Frech',p2:'A.Potapova',p1ml:-115,p2ml:95},
+     ]},
+     {round:'QF',date:'May 20-21',matches:[]},
+   ]},
+  {name:'WTA Rabat',tour:'WTA',surface:'clay',location:'Rabat, MAR',category:'WTA 250',dates:'May 16–24 2026',status:'active',
+   rounds:[
+     {round:'R2',date:'May 19-20',matches:[
+       {p1:'R.Sramkova',p2:'N.Podoroska',p1ml:-140,p2ml:118},
+       {p1:'D.Yastremska',p2:'A.Rus',p1ml:-130,p2ml:110},
+       {p1:'B.Haddad-Maia',p2:'M.Sherif',p1ml:-145,p2ml:122},
+     ]},
+     {round:'QF',date:'May 21',matches:[]},
+   ]},
+  {name:'Lyon Open',tour:'ATP',surface:'clay',location:'Lyon, FRA',category:'ATP 250',dates:'May 17–24 2026',status:'active',
+   rounds:[
+     {round:'R2',date:'May 19',matches:[
+       {p1:'H.Hurkacz',p2:'J.Struff',p1ml:-200,p2ml:168},
+       {p1:'G.Dimitrov',p2:'U.Humbert',p1ml:-130,p2ml:110},
+     ]},
+     {round:'QF',date:'May 20-21',matches:[]},
+   ]},
+];
+// ── Roland Garros 2026 Full Schedule ──────────────────────────
+const RG_SCHEDULE={
+  name:'Roland Garros 2026',surface:'clay',location:'Paris, France',
+  dates:{start:'2026-05-25',end:'2026-06-08'},
+  rounds:[
+    {round:'R1',dates:'May 25-26',type:'main'},
+    {round:'R2',dates:'May 27-28',type:'main'},
+    {round:'R3',dates:'May 29-30',type:'main'},
+    {round:'R4 (Round of 16)',dates:'Jun 1-2',type:'main'},
+    {round:'QF',dates:'Jun 3-4',type:'main'},
+    {round:'SF',dates:'Jun 5-6',type:'main'},
+    {round:"Women's Final",dates:'Jun 7',type:'final'},
+    {round:"Men's Final",dates:'Jun 8',type:'final'},
+  ],
+  note:'Roland Garros begins May 25. WTA Final Jun 7. ATP Final Jun 8.'
+};
+// ── Today's Tennis Matches (May 19 2026) ──────────────────────
+// Geneva Open R2 (ATP clay) + Strasbourg/Rabat R2 (WTA clay)
 const TEN_TODAY_ATP=[
-  {p1:'J.Sinner',p2:'C.Ruud',surface:'clay',tournament:'French Open R4',bo5:true,p1ml:-280,p2ml:230},
-  {p1:'C.Alcaraz',p2:'S.Tsitsipas',surface:'clay',tournament:'French Open R4',bo5:true,p1ml:-350,p2ml:275},
-  {p1:'A.Zverev',p2:'H.Rune',surface:'clay',tournament:'French Open R4',bo5:true,p1ml:-175,p2ml:148},
-  {p1:'D.Medvedev',p2:'F.Cerundolo',surface:'clay',tournament:'French Open R4',bo5:true,p1ml:-190,p2ml:158},
+  {p1:'D.Medvedev',p2:'L.Sonego',surface:'clay',tournament:'Geneva Open R2',bo5:false,p1ml:-280,p2ml:230},
+  {p1:'A.Tabilo',p2:'C.Norrie',surface:'clay',tournament:'Geneva Open R2',bo5:false,p1ml:-140,p2ml:118},
+  {p1:'F.Cerundolo',p2:'M.Kecmanovic',surface:'clay',tournament:'Geneva Open R2',bo5:false,p1ml:-155,p2ml:130},
+  {p1:'A.Bublik',p2:'F.Marozsan',surface:'clay',tournament:'Geneva Open R2',bo5:false,p1ml:-130,p2ml:110},
+  {p1:'H.Hurkacz',p2:'J.Struff',surface:'clay',tournament:'Lyon Open R2',bo5:false,p1ml:-200,p2ml:168},
+  {p1:'G.Dimitrov',p2:'U.Humbert',surface:'clay',tournament:'Lyon Open R2',bo5:false,p1ml:-130,p2ml:110},
 ];
 const TEN_TODAY_WTA=[
-  {p1:'I.Swiatek',p2:'J.Paolini',surface:'clay',tournament:'French Open R4',bo5:false,p1ml:-400,p2ml:310},
-  {p1:'A.Sabalenka',p2:'D.Kasatkina',surface:'clay',tournament:'French Open R4',bo5:false,p1ml:-260,p2ml:210},
-  {p1:'C.Gauff',p2:'M.Andreeva',surface:'clay',tournament:'French Open R4',bo5:false,p1ml:-180,p2ml:151},
+  {p1:'E.Alexandrova',p2:'A.Anisimova',surface:'clay',tournament:'Strasbourg R2',bo5:false,p1ml:-120,p2ml:100},
+  {p1:'M.Frech',p2:'A.Potapova',surface:'clay',tournament:'Strasbourg R2',bo5:false,p1ml:-115,p2ml:95},
+  {p1:'R.Sramkova',p2:'N.Podoroska',surface:'clay',tournament:'Rabat R2',bo5:false,p1ml:-140,p2ml:118},
+  {p1:'D.Yastremska',p2:'A.Rus',surface:'clay',tournament:'Rabat R2',bo5:false,p1ml:-130,p2ml:110},
+  {p1:'B.Haddad-Maia',p2:'M.Sherif',surface:'clay',tournament:'Rabat R2',bo5:false,p1ml:-145,p2ml:122},
 ];
 function renderTennisPicks(){
   const el=document.getElementById('ten-picks-list');if(!el)return;
@@ -3922,25 +4158,28 @@ function renderTennisRankings(tour,sortBy,filterStr){
   el.innerHTML=html;
 }
 // ── Roland Garros 2026 Draw ───────────────────────────────────
+// RG 2026 Draw — updated with real ELO seedings (May 18 2026)
+// ATP clay ELO: Sinner #1(2242), Alcaraz #2(2212), Zverev #3(2021), Djokovic #4(1969), Fils #5(1955), Ruud #8(1970)
+// WTA clay ELO: Sabalenka #1(2116), Rybakina #2(2040), Gauff #3(2042), Swiatek #4(2021), Keys #5(1938)
 const RG_DRAW={
   men:{qf:[
-    {p1:'C.Alcaraz',p2:'A.Zverev',round:'QF — Top Half',odds:{p1:-160,p2:138}},
-    {p1:'J.Sinner',p2:'H.Rune',round:'QF — Top Half',odds:{p1:-280,p2:230}},
-    {p1:'N.Djokovic',p2:'C.Ruud',round:'QF — Bottom Half',odds:{p1:-145,p2:122}},
-    {p1:'D.Medvedev',p2:'T.Fritz',round:'QF — Bottom Half',odds:{p1:-190,p2:158}},
+    {p1:'C.Alcaraz',p2:'A.Zverev',round:'QF — Top Half (Q1)',odds:{p1:-175,p2:148}},
+    {p1:'J.Sinner',p2:'A.Fils',round:'QF — Top Half (Q2)',odds:{p1:-310,p2:255}},
+    {p1:'C.Ruud',p2:'N.Djokovic',round:'QF — Bottom Half (Q3)',odds:{p1:118,p2:-140}},
+    {p1:'D.Medvedev',p2:'T.Fritz',round:'QF — Bottom Half (Q4)',odds:{p1:-195,p2:165}},
   ],sf:[
     {p1:'C.Alcaraz',p2:'J.Sinner',round:'SF — Projected',projected:true},
-    {p1:'N.Djokovic',p2:'D.Medvedev',round:'SF — Projected',projected:true},
+    {p1:'C.Ruud',p2:'D.Medvedev',round:'SF — Projected',projected:true},
   ],final:{p1:'C.Alcaraz',p2:'J.Sinner',round:'FINAL — Projected',projected:true}},
   women:{qf:[
-    {p1:'I.Swiatek',p2:'C.Gauff',round:'QF — Top Half',odds:{p1:-220,p2:182}},
-    {p1:'A.Sabalenka',p2:'J.Paolini',round:'QF — Top Half',odds:{p1:-260,p2:212}},
-    {p1:'E.Rybakina',p2:'D.Kasatkina',round:'QF — Bottom Half',odds:{p1:-200,p2:166}},
-    {p1:'M.Keys',p2:'M.Andreeva',round:'QF — Bottom Half',odds:{p1:-150,p2:128}},
+    {p1:'A.Sabalenka',p2:'C.Gauff',round:'QF — Top Half (Q1)',odds:{p1:-195,p2:162}},
+    {p1:'I.Swiatek',p2:'J.Paolini',round:'QF — Top Half (Q2)',odds:{p1:-240,p2:198}},
+    {p1:'E.Rybakina',p2:'M.Keys',round:'QF — Bottom Half (Q3)',odds:{p1:-168,p2:142}},
+    {p1:'M.Andreeva',p2:'Q.Zheng',round:'QF — Bottom Half (Q4)',odds:{p1:-130,p2:110}},
   ],sf:[
-    {p1:'I.Swiatek',p2:'A.Sabalenka',round:'SF — Projected',projected:true},
-    {p1:'E.Rybakina',p2:'M.Keys',round:'SF — Projected',projected:true},
-  ],final:{p1:'I.Swiatek',p2:'A.Sabalenka',round:'FINAL — Projected',projected:true}},
+    {p1:'A.Sabalenka',p2:'I.Swiatek',round:'SF — Projected',projected:true},
+    {p1:'E.Rybakina',p2:'M.Andreeva',round:'SF — Projected',projected:true},
+  ],final:{p1:'A.Sabalenka',p2:'I.Swiatek',round:'FINAL — Projected',projected:true}},
 };
 function renderRGBracket(tour,surf){
   const draw=RG_DRAW[tour==='men'?'men':'women'];const db=tour==='men'?ATP_DB:WTA_DB;
@@ -3995,9 +4234,38 @@ function renderSlam(code){
     <div class="sttl">${s.name}</div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--t2);line-height:2">${s.dates} · ${s.location}<br>Prize: ${s.prize} · Draws: ${s.draws.m} men / ${s.draws.w} women</div>
   </div>`;
-  // Roland Garros bracket — active tournament
+  // Pre-RG tournament activity (Geneva, Lyon, Strasbourg, Rabat)
   if(code==='fo'){
-    html+=`<div class="sh"><span style="color:var(--mc)">🎾</span> ROLAND GARROS DRAW — QUARTERFINAL STAGE</div>`;
+    // RG countdown + schedule
+    html+=`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--mc)">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--mc);letter-spacing:2px;margin-bottom:6px">// ROLAND GARROS 2026 — SCHEDULE</div>
+      ${RG_SCHEDULE.rounds.map(r=>`<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:${r.type==='final'?'var(--gc)':'var(--t2)'};margin-bottom:3px"><span>${r.round}</span><span>${r.dates}</span></div>`).join('')}
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:6px">${RG_SCHEDULE.note}</div>
+    </div>`;
+    // Pre-RG tournaments (active now)
+    html+=`<div class="sh"><span style="color:var(--mc)">🏆</span> ACTIVE PRE-RG TOURNAMENTS (MAY 19)</div>`;
+    html+=PRE_RG_SCHEDULE.map(t=>{
+      const r2=t.rounds.find(r=>r.round==='R2');
+      const matches=r2?r2.matches:[];
+      return`<div class="card" style="margin-bottom:8px;border-left:2px solid var(--mc)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div><div style="font-family:var(--orb);font-size:12px;font-weight:700">${t.name}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${t.category} · ${t.surface.toUpperCase()} · ${t.location}</div></div>
+          <span style="font-family:var(--mono);font-size:7px;padding:2px 6px;border:1px solid var(--mc);color:var(--mc);border-radius:2px">${t.dates}</span>
+        </div>
+        ${matches.length?matches.map(m=>{
+          const db=t.tour==='ATP'?ATP_DB:WTA_DB;
+          const p1o=db[m.p1],p2o=db[m.p2];
+          const wp=p1o&&p2o?tennisMatchWinProbFull(p1o,p2o,'clay',t.tour==='ATP'):0.5;
+          return`<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;margin-bottom:3px;color:var(--t2)">
+            <span style="color:${wp>=0.5?'var(--nc)':'var(--t2)'}">${m.p1} <span style="color:var(--t3)">(${(wp*100).toFixed(0)}%)</span></span>
+            <span style="color:var(--t3)">vs</span>
+            <span style="color:${wp<0.5?'var(--nc)':'var(--t2)'}">${m.p2} <span style="color:var(--t3)">(${((1-wp)*100).toFixed(0)}%)</span></span>
+          </div>`;
+        }).join(''):'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">Schedule TBD</div>'}
+      </div>`;
+    }).join('');
+    // RG Draw
+    html+=`<div class="sh"><span style="color:var(--mc)">🎾</span> ROLAND GARROS 2026 PROJECTED DRAW</div>`;
     html+=renderRGBracket('men',surf);
     html+=`<div style="margin-top:16px"></div>`;
     html+=renderRGBracket('women',surf);
