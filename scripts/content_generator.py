@@ -4,16 +4,16 @@ from __future__ import annotations
 content_generator.py — Clairvoyance Daily Content Engine (v2)
 
 5 daily posting slots (Mountain Time):
-  10am   — Morning Preview
-  2pm    — Midday Adjustments
-  445pm  — Pre-Game Window
-  7pm    — Live + Late Slate
-  10pm   — Day Recap
+  10am   — Morning Preview      → post ~10:00 AM MT
+  2pm    — Midday Adjustments   → post ~2:00 PM MT
+  445pm  — Pre-Game Window      → post ~4:45 PM MT
+  7pm    — Live + Late Slate    → post ~7:00 PM MT
+  10pm   — Day Recap            → post ~10:00 PM MT
 
 Output: ~/Desktop/Clairvoyance/YYYY-MM-DD/
-  x/           — X post + thread text files per slot
-  instagram/   — Instagram caption + hashtags + story bullets per slot
-  cards/       — PNG cards (x_<slot>.png + ig_<slot>.png)
+  Files named: {date}_{Platform}_{time}_{label}.txt / .png
+  Example: 2026-05-20_X_10am_morning-preview.txt
+           2026-05-20_Instagram_10am_morning-preview.png
 
 Usage:
   python3 scripts/content_generator.py              # auto-detect slot from MT time
@@ -75,6 +75,24 @@ SLOT_LABELS = {
     "7pm":   "Live + Late Slate",
     "10pm":  "Day Recap",
 }
+SLOT_POST_TIMES = {
+    "10am":  "10:00 AM Mountain Time",
+    "2pm":   "2:00 PM Mountain Time",
+    "445pm": "4:45 PM Mountain Time",
+    "7pm":   "7:00 PM Mountain Time",
+    "10pm":  "10:00 PM Mountain Time",
+}
+SLOT_SLUGS = {
+    "10am":  "morning-preview",
+    "2pm":   "midday",
+    "445pm": "pregame",
+    "7pm":   "live-update",
+    "10pm":  "recap",
+}
+
+def _file_stem(slot: str, platform_slug: str) -> str:
+    """e.g. 2026-05-20_X_10am_morning-preview"""
+    return f"{DATE_SLUG}_{platform_slug}_{slot}_{SLOT_SLUGS[slot]}"
 
 def detect_slot() -> str:
     if  9 <= HOUR_MT < 13: return "10am"
@@ -400,46 +418,61 @@ def generate_content(data: dict, slot: str, verbose: bool = False) -> dict:
 
 
 # ── Desktop output writers ────────────────────────────────────────────────────
-def _write_x_file(path: Path, content: dict) -> None:
-    x_post  = content.get("x_post", "")
-    thread  = content.get("x_thread", [])
-    label   = content.get("slot_label", "")
-    gen_at  = content.get("generated_at", "")
-    lines = [
-        f"=== X POST — {label} ===",
-        f"Generated: {gen_at}  |  Chars: {len(x_post)}/280",
+def _header(slot: str, platform_name: str, handle: str) -> list[str]:
+    """Shared file header block — platform, post time, date, slot."""
+    return [
+        "═" * 62,
+        f"  PLATFORM :  {platform_name}  ({handle})",
+        f"  POST TIME:  {SLOT_POST_TIMES[slot]}",
+        f"  DATE     :  {DATE_DISPLAY}",
+        f"  SLOT     :  {SLOT_LABELS[slot]}",
+        "═" * 62,
         "",
+    ]
+
+
+def _write_x_file(path: Path, content: dict) -> None:
+    slot   = content.get("slot", "10am")
+    x_post = content.get("x_post", "")
+    thread = content.get("x_thread", [])
+    lines  = _header(slot, "X (Twitter)", "@ClairvoyanceEng")
+    lines += [
+        f"POST  ({len(x_post)}/280 chars — copy and paste directly):",
+        "─" * 62,
         x_post,
         "",
-        "─" * 60,
-        "=== X THREAD ===",
+        "─" * 62,
+        "THREAD  (post as reply chain):",
+        "─" * 62,
     ]
     for i, tweet in enumerate(thread, 1):
-        lines.append(f"[{i}] {tweet}")
+        lines.append(f"[{i}]  {tweet}")
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _write_ig_file(path: Path, content: dict) -> None:
-    caption   = content.get("instagram_caption", "")
-    hashtags  = " ".join(f"#{t.lstrip('#')}" for t in content.get("instagram_hashtags", []))
-    bullets   = content.get("story_bullets", [])
-    label     = content.get("slot_label", "")
-    gen_at    = content.get("generated_at", "")
-    lines = [
-        f"=== INSTAGRAM — {label} ===",
-        f"Generated: {gen_at}",
-        "",
-        "=== CAPTION ===",
+    slot     = content.get("slot", "10am")
+    caption  = content.get("instagram_caption", "")
+    hashtags = " ".join(f"#{t.lstrip('#')}" for t in content.get("instagram_hashtags", []))
+    bullets  = content.get("story_bullets", [])
+    lines    = _header(slot, "Instagram", "@clairvoyanceengine")
+    lines   += [
+        "CAPTION  (copy and paste):",
+        "─" * 62,
         caption,
         "",
-        "=== HASHTAGS ===",
+        "─" * 62,
+        "HASHTAGS  (paste in first comment or end of caption):",
+        "─" * 62,
         hashtags,
         "",
-        "=== STORY BULLETS ===",
+        "─" * 62,
+        "STORY BULLETS  (use for Stories / carousel chips):",
+        "─" * 62,
     ]
     for b in bullets:
-        lines.append(f"• {b}")
+        lines.append(f"  •  {b}")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -462,24 +495,22 @@ def _generate_card(out_path: Path, platform: str) -> None:
 
 
 def write_desktop_output(content: dict) -> None:
-    """Write all platform files + PNG cards to ~/Desktop/Clairvoyance/YYYY-MM-DD/."""
+    """Write all files to ~/Desktop/Clairvoyance/YYYY-MM-DD/ with descriptive names."""
     if not content:
         return
 
     slot     = content.get("slot", "10am")
     date_dir = DESKTOP_DIR / DATE_SLUG
-    x_dir    = date_dir / "x"
-    ig_dir   = date_dir / "instagram"
-    card_dir = date_dir / "cards"
+    date_dir.mkdir(parents=True, exist_ok=True)
 
-    for d in [x_dir, ig_dir, card_dir]:
-        d.mkdir(parents=True, exist_ok=True)
+    x_stem  = _file_stem(slot, "X")
+    ig_stem = _file_stem(slot, "Instagram")
 
-    _write_x_file( x_dir  / f"{slot}.txt", content)
-    _write_ig_file(ig_dir  / f"{slot}.txt", content)
+    _write_x_file( date_dir / f"{x_stem}.txt",  content)
+    _write_ig_file(date_dir / f"{ig_stem}.txt", content)
 
-    _generate_card(card_dir / f"x_{slot}.png",  "x")
-    _generate_card(card_dir / f"ig_{slot}.png", "instagram")
+    _generate_card(date_dir / f"{x_stem}.png",  "x")
+    _generate_card(date_dir / f"{ig_stem}.png", "instagram")
 
     print(f"[INFO] Output → {date_dir}")
 
