@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-content_generator.py — Clairvoyance Daily Content Engine (v2)
+content_generator.py — Clairvoyance Daily Content Engine (v3)
+
+Generates platform-ready content from data.json — no external API required.
 
 5 daily posting slots (Mountain Time):
-  10am   — Morning Preview      → post ~10:00 AM MT
-  2pm    — Midday Adjustments   → post ~2:00 PM MT
-  445pm  — Pre-Game Window      → post ~4:45 PM MT
-  7pm    — Live + Late Slate    → post ~7:00 PM MT
-  10pm   — Day Recap            → post ~10:00 PM MT
+  10am   — Morning Preview     → post ~10:00 AM MT
+  2pm    — Midday Adjustments  → post ~2:00 PM MT
+  445pm  — Pre-Game Window     → post ~4:45 PM MT
+  7pm    — Live + Late Slate   → post ~7:00 PM MT
+  10pm   — Day Recap           → post ~10:00 PM MT
 
 Output: ~/Desktop/Clairvoyance/YYYY-MM-DD/
-  Files named: {date}_{Platform}_{time}_{label}.txt / .png
+  Files: {date}_{Platform}_{time}_{label}.txt / .png
   Example: 2026-05-20_X_10am_morning-preview.txt
-           2026-05-20_Instagram_10am_morning-preview.png
 
 Usage:
-  python3 scripts/content_generator.py              # auto-detect slot from MT time
+  python3 scripts/content_generator.py              # auto-detect slot
   python3 scripts/content_generator.py --slot 10am
-  python3 scripts/content_generator.py --slot all   # generate all 5 slots
-  python3 scripts/content_generator.py --verbose
+  python3 scripts/content_generator.py --slot all
   python3 scripts/content_generator.py --print
 """
 
 import argparse, json, os, subprocess, sys
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, date, timedelta
 from pathlib import Path
 
 # ── .env loader ───────────────────────────────────────────────────────────────
@@ -45,17 +45,12 @@ DC_SOCIAL   = ROOT / "docs"     / "social_copy.json"
 DESKTOP_DIR = Path.home() / "Desktop" / "Clairvoyance"
 CARD_SCRIPT = Path(__file__).parent / "generate_card.py"
 
-try:
-    import anthropic
-except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "anthropic"], check=True)
-    import anthropic
-
 # ── Time (system locale = Mountain Time) ─────────────────────────────────────
 NOW_MT       = datetime.now()
 HOUR_MT      = NOW_MT.hour
 DATE_MT      = NOW_MT.date()
 DATE_DISPLAY = NOW_MT.strftime("%B %d, %Y")
+DATE_SHORT   = NOW_MT.strftime("%m/%d")
 DATE_SLUG    = NOW_MT.strftime("%Y-%m-%d")
 
 # ── Tennis gate: only during Grand Slams ─────────────────────────────────────
@@ -90,16 +85,15 @@ SLOT_SLUGS = {
     "10pm":  "recap",
 }
 
-def _file_stem(slot: str, platform_slug: str) -> str:
-    """e.g. 2026-05-20_X_10am_morning-preview"""
-    return f"{DATE_SLUG}_{platform_slug}_{slot}_{SLOT_SLUGS[slot]}"
-
 def detect_slot() -> str:
     if  9 <= HOUR_MT < 13: return "10am"
     if 13 <= HOUR_MT < 16: return "2pm"
     if 16 <= HOUR_MT < 18: return "445pm"
     if 18 <= HOUR_MT < 22: return "7pm"
     return "10pm"
+
+def _file_stem(slot: str, platform_slug: str) -> str:
+    return f"{DATE_SLUG}_{platform_slug}_{slot}_{SLOT_SLUGS[slot]}"
 
 
 # ── EV helpers ────────────────────────────────────────────────────────────────
@@ -110,316 +104,884 @@ def _ev_grade(edge_pct: float) -> str:
     if edge_pct >= 1:  return "C"
     return "D"
 
-def _ev_label(edge_pct: float) -> str:
-    grade = _ev_grade(edge_pct)
-    return f"EV {grade} ({edge_pct:+.1f}%)"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOCAL CONTENT GENERATOR — data-driven, no API required
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# ── Context builder ───────────────────────────────────────────────────────────
-def _ordinal(n: int) -> str:
-    return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
+# ── Data extraction helpers ───────────────────────────────────────────────────
 
-def _game_line(g: dict) -> str:
-    state = g.get("state", "pre")
-    away, home = g.get("away", ""), g.get("home", "")
-    score = ""
-    if state in ("in", "post"):
-        a, h = g.get("awayScore", 0), g.get("homeScore", 0)
-        score = f" [{a}-{h}]"
-        if state == "in":
-            clk = g.get("displayClock", "")
-            per = g.get("period", "")
-            score += f" {_ordinal(per) if isinstance(per, int) else per} {clk}".rstrip()
-        else:
-            score += " FINAL"
-    odds = ""
-    ml_a, ml_h = g.get("awayML"), g.get("homeML")
-    if ml_a and ml_h:
-        odds = f" | ML {away} {ml_a:+d}/{home} {ml_h:+d}"
-    ou = g.get("ou")
-    if ou:
-        odds += f" O/U {ou}"
-    series = g.get("seriesNote", "")
-    series_str = f" ({series})" if series else ""
-    return f"  {away} @ {home}{score}{odds}{series_str}"
+def _games_by_sport(data: dict, state: str | None = None) -> dict[str, list]:
+    """Return today's games per sport, optionally filtered by state."""
+    out = {}
+    for key, sport in [("mlb", "MLB"), ("nba", "NBA"), ("nhl", "NHL")]:
+        games = data.get(key, {}).get("today", [])
+        if state:
+            games = [g for g in games if g.get("state") == state]
+        if games:
+            out[sport] = games
+    return out
 
+def _slate_str(data: dict) -> str:
+    counts = {
+        sp: len(gs)
+        for sp, gs in _games_by_sport(data).items()
+    }
+    return " · ".join(f"{v} {k}" for k, v in counts.items()) or "No games scheduled"
 
-def extract_context(data: dict, slot: str) -> str:
-    lines = [f"Date: {DATE_DISPLAY} (Mountain Time)", f"Slot: {slot} — {SLOT_LABELS[slot]}", ""]
+def _live_games(data: dict) -> list[dict]:
+    out = []
+    for key, sport in [("mlb", "MLB"), ("nba", "NBA"), ("nhl", "NHL")]:
+        for g in data.get(key, {}).get("today", []):
+            if g.get("state") == "in":
+                out.append({**g, "_sport": sport})
+    return out
 
-    # ── Model picks with EV grades ────────────────────────────────────────────
-    best_bets = data.get("bestBets", [])
-    if best_bets:
-        lines.append("=== MODEL PICKS — EV RATINGS ===")
-        for b in best_bets[:8]:
-            if not isinstance(b, dict):
-                lines.append(f"  {b}")
-                continue
-            game  = b.get("game", "")
-            pick  = b.get("pick", "")
-            prob  = b.get("modelProb", b.get("prob", 0))
-            impl  = b.get("impliedProb", b.get("implied", 0))
-            edge  = b.get("edge", round((prob - impl) * 100, 1) if prob and impl else 0)
-            conf  = b.get("confidence", "")
-            ev    = _ev_label(edge)
-            lines.append(
-                f"  {game} | {pick} | Mdl {prob*100:.1f}% | Mkt {impl*100:.1f}% | Edge {edge:+.1f}% | {ev} | {conf}"
-            )
-        lines.append("")
+def _final_games(data: dict) -> list[dict]:
+    out = []
+    for key, sport in [("mlb", "MLB"), ("nba", "NBA"), ("nhl", "NHL")]:
+        for g in data.get(key, {}).get("today", []):
+            if g.get("state") == "post":
+                out.append({**g, "_sport": sport})
+    return out
 
-    # ── Settled record + recent results ───────────────────────────────────────
-    settled = data.get("settled", [])
-    if settled:
-        wins   = sum(1 for s in settled if s.get("result") == "win")
-        losses = sum(1 for s in settled if s.get("result") == "loss")
-        pushes = sum(1 for s in settled if s.get("result") == "push")
-        units  = sum(s.get("units", 0) for s in settled)
-        lines.append(f"=== SEASON RECORD === {wins}W-{losses}L-{pushes}P ({units:+.1f}u)")
-        recent = settled[-5:]
-        for s in recent:
-            r = s.get("result", "").upper()
-            u = s.get("units", 0)
-            g = s.get("game", "")
-            p = s.get("pick", "")
-            lines.append(f"  {r} {u:+.1f}u — {g}: {p}")
-        lines.append("")
+def _upcoming_games(data: dict) -> list[dict]:
+    out = []
+    for key, sport in [("mlb", "MLB"), ("nba", "NBA"), ("nhl", "NHL")]:
+        for g in data.get(key, {}).get("today", []):
+            if g.get("state") not in ("in", "post"):
+                out.append({**g, "_sport": sport})
+    return out
 
-    # ── Today's slates ────────────────────────────────────────────────────────
-    for sport, key in [("MLB", "mlb"), ("NBA", "nba"), ("NHL", "nhl")]:
-        today = data.get(key, {}).get("today", [])
-        if not today:
-            continue
-        live_ct  = sum(1 for g in today if g.get("state") == "in")
-        final_ct = sum(1 for g in today if g.get("state") == "post")
-        lines.append(
-            f"=== {sport} TODAY — {len(today)} games ({live_ct} live, {final_ct} final) ==="
-        )
-        for g in today[:10]:
-            lines.append(_game_line(g))
-        lines.append("")
+def _top_pick(data: dict) -> dict | None:
+    bets = [b for b in data.get("bestBets", []) if isinstance(b, dict)]
+    if not bets:
+        return None
+    return max(bets, key=lambda b: b.get("edge", 0))
 
-    # ── Tomorrow's slate ──────────────────────────────────────────────────────
-    mlb_tom = data.get("mlb", {}).get("tomorrow", [])
-    if mlb_tom:
-        lines.append(f"=== MLB TOMORROW — {len(mlb_tom)} games ===")
-        for g in mlb_tom[:5]:
-            lines.append(f"  {g.get('away','')} @ {g.get('home','')}")
-        lines.append("")
+def _all_picks(data: dict) -> list[dict]:
+    return [b for b in data.get("bestBets", []) if isinstance(b, dict) and b.get("edge", 0) > 0]
 
-    # ── Player props from Linemate recent-form ────────────────────────────────
+def _top_prop(data: dict) -> dict | None:
     lm = data.get("linemateForm", {})
+    best, best_hr = None, -1.0
     for sk in ["nba", "mlb", "nhl"]:
-        props = lm.get(sk, [])
-        if not props:
-            continue
-        lines.append(f"=== {sk.upper()} PLAYER PROPS — RECENT FORM ===")
-        for p in props[:6]:
+        for p in lm.get(sk, []):
             if not isinstance(p, dict):
                 continue
-            name    = p.get("player", "")
-            cat     = p.get("category", "")
-            line_v  = p.get("line", "")
-            trend   = p.get("trend", "")
-            hit_pct = p.get("hitRate", "")
-            ev_note = p.get("ev", "")
-            lines.append(
-                f"  {name} | {cat} {line_v} | Hit% {hit_pct} | Trend: {trend} | {ev_note}"
-            )
-        lines.append("")
+            try:
+                hr = float(str(p.get("hitRate", "0")).rstrip("%"))
+            except Exception:
+                hr = 0.0
+            if hr > best_hr:
+                best_hr, best = hr, {**p, "_sport": sk.upper()}
+    return best
 
-    # ── NHL MoneyPuck xGF% ────────────────────────────────────────────────────
-    mp_teams = data.get("mp", {}).get("teams", {})
-    if mp_teams:
-        sorted_teams = sorted(
-            [(k, v) for k, v in mp_teams.items() if isinstance(v, dict)],
-            key=lambda x: x[1].get("5on5", {}).get("xgfPct", 0),
-            reverse=True,
-        )
-        if sorted_teams:
-            lines.append("=== NHL 5v5 xGF% LEADERS ===")
-            for abbr, stats in sorted_teams[:5]:
-                s = stats.get("5on5", {})
-                lines.append(f"  {abbr}: xGF% {s.get('xgfPct', 0):.3f}")
-            lines.append("")
+def _all_props(data: dict) -> list[dict]:
+    out = []
+    lm = data.get("linemateForm", {})
+    for sk in ["nba", "mlb", "nhl"]:
+        for p in lm.get(sk, []):
+            if isinstance(p, dict):
+                out.append({**p, "_sport": sk.upper()})
+    return out
 
-    # ── Weather factors ───────────────────────────────────────────────────────
+def _record_str(data: dict) -> str | None:
+    settled = data.get("settled", [])
+    if not settled:
+        return None
+    wins   = sum(1 for s in settled if s.get("result") == "win")
+    losses = sum(1 for s in settled if s.get("result") == "loss")
+    pushes = sum(1 for s in settled if s.get("result") == "push")
+    units  = sum(s.get("units", 0) for s in settled)
+    rec = f"{wins}W-{losses}L"
+    if pushes:
+        rec += f"-{pushes}P"
+    return f"{rec} ({units:+.1f}u)"
+
+def _today_record(data: dict) -> str | None:
+    """Record only from today's settled bets."""
+    today_str = DATE_MT.strftime("%Y-%m-%d")
+    settled = [
+        s for s in data.get("settled", [])
+        if s.get("date", "").startswith(today_str)
+    ]
+    if not settled:
+        return None
+    wins   = sum(1 for s in settled if s.get("result") == "win")
+    losses = sum(1 for s in settled if s.get("result") == "loss")
+    pushes = sum(1 for s in settled if s.get("result") == "push")
+    units  = sum(s.get("units", 0) for s in settled)
+    rec = f"{wins}W-{losses}L"
+    if pushes:
+        rec += f"-{pushes}P"
+    return f"{rec} ({units:+.1f}u)"
+
+def _top_weather(data: dict) -> tuple[str, dict] | None:
     weather = data.get("weather", {})
     windy = [
         (k, v) for k, v in weather.items()
-        if not v.get("indoor") and (v.get("wind") or 0) >= 10
+        if not v.get("indoor") and (v.get("wind") or 0) >= 12
     ]
-    if windy:
-        lines.append("=== MLB WEATHER FACTORS ===")
-        for team, w in windy[:4]:
-            lines.append(
-                f"  {team}: {w.get('temp')}°F, {w.get('wind')} mph, {w.get('condition')}"
-            )
-        lines.append("")
+    if not windy:
+        return None
+    return max(windy, key=lambda x: x[1].get("wind", 0))
 
-    # ── Tennis (only during Grand Slams) ──────────────────────────────────────
-    if INCLUDE_TENNIS:
-        atp = data.get("tennis", {}).get("atpElo", [])
-        if atp:
-            lines.append("=== ATP ELO TOP 5 ===")
-            for p in atp[:5]:
-                lines.append(f"  {p.get('rank')}. {p.get('name')} — ELO {p.get('elo')}")
-            lines.append("")
-        schedule = data.get("tennis", {}).get("schedule", [])
-        if schedule:
-            lines.append("=== TENNIS TODAY ===")
-            for m in schedule[:8]:
-                p1    = m.get("player1", "")
-                p2    = m.get("player2", "")
-                state = m.get("state", "pre")
-                tour  = m.get("tour", "")
-                tourn = m.get("tournament", "")
-                lines.append(f"  {p1} vs {p2} | {tourn} ({tour}) | {state}")
-            lines.append("")
+def _series_notes(data: dict) -> list[str]:
+    notes = []
+    for key in ["mlb", "nba", "nhl"]:
+        for g in data.get(key, {}).get("today", []):
+            s = g.get("seriesNote", "")
+            if s:
+                notes.append(f"{g.get('away','')} @ {g.get('home','')} — {s}")
+    return notes
 
-    return "\n".join(lines)
+def _nhl_leader(data: dict) -> str | None:
+    mp = data.get("mp", {}).get("teams", {})
+    if not mp:
+        return None
+    teams = [(k, v) for k, v in mp.items() if isinstance(v, dict)]
+    if not teams:
+        return None
+    leader = max(teams, key=lambda x: x[1].get("5on5", {}).get("xgfPct", 0))
+    pct = leader[1].get("5on5", {}).get("xgfPct", 0)
+    return f"{leader[0]} ({pct:.3f} xGF%)"
 
+# ── Formatting helpers ────────────────────────────────────────────────────────
 
-# ── System prompt ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """\
-You are the content writer for Clairvoyance Engine, a sports intelligence platform.
+def _fmt_pick(pick: dict, short: bool = False) -> str:
+    game  = pick.get("game", "")
+    p     = pick.get("pick", "")
+    mdl   = pick.get("modelProb", pick.get("prob", 0))
+    impl  = pick.get("impliedProb", pick.get("implied", 0))
+    edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+    grade = _ev_grade(edge)
+    if short:
+        return f"{game} → {p} | EV {grade} ({edge:+.1f}%)"
+    return (
+        f"{game} → {p}\n"
+        f"Model: {mdl*100:.1f}% | Market: {impl*100:.1f}% | Edge: {edge:+.1f}% | EV {grade}"
+    )
 
-Platform handles:
-  X (Twitter): @ClairvoyanceEng
-  Instagram:   @clairvoyanceengine
+def _fmt_prop(prop: dict) -> str:
+    name  = prop.get("player", "")
+    cat   = prop.get("category", "")
+    line  = prop.get("line", "")
+    hr    = prop.get("hitRate", "")
+    trend = prop.get("trend", "")
+    sport = prop.get("_sport", "")
+    ev    = prop.get("ev", "")
+    return f"{sport} — {name}: {cat} {line} | Hit {hr} | Trend: {trend}{' | '+ev if ev else ''}"
 
-Voice: analytical, transparent, data-first. Never hype. No prediction guarantees.
-Tone: Bloomberg Sports meets sharp bettor. Concise. Professional. Confident.
+def _fmt_score(g: dict) -> str:
+    away  = g.get("away", "")
+    home  = g.get("home", "")
+    a_s   = g.get("awayScore", 0)
+    h_s   = g.get("homeScore", 0)
+    state = g.get("state", "pre")
+    if state == "post":
+        return f"{away} {a_s} — {home} {h_s}  FINAL"
+    if state == "in":
+        per = g.get("period", "")
+        clk = g.get("displayClock", "")
+        return f"{away} {a_s} — {home} {h_s}  {per} {clk}".rstrip()
+    return f"{away} @ {home}"
 
-EV Rating scale (always use when referencing picks or props):
-  A+ = edge > 12%  |  A = 8-12%  |  B = 4-8%  |  C = 1-4%  |  D = <1%
+def _trunc(text: str, limit: int = 280) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + "…"
 
-Content rules (strictly follow every time):
-- NEVER use: LOCK, guaranteed, can't miss, fire, 🔥, free play, easy money
-- Always include model probability, implied market prob, and EV grade when data is available
-- For player props: show hit rate trend and EV grade — do NOT say "best bet"
-- Reference trends, patterns, and line movement context — not "insider information"
-- NEVER reveal the engine's data sources, model architecture, or proprietary edge methodology
-- X posts: ≤280 chars, info-dense, no filler; do NOT include the handle in post text
-- X thread: 4 tweets, each self-contained with data, building on the previous
-- Instagram: 2-3 sentences, narrative but data-first, ends with a specific concrete insight
-- Hashtags: analytical/community tags only (no #FreePlays, #BettingPicks gambling spam)
-- story_bullets: each ≤10 words, works as a standalone Story chip
-- highlight_game: the single most analytically interesting matchup of the slot, or null
-
-Output EXACTLY this JSON — no markdown fences, no explanation outside the JSON:
-{
-  "x_post": "string (≤280 chars)",
-  "x_thread": ["tweet 1", "tweet 2", "tweet 3", "tweet 4"],
-  "instagram_caption": "string",
-  "instagram_hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "story_bullets": ["≤10 words", "≤10 words", "≤10 words"],
-  "content_theme": "morning_preview|midday_adjustment|pregame|live_update|recap",
-  "highlight_game": "AWAY @ HOME or null"
-}"""
-
-
-# ── Slot-specific prompts ─────────────────────────────────────────────────────
-def _slot_instruction(slot: str) -> str:
-    return {
-        "10am": (
-            f"Generate MORNING PREVIEW content for {DATE_DISPLAY}.\n\n"
-            "Focus: Today's full slate across MLB/NBA/NHL. The engine's approach for the day — "
-            "which matchups have the clearest signal, which are noisy. Lead with the highest-EV "
-            "model pick(s) and include at least 2 specific player props with their EV grade in the thread. "
-            "Include weather context if it affects totals. Reference any active playoff series. "
-            "Set an analytical tone — what is the engine watching today and why?"
-        ),
-        "2pm": (
-            f"Generate MIDDAY ADJUSTMENTS content for {DATE_DISPLAY}.\n\n"
-            "Focus: What has changed since the morning post. Line movement direction (toward or away "
-            "from the model), any early game results, injury news impact on the model's outputs. "
-            "If morning picks look better or worse at current lines, say so explicitly. "
-            "Educational angle: explain WHY a line moved in data terms — public percentage, "
-            "sharp money, injury report. Reference the morning post's picks and update confidence levels. "
-            "Include updated prop landscape with EV grades at current closing lines."
-        ),
-        "445pm": (
-            f"Generate PRE-GAME content for {DATE_DISPLAY}.\n\n"
-            "Focus: Tonight's primetime games (ET slate, tip-off/first-pitch within 2-3 hours). "
-            "Final model reads before action begins. Closing line analysis — are markets converging "
-            "with the model or diverging? If props are closing in a favorable direction, note it. "
-            "Build analytical anticipation without hype — this is the last pre-game assessment. "
-            "Be specific about what the model expects and why, without revealing methodology."
-        ),
-        "7pm": (
-            f"Generate LIVE + LATE SLATE content for {DATE_DISPLAY}.\n\n"
-            "Focus: Games currently in progress (check 'in' state in the data) — current scores, "
-            "how the game flow compares to model projections. Preview of the late west-coast slate "
-            "with fresh model reads. If any earlier picks are tracking well or have settled, "
-            "reference them transparently. Keep a real-time feel — specific scores, periods, live context. "
-            "Include late-slate prop opportunities with EV grades."
-        ),
-        "10pm": (
-            f"Generate DAY RECAP content for {DATE_DISPLAY}.\n\n"
-            "Focus: Full-day accountability report. All results across sports — wins, losses, exact units. "
-            "What did the model identify that markets missed? What did it get wrong and why? "
-            "Show the model's quality through honest transparency, not spin. "
-            "Highlight the most analytically notable call of the day (correct OR incorrect). "
-            "Close with one forward-looking insight for tomorrow — what does the engine see ahead."
-        ),
-    }[slot]
+_IG_TAGS = ["SportsBetting", "SportsAnalytics", "ModelOutput", "DataDriven", "ExpectedValue"]
 
 
-def build_prompt(context: str, slot: str) -> str:
-    return f"""{_slot_instruction(slot)}
+# ── Slot builders ─────────────────────────────────────────────────────────────
 
-CURRENT CLAIRVOYANCE DATA:
-{context}
+def _build_morning(data: dict) -> dict:
+    slate   = _slate_str(data)
+    pick    = _top_pick(data)
+    picks   = _all_picks(data)
+    prop    = _top_prop(data)
+    record  = _record_str(data)
+    weather = _top_weather(data)
+    series  = _series_notes(data)
 
-Generate platform-specific content. Remember: data-first, transparent, never hype, always EV-graded."""
-
-
-# ── Claude API call ───────────────────────────────────────────────────────────
-def generate_content(data: dict, slot: str, verbose: bool = False) -> dict:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("[WARN] ANTHROPIC_API_KEY not set — skipping content generation", file=sys.stderr)
-        return {}
-
-    context = extract_context(data, slot)
-    if verbose:
-        print(f"[DEBUG] Context ({len(context)} chars):\n{context}\n")
-
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        message = client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=1600,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_prompt(context, slot)}],
+    # ── X post ────────────────────────────────────────────────────────────────
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        game  = pick.get("game", "")
+        p     = pick.get("pick", "")
+        x_post = _trunc(
+            f"Morning model — {DATE_SHORT} | {slate}\n"
+            f"Top edge: {game} → {p} | {mdl*100:.0f}% model / {impl*100:.0f}% market"
+            f" / {edge:+.1f}% edge | EV {grade}"
         )
-        raw = message.content[0].text.strip()
+    else:
+        x_post = _trunc(
+            f"Morning model — {DATE_SHORT} | {slate}\n"
+            f"No edges above threshold at open. Monitoring line movement through the morning."
+        )
 
-        # Strip accidental markdown fences
-        if raw.startswith("```"):
-            raw = "\n".join(raw.split("\n")[1:]).strip()
-        if raw.endswith("```"):
-            raw = "\n".join(raw.split("\n")[:-1]).strip()
+    # ── Thread ────────────────────────────────────────────────────────────────
+    n_picks = len(picks)
+    tw1 = f"Morning model sweep — {DATE_DISPLAY}\n\n{slate}"
+    if record:
+        tw1 += f"\nSeason: {record}"
+    tw1 += f"\n\n{n_picks} edge{'s' if n_picks != 1 else ''} flagged above market implied ↓"
 
-        result              = json.loads(raw)
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        conf  = pick.get("confidence", "")
+        tw2 = (
+            f"Top read: {_fmt_pick(pick)}"
+            + (f"\n{conf}" if conf else "")
+        )
+        if len(picks) > 1:
+            p2 = picks[1]
+            e2 = p2.get("edge", 0)
+            g2 = _ev_grade(e2)
+            tw2 += f"\n\nAlso tracking: {p2.get('game','')} → {p2.get('pick','')} | EV {g2} ({e2:+.1f}%)"
+    else:
+        tw2 = (
+            f"No model edges above confidence threshold at open.\n\n"
+            f"Slate: {slate}\n\nLines and injury updates tracking through 2 PM midday post."
+        )
+
+    if prop:
+        tw3 = f"Prop spotlight:\n{_fmt_prop(prop)}"
+        all_p = _all_props(data)
+        if len(all_p) > 1:
+            tw3 += f"\n\nAlso flagged: {_fmt_prop(all_p[1])}"
+    elif weather:
+        team, w = weather
+        tw3 = (
+            f"Weather factor — {team}: {w.get('wind')} mph, {w.get('temp')}°F\n\n"
+            f"Wind direction and speed affect outdoor totals. "
+            f"Model accounts for park + conditions in O/U projections."
+        )
+    else:
+        tw3 = (
+            f"Prop data refreshing with today's matchups.\n\n"
+            f"Model tracks hit rate trends, line movement direction, and closing value "
+            f"across MLB, NBA, and NHL prop markets."
+        )
+
+    if series:
+        tw4 = "Playoff context:\n\n" + "\n".join(f"• {s}" for s in series[:4])
+        tw4 += "\n\nNext: Midday adjustments at 2 PM MT."
+    elif weather:
+        team, w = weather
+        tw4 = (
+            f"Weather: {team} park — {w.get('wind')} mph, {w.get('temp')}°F\n\n"
+            f"Condition: {w.get('condition','')}\n\n"
+            f"Next update: 2 PM MT midday read."
+        )
+    else:
+        nhl = _nhl_leader(data)
+        tw4 = "Model data refreshes 6x daily. Next: Midday adjustments at 2 PM MT."
+        if nhl:
+            tw4 = f"NHL 5v5 xGF% leader: {nhl}\n\nExpected goals differential is the strongest team-level predictor in model. Next: 2 PM MT."
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        ig = (
+            f"Morning model sweep for {DATE_DISPLAY}. {slate} across professional sports — "
+            f"the engine flagged {n_picks} edge{'s' if n_picks != 1 else ''} above market implied. "
+            f"Top read: {pick.get('game','')} → {pick.get('pick','')}, "
+            f"where the model projects {mdl*100:.1f}% probability against a market-implied {impl*100:.1f}%, "
+            f"a {edge:+.1f}% edge rated EV {grade}. "
+            f"All projections update with line movement throughout the day."
+        )
+    else:
+        ig = (
+            f"Morning model sweep for {DATE_DISPLAY}. {slate} across professional sports today. "
+            f"No edges above the confidence threshold at open — the engine is monitoring line movement "
+            f"and injury reports. Next read at 2 PM Mountain."
+        )
+
+    # ── Story bullets ─────────────────────────────────────────────────────────
+    bullets = []
+    if pick:
+        edge = pick.get("edge", 0)
+        bullets.append(f"Top edge: {pick.get('game','')[:22]} {edge:+.0f}%")
+    bullets.append(slate)
+    if record:
+        bullets.append(f"Season record: {record}")
+    elif weather:
+        team, w = weather
+        bullets.append(f"Wind alert: {w.get('wind')} mph at {team}")
+    bullets.append("Next update: 2 PM Mountain Time")
+    bullets = [b[:50] for b in bullets[:3]]
+
+    return {
+        "x_post":              x_post,
+        "x_thread":            [tw1, tw2, tw3, tw4],
+        "instagram_caption":   ig,
+        "instagram_hashtags":  _IG_TAGS,
+        "story_bullets":       bullets,
+        "content_theme":       "morning_preview",
+        "highlight_game":      pick.get("game") if pick else None,
+    }
+
+
+def _build_midday(data: dict) -> dict:
+    slate   = _slate_str(data)
+    pick    = _top_pick(data)
+    picks   = _all_picks(data)
+    prop    = _top_prop(data)
+    live    = _live_games(data)
+    finals  = _final_games(data)
+    record  = _record_str(data)
+    weather = _top_weather(data)
+
+    # ── X post ────────────────────────────────────────────────────────────────
+    if live:
+        g = live[0]
+        x_post = _trunc(
+            f"Midday — {DATE_SHORT} | {len(live)} game{'s' if len(live)>1 else ''} live\n"
+            f"{_fmt_score(g)}"
+            + (f" · {_fmt_score(live[1])}" if len(live) > 1 else "")
+            + (f"\nModel still tracking {len(picks)} edge{'s' if len(picks)!=1 else ''} for tonight." if picks else "")
+        )
+    elif pick:
+        mdl  = pick.get("modelProb", pick.get("prob", 0))
+        impl = pick.get("impliedProb", pick.get("implied", 0))
+        edge = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        x_post = _trunc(
+            f"Midday read — {DATE_SHORT}\n"
+            f"Top edge holding: {pick.get('game','')} → {pick.get('pick','')} | "
+            f"{mdl*100:.0f}% model / {impl*100:.0f}% market | EV {grade}"
+        )
+    else:
+        x_post = _trunc(
+            f"Midday update — {DATE_SHORT} | {slate}\n"
+            f"No new edges above threshold. Monitoring lines ahead of tonight's slate."
+        )
+
+    # ── Thread ────────────────────────────────────────────────────────────────
+    n_final = len(finals)
+    tw1 = f"Midday check — {DATE_DISPLAY}\n\n{slate}"
+    if n_final:
+        tw1 += f"\n{n_final} game{'s' if n_final>1 else ''} final"
+    if live:
+        tw1 += f" · {len(live)} live"
+    if record:
+        tw1 += f"\n\nSeason: {record}"
+
+    if finals:
+        final_lines = [_fmt_score(g) for g in finals[:4]]
+        tw2 = "Results so far:\n\n" + "\n".join(final_lines)
+        if len(finals) > 4:
+            tw2 += f"\n+ {len(finals)-4} more"
+    elif live:
+        live_lines = [_fmt_score(g) for g in live[:4]]
+        tw2 = "Live right now:\n\n" + "\n".join(live_lines)
+    else:
+        tw2 = "No results yet — games begin this afternoon/evening.\n\nModel is watching for any line movement that closes the gap on flagged edges."
+
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        tw3 = (
+            f"Model still tracking:\n{_fmt_pick(pick)}\n\n"
+            f"Line movement direction: model edge {'widening' if edge > 8 else 'stable' if edge > 3 else 'narrowing — watch closing line'}."
+        )
+    else:
+        tw3 = "No edges above confidence threshold midday.\n\nNext read at 4:45 PM — pre-game final model outputs before tonight's action."
+
+    if prop:
+        tw4 = (
+            f"Prop update:\n{_fmt_prop(prop)}\n\n"
+            f"Check closing line at 4:45 PM for final value assessment."
+        )
+    elif weather:
+        team, w = weather
+        tw4 = (
+            f"Weather update — {team}: {w.get('wind')} mph, {w.get('temp')}°F\n"
+            f"Condition: {w.get('condition','')}\n\n"
+            f"Model adjusts totals projections for wind direction. Next: 4:45 PM pre-game."
+        )
+    else:
+        tw4 = "Pre-game post at 4:45 PM MT — final model reads before tonight's slate. Accountability recap at 10 PM."
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    if finals:
+        ig = (
+            f"Midday check for {DATE_DISPLAY}. "
+            f"{n_final} game{'s' if n_final>1 else ''} final so far with {slate} on today's slate. "
+        )
+    else:
+        ig = f"Midday model check for {DATE_DISPLAY}. {slate} on today's card. "
+
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        edge  = pick.get("edge", 0)
+        grade = _ev_grade(edge)
+        ig += (
+            f"Top edge remains: {pick.get('game','')} → {pick.get('pick','')}, "
+            f"model at {mdl*100:.1f}% against market implied — EV {grade}. "
+            f"Pre-game final read drops at 4:45 PM."
+        )
+    else:
+        ig += "No edges above threshold at midday. Final model outputs before tonight's games at 4:45 PM Mountain."
+
+    bullets = []
+    if live:
+        bullets.append(f"{len(live)} game{'s' if len(live)>1 else ''} live now")
+    elif finals:
+        bullets.append(f"{n_final} game{'s' if n_final>1 else ''} final")
+    if pick:
+        edge = pick.get("edge", 0)
+        bullets.append(f"Top edge: EV {_ev_grade(edge)} ({edge:+.0f}%)")
+    bullets.append(slate)
+    bullets.append("Pre-game post: 4:45 PM Mountain")
+    bullets = [b[:50] for b in bullets[:3]]
+
+    return {
+        "x_post":             x_post,
+        "x_thread":           [tw1, tw2, tw3, tw4],
+        "instagram_caption":  ig,
+        "instagram_hashtags": _IG_TAGS,
+        "story_bullets":      bullets,
+        "content_theme":      "midday_adjustment",
+        "highlight_game":     pick.get("game") if pick else None,
+    }
+
+
+def _build_pregame(data: dict) -> dict:
+    picks    = _all_picks(data)
+    pick     = _top_pick(data)
+    prop     = _top_prop(data)
+    upcoming = _upcoming_games(data)
+    live     = _live_games(data)
+    weather  = _top_weather(data)
+    record   = _record_str(data)
+    series   = _series_notes(data)
+
+    n_tonight = len(upcoming)
+    tonight_str = f"{n_tonight} game{'s' if n_tonight != 1 else ''} tonight"
+    if live:
+        tonight_str += f" · {len(live)} live"
+
+    # ── X post ────────────────────────────────────────────────────────────────
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        x_post = _trunc(
+            f"Pre-game — {DATE_SHORT} | {tonight_str}\n"
+            f"Final read: {pick.get('game','')} → {pick.get('pick','')} | "
+            f"{mdl*100:.0f}% model / {impl*100:.0f}% market / EV {grade}"
+        )
+    else:
+        x_post = _trunc(
+            f"Pre-game — {DATE_SHORT} | {tonight_str}\n"
+            f"No edges above threshold at close. Model tracking {n_tonight} upcoming game{'s' if n_tonight!=1 else ''}."
+        )
+
+    # ── Thread ────────────────────────────────────────────────────────────────
+    tw1 = f"Pre-game model — {DATE_DISPLAY}\n\n{tonight_str}"
+    if record:
+        tw1 += f"\nSeason: {record}"
+    if upcoming:
+        game_lines = [f"• {g.get('away','')} @ {g.get('home','')} ({g.get('_sport','')})" for g in upcoming[:5]]
+        tw1 += "\n\n" + "\n".join(game_lines)
+
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        conf  = pick.get("confidence", "")
+        tw2 = f"Final model read:\n{_fmt_pick(pick)}"
+        if conf:
+            tw2 += f"\n{conf}"
+        if len(picks) > 1:
+            p2    = picks[1]
+            e2    = p2.get("edge", 0)
+            g2    = _ev_grade(e2)
+            tw2 += f"\n\nAlso tracking: {p2.get('game','')} → {p2.get('pick','')} | EV {g2}"
+    else:
+        tw2 = (
+            f"No edges flagged above confidence threshold at closing lines.\n\n"
+            f"{n_tonight} games on tonight's slate. Model will monitor live."
+        )
+
+    if prop:
+        tw3 = f"Prop spotlight — closing line value:\n{_fmt_prop(prop)}"
+    elif weather:
+        team, w = weather
+        tw3 = (
+            f"Weather factor at game time:\n"
+            f"{team}: {w.get('wind')} mph, {w.get('temp')}°F — {w.get('condition','')}\n\n"
+            f"Outdoor park wind affects total projection. Model adjusted."
+        )
+    else:
+        tw3 = "No high-confidence props at closing line.\n\nModel tracks live win probability through game — live update at 7 PM MT."
+
+    if series:
+        tw4 = "Tonight's playoff context:\n\n" + "\n".join(f"• {s}" for s in series[:4])
+        tw4 += "\n\nLive update: 7 PM MT."
+    else:
+        tw4 = "Live + late slate post at 7 PM MT. Full day recap at 10 PM.\n\nAll projections are probabilistic — results tracked transparently."
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    if pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        ig = (
+            f"Pre-game model output for {DATE_DISPLAY}. {tonight_str} remaining on the slate. "
+            f"The engine's final read before tip-off: {pick.get('game','')} → {pick.get('pick','')} — "
+            f"model {mdl*100:.1f}% vs. market implied {impl*100:.1f}%, an edge of {edge:+.1f}% rated EV {grade}. "
+            f"Live update at 7 PM Mountain as the action unfolds."
+        )
+    else:
+        ig = (
+            f"Pre-game model output for {DATE_DISPLAY}. {tonight_str} on the card. "
+            f"No edges above the confidence threshold at closing lines — the model will track live win probability "
+            f"as games are in progress. Live update at 7 PM Mountain."
+        )
+
+    bullets = []
+    if pick:
+        edge = pick.get("edge", 0)
+        bullets.append(f"Final edge: EV {_ev_grade(edge)} ({edge:+.0f}%)")
+    bullets.append(f"{tonight_str}")
+    if series:
+        bullets.append(series[0][:45])
+    elif weather:
+        team, w = weather
+        bullets.append(f"{w.get('wind')} mph at {team}")
+    bullets.append("Live update: 7 PM Mountain")
+    bullets = [b[:50] for b in bullets[:3]]
+
+    return {
+        "x_post":             x_post,
+        "x_thread":           [tw1, tw2, tw3, tw4],
+        "instagram_caption":  ig,
+        "instagram_hashtags": _IG_TAGS,
+        "story_bullets":      bullets,
+        "content_theme":      "pregame",
+        "highlight_game":     pick.get("game") if pick else None,
+    }
+
+
+def _build_live(data: dict) -> dict:
+    live     = _live_games(data)
+    finals   = _final_games(data)
+    upcoming = _upcoming_games(data)
+    pick     = _top_pick(data)
+    picks    = _all_picks(data)
+    prop     = _top_prop(data)
+    record   = _record_str(data)
+
+    # ── X post ────────────────────────────────────────────────────────────────
+    if live:
+        score_lines = [_fmt_score(g) for g in live[:2]]
+        header = f"Live — {DATE_SHORT} | {len(live)} in progress"
+        x_post = _trunc(header + "\n" + "\n".join(score_lines))
+    elif finals:
+        score_lines = [_fmt_score(g) for g in finals[:2]]
+        x_post = _trunc(
+            f"Evening — {DATE_SHORT} | {len(finals)} final"
+            + (f" · {len(upcoming)} upcoming" if upcoming else "")
+            + "\n" + "\n".join(score_lines)
+        )
+    else:
+        x_post = _trunc(
+            f"Games coming up — {DATE_SHORT}\n"
+            + "\n".join(f"{g.get('away','')} @ {g.get('home','')} ({g.get('_sport','')})" for g in upcoming[:3])
+        )
+
+    # ── Thread ────────────────────────────────────────────────────────────────
+    tw1 = f"Live model — {DATE_DISPLAY}"
+    if live:
+        tw1 += f"\n\n{len(live)} game{'s' if len(live)>1 else ''} in progress:"
+        for g in live[:4]:
+            tw1 += f"\n• {_fmt_score(g)}"
+    elif finals:
+        tw1 += f"\n\n{len(finals)} game{'s' if len(finals)>1 else ''} final:"
+        for g in finals[:4]:
+            tw1 += f"\n• {_fmt_score(g)}"
+    if upcoming:
+        tw1 += f"\n\n{len(upcoming)} still to come"
+
+    # Track picks vs live results
+    if pick and live:
+        # Check if top pick's game is live
+        pick_game = pick.get("game", "").upper().replace(" ", "")
+        matching = [
+            g for g in live
+            if f"{g.get('away','')}@{g.get('home','')}".upper().replace(" ", "") in pick_game
+            or pick_game in f"{g.get('away','')}@{g.get('home','')}".upper().replace(" ", "")
+        ]
+        if matching:
+            g = matching[0]
+            a_s, h_s = g.get("awayScore", 0), g.get("homeScore", 0)
+            per = g.get("period", "")
+            clk = g.get("displayClock", "")
+            tw2 = (
+                f"Tracked pick live:\n{_fmt_pick(pick, short=True)}\n\n"
+                f"Current: {_fmt_score(g)} | {per} {clk}\n"
+                f"Model tracking win probability in real time."
+            )
+        else:
+            tw2 = f"Tracked pick:\n{_fmt_pick(pick)}"
+    elif pick:
+        mdl   = pick.get("modelProb", pick.get("prob", 0))
+        impl  = pick.get("impliedProb", pick.get("implied", 0))
+        edge  = pick.get("edge", round((mdl - impl) * 100, 1) if mdl and impl else 0)
+        grade = _ev_grade(edge)
+        tw2 = (
+            f"Model pick pending:\n{_fmt_pick(pick)}\n\n"
+            f"Game not yet live. Edge: {edge:+.1f}% | EV {grade}"
+        )
+    else:
+        tw2 = (
+            f"No model edges flagged tonight.\n\n"
+            f"Watching: {len(live)} live · {len(upcoming)} upcoming · {len(finals)} final"
+        )
+
+    # Late slate preview
+    if upcoming:
+        late_lines = [
+            f"• {g.get('away','')} @ {g.get('home','')} ({g.get('_sport','')})"
+            for g in upcoming[:4]
+        ]
+        tw3 = f"Still to come tonight:\n\n" + "\n".join(late_lines)
+        if pick and not live:
+            tw3 += f"\n\nModel tracking: {pick.get('game','')} → {pick.get('pick','')}"
+    elif prop:
+        tw3 = f"Live prop to watch:\n{_fmt_prop(prop)}"
+    else:
+        tw3 = f"Full late slate underway.\n\nModel win probability updates in real time. Full results and accuracy recap at 10 PM MT."
+
+    tw4 = "Full day recap at 10 PM MT — results, accuracy, units, and forward look.\n\nAll picks tracked transparently. Season record updated after finals."
+    if record:
+        tw4 = f"Season record so far: {record}\n\nFull today recap at 10 PM MT."
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    if live:
+        ig = (
+            f"Live model update for {DATE_DISPLAY}. "
+            f"{len(live)} game{'s' if len(live)>1 else ''} in progress across the slate. "
+        )
+        if pick:
+            ig += f"The engine is tracking {pick.get('game','')} live — {pick.get('pick','')} was the flagged edge. "
+        ig += f"Full accountability recap at 10 PM Mountain with results, accuracy, and units."
+    elif upcoming:
+        ig = (
+            f"Evening model check — {DATE_DISPLAY}. "
+            f"{len(upcoming)} game{'s' if len(upcoming)>1 else ''} remaining on tonight's card"
+            + (f", {len(finals)} final" if finals else "") + ". "
+        )
+        if pick:
+            mdl  = pick.get("modelProb", pick.get("prob", 0))
+            edge = pick.get("edge", 0)
+            ig += (
+                f"Model edge: {pick.get('game','')} → {pick.get('pick','')} at {mdl*100:.0f}% model probability. "
+            )
+        ig += "Recap at 10 PM Mountain."
+    else:
+        ig = (
+            f"Evening update for {DATE_DISPLAY}. Games wrapping up — full accountability recap at 10 PM Mountain. "
+            f"Results, model accuracy, and units tracked transparently."
+        )
+
+    bullets = []
+    if live:
+        bullets.append(f"{len(live)} game{'s' if len(live)>1 else ''} live right now")
+    if finals:
+        bullets.append(f"{len(finals)} final{'s' if len(finals)>1 else ''} so far")
+    if upcoming:
+        bullets.append(f"{len(upcoming)} game{'s' if len(upcoming)>1 else ''} still to come")
+    if record:
+        bullets.append(f"Record: {record}")
+    bullets.append("Full recap: 10 PM Mountain")
+    bullets = [b[:50] for b in bullets[:3]]
+
+    return {
+        "x_post":             x_post,
+        "x_thread":           [tw1, tw2, tw3, tw4],
+        "instagram_caption":  ig,
+        "instagram_hashtags": _IG_TAGS,
+        "story_bullets":      bullets,
+        "content_theme":      "live_update",
+        "highlight_game":     pick.get("game") if pick else (live[0].get("away","") + " @ " + live[0].get("home","") if live else None),
+    }
+
+
+def _build_recap(data: dict) -> dict:
+    finals    = _final_games(data)
+    live      = _live_games(data)
+    picks     = _all_picks(data)
+    pick      = _top_pick(data)
+    record    = _record_str(data)
+    today_rec = _today_record(data)
+    settled   = data.get("settled", [])
+    mlb_tom   = data.get("mlb", {}).get("tomorrow", [])
+
+    n_final = len(finals)
+    n_total = n_final + len(live)
+
+    # ── X post ────────────────────────────────────────────────────────────────
+    if today_rec:
+        x_post = _trunc(
+            f"Day recap — {DATE_SHORT} | Today: {today_rec}"
+            + (f" | Season: {record}" if record and record != today_rec else "")
+            + (f" | {n_final} games final" if n_final else "")
+        )
+    elif finals:
+        score_lines = [_fmt_score(g) for g in finals[:2]]
+        x_post = _trunc(
+            f"Day recap — {DATE_SHORT} | {n_final} final\n" + "\n".join(score_lines)
+        )
+    else:
+        x_post = _trunc(
+            f"Day recap — {DATE_SHORT} | Model tracking complete. Season: {record or 'Accumulating'}"
+        )
+
+    # ── Thread ────────────────────────────────────────────────────────────────
+    tw1 = f"Day recap — {DATE_DISPLAY}"
+    if today_rec:
+        tw1 += f"\n\nToday: {today_rec}"
+    if record:
+        tw1 += f"\nSeason: {record}"
+    tw1 += f"\n\n{n_final} game{'s' if n_final!=1 else ''} final"
+    if live:
+        tw1 += f" · {len(live)} still in progress"
+
+    if finals:
+        result_lines = [f"• {_fmt_score(g)}" for g in finals[:6]]
+        tw2 = "Final results:\n\n" + "\n".join(result_lines)
+        if len(finals) > 6:
+            tw2 += f"\n+ {len(finals)-6} more"
+    else:
+        tw2 = "Scores still pending.\n\nModel accuracy and units will update once all games are final."
+
+    # Model accuracy for the day
+    today_str  = DATE_MT.strftime("%Y-%m-%d")
+    today_bets = [s for s in settled if s.get("date", "").startswith(today_str)]
+    if today_bets:
+        wins   = sum(1 for s in today_bets if s.get("result") == "win")
+        losses = sum(1 for s in today_bets if s.get("result") == "loss")
+        units  = sum(s.get("units", 0) for s in today_bets)
+        win_pct = wins / len(today_bets) * 100 if today_bets else 0
+        best_today = max(today_bets, key=lambda s: s.get("units", 0), default=None)
+        tw3 = (
+            f"Model performance today:\n\n"
+            f"{wins}W-{losses}L | {units:+.1f} units | {win_pct:.0f}% accuracy\n"
+        )
+        if best_today and best_today.get("result") == "win":
+            tw3 += f"\nBest call: {best_today.get('game','')} → {best_today.get('pick','')} ({best_today.get('units',0):+.1f}u)"
+    elif picks:
+        tw3 = (
+            f"Model tracked {len(picks)} edge{'s' if len(picks)!=1 else ''} today.\n\n"
+            + "\n".join(_fmt_pick(p, short=True) for p in picks[:3])
+            + "\n\nResults pending final scores."
+        )
+    else:
+        tw3 = (
+            f"No edges above threshold today — model correctly identified a low-confidence slate.\n\n"
+            f"Discipline is part of the edge. Season: {record or 'Accumulating'}."
+        )
+
+    # Forward look
+    tw4 = "Tomorrow:\n\n"
+    if mlb_tom:
+        tw4 += f"MLB — {len(mlb_tom)} games\n"
+        for g in mlb_tom[:3]:
+            tw4 += f"• {g.get('away','')} @ {g.get('home','')}\n"
+    tw4 += "\nMorning preview at 10 AM MT."
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    if today_rec and n_final:
+        ig = (
+            f"Day recap for {DATE_DISPLAY}. {n_final} game{'s' if n_final!=1 else ''} final. "
+            f"Today's model record: {today_rec}. "
+        )
+    else:
+        ig = f"Day recap for {DATE_DISPLAY}. {n_final} game{'s' if n_final!=1 else ''} final. "
+
+    if record:
+        ig += f"Season: {record}. "
+    ig += (
+        f"The engine tracks every projection transparently — results, accuracy, and units "
+        f"updated in real time. Morning preview tomorrow at 10 AM Mountain."
+    )
+
+    bullets = []
+    if today_rec:
+        bullets.append(f"Today: {today_rec}")
+    if record:
+        bullets.append(f"Season: {record}")
+    bullets.append(f"{n_final} game{'s' if n_final!=1 else ''} final today")
+    if mlb_tom:
+        bullets.append(f"Tomorrow: {len(mlb_tom)} MLB games")
+    bullets.append("Morning preview: 10 AM Mountain")
+    bullets = [b[:50] for b in bullets[:3]]
+
+    return {
+        "x_post":             x_post,
+        "x_thread":           [tw1, tw2, tw3, tw4],
+        "instagram_caption":  ig,
+        "instagram_hashtags": _IG_TAGS,
+        "story_bullets":      bullets,
+        "content_theme":      "recap",
+        "highlight_game":     None,
+    }
+
+
+# ── Main dispatcher ───────────────────────────────────────────────────────────
+_SLOT_BUILDERS = {
+    "10am":  _build_morning,
+    "2pm":   _build_midday,
+    "445pm": _build_pregame,
+    "7pm":   _build_live,
+    "10pm":  _build_recap,
+}
+
+def generate_content(data: dict, slot: str, verbose: bool = False) -> dict:
+    """Generate content from data.json — no external API required."""
+    builder = _SLOT_BUILDERS.get(slot)
+    if not builder:
+        print(f"[ERROR] Unknown slot: {slot}", file=sys.stderr)
+        return {}
+    try:
+        result = builder(data)
         result["generated_at"] = NOW_MT.strftime("%Y-%m-%d %H:%M MT")
-        result["slot"]      = slot
-        result["slot_label"] = SLOT_LABELS[slot]
+        result["slot"]         = slot
+        result["slot_label"]   = SLOT_LABELS[slot]
         return result
-
-    except json.JSONDecodeError as exc:
-        print(f"[ERROR] JSON parse failed: {exc}", file=sys.stderr)
-        if verbose:
-            print(f"[DEBUG] Raw:\n{raw[:1000]}", file=sys.stderr)
-        return {}
     except Exception as exc:
-        print(f"[ERROR] Claude API: {exc}", file=sys.stderr)
+        print(f"[ERROR] Content generation failed for slot {slot}: {exc}", file=sys.stderr)
+        if verbose:
+            import traceback
+            traceback.print_exc()
         return {}
 
 
-# ── Desktop output writers ────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# OUTPUT WRITERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def _header(slot: str, platform_name: str, handle: str) -> list[str]:
-    """Shared file header block — platform, post time, date, slot."""
     return [
         "═" * 62,
         f"  PLATFORM :  {platform_name}  ({handle})",
@@ -442,7 +1004,7 @@ def _write_x_file(path: Path, content: dict) -> None:
         x_post,
         "",
         "─" * 62,
-        "THREAD  (post as reply chain):",
+        "THREAD  (post as reply chain under the above post):",
         "─" * 62,
     ]
     for i, tweet in enumerate(thread, 1):
@@ -477,7 +1039,6 @@ def _write_ig_file(path: Path, content: dict) -> None:
 
 
 def _generate_card(out_path: Path, platform: str) -> None:
-    """Invoke generate_card.py for a given platform and output path."""
     cmd = [
         sys.executable, str(CARD_SCRIPT),
         "--platform", platform,
@@ -485,17 +1046,13 @@ def _generate_card(out_path: Path, platform: str) -> None:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(
-            f"[WARN] Card generation failed ({platform}): {result.stderr[:300]}",
-            file=sys.stderr,
-        )
+        print(f"[WARN] Card failed ({platform}): {result.stderr[:200]}", file=sys.stderr)
     elif out_path.exists():
         kb = out_path.stat().st_size // 1024
         print(f"[INFO] {out_path.name} ({kb} KB)")
 
 
 def write_desktop_output(content: dict) -> None:
-    """Write all files to ~/Desktop/Clairvoyance/YYYY-MM-DD/ with descriptive names."""
     if not content:
         return
 
@@ -512,17 +1069,15 @@ def write_desktop_output(content: dict) -> None:
     _generate_card(date_dir / f"{x_stem}.png",  "x")
     _generate_card(date_dir / f"{ig_stem}.png", "instagram")
 
-    print(f"[INFO] Output → {date_dir}")
+    print(f"[INFO] → {date_dir}")
 
 
 def write_social_json(content: dict) -> None:
-    """Mirror latest content to frontend/social_copy.json + docs/social_copy.json."""
     if not content:
         return
     payload = json.dumps(content, indent=2)
     FE_SOCIAL.write_text(payload)
     DC_SOCIAL.write_text(payload)
-    print("[INFO] social_copy.json updated → frontend/ + docs/")
 
 
 def print_content(content: dict) -> None:
@@ -549,13 +1104,11 @@ def print_content(content: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clairvoyance Content Generator")
     parser.add_argument(
-        "--slot",
-        choices=SLOT_NAMES + ["all"],
-        help="Content slot to generate (default: auto-detect from MT time)",
+        "--slot", choices=SLOT_NAMES + ["all"],
+        help="Slot to generate (default: auto-detect from MT time)",
     )
-    parser.add_argument("--verbose", action="store_true", help="Print debug context")
-    parser.add_argument("--print",   action="store_true", dest="print_output",
-                        help="Print generated content to stdout")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--print",   action="store_true", dest="print_output")
     args = parser.parse_args()
 
     if not FE_DATA.exists():
@@ -565,22 +1118,20 @@ def main() -> None:
     data  = json.loads(FE_DATA.read_text())
     slots = SLOT_NAMES if args.slot == "all" else [args.slot or detect_slot()]
 
-    any_success = False
+    any_ok = False
     for slot in slots:
-        label = SLOT_LABELS[slot]
-        print(f"[INFO] Generating: {slot} ({label})")
-
+        print(f"[INFO] Generating: {slot} ({SLOT_LABELS[slot]})")
         content = generate_content(data, slot, verbose=args.verbose)
         if content:
             write_desktop_output(content)
             write_social_json(content)
             if args.print_output or args.verbose:
                 print_content(content)
-            any_success = True
+            any_ok = True
         else:
-            print(f"[WARN] No content for slot: {slot}", file=sys.stderr)
+            print(f"[WARN] No content generated for: {slot}", file=sys.stderr)
 
-    sys.exit(0 if any_success else 1)
+    sys.exit(0 if any_ok else 1)
 
 
 if __name__ == "__main__":
