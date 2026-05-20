@@ -138,7 +138,7 @@ textarea.fi{resize:none;line-height:1.5}
 .btn-p{background:linear-gradient(135deg,var(--pc),var(--ic));color:#fff;padding:9px 16px;font-size:10px;font-weight:700}
 .btn-h{background:var(--hc);color:#fff;padding:9px 14px;font-size:10px}.btn-g{background:linear-gradient(135deg,var(--gc),var(--g2));color:#000;padding:9px 14px;font-size:10px;font-weight:900}.btn-i{background:var(--ic);color:#000;padding:9px 14px;font-size:10px}.btn-o{background:transparent;border:1px solid var(--w2);color:var(--t2);padding:5px 10px;font-size:9px}.btn-o:active{border-color:var(--pc);color:var(--pc)}.btn-sm{padding:4px 9px;font-size:8px}.btn-fw{width:100%;display:flex}
 /* MISC */
-.spi{display:inline-block;width:11px;height:11px;border:1px solid var(--w2);border-top-color:var(--pc);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
+.spi{display:inline-block;width:11px;height:11px;border:1px solid var(--w2);border-top-color:var(--pc);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .empty{text-align:center;padding:30px;color:var(--t2);font-family:var(--mono);font-size:10px;line-height:2}
 .loading{text-align:center;padding:24px;color:var(--t);font-family:var(--mono);font-size:10px;letter-spacing:2px}
 #toast{position:fixed;bottom:66px;right:12px;background:rgba(14,0,35,.95);border:1px solid var(--pc);color:var(--pc);font-family:var(--mono);font-size:11px;padding:9px 14px;border-radius:2px;transform:translateY(100px);transition:transform .3s;z-index:9997;pointer-events:none;box-shadow:0 0 20px rgba(204,0,255,.2);max-width:280px}
@@ -227,6 +227,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <header id="hdr">
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
+    <span id="live-dot" title="Live games in progress" style="display:none;width:8px;height:8px;background:var(--hc);border-radius:50%;margin-left:6px;animation:blink 1s infinite;vertical-align:middle"></span>
   </div>
   <div class="logo" style="padding:0;display:flex;align-items:center;justify-content:center">
   <svg viewBox="0 0 56 56" width="40" height="40" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -4871,7 +4872,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-05-19 19:50 ET';
+let LAST_AUTO_UPDATE = '2026-05-19 20:25 ET';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -5038,6 +5039,96 @@ function exportLockedProps(){
   toast(`// EXPORTED ${props.length} BETS → locked_props.json — place in data/ for server auto-settle`);
 }
 
+// ═══ LIVE DATA BOOTSTRAP (live_data.json — written by live_tracker.py every 45s) ═══
+window.__CV_LIVE=null;
+let _liveInterval=null;
+
+async function loadLiveData(){
+  try{
+    const r=await fetch(`live_data.json?${Date.now()}`,{cache:'no-cache'});
+    if(!r.ok)return;
+    const d=await r.json();
+    window.__CV_LIVE=d;
+    if(d.mlb?.length)patchLiveMLB(d.mlb);
+    if(d.nba?.length)patchLiveNBA(d.nba);
+    if(d.nhl?.length)patchLiveNHL(d.nhl);
+    if(d.tennis?.length)window._liveTennisMatches=d.tennis;
+    if(d.liveBets?.length)renderLiveBetMeters(d.liveBets);
+    // Auto-settle newly finished games
+    const fMLB=(d.mlb||[]).filter(g=>g.state==='post');
+    const fNBA=(d.nba||[]).filter(g=>g.state==='post');
+    if(fMLB.length)autoSettleFromESPN(fMLB.map(g=>({hA:g.home,awA:g.away,hScore:g.homeScore,aScore:g.awayScore,status:'post'})));
+    if(fNBA.length)autoSettleFromESPN(fNBA.map(g=>({hA:g.home,awA:g.away,hScore:g.homeScore,aScore:g.awayScore,status:'post'})));
+    const liveDot=document.getElementById('live-dot');
+    if(liveDot)liveDot.style.display=d.hasLiveGames?'inline':'none';
+    const liveTs=document.getElementById('live-ts');
+    if(liveTs)liveTs.textContent=d.tsET||'';
+  }catch(e){/* live_data.json not yet generated */}
+}
+
+function startLivePolling(){
+  if(_liveInterval)return;
+  loadLiveData();
+  _liveInterval=setInterval(loadLiveData,45000);
+}
+
+function patchLiveMLB(games){
+  games.forEach(g=>{
+    const idx=ESPN_GAMES.findIndex(e=>e.hA===g.home&&e.awA===g.away);
+    const m={hA:g.home,awA:g.away,hScore:g.homeScore,aScore:g.awayScore,status:g.state,inning:g.inning,topHalf:g.topHalf,ouPace:g.ouPace};
+    if(idx>=0)ESPN_GAMES[idx]={...ESPN_GAMES[idx],...m};else ESPN_GAMES.push(m);
+  });
+  try{const el=document.getElementById('mlb-tab-nrfi');if(el&&el.classList.contains('act'))renderNRFI();}catch(e){}
+}
+function patchLiveNBA(games){
+  window._liveNBAGames=games;
+  try{const el=document.getElementById('nba-tab-games');if(el&&el.classList.contains('act'))renderNBAGames();}catch(e){}
+}
+function patchLiveNHL(games){
+  window._liveNHLGames=games;
+  try{renderNHLGames();}catch(e){}
+}
+
+function renderLiveBetMeters(liveBets){
+  const pending=liveBets.filter(b=>b.outcome==='pending'&&b.liveProb!==undefined);
+  if(!pending.length){const p=document.getElementById('cv-live-panel');if(p)p.style.display='none';return;}
+  renderFloatingLivePanel(pending);
+}
+
+function renderFloatingLivePanel(bets){
+  let panel=document.getElementById('cv-live-panel');
+  if(!panel){
+    panel=document.createElement('div');panel.id='cv-live-panel';
+    panel.style.cssText='position:fixed;bottom:16px;right:16px;z-index:9999;background:rgba(2,0,8,.95);border:1px solid var(--pc);border-radius:4px;padding:10px 14px;min-width:220px;max-width:300px;box-shadow:0 0 20px rgba(204,0,255,.3);font-family:var(--mono);font-size:10px';
+    document.body.appendChild(panel);
+  }
+  panel.style.display='block';
+  const rows=bets.map(b=>{
+    const pct=Math.round((b.liveProb||0.5)*100);
+    const col=pct>=60?'var(--nc)':pct>=45?'var(--vc)':'var(--hc)';
+    const g=b.liveGame||{};
+    return`<div style="margin-bottom:7px;padding:6px;background:rgba(255,255,255,.03);border-radius:2px;border-left:2px solid ${col}">
+      <div style="font-family:var(--orb);font-size:9px;font-weight:700;color:${col}">${b.betOn||b.betType}</div>
+      <div style="color:var(--t3);font-size:8px;margin:2px 0">${b.hA} ${g.homeScore??'—'} · ${b.awA} ${g.awayScore??'—'} ${g.note||''}</div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+        <div style="flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:1px">
+          <div style="height:100%;width:${pct}%;background:${col};border-radius:1px;transition:width .5s"></div>
+        </div>
+        <span style="color:${col};font-weight:700">${pct}%</span>
+      </div>
+    </div>`;
+  }).join('');
+  panel.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-family:var(--orb);font-size:11px;font-weight:700;letter-spacing:2px;color:var(--pc)">
+        <span style="display:inline-block;width:7px;height:7px;background:var(--hc);border-radius:50%;margin-right:5px;animation:blink 1s infinite"></span>LIVE BETS
+      </span>
+      <button onclick="document.getElementById('cv-live-panel').style.display='none'" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px">×</button>
+    </div>
+    ${rows}
+    <div id="live-ts" style="color:var(--t3);font-size:8px;margin-top:4px;text-align:right"></div>`;
+}
+
 // ═══ INIT ════════════════════════════════════════════════════
 (async function INIT(){
   startSplash();
@@ -5099,6 +5190,8 @@ function exportLockedProps(){
   try{await loadRemoteData();}catch(e){console.warn('loadRemoteData',e);}
   // Auto-refresh remote data every 8 minutes
   setInterval(()=>{try{loadRemoteData();}catch(e){}},8*60*1000);
+  // Start live tracker polling every 45s (live_data.json written by live_tracker.py)
+  try{startLivePolling();}catch(e){console.warn('livePolling',e);}
 })();
 </script>
 </body>
