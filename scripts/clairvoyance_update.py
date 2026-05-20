@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 clairvoyance_update.py — Clairvoyance Automated Data Refresh Engine
 Fetches live stats, odds, schedules, standings, props, and weather
@@ -185,14 +186,18 @@ def fetch_mlb_scoreboard(date: str = TODAY_ET) -> list[dict]:
 
 def fetch_mlb_standings() -> dict:
     log("MLB standings…")
-    data = fetch_json(f"{ESPN_BASE}/baseball/mlb/standings?season=2026&type=2")
+    # Use the web API which returns children → standings → entries structure
+    data = fetch_json(
+        "https://site.web.api.espn.com/apis/v2/sports/baseball/mlb/standings"
+        "?region=us&lang=en&season=2026&type=2"
+    )
     if not data:
         return {}
     out: dict = {}
-    for group in (data.get("standings") or {}).get("entries") or []:
-        for entry in group.get("entries") or []:
-            team = entry.get("team") or {}
-            abbr = team.get("abbreviation", "")
+    for division in data.get("children") or []:
+        for entry in (division.get("standings") or {}).get("entries") or []:
+            team  = entry.get("team") or {}
+            abbr  = team.get("abbreviation", "")
             stats = {s["name"]: s.get("displayValue", s.get("value", ""))
                      for s in (entry.get("stats") or [])}
             out[abbr] = {
@@ -244,17 +249,18 @@ def fetch_nba_scoreboard(date: str = TODAY_ET) -> tuple[list, list]:
 
 def fetch_nba_standings() -> dict:
     log("NBA standings…")
-    data = fetch_json(f"{ESPN_BASE}/basketball/nba/standings?season=2026&type=3")  # type 3 = playoffs
-    if not data:
-        # fall back to regular season
-        data = fetch_json(f"{ESPN_BASE}/basketball/nba/standings?season=2026&type=2")
+    # Regular-season standings (most complete; playoffs don't have traditional standings)
+    data = fetch_json(
+        "https://site.web.api.espn.com/apis/v2/sports/basketball/nba/standings"
+        "?region=us&lang=en&season=2026&type=2"
+    )
     if not data:
         return {}
     out: dict = {}
-    for group in (data.get("standings") or {}).get("entries") or []:
-        for entry in group.get("entries") or []:
-            team = entry.get("team") or {}
-            abbr = team.get("abbreviation", "")
+    for conference in data.get("children") or []:
+        for entry in (conference.get("standings") or {}).get("entries") or []:
+            team  = entry.get("team") or {}
+            abbr  = team.get("abbreviation", "")
             stats = {s["name"]: s.get("displayValue", s.get("value", ""))
                      for s in (entry.get("stats") or [])}
             out[abbr] = {
@@ -262,32 +268,37 @@ def fetch_nba_standings() -> dict:
                 "l":   stats.get("losses", "0"),
                 "pct": stats.get("winPercent", ".000"),
                 "gb":  stats.get("gamesBehind", "—"),
+                "rs":  stats.get("avgPointsFor", "0"),
+                "ra":  stats.get("avgPointsAgainst", "0"),
             }
     vlog(f"  NBA standings: {len(out)} teams")
     return out
 
 def fetch_nba_player_stats() -> list[dict]:
-    """Fetch NBA player stats leaders (PPG, RPG, APG, SPG, BPG)."""
+    """Fetch NBA playoff scoring leaders from ESPN stats page."""
     log("NBA player stats…")
-    cats = [
-        ("scoring",  "PTS"), ("rebounding", "REB"),
-        ("assists",  "AST"), ("steals",     "STL"), ("blocks", "BLK"),
-    ]
     players: dict[str, dict] = {}
-    for cat, stat in cats:
+    # ESPN stats API — correct endpoint for season leaders
+    for stat_cat, stat_key in [
+        ("points", "PTS"), ("rebounds", "REB"), ("assists", "AST"),
+        ("steals", "STL"), ("blocks", "BLK"),
+    ]:
         data = fetch_json(
-            f"{ESPN_BASE}/basketball/nba/leaders?season=2026&seasontype=3"
-            f"&limit=15&stat={cat}"
+            f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
+            f"/leaders?season=2026&seasontype=3&limit=20"
         )
         if not data:
-            continue
-        for entry in ((data.get("leaders") or [{}])[0].get("leaders") or []):
-            athlete = (entry.get("athlete") or {})
-            name = athlete.get("displayName", "")
-            abbr = (athlete.get("team") or {}).get("abbreviation", "")
-            if name not in players:
-                players[name] = {"name": name, "team": abbr}
-            players[name][stat] = entry.get("displayValue", "—")
+            break   # endpoint returns all categories at once
+        for cat in data.get("categories") or []:
+            cat_name = cat.get("name", "")
+            for leader in cat.get("leaders") or []:
+                athlete = (leader.get("athlete") or {})
+                name = athlete.get("displayName", "")
+                team = (athlete.get("team") or {}).get("abbreviation", "")
+                if name not in players:
+                    players[name] = {"name": name, "team": team}
+                players[name][cat_name.upper()[:3]] = leader.get("displayValue", "—")
+        break   # only need one call — all cats returned together
     return list(players.values())
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -459,32 +470,53 @@ def fetch_moneypuck() -> dict:
 # Tennis
 # ═══════════════════════════════════════════════════════════════════════════════
 def _parse_tennis_table(soup: BeautifulSoup, limit: int = 100) -> list[dict]:
-    """Parse a TennisAbstract report table (reportTable id or first table)."""
-    table = soup.find("table", id="reportTable") or soup.find("table")
+    """
+    Parse TennisAbstract ELO report table.
+    Table structure (columns): Rank | Player | Age | Elo | (spacer) |
+      hElo_rank | hElo | cElo_rank | cElo | gElo_rank | gElo | ...
+    Data is in <tbody> — use tbody.find_all('tr') to avoid misindexing.
+    """
+    # TennisAbstract has 3 tables: description, data, footer. Data table has 500+ rows.
+    tables = soup.find_all("table")
+    table = None
+    for t in tables:
+        tbody = t.find("tbody")
+        if tbody and len(tbody.find_all("tr")) > 50:
+            table = t
+            break
     if not table:
         return []
-    rows = table.find_all("tr")[1:]
+
+    tbody = table.find("tbody")
+    if not tbody:
+        return []
+
     players = []
-    for i, row in enumerate(rows[:limit]):
+    for row in tbody.find_all("tr")[:limit]:
         cells = row.find_all("td")
-        if len(cells) < 5:
+        if len(cells) < 4:
             continue
-        def cell(n: int, default="") -> str:
-            return cells[n].get_text(strip=True) if len(cells) > n else default
-        def icell(n: int, default: int = 0) -> int:
+
+        def cell(n: int) -> str:
+            return cells[n].get_text(strip=True).replace("\xa0", " ") if len(cells) > n else ""
+
+        def icell(n: int) -> int:
             try:
-                return int(cell(n).replace(",", "").split(".")[0] or default)
-            except ValueError:
-                return default
+                v = cell(n).replace(",", "").replace(" ", "")
+                return int(float(v)) if v else 0
+            except (ValueError, TypeError):
+                return 0
+
+        # Column layout: 0=rank, 1=name, 2=age, 3=Elo, 4=spacer,
+        #   5=hElo_rank, 6=hElo, 7=cElo_rank, 8=cElo, 9=gElo_rank, 10=gElo
         players.append({
-            "rank":     i + 1,
+            "rank":     icell(0) or len(players) + 1,
             "name":     cell(1),
-            "country":  cell(2) if len(cells) > 2 else "",
+            "age":      cell(2),
             "elo":      icell(3),
-            "eloHard":  icell(4),
-            "eloClay":  icell(5),
-            "eloGrass": icell(6),
-            "elo52w":   icell(7),
+            "eloHard":  icell(6),
+            "eloClay":  icell(8),
+            "eloGrass": icell(10),
         })
     return players
 
@@ -505,27 +537,43 @@ def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
     soup = fetch_html(url)
     if not soup:
         return []
-    table = soup.find("table", id="reportTable") or soup.find("table")
+
+    tables = soup.find_all("table")
+    table = None
+    for t in tables:
+        tbody = t.find("tbody")
+        if tbody and len(tbody.find_all("tr")) > 50:
+            table = t
+            break
     if not table:
         return []
+
+    tbody = table.find("tbody")
+    if not tbody:
+        return []
+
     players = []
-    for i, row in enumerate(table.find_all("tr")[1:100]):
+    for i, row in enumerate(tbody.find_all("tr")[:100]):
         cells = row.find_all("td")
-        if len(cells) < 4:
+        if len(cells) < 3:
             continue
+
         def cell(n: int) -> str:
-            return cells[n].get_text(strip=True) if len(cells) > n else ""
+            return cells[n].get_text(strip=True).replace("\xa0", " ") if len(cells) > n else ""
+
         def icell(n: int) -> int:
             try:
-                return int(cell(n).replace(",", "").split(".")[0])
-            except ValueError:
+                v = cell(n).replace(",", "").replace(" ", "")
+                return int(float(v)) if v else 0
+            except (ValueError, TypeError):
                 return 0
+
         players.append({
-            "rank":     i + 1,
+            "rank":     icell(0) or i + 1,
             "name":     cell(1),
             "yElo":     icell(2),
             "yEloClay": icell(3),
-            "yEloHard": icell(4) if len(cells) > 4 else 0,
+            "yEloHard": icell(4),
         })
     vlog(f"  {tour.upper()} yElo: {len(players)} players")
     return players
