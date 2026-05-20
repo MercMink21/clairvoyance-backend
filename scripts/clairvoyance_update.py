@@ -1,148 +1,191 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-clairvoyance_update.py — Clairvoyance Automated Data Refresh Engine
-Fetches live stats, odds, schedules, standings, props, and weather
-across MLB, NBA, NHL, and Tennis, then pushes to GitHub Pages.
+clairvoyance_update.py — Clairvoyance Master Data Refresh Engine v5.0
+Fetches live stats, odds, schedules, standings, props, injuries, advanced
+analytics across MLB, NBA, NHL, Tennis, F1 then pushes to GitHub Pages.
 
 Usage:
-  python3 scripts/clairvoyance_update.py                 # fetch + write data.json, no push
-  python3 scripts/clairvoyance_update.py --push          # fetch + write + git push
-  python3 scripts/clairvoyance_update.py --sport nba     # single sport
-  python3 scripts/clairvoyance_update.py --verbose       # debug logging
-  python3 scripts/clairvoyance_update.py --dry-run       # fetch only, no writes
-  python3 scripts/clairvoyance_update.py --no-linemate   # skip Playwright (faster)
+  python3 scripts/clairvoyance_update.py                  # full fetch + write
+  python3 scripts/clairvoyance_update.py --push           # + git push
+  python3 scripts/clairvoyance_update.py --mode live      # live-window loop (17:00–23:00 MT)
+  python3 scripts/clairvoyance_update.py --mode props     # Linemate only
+  python3 scripts/clairvoyance_update.py --sport nhl      # single sport
+  python3 scripts/clairvoyance_update.py --no-linemate    # skip Playwright
+  python3 scripts/clairvoyance_update.py --no-reference   # skip Baseball/Basketball/Hockey Ref
+  python3 scripts/clairvoyance_update.py --verbose
 
-Cron (5x daily — aligned to game times ET):
-  0 7,11,15,18,22 * * * cd /Users/reeseoliver/clairvoyance-backend && python3 scripts/clairvoyance_update.py --push >> logs/update.log 2>&1
+Cron (MT times — TZ=America/Denver):
+  0 8,12,16,20,0 * * *  full refresh + push
+  0 17           * * *  live-window mode (self-terminates 23:00 MT)
 """
 
-import argparse
-import csv
-import io
-import json
-import os
-import re
-import subprocess
-import sys
-import time
-from datetime import datetime, timezone, timedelta
+import argparse, csv, io, json, os, re, shutil, subprocess, sys, time
+from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
 # ── dependency bootstrap ──────────────────────────────────────────────────────
 try:
     import requests
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup, Comment
 except ImportError:
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "requests", "beautifulsoup4", "lxml"],
         check=True, capture_output=True,
     )
     import requests
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup, Comment
 
 # ── paths & config ────────────────────────────────────────────────────────────
-ROOT    = Path(__file__).parent.parent
-FE      = ROOT / "frontend" / "index.html"
-DOCS    = ROOT / "docs"    / "index.html"
-DATA    = ROOT / "data"
-LOGS    = ROOT / "logs"
-FE_DATA = ROOT / "frontend" / "data.json"
-DC_DATA = ROOT / "docs"    / "data.json"
+ROOT     = Path(__file__).parent.parent
+FE       = ROOT / "frontend" / "index.html"
+DOCS_IDX = ROOT / "docs"    / "index.html"
+FE_DATA  = ROOT / "frontend" / "data.json"
+DC_DATA  = ROOT / "docs"    / "data.json"
+DATA     = ROOT / "data"
+LOGS     = ROOT / "logs"
 
-DATA.mkdir(exist_ok=True)
-LOGS.mkdir(exist_ok=True)
+for _d in (DATA, LOGS):
+    _d.mkdir(exist_ok=True)
+
+BET_HISTORY_JSON = DATA / "bet_history.json"
+BET_HISTORY_CSV  = DATA / "bet_history.csv"
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/html, */*",
     "Accept-Language": "en-US,en;q=0.9",
 }
+REF_HEADERS = {          # Sports-Reference sites want a real browser UA
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Referer": "https://www.google.com/",
+}
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 NHL_API   = "https://api-web.nhle.com/v1"
+NHL_STATS = "https://api.nhle.com/stats/rest/en"
 MP_BASE   = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2024/regular"
+SEASON    = "20252026"
+YEAR      = 2026
 
 NOW        = datetime.now(timezone.utc)
-TODAY_ET   = (NOW - timedelta(hours=5)).strftime("%Y%m%d")   # approximate ET
-TODAY_ISO  = (NOW - timedelta(hours=5)).strftime("%Y-%m-%d")
-TODAY_NHL  = (NOW - timedelta(hours=5)).strftime("%Y-%m-%d")
-TS_DISPLAY = (NOW - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M ET")
+try:
+    import zoneinfo
+    _MT = zoneinfo.ZoneInfo("America/Denver")
+    NOW_MT = datetime.now(_MT)
+except Exception:
+    NOW_MT = NOW - timedelta(hours=6)
 
-_verbose = False
+TODAY_MT   = NOW_MT.strftime("%Y%m%d")
+TODAY_ISO  = NOW_MT.strftime("%Y-%m-%d")
+TS_DISPLAY = NOW_MT.strftime("%Y-%m-%d %H:%M MT")
+
+_verbose  = False
 _changes: list[str] = []
 
 # ── logging ───────────────────────────────────────────────────────────────────
 def log(msg: str, level: str = "INFO") -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] [{level}] {msg}", flush=True)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{level}] {msg}", flush=True)
 
 def vlog(msg: str) -> None:
-    if _verbose:
-        log(msg, "DEBUG")
+    if _verbose: log(msg, "DEBUG")
 
 def note(msg: str) -> None:
-    _changes.append(msg)
-    log(msg)
+    _changes.append(msg); log(msg)
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 _session = requests.Session()
 _session.headers.update(HEADERS)
+_ref_session = requests.Session()
+_ref_session.headers.update(REF_HEADERS)
 
-def fetch_json(url: str, timeout: int = 15, retries: int = 2) -> dict | list | None:
+def fetch_json(url: str, timeout: int = 15, retries: int = 2, params: dict | None = None) -> dict | list | None:
     for attempt in range(retries + 1):
         try:
-            r = _session.get(url, timeout=timeout)
+            r = _session.get(url, timeout=timeout, params=params)
             r.raise_for_status()
             return r.json()
         except Exception as e:
             if attempt == retries:
-                log(f"FAILED {url}: {e}", "WARN")
-                return None
+                log(f"FAILED {url}: {e}", "WARN"); return None
             time.sleep(2 ** attempt)
 
-def fetch_html(url: str, timeout: int = 20) -> BeautifulSoup | None:
+def fetch_html(url: str, timeout: int = 25, ref: bool = False) -> BeautifulSoup | None:
+    sess = _ref_session if ref else _session
     try:
-        r = _session.get(url, timeout=timeout)
+        r = sess.get(url, timeout=timeout)
         r.raise_for_status()
         return BeautifulSoup(r.text, "lxml")
     except Exception as e:
-        log(f"FAILED HTML {url}: {e}", "WARN")
-        return None
+        log(f"FAILED HTML {url}: {e}", "WARN"); return None
 
 def fetch_csv_rows(url: str, timeout: int = 20) -> list[dict]:
     try:
         r = _session.get(url, timeout=timeout)
         r.raise_for_status()
-        reader = csv.DictReader(io.StringIO(r.text))
-        return list(reader)
+        return list(csv.DictReader(io.StringIO(r.text)))
     except Exception as e:
-        log(f"FAILED CSV {url}: {e}", "WARN")
-        return []
+        log(f"FAILED CSV {url}: {e}", "WARN"); return []
 
-# ── ESPN helpers ──────────────────────────────────────────────────────────────
+def _table_to_rows(soup: BeautifulSoup, table_id: str, limit: int = 60) -> list[dict]:
+    """Extract a BeautifulSoup <table> (including commented-out SR tables) into row dicts."""
+    table = soup.find("table", id=table_id)
+    if not table:
+        # Sports-Reference embeds tables in HTML comments
+        for comment in soup.find_all(string=lambda t: isinstance(t, Comment)):
+            if table_id in comment:
+                fragment = BeautifulSoup(comment, "lxml")
+                table = fragment.find("table", id=table_id)
+                if table:
+                    break
+    if not table:
+        return []
+    thead = table.find("thead")
+    cols  = [th.get("data-stat", th.get_text(strip=True)) for th in thead.find_all("th")] if thead else []
+    rows  = []
+    for tr in (table.find("tbody") or table).find_all("tr")[:limit]:
+        if "thead" in (tr.get("class") or []):
+            continue
+        cells = tr.find_all(["td", "th"])
+        if not cells:
+            continue
+        row = {}
+        for i, td in enumerate(cells):
+            key = cols[i] if i < len(cols) else f"c{i}"
+            row[key] = td.get_text(strip=True)
+        if any(v for v in row.values()):
+            rows.append(row)
+    return rows
+
+# ── ESPN generic helpers ──────────────────────────────────────────────────────
 def _espn_odds(comp: dict) -> dict:
     odds = (comp.get("odds") or [{}])[0]
     return {
-        "homeML": odds.get("homeTeamOdds", {}).get("moneyLine"),
-        "awayML": odds.get("awayTeamOdds", {}).get("moneyLine"),
-        "ou":     odds.get("overUnder"),
-        "spread": odds.get("spread"),
+        "homeML":   odds.get("homeTeamOdds", {}).get("moneyLine"),
+        "awayML":   odds.get("awayTeamOdds", {}).get("moneyLine"),
+        "ou":       odds.get("overUnder"),
+        "spread":   odds.get("spread"),
         "provider": (odds.get("provider") or {}).get("name", ""),
     }
 
 def _espn_game(event: dict, sport: str) -> dict:
-    comp        = (event.get("competitions") or [{}])[0]
-    competitors = comp.get("competitors") or []
-    home = next((c for c in competitors if c.get("homeAway") == "home"), {})
-    away = next((c for c in competitors if c.get("homeAway") == "away"), {})
+    comp  = (event.get("competitions") or [{}])[0]
+    comps = comp.get("competitors") or []
+    home  = next((c for c in comps if c.get("homeAway") == "home"), {})
+    away  = next((c for c in comps if c.get("homeAway") == "away"), {})
     status = event.get("status") or {}
-    state  = (status.get("type") or {}).get("state", "pre")  # pre | in | post
-
+    state  = (status.get("type") or {}).get("state", "pre")
     g: dict = {
         "id":          event.get("id", ""),
         "sport":       sport,
@@ -152,33 +195,49 @@ def _espn_game(event: dict, sport: str) -> dict:
         "awayScore":   away.get("score") if state != "pre" else None,
         "state":       state,
         "period":      status.get("period", 0),
-        "displayClock":status.get("displayClock", ""),
+        "displayClock": status.get("displayClock", ""),
         "venue":       (comp.get("venue") or {}).get("fullName", ""),
         "date":        event.get("date", ""),
         "network":     ((comp.get("broadcasts") or [{}])[0].get("names") or [""])[0],
     }
     g.update(_espn_odds(comp))
-
-    # Playoff series note
     for note_obj in comp.get("notes") or []:
         h = note_obj.get("headline", "")
         if "Game" in h or "Series" in h:
-            g["seriesNote"] = h
-            break
-
+            g["seriesNote"] = h; break
     return g
+
+def fetch_espn_injuries(sport_path: str, sport_key: str) -> list[dict]:
+    """Fetch ESPN injury report for a sport (e.g. 'baseball/mlb')."""
+    log(f"ESPN injuries {sport_key}…")
+    url  = f"https://site.api.espn.com/apis/site/v2/sports/{sport_path}/injuries"
+    data = fetch_json(url)
+    items: list[dict] = []
+    for team in (data or {}).get("injuries") or []:
+        abbr = (team.get("team") or {}).get("abbreviation", "")
+        for inj in team.get("injuries") or []:
+            ath = inj.get("athlete") or {}
+            items.append({
+                "team":   abbr,
+                "name":   ath.get("displayName", ""),
+                "pos":    (ath.get("position") or {}).get("abbreviation", ""),
+                "status": inj.get("status", ""),
+                "detail": inj.get("details", {}).get("detail", ""),
+                "return": inj.get("details", {}).get("returnDate", ""),
+                "sport":  sport_key,
+            })
+    vlog(f"  {sport_key} injuries: {len(items)}")
+    return items
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MLB
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_mlb_scoreboard(date: str = TODAY_ET) -> list[dict]:
+def fetch_mlb_scoreboard(date: str = TODAY_MT) -> tuple[list, list]:
     log(f"MLB scoreboard {date}…")
     data = fetch_json(f"{ESPN_BASE}/baseball/mlb/scoreboard?dates={date}&limit=30")
-    if not data:
-        return []
+    if not data: return [], []
     games = [_espn_game(e, "MLB") for e in (data.get("events") or [])]
-    # Also fetch tomorrow for schedule context
-    tom = (datetime.strptime(date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+    tom   = (datetime.strptime(date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
     data2 = fetch_json(f"{ESPN_BASE}/baseball/mlb/scoreboard?dates={tom}&limit=30")
     tomorrow = [_espn_game(e, "MLB") for e in ((data2 or {}).get("events") or [])]
     vlog(f"  MLB: {len(games)} today, {len(tomorrow)} tomorrow")
@@ -186,13 +245,11 @@ def fetch_mlb_scoreboard(date: str = TODAY_ET) -> list[dict]:
 
 def fetch_mlb_standings() -> dict:
     log("MLB standings…")
-    # Use the web API which returns children → standings → entries structure
     data = fetch_json(
         "https://site.web.api.espn.com/apis/v2/sports/baseball/mlb/standings"
         "?region=us&lang=en&season=2026&type=2"
     )
-    if not data:
-        return {}
+    if not data: return {}
     out: dict = {}
     for division in data.get("children") or []:
         for entry in (division.get("standings") or {}).get("entries") or []:
@@ -201,137 +258,197 @@ def fetch_mlb_standings() -> dict:
             stats = {s["name"]: s.get("displayValue", s.get("value", ""))
                      for s in (entry.get("stats") or [])}
             out[abbr] = {
-                "w":      stats.get("wins", "0"),
-                "l":      stats.get("losses", "0"),
-                "pct":    stats.get("winPercent", ".000"),
-                "gb":     stats.get("gamesBehind", "—"),
-                "streak": stats.get("streak", ""),
-                "rs":     stats.get("pointsFor", "0"),
-                "ra":     stats.get("pointsAgainst", "0"),
-                "div":    team.get("shortDisplayName", ""),
+                "w": stats.get("wins","0"), "l": stats.get("losses","0"),
+                "pct": stats.get("winPercent",".000"), "gb": stats.get("gamesBehind","—"),
+                "streak": stats.get("streak",""), "rs": stats.get("pointsFor","0"),
+                "ra": stats.get("pointsAgainst","0"),
+                "div": (division.get("name") or team.get("shortDisplayName","")),
             }
     vlog(f"  MLB standings: {len(out)} teams")
     return out
 
-def fetch_mlb_team_stats() -> dict:
-    """Fetch MLB team batting/pitching stats from ESPN."""
-    log("MLB team stats…")
-    data = fetch_json(
-        f"{ESPN_BASE}/baseball/mlb/teams?limit=30&enable=stats"
-    )
-    if not data:
-        return {}
-    out: dict = {}
-    for t in (data.get("sports") or [{}])[0].get("leagues") or []:
-        for team in t.get("teams") or []:
-            td = team.get("team") or {}
-            abbr = td.get("abbreviation", "")
-            stats = {s.get("name"): s.get("displayValue")
-                     for s in td.get("record", {}).get("items", [])}
-            if abbr:
-                out[abbr] = stats
-    return out
+def fetch_mlb_schedule_week() -> list[dict]:
+    """Fetch MLB schedule for next 7 days."""
+    log("MLB week schedule…")
+    games: list[dict] = []
+    for offset in range(7):
+        d = (NOW_MT + timedelta(days=offset)).strftime("%Y%m%d")
+        data = fetch_json(f"{ESPN_BASE}/baseball/mlb/scoreboard?dates={d}&limit=30")
+        for e in (data or {}).get("events") or []:
+            g = _espn_game(e, "MLB")
+            g["schedDate"] = d
+            games.append(g)
+    vlog(f"  MLB week: {len(games)} games")
+    return games
+
+def fetch_baseball_reference() -> dict:
+    """Scrape MLB batting & pitching leaders from Baseball Reference."""
+    log("Baseball Reference stats…")
+    result: dict = {"batting": [], "pitching": [], "fetchedAt": TODAY_ISO}
+    pairs = [
+        ("batting",  "https://www.baseball-reference.com/leagues/majors/2026-standard-batting.shtml",   "players_standard_batting"),
+        ("pitching", "https://www.baseball-reference.com/leagues/majors/2026-standard-pitching.shtml",  "players_standard_pitching"),
+    ]
+    for key, url, tbl_id in pairs:
+        try:
+            time.sleep(2)    # rate-limit SR
+            soup = fetch_html(url, timeout=25, ref=True)
+            if not soup: continue
+            rows = _table_to_rows(soup, tbl_id, limit=50)
+            if not rows:   # fallback: first big table
+                for tbl in soup.find_all("table"):
+                    r = _table_to_rows(soup, tbl.get("id",""), limit=50) if tbl.get("id") else []
+                    if len(r) > 10: rows = r; break
+            result[key] = rows[:50]
+            vlog(f"  Baseball Ref {key}: {len(rows)} rows")
+        except Exception as exc:
+            log(f"Baseball Ref {key}: {exc}", "WARN")
+    return result
+
+def fetch_mlb_nrfi_data(mlb_today: list) -> list[dict]:
+    """Build NRFI entries from today's MLB game list + any weather data."""
+    return [
+        {"game": f"{g['away']} @ {g['home']}", "home": g["home"], "away": g["away"],
+         "ou": g.get("ou"), "homeML": g.get("homeML"), "awayML": g.get("awayML"),
+         "state": g.get("state","pre"), "venue": g.get("venue","")}
+        for g in mlb_today
+    ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NBA
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_nba_scoreboard(date: str = TODAY_ET) -> tuple[list, list]:
+def fetch_nba_scoreboard(date: str = TODAY_MT) -> tuple[list, list]:
     log(f"NBA scoreboard {date}…")
     data = fetch_json(f"{ESPN_BASE}/basketball/nba/scoreboard?dates={date}&limit=20")
-    if not data:
-        return [], []
-    games = [_espn_game(e, "NBA") for e in (data.get("events") or [])]
-    tom = (datetime.strptime(date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
-    data2 = fetch_json(f"{ESPN_BASE}/basketball/nba/scoreboard?dates={tom}&limit=20")
+    if not data: return [], []
+    games    = [_espn_game(e, "NBA") for e in (data.get("events") or [])]
+    tom      = (datetime.strptime(date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+    data2    = fetch_json(f"{ESPN_BASE}/basketball/nba/scoreboard?dates={tom}&limit=20")
     tomorrow = [_espn_game(e, "NBA") for e in ((data2 or {}).get("events") or [])]
     vlog(f"  NBA: {len(games)} today, {len(tomorrow)} tomorrow")
     return games, tomorrow
 
 def fetch_nba_standings() -> dict:
     log("NBA standings…")
-    # Regular-season standings (most complete; playoffs don't have traditional standings)
     data = fetch_json(
         "https://site.web.api.espn.com/apis/v2/sports/basketball/nba/standings"
         "?region=us&lang=en&season=2026&type=2"
     )
-    if not data:
-        return {}
+    if not data: return {}
     out: dict = {}
-    for conference in data.get("children") or []:
-        for entry in (conference.get("standings") or {}).get("entries") or []:
+    for conf in data.get("children") or []:
+        for entry in (conf.get("standings") or {}).get("entries") or []:
             team  = entry.get("team") or {}
             abbr  = team.get("abbreviation", "")
-            stats = {s["name"]: s.get("displayValue", s.get("value", ""))
+            stats = {s["name"]: s.get("displayValue", s.get("value",""))
                      for s in (entry.get("stats") or [])}
             out[abbr] = {
-                "w":   stats.get("wins", "0"),
-                "l":   stats.get("losses", "0"),
-                "pct": stats.get("winPercent", ".000"),
-                "gb":  stats.get("gamesBehind", "—"),
-                "rs":  stats.get("avgPointsFor", "0"),
-                "ra":  stats.get("avgPointsAgainst", "0"),
+                "w": stats.get("wins","0"), "l": stats.get("losses","0"),
+                "pct": stats.get("winPercent",".000"), "gb": stats.get("gamesBehind","—"),
+                "rs": stats.get("avgPointsFor","0"), "ra": stats.get("avgPointsAgainst","0"),
             }
     vlog(f"  NBA standings: {len(out)} teams")
     return out
 
+def fetch_nba_playoff_bracket() -> dict:
+    """Fetch NBA playoff bracket from ESPN."""
+    log("NBA playoff bracket…")
+    data = fetch_json(f"{ESPN_BASE}/basketball/nba/playoffs?season=2026")
+    if not data: return {}
+    return {"raw": data, "fetchedAt": TODAY_ISO}
+
 def fetch_nba_player_stats() -> list[dict]:
-    """Fetch NBA playoff scoring leaders from ESPN stats page."""
     log("NBA player stats…")
     players: dict[str, dict] = {}
-    # ESPN stats API — correct endpoint for season leaders
-    for stat_cat, stat_key in [
-        ("points", "PTS"), ("rebounds", "REB"), ("assists", "AST"),
-        ("steals", "STL"), ("blocks", "BLK"),
-    ]:
-        data = fetch_json(
-            f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
-            f"/leaders?season=2026&seasontype=3&limit=20"
-        )
-        if not data:
-            break   # endpoint returns all categories at once
-        for cat in data.get("categories") or []:
-            cat_name = cat.get("name", "")
-            for leader in cat.get("leaders") or []:
-                athlete = (leader.get("athlete") or {})
-                name = athlete.get("displayName", "")
-                team = (athlete.get("team") or {}).get("abbreviation", "")
-                if name not in players:
-                    players[name] = {"name": name, "team": team}
-                players[name][cat_name.upper()[:3]] = leader.get("displayValue", "—")
-        break   # only need one call — all cats returned together
+    data = fetch_json(
+        f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
+        f"/leaders?season=2026&seasontype=3&limit=20"
+    )
+    if not data: return []
+    for cat in data.get("categories") or []:
+        for leader in cat.get("leaders") or []:
+            ath  = leader.get("athlete") or {}
+            name = ath.get("displayName", "")
+            team = (ath.get("team") or {}).get("abbreviation", "")
+            if name not in players:
+                players[name] = {"name": name, "team": team}
+            players[name][(cat.get("name","")).upper()[:3]] = leader.get("displayValue","—")
     return list(players.values())
+
+def fetch_basketball_reference() -> dict:
+    """Scrape NBA playoff stats: per-game, per-100 possessions, advanced, shooting."""
+    log("Basketball Reference playoff stats…")
+    result: dict = {"perGame": [], "per100": [], "advanced": [], "shooting": [], "opponentPerGame": [], "fetchedAt": TODAY_ISO}
+    base = "https://www.basketball-reference.com/playoffs/NBA_2026.html"
+    table_map = [
+        ("perGame",        "playoffs_per_game"),
+        ("per100",         "playoffs_per_poss"),
+        ("advanced",       "playoffs_advanced"),
+        ("shooting",       "playoffs_shooting"),
+        ("opponentPerGame","playoffs_opponent_per_game"),
+    ]
+    try:
+        time.sleep(2)
+        soup = fetch_html(base, ref=True)
+        if soup:
+            for key, tbl_id in table_map:
+                rows = _table_to_rows(soup, tbl_id, limit=60)
+                result[key] = rows
+                vlog(f"  BBRef {key}: {len(rows)} rows")
+    except Exception as exc:
+        log(f"Basketball Reference: {exc}", "WARN")
+
+    # Series-level stats
+    series_urls = [
+        ("east_finals", "https://www.basketball-reference.com/playoffs/2026-nba-eastern-conference-finals-cavaliers-vs-knicks.html"),
+        ("west_finals", "https://www.basketball-reference.com/playoffs/2026-nba-western-conference-finals-spurs-vs-thunder.html"),
+    ]
+    result["series"] = {}
+    for label, url in series_urls:
+        try:
+            time.sleep(2)
+            soup2 = fetch_html(url, ref=True)
+            if soup2:
+                series_data: dict = {}
+                for key, tbl_id in [("perGame","per_game"),("advanced","advanced")]:
+                    rows = _table_to_rows(soup2, tbl_id, limit=20)
+                    if rows: series_data[key] = rows
+                result["series"][label] = series_data
+                vlog(f"  BBRef series {label}: {len(series_data)} tables")
+        except Exception as exc:
+            log(f"Basketball Reference series {label}: {exc}", "WARN")
+
+    return result
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NHL
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_nhl_schedule(date: str = TODAY_NHL) -> tuple[list, list]:
+def fetch_nhl_schedule(date: str = TODAY_ISO) -> tuple[list, list]:
     log(f"NHL schedule {date}…")
     data = fetch_json(f"{NHL_API}/schedule/{date}")
-    if not data:
-        return [], []
+    if not data: return [], []
 
     def parse_games(day: dict) -> list[dict]:
         out = []
         for g in day.get("games") or []:
-            home = g.get("homeTeam") or {}
-            away = g.get("awayTeam") or {}
+            home  = g.get("homeTeam") or {}
+            away  = g.get("awayTeam") or {}
             state = g.get("gameState", "FUT")
-            broadcasts = [b.get("network", "") for b in (g.get("tvBroadcasts") or [])]
             out.append({
                 "id":         g.get("id"),
                 "sport":      "NHL",
-                "home":       home.get("abbrev", ""),
-                "away":       away.get("abbrev", ""),
-                "homeScore":  home.get("score") if state not in ("FUT", "PRE") else None,
-                "awayScore":  away.get("score") if state not in ("FUT", "PRE") else None,
+                "home":       home.get("abbrev",""),
+                "away":       away.get("abbrev",""),
+                "homeScore":  home.get("score") if state not in ("FUT","PRE") else None,
+                "awayScore":  away.get("score") if state not in ("FUT","PRE") else None,
                 "state":      state,
                 "period":     g.get("period", 0),
-                "clock":      (g.get("clock") or {}).get("timeRemaining", ""),
-                "venue":      (g.get("venue") or {}).get("default", ""),
-                "date":       g.get("startTimeUTC", ""),
-                "network":    ", ".join(broadcasts),
-                "gameType":   g.get("gameType", 2),   # 2=regular, 3=playoff
-                "seriesStatus": (g.get("seriesSummary") or {}).get("seriesStatusShort", ""),
+                "clock":      (g.get("clock") or {}).get("timeRemaining",""),
+                "venue":      (g.get("venue") or {}).get("default",""),
+                "date":       g.get("startTimeUTC",""),
+                "network":    ", ".join(b.get("network","") for b in (g.get("tvBroadcasts") or [])),
+                "gameType":   g.get("gameType", 2),
+                "seriesStatus": (g.get("seriesSummary") or {}).get("seriesStatusShort",""),
             })
         return out
 
@@ -344,117 +461,140 @@ def fetch_nhl_schedule(date: str = TODAY_NHL) -> tuple[list, list]:
 def fetch_nhl_standings() -> dict:
     log("NHL standings…")
     data = fetch_json(f"{NHL_API}/standings/now")
-    if not data:
-        return {}
+    if not data: return {}
     out: dict = {}
     for t in data.get("standings") or []:
-        abbr = (t.get("teamAbbrev") or {}).get("default", "")
+        abbr = (t.get("teamAbbrev") or {}).get("default","")
         out[abbr] = {
-            "w":    t.get("wins", 0),
-            "l":    t.get("losses", 0),
-            "otl":  t.get("otLosses", 0),
-            "pts":  t.get("points", 0),
-            "gf":   t.get("goalFor", 0),
-            "ga":   t.get("goalAgainst", 0),
-            "gd":   t.get("goalDifferential", 0),
-            "row":  t.get("regulationOrOvertimeWins", 0),
-            "div":  (t.get("divisionName") or ""),
-            "conf": (t.get("conferenceName") or ""),
+            "w": t.get("wins",0), "l": t.get("losses",0), "otl": t.get("otLosses",0),
+            "pts": t.get("points",0), "gf": t.get("goalFor",0), "ga": t.get("goalAgainst",0),
+            "gd": t.get("goalDifferential",0), "row": t.get("regulationOrOvertimeWins",0),
+            "div": t.get("divisionName",""), "conf": t.get("conferenceName",""),
         }
     vlog(f"  NHL standings: {len(out)} teams")
     return out
 
-def fetch_nhl_edge() -> dict:
-    """Fetch NHLEdge skater + goalie + team zone-time stats."""
-    log("NHL Edge stats…")
-    out: dict = {"teams": {}, "goalies": [], "skaters": []}
+def fetch_nhl_playoff_bracket() -> dict:
+    """Fetch NHL playoff bracket from ESPN."""
+    log("NHL playoff bracket…")
+    data = fetch_json(f"{ESPN_BASE}/hockey/nhl/playoffs?season=2026")
+    if not data: return {}
+    return {"raw": data, "fetchedAt": TODAY_ISO}
 
-    # Team stats
-    teams_data = fetch_json(
-        "https://api.nhle.com/stats/rest/en/team/summary"
-        "?isAggregate=false&isGame=false&sort=%5B%7B%22property%22:%22wins%22,"
-        "%22direction%22:%22DESC%22%7D%5D&start=0&limit=50"
-        "&cayenneExp=gameTypeId=3%20and%20seasonId%3E=20252026%20and%20seasonId%3C=20252026"
-    )
-    if teams_data:
-        for t in teams_data.get("data") or []:
-            abbr = t.get("teamAbbrevs", "")
-            out["teams"][abbr] = {
-                "gf60":     t.get("goalsForPer60", 0),
-                "ga60":     t.get("goalsAgainstPer60", 0),
-                "sf60":     t.get("shotsForPer60", 0),
-                "sa60":     t.get("shotsAgainstPer60", 0),
-                "ppPct":    t.get("powerPlayPct", 0),
-                "pkPct":    t.get("penaltyKillPct", 0),
-                "foPct":    t.get("faceoffWinPct", 0),
-                "w":        t.get("wins", 0),
-                "l":        t.get("losses", 0),
+def _nhl_api_stats(endpoint: str, cayenne: str, limit: int = 50) -> list[dict]:
+    url = (f"{NHL_STATS}/{endpoint}?isAggregate=false&isGame=false"
+           f"&sort=%5B%7B%22property%22:%22points%22,%22direction%22:%22DESC%22%7D%5D"
+           f"&start=0&limit={limit}&cayenneExp={requests.utils.quote(cayenne)}")
+    data = fetch_json(url)
+    return (data or {}).get("data") or []
+
+def fetch_nhl_edge() -> dict:
+    """NHL Edge — team zone-time, shot locations, save %, skaters, goalies — all strengths."""
+    log("NHL Edge stats…")
+    out: dict = {"teams": {}, "teams5v5": {}, "teams5v4": {}, "teams4v5": {},
+                 "goalies": [], "skaters": [], "shotLoc": {}}
+
+    cayenne_base = f"gameTypeId=3 and seasonId>={SEASON} and seasonId<={SEASON}"
+
+    # Team summary — all situations
+    for situation, key in [("all","teams"), ("5on5","teams5v5"), ("5on4","teams5v4"), ("4on5","teams4v5")]:
+        cay = f"{cayenne_base} and situationCode={situation}" if situation != "all" else cayenne_base
+        rows = _nhl_api_stats("team/summary", cay, limit=50)
+        for t in rows:
+            abbr = t.get("teamAbbrevs","")
+            out[key][abbr] = {
+                "gf60":   t.get("goalsForPer60",0),
+                "ga60":   t.get("goalsAgainstPer60",0),
+                "sf60":   t.get("shotsForPer60",0),
+                "sa60":   t.get("shotsAgainstPer60",0),
+                "ppPct":  t.get("powerPlayPct",0),
+                "pkPct":  t.get("penaltyKillPct",0),
+                "foPct":  t.get("faceoffWinPct",0),
+                "w":      t.get("wins",0),
+                "l":      t.get("losses",0),
+                "xgf":    t.get("xGoalsFor",0),
+                "xga":    t.get("xGoalsAgainst",0),
             }
 
-    # Goalie stats
-    goalies_data = fetch_json(
-        "https://api.nhle.com/stats/rest/en/goalie/summary"
-        "?isAggregate=false&isGame=false&sort=%5B%7B%22property%22:%22wins%22,"
-        "%22direction%22:%22DESC%22%7D%5D&start=0&limit=30"
-        "&cayenneExp=gameTypeId=3%20and%20seasonId%3E=20252026%20and%20seasonId%3C=20252026"
-    )
-    if goalies_data:
-        for g in goalies_data.get("data") or []:
-            out["goalies"].append({
-                "name":     g.get("goalieFullName", ""),
-                "team":     g.get("teamAbbrevs", ""),
-                "gp":       g.get("gamesPlayed", 0),
-                "w":        g.get("wins", 0),
-                "l":        g.get("losses", 0),
-                "savePct":  g.get("savePct", 0),
-                "gaa":      g.get("goalsAgainstAverage", 0),
-                "so":       g.get("shutouts", 0),
-                "shots":    g.get("shotsAgainst", 0),
-            })
+    # Goalie stats — all situations
+    goalie_rows = _nhl_api_stats("goalie/summary", cayenne_base, limit=40)
+    for g in goalie_rows:
+        out["goalies"].append({
+            "name":     g.get("goalieFullName",""),
+            "team":     g.get("teamAbbrevs",""),
+            "gp":       g.get("gamesPlayed",0),
+            "w":        g.get("wins",0),
+            "l":        g.get("losses",0),
+            "savePct":  g.get("savePct",0),
+            "gaa":      g.get("goalsAgainstAverage",0),
+            "so":       g.get("shutouts",0),
+            "shots":    g.get("shotsAgainst",0),
+            "gsaa":     g.get("goalsAboveAverage", g.get("goalsAgainstAverage",0)),
+        })
 
-    vlog(f"  NHL Edge: {len(out['teams'])} teams, {len(out['goalies'])} goalies")
+    # Skater stats
+    skater_rows = _nhl_api_stats("skater/summary", cayenne_base, limit=50)
+    for s in skater_rows:
+        out["skaters"].append({
+            "name":  s.get("skaterFullName",""),
+            "team":  s.get("teamAbbrevs",""),
+            "pos":   s.get("positionCode",""),
+            "gp":    s.get("gamesPlayed",0),
+            "g":     s.get("goals",0),
+            "a":     s.get("assists",0),
+            "pts":   s.get("points",0),
+            "toi":   s.get("timeOnIcePerGame",""),
+            "pm":    s.get("plusMinus",0),
+        })
+
+    vlog(f"  NHL Edge: {len(out['teams'])} teams, {len(out['goalies'])} goalies, {len(out['skaters'])} skaters")
     return out
 
 def fetch_moneypuck() -> dict:
-    """MoneyPuck advanced stats (5v5, 5v4, 4v5) via CSV."""
+    """MoneyPuck advanced stats — 5v5, 5v4, 4v5, all — teams and goalies."""
     log("MoneyPuck stats…")
-    out: dict = {"teams": {}, "goalies": []}
+    out: dict = {"teams": {}, "goalies": [], "skaters": []}
 
+    # Teams CSV
     rows = fetch_csv_rows(f"{MP_BASE}/teams.csv")
     for row in rows:
-        situation = row.get("situation", "")
-        team = row.get("team", "")
-        if not team:
-            continue
-        if team not in out["teams"]:
-            out["teams"][team] = {}
+        situation = row.get("situation","")
+        team = row.get("team","")
+        if not team: continue
+        if team not in out["teams"]: out["teams"][team] = {}
         try:
             out["teams"][team][situation] = {
                 "xgfPct":    float(row.get("xGoalsPercentage") or 0),
-                "xgf":       float(row.get("xGoalsFor") or 0),
-                "xga":       float(row.get("xGoalsAgainst") or 0),
+                "xgf60":     float(row.get("xGoalsForPer60") or row.get("xGoalsFor") or 0),
+                "xga60":     float(row.get("xGoalsAgainstPer60") or row.get("xGoalsAgainst") or 0),
                 "cfPct":     float(row.get("corsiPercentage") or 0),
-                "hdcfPct":   float(row.get("highDangerShotsFor") or 0),
+                "hdcfPct":   float(row.get("highDangerShotsForPercentage") or row.get("highDangerShotsFor") or 0),
                 "gf":        float(row.get("goalsFor") or 0),
                 "ga":        float(row.get("goalsAgainst") or 0),
                 "shots":     float(row.get("shotsOnGoalFor") or 0),
+                "hdgf":      float(row.get("highDangerGoalsFor") or 0),
+                "hdga":      float(row.get("highDangerGoalsAgainst") or 0),
+                "scgf":      float(row.get("scoreAdjustedShotsAttemptsFor") or 0),
+                "scga":      float(row.get("scoreAdjustedShotsAttemptsAgainst") or 0),
             }
         except (ValueError, TypeError):
             pass
 
+    # Goalies CSV
     rows_g = fetch_csv_rows(f"{MP_BASE}/goalies.csv")
     for row in rows_g:
-        if row.get("situation", "") != "all":
-            continue
         try:
             out["goalies"].append({
-                "name":      row.get("name", ""),
-                "team":      row.get("team", ""),
+                "name":      row.get("name",""),
+                "team":      row.get("team",""),
+                "situation": row.get("situation","all"),
                 "gp":        int(row.get("games_played") or 0),
                 "gsaa":      float(row.get("goalsAboveAverage") or 0),
                 "savePct":   float(row.get("savePct") or 0),
                 "xSavePct":  float(row.get("xSavePct") or 0),
                 "hdSavePct": float(row.get("highDangerSavePct") or 0),
+                "mdSavePct": float(row.get("mediumDangerSavePct") or 0),
+                "ldSavePct": float(row.get("lowDangerSavePct") or 0),
                 "shots":     int(row.get("shotsOnGoalAgainst") or 0),
                 "ga":        float(row.get("goalsAgainst") or 0),
                 "xga":       float(row.get("xGoalsAgainst") or 0),
@@ -466,698 +606,648 @@ def fetch_moneypuck() -> dict:
     vlog(f"  MoneyPuck: {len(out['teams'])} teams, {len(out['goalies'])} goalies")
     return out
 
+def fetch_hockeyviz() -> dict:
+    """Scrape HockeyViz team-level shot rate and zone data."""
+    log("HockeyViz stats…")
+    result: dict = {"teams": {}, "fetchedAt": TODAY_ISO}
+    try:
+        soup = fetch_html("https://hockeyviz.com/txt/shotRatesByScore4", timeout=20)
+        if soup:
+            for tbl in soup.find_all("table")[:3]:
+                headers_row = tbl.find("tr")
+                col_names = [th.get_text(strip=True) for th in headers_row.find_all(["th","td"])] if headers_row else []
+                for tr in tbl.find_all("tr")[1:35]:
+                    cells = tr.find_all(["td","th"])
+                    if not cells: continue
+                    row = {col_names[i] if i < len(col_names) else f"c{i}": cells[i].get_text(strip=True)
+                           for i in range(len(cells))}
+                    team = row.get("Team","") or row.get("team","") or row.get(col_names[0] if col_names else "","")
+                    if team:
+                        result["teams"][team] = row
+    except Exception as exc:
+        log(f"HockeyViz: {exc}", "WARN")
+
+    # Try individual stat endpoints
+    for endpoint, label in [
+        ("/txt/teamStats4", "teamStats"),
+    ]:
+        try:
+            soup2 = fetch_html(f"https://hockeyviz.com{endpoint}", timeout=20)
+            if soup2:
+                rows: list[dict] = []
+                for tbl in soup2.find_all("table")[:2]:
+                    hdrs = [th.get_text(strip=True) for th in (tbl.find("tr") or BeautifulSoup("","lxml")).find_all(["th","td"])]
+                    for tr in tbl.find_all("tr")[1:35]:
+                        cells = tr.find_all(["td","th"])
+                        if not cells: continue
+                        rows.append({hdrs[i] if i < len(hdrs) else f"c{i}": cells[i].get_text(strip=True)
+                                     for i in range(len(cells))})
+                if rows: result[label] = rows
+        except Exception as exc:
+            log(f"HockeyViz {label}: {exc}", "WARN")
+
+    vlog(f"  HockeyViz: {len(result['teams'])} teams")
+    return result
+
+def fetch_hockey_reference() -> dict:
+    """Scrape Hockey Reference conference finals series stats."""
+    log("Hockey Reference series stats…")
+    result: dict = {"series": {}, "fetchedAt": TODAY_ISO}
+    series_urls = {
+        "east_finals": "https://www.hockey-reference.com/playoffs/2026-carolina-hurricanes-vs-montreal-canadiens-eastern-conference-finals.html",
+        "west_finals": "https://www.hockey-reference.com/playoffs/2026-colorado-avalanche-vs-vegas-golden-knights-western-conference-finals.html",
+    }
+    for label, url in series_urls.items():
+        try:
+            time.sleep(2)
+            soup = fetch_html(url, ref=True)
+            if not soup: continue
+            tables_data: dict = {}
+            for tbl in soup.find_all("table")[:6]:
+                tbl_id = tbl.get("id","")
+                rows = _table_to_rows(soup, tbl_id, limit=30) if tbl_id else []
+                if rows: tables_data[tbl_id or f"tbl{len(tables_data)}"] = rows
+            result["series"][label] = tables_data
+            vlog(f"  Hockey Ref {label}: {len(tables_data)} tables")
+        except Exception as exc:
+            log(f"Hockey Reference {label}: {exc}", "WARN")
+    return result
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tennis
 # ═══════════════════════════════════════════════════════════════════════════════
-def _parse_tennis_table(soup: BeautifulSoup, limit: int = 100) -> list[dict]:
-    """
-    Parse TennisAbstract ELO report table.
-    Table structure (columns): Rank | Player | Age | Elo | (spacer) |
-      hElo_rank | hElo | cElo_rank | cElo | gElo_rank | gElo | ...
-    Data is in <tbody> — use tbody.find_all('tr') to avoid misindexing.
-    """
-    # TennisAbstract has 3 tables: description, data, footer. Data table has 500+ rows.
+def _parse_tennis_abstract_table(soup: BeautifulSoup, limit: int = 100) -> list[dict]:
     tables = soup.find_all("table")
-    table = None
-    for t in tables:
-        tbody = t.find("tbody")
-        if tbody and len(tbody.find_all("tr")) > 50:
-            table = t
-            break
-    if not table:
-        return []
-
+    table  = next((t for t in tables if t.find("tbody") and len(t.find("tbody").find_all("tr")) > 50), None)
+    if not table: return []
     tbody = table.find("tbody")
-    if not tbody:
-        return []
-
     players = []
-    for row in tbody.find_all("tr")[:limit]:
+    for i, row in enumerate(tbody.find_all("tr")[:limit]):
         cells = row.find_all("td")
-        if len(cells) < 4:
-            continue
-
-        def cell(n: int) -> str:
-            return cells[n].get_text(strip=True).replace("\xa0", " ") if len(cells) > n else ""
-
-        def icell(n: int) -> int:
-            try:
-                v = cell(n).replace(",", "").replace(" ", "")
-                return int(float(v)) if v else 0
-            except (ValueError, TypeError):
-                return 0
-
-        # Column layout: 0=rank, 1=name, 2=age, 3=Elo, 4=spacer,
-        #   5=hElo_rank, 6=hElo, 7=cElo_rank, 8=cElo, 9=gElo_rank, 10=gElo
+        if len(cells) < 4: continue
+        def cell(n): return cells[n].get_text(strip=True).replace("\xa0"," ") if len(cells)>n else ""
+        def icell(n):
+            try: return int(float(cell(n).replace(",","").replace(" ",""))) if cell(n) else 0
+            except: return 0
         players.append({
-            "rank":     icell(0) or len(players) + 1,
-            "name":     cell(1),
-            "age":      cell(2),
-            "elo":      icell(3),
-            "eloHard":  icell(6),
-            "eloClay":  icell(8),
-            "eloGrass": icell(10),
+            "rank": icell(0) or i+1, "name": cell(1), "age": cell(2),
+            "elo": icell(3), "eloHard": icell(6), "eloClay": icell(8), "eloGrass": icell(10),
         })
     return players
 
 def fetch_tennis_elo(tour: str = "atp") -> list[dict]:
     log(f"TennisAbstract {tour.upper()} ELO…")
-    url = f"https://tennisabstract.com/reports/{tour}_elo_ratings.html"
-    soup = fetch_html(url)
-    if not soup:
-        return []
-    players = _parse_tennis_table(soup)
+    soup = fetch_html(f"https://tennisabstract.com/reports/{tour}_elo_ratings.html")
+    if not soup: return []
+    players = _parse_tennis_abstract_table(soup, 100)
     vlog(f"  {tour.upper()} ELO: {len(players)} players")
     return players
 
 def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
-    """Season-weighted yElo from TennisAbstract."""
     log(f"TennisAbstract {tour.upper()} yElo…")
-    url = f"https://tennisabstract.com/reports/{tour}_season_yelo_ratings.html"
+    url  = f"https://tennisabstract.com/reports/{tour}_season_yelo_ratings.html"
     soup = fetch_html(url)
-    if not soup:
-        return []
-
+    if not soup: return []
     tables = soup.find_all("table")
-    table = None
-    for t in tables:
-        tbody = t.find("tbody")
-        if tbody and len(tbody.find_all("tr")) > 50:
-            table = t
-            break
-    if not table:
-        return []
-
-    tbody = table.find("tbody")
-    if not tbody:
-        return []
-
+    table  = next((t for t in tables if t.find("tbody") and len(t.find("tbody").find_all("tr")) > 50), None)
+    if not table: return []
     players = []
-    for i, row in enumerate(tbody.find_all("tr")[:100]):
+    for i, row in enumerate(table.find("tbody").find_all("tr")[:100]):
         cells = row.find_all("td")
-        if len(cells) < 3:
-            continue
-
-        def cell(n: int) -> str:
-            return cells[n].get_text(strip=True).replace("\xa0", " ") if len(cells) > n else ""
-
-        def icell(n: int) -> int:
-            try:
-                v = cell(n).replace(",", "").replace(" ", "")
-                return int(float(v)) if v else 0
-            except (ValueError, TypeError):
-                return 0
-
+        if len(cells) < 3: continue
+        def cell(n): return cells[n].get_text(strip=True).replace("\xa0"," ") if len(cells)>n else ""
+        def icell(n):
+            try: return int(float(cell(n).replace(",","").replace(" ",""))) if cell(n) else 0
+            except: return 0
         players.append({
-            "rank":     icell(0) or i + 1,
-            "name":     cell(1),
-            "yElo":     icell(2),
-            "yEloClay": icell(3),
-            "yEloHard": icell(4),
+            "rank": icell(0) or i+1, "name": cell(1),
+            "yElo": icell(2), "yEloClay": icell(3), "yEloHard": icell(4),
         })
     vlog(f"  {tour.upper()} yElo: {len(players)} players")
     return players
 
-def fetch_tennis_schedule_espn(tour: str = "atp") -> list[dict]:
-    """Scrape ESPN tennis schedule (may return empty if JS-rendered)."""
-    suffix = "" if tour == "atp" else "/_/type/wta"
-    soup = fetch_html(f"https://www.espn.com/tennis/schedule{suffix}")
-    if not soup:
-        return []
-    # ESPN renders schedule dynamically — extract what static HTML has
-    matches = []
-    for row in (soup.select("tr.Table__TR") or []):
-        cells = row.find_all("td")
-        if len(cells) >= 3:
-            matches.append({
-                "tour": tour.upper(),
-                "tournament": cells[0].get_text(strip=True),
-                "surface": cells[1].get_text(strip=True) if len(cells) > 1 else "",
-                "date": cells[2].get_text(strip=True) if len(cells) > 2 else "",
-            })
+def fetch_tennis_schedule() -> list[dict]:
+    """Fetch today's ATP + WTA matches from ESPN scoreboard API."""
+    matches: list[dict] = []
+    for tour in ("atp","wta"):
+        try:
+            data = fetch_json(
+                f"https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}"
+                f"/scoreboard?dates={TODAY_MT}"
+            )
+            for ev in (data or {}).get("events") or []:
+                comp    = (ev.get("competitions") or [{}])[0]
+                players = comp.get("competitors") or []
+                p1  = (players[0].get("athlete") or {}).get("displayName","TBD") if players else "TBD"
+                p2  = (players[1].get("athlete") or {}).get("displayName","TBD") if len(players)>1 else "TBD"
+                st  = comp.get("status",{})
+                state = st.get("type",{}).get("state","pre")
+                matches.append({
+                    "tour":       tour.upper(),
+                    "player1":    p1, "player2": p2,
+                    "state":      state,
+                    "score1":     players[0].get("score","") if players else "",
+                    "score2":     players[1].get("score","") if len(players)>1 else "",
+                    "statusText": st.get("type",{}).get("shortDetail",""),
+                    "tournament": (comp.get("venue") or {}).get("fullName",""),
+                    "date":       ev.get("date",""),
+                    "network":    ((comp.get("broadcasts") or [{}])[0].get("names") or [""])[0],
+                })
+        except Exception as exc:
+            log(f"Tennis schedule {tour}: {exc}", "WARN")
+    log(f"Tennis schedule: {len(matches)} matches")
     return matches
+
+def fetch_tennis_rankings_espn() -> dict:
+    """Fetch ATP + WTA top-100 rankings from ESPN."""
+    log("ESPN tennis rankings…")
+    result: dict = {"atp": [], "wta": []}
+    for tour, path in [("atp","tennis/rankings"),("wta","tennis/rankings/_/type/wta")]:
+        try:
+            soup = fetch_html(f"https://www.espn.com/{path}")
+            if not soup: continue
+            for row in soup.select("tr.Table__TR"):
+                cells = row.find_all("td")
+                if len(cells) >= 3:
+                    result[tour].append({
+                        "rank":   cells[0].get_text(strip=True),
+                        "name":   cells[1].get_text(strip=True),
+                        "points": cells[2].get_text(strip=True) if len(cells) > 2 else "",
+                    })
+        except Exception as exc:
+            log(f"ESPN tennis rankings {tour}: {exc}", "WARN")
+    vlog(f"  ATP rankings: {len(result['atp'])} | WTA: {len(result['wta'])}")
+    return result
+
+def fetch_tennis_schedule_full() -> dict:
+    """Fetch full ATP + WTA tournament schedule from ESPN."""
+    log("Tennis full schedule…")
+    result: dict = {"atp": [], "wta": []}
+    for tour, path in [("atp","tennis/schedule"),("wta","tennis/schedule/_/type/wta")]:
+        try:
+            soup = fetch_html(f"https://www.espn.com/{path}")
+            if not soup: continue
+            for row in soup.select("tr.Table__TR"):
+                cells = row.find_all("td")
+                if len(cells) >= 2:
+                    result[tour].append({
+                        "tournament": cells[0].get_text(strip=True),
+                        "surface":    cells[1].get_text(strip=True) if len(cells) > 1 else "",
+                        "dates":      cells[2].get_text(strip=True) if len(cells) > 2 else "",
+                    })
+        except Exception as exc:
+            log(f"Tennis full schedule {tour}: {exc}", "WARN")
+    return result
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# F1
+# ═══════════════════════════════════════════════════════════════════════════════
+def fetch_f1() -> dict:
+    result: dict = {"schedule":[], "driverStandings":[], "constructorStandings":[], "nextRace":None}
+    year = NOW_MT.year
+
+    # Ergast schedule
+    try:
+        data  = fetch_json(f"http://ergast.com/api/f1/{year}.json?limit=25")
+        races = (data.get("MRData",{}).get("RaceTable",{}).get("Races") or [])
+        for race in races:
+            rd = race.get("date","")
+            entry = {
+                "round":   int(race.get("round",0)),
+                "name":    race.get("raceName",""),
+                "circuit": race.get("Circuit",{}).get("circuitName",""),
+                "country": race.get("Circuit",{}).get("Location",{}).get("country",""),
+                "date":    rd, "time": race.get("time",""),
+                "past":    rd < TODAY_ISO,
+            }
+            result["schedule"].append(entry)
+            if rd >= TODAY_ISO and result["nextRace"] is None:
+                result["nextRace"] = entry
+    except Exception as exc: log(f"F1 schedule: {exc}", "WARN")
+
+    # Driver standings
+    try:
+        data = fetch_json(f"http://ergast.com/api/f1/{year}/driverStandings.json")
+        for s in (data.get("MRData",{}).get("StandingsTable",{})
+                      .get("StandingsLists",[{}])[0].get("DriverStandings") or [])[:20]:
+            drv  = s.get("Driver",{})
+            ctor = (s.get("Constructors") or [{}])[0]
+            result["driverStandings"].append({
+                "pos":  int(s.get("position",99)),
+                "name": f"{drv.get('givenName','')} {drv.get('familyName','')}".strip(),
+                "code": drv.get("code",""), "team": ctor.get("name",""),
+                "pts":  float(s.get("points",0)), "wins": int(s.get("wins",0)),
+            })
+    except Exception as exc: log(f"F1 driver standings: {exc}", "WARN")
+
+    # Constructor standings
+    try:
+        data = fetch_json(f"http://ergast.com/api/f1/{year}/constructorStandings.json")
+        for s in (data.get("MRData",{}).get("StandingsTable",{})
+                      .get("StandingsLists",[{}])[0].get("ConstructorStandings") or [])[:10]:
+            ctor = s.get("Constructor",{})
+            result["constructorStandings"].append({
+                "pos":  int(s.get("position",99)),
+                "name": ctor.get("name",""),
+                "pts":  float(s.get("points",0)), "wins": int(s.get("wins",0)),
+            })
+    except Exception as exc: log(f"F1 constructor standings: {exc}", "WARN")
+
+    log(f"F1: {len(result['schedule'])} races | next: {result['nextRace'] and result['nextRace']['name']}")
+    return result
+
+def fetch_f1_analytics() -> dict:
+    """Fetch F1 race analysis from f1datastop.com."""
+    url    = "https://f1datastop.com/race-analysis"
+    result = {"source":"f1datastop.com", "fetchedAt":TODAY_ISO, "data":[], "error":None}
+    try:
+        r = _ref_session.get(url, timeout=20)
+        if r.ok:
+            soup = BeautifulSoup(r.text, "html.parser")
+            cards = soup.find_all(["article","section","div"],
+                                  class_=lambda c: c and any(k in c for k in ["race","analysis","driver","lap","pace"]))
+            for card in cards[:20]:
+                txt = card.get_text(separator=" ", strip=True)
+                if len(txt) > 30: result["data"].append({"text": txt[:300], "tag": card.name})
+            for tbl in soup.find_all("table")[:5]:
+                for row in tbl.find_all("tr")[:15]:
+                    cells = [td.get_text(strip=True) for td in row.find_all(["td","th"])]
+                    if cells: result["data"].append({"row": cells})
+        else:
+            result["error"] = f"HTTP {r.status_code}"
+    except Exception as exc:
+        result["error"] = str(exc)
+        log(f"F1 analytics: {exc}", "WARN")
+    return result
+
+def fetch_f1_tracing_insights() -> dict:
+    """Fetch race data index from TracingInsights/2026 GitHub repo."""
+    log("F1 TracingInsights GitHub…")
+    result: dict = {"source":"TracingInsights/2026", "races":[], "fetchedAt":TODAY_ISO}
+    try:
+        api   = "https://api.github.com/repos/TracingInsights/2026/contents"
+        hdrs  = {"Accept": "application/vnd.github.v3+json", "User-Agent": "clairvoyance-engine"}
+        r     = requests.get(api, headers=hdrs, timeout=15)
+        if r.ok:
+            contents = r.json()
+            for item in contents:
+                if item.get("type") == "dir":
+                    race_r = requests.get(item["url"], headers=hdrs, timeout=10)
+                    files  = [f["name"] for f in (race_r.json() if race_r.ok else [])
+                              if f.get("type") == "file"]
+                    result["races"].append({"race": item["name"], "files": files})
+        else:
+            result["error"] = f"HTTP {r.status_code}"
+    except Exception as exc:
+        log(f"TracingInsights: {exc}", "WARN")
+        result["error"] = str(exc)
+    log(f"F1 TracingInsights: {len(result['races'])} race dirs found")
+    return result
+
+def fetch_f1_calendar_datastop() -> list[dict]:
+    """Fetch F1 calendar from f1datastop.com."""
+    log("F1 datastop calendar…")
+    items: list[dict] = []
+    try:
+        soup = fetch_html("https://f1datastop.com/calendar", timeout=15)
+        if soup:
+            for row in soup.select("tr"):
+                cells = row.find_all(["td","th"])
+                if len(cells) >= 2:
+                    items.append({
+                        "event": cells[0].get_text(strip=True),
+                        "date":  cells[1].get_text(strip=True) if len(cells)>1 else "",
+                        "venue": cells[2].get_text(strip=True) if len(cells)>2 else "",
+                    })
+    except Exception as exc: log(f"F1 calendar datastop: {exc}", "WARN")
+    return items[:25]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Weather
 # ═══════════════════════════════════════════════════════════════════════════════
 _MLB_COORDS: dict[str, tuple[float, float, str]] = {
-    "NYY": (40.8296, -73.9262, "Bronx NY"),
-    "NYM": (40.7571, -73.8458, "Queens NY"),
-    "BOS": (42.3467, -71.0972, "Boston MA"),
-    "CHC": (41.9484, -87.6553, "Chicago IL"),
-    "CHW": (41.8300, -87.6338, "Chicago IL"),
-    "CLE": (41.4962, -81.6852, "Cleveland OH"),
-    "DET": (42.3390, -83.0485, "Detroit MI"),
-    "KC":  (39.0517, -94.4803, "Kansas City MO"),
-    "LAA": (33.8003, -117.8827, "Anaheim CA"),
-    "LAD": (34.0739, -118.2400, "Los Angeles CA"),
-    "OAK": (37.7516, -122.2005, "Oakland CA"),
-    "PHI": (39.9061, -75.1665, "Philadelphia PA"),
-    "PIT": (40.4469, -80.0057, "Pittsburgh PA"),
-    "CIN": (39.0975, -84.5066, "Cincinnati OH"),
-    "STL": (38.6226, -90.1928, "St. Louis MO"),
-    "WSH": (38.8730, -77.0074, "Washington DC"),
-    "BAL": (39.2838, -76.6218, "Baltimore MD"),
-    "SF":  (37.7786, -122.3893, "San Francisco CA"),
-    "SD":  (32.7076, -117.1570, "San Diego CA"),
-    "COL": (39.7559, -104.9942, "Denver CO"),
-    "NYY": (40.8296, -73.9262, "Bronx NY"),
+    "NYY":(40.8296,-73.9262,"Bronx NY"), "NYM":(40.7571,-73.8458,"Queens NY"),
+    "BOS":(42.3467,-71.0972,"Boston MA"), "CHC":(41.9484,-87.6553,"Chicago IL"),
+    "CHW":(41.8300,-87.6338,"Chicago IL"), "CLE":(41.4962,-81.6852,"Cleveland OH"),
+    "DET":(42.3390,-83.0485,"Detroit MI"), "KC":(39.0517,-94.4803,"Kansas City MO"),
+    "LAA":(33.8003,-117.8827,"Anaheim CA"), "LAD":(34.0739,-118.2400,"Los Angeles CA"),
+    "PHI":(39.9061,-75.1665,"Philadelphia PA"), "PIT":(40.4469,-80.0057,"Pittsburgh PA"),
+    "CIN":(39.0975,-84.5066,"Cincinnati OH"), "STL":(38.6226,-90.1928,"St. Louis MO"),
+    "WSH":(38.8730,-77.0074,"Washington DC"), "BAL":(39.2838,-76.6218,"Baltimore MD"),
+    "SF":(37.7786,-122.3893,"San Francisco CA"), "SD":(32.7076,-117.1570,"San Diego CA"),
+    "COL":(39.7559,-104.9942,"Denver CO"), "OAK":(37.7516,-122.2005,"Oakland CA"),
+    "ATH":(37.7516,-122.2005,"Oakland CA"),
 }
-_INDOOR_TEAMS = {"MIN", "TOR", "TB", "MIA", "TEX", "HOU", "ARI", "ATL", "MIL", "SEA"}
-_WMO_CODES = {
-    0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
-    45: "Fog", 51: "Drizzle", 61: "Rain", 71: "Snow", 80: "Showers",
-    95: "Thunderstorm",
-}
+_INDOOR = {"MIN","TOR","TB","MIA","TEX","HOU","ARI","ATL","MIL","SEA"}
+_WMO = {0:"Clear",1:"Mainly Clear",2:"Partly Cloudy",3:"Overcast",
+         45:"Fog",51:"Drizzle",61:"Rain",71:"Snow",80:"Showers",95:"Thunderstorm"}
 
 def _wmo_desc(code: int) -> str:
-    for k in sorted(_WMO_CODES, reverse=True):
-        if code >= k:
-            return _WMO_CODES[k]
+    for k in sorted(_WMO, reverse=True):
+        if code >= k: return _WMO[k]
     return "Unknown"
 
 def fetch_weather(home_team: str) -> dict | None:
-    if home_team in _INDOOR_TEAMS:
-        return {"condition": "Dome/Retractable", "temp": None, "wind": None, "indoor": True}
+    if home_team in _INDOOR:
+        return {"condition":"Dome/Retractable","temp":None,"wind":None,"indoor":True}
     coords = _MLB_COORDS.get(home_team)
-    if not coords:
-        return None
+    if not coords: return None
     lat, lon, city = coords
-    url = (
+    data = fetch_json(
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code"
-        f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+        f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto",
+        timeout=10
     )
-    data = fetch_json(url, timeout=10)
-    if not data:
-        return None
+    if not data: return None
     c = data.get("current") or {}
     return {
-        "condition": _wmo_desc(int(c.get("weather_code", 0))),
-        "temp":      round(float(c.get("temperature_2m", 0))),
-        "wind":      round(float(c.get("wind_speed_10m", 0))),
-        "windDir":   round(float(c.get("wind_direction_10m", 0))),
-        "city":      city,
-        "indoor":    False,
+        "condition": _wmo_desc(int(c.get("weather_code",0))),
+        "temp":      round(float(c.get("temperature_2m",0))),
+        "wind":      round(float(c.get("wind_speed_10m",0))),
+        "windDir":   round(float(c.get("wind_direction_10m",0))),
+        "city":      city, "indoor": False,
     }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Tennis schedule (ESPN — today's matches)
+# Linemate props / trends / cheatsheets  (Playwright)
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_tennis_schedule() -> list[dict]:
-    """Fetch today's ATP + WTA schedule from ESPN scoreboard API."""
-    matches: list[dict] = []
-    for tour in ("atp", "wta"):
-        try:
-            url = (f"https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}"
-                   f"/scoreboard?dates={TODAY_ET}")
-            data = fetch_json(url)
-            for ev in (data.get("events") or []):
-                comp = (ev.get("competitions") or [{}])[0]
-                players = comp.get("competitors") or []
-                p1  = players[0].get("athlete", {}).get("displayName", "TBD") if players else "TBD"
-                p2  = players[1].get("athlete", {}).get("displayName", "TBD") if len(players) > 1 else "TBD"
-                fl1 = players[0].get("athlete", {}).get("flag", {}).get("href", "") if players else ""
-                fl2 = players[1].get("athlete", {}).get("flag", {}).get("href", "") if len(players) > 1 else ""
-                st  = comp.get("status", {})
-                state = st.get("type", {}).get("state", "pre")
-                sc1 = players[0].get("score", "") if players else ""
-                sc2 = players[1].get("score", "") if len(players) > 1 else ""
-                venue = comp.get("venue", {})
-                matches.append({
-                    "tour":       tour.upper(),
-                    "player1":    p1,
-                    "player2":    p2,
-                    "flag1":      fl1,
-                    "flag2":      fl2,
-                    "state":      state,
-                    "score1":     sc1,
-                    "score2":     sc2,
-                    "statusText": st.get("type", {}).get("shortDetail", ""),
-                    "tournament": venue.get("fullName", ""),
-                    "round":      ev.get("season", {}).get("displayName", ""),
-                    "date":       ev.get("date", ""),
-                    "network":    (comp.get("broadcasts") or [{}])[0].get("names", [None])[0] or "",
-                })
-        except Exception as exc:
-            log(f"Tennis schedule {tour}: {exc}", "WARN")
-    log(f"Tennis schedule: {len(matches)} matches for {TODAY_ISO}")
-    return matches
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Formula 1 (ESPN + Ergast)
-# ═══════════════════════════════════════════════════════════════════════════════
-def fetch_f1() -> dict:
-    """Fetch F1 race schedule, driver standings, and constructor standings."""
-    result: dict = {"schedule": [], "driverStandings": [], "constructorStandings": [], "nextRace": None}
-    year = (NOW - timedelta(hours=5)).year
-
-    # Race schedule from Ergast
-    try:
-        data = fetch_json(f"http://ergast.com/api/f1/{year}.json?limit=25")
-        races = (data.get("MRData", {}).get("RaceTable", {}).get("Races") or [])
-        today_iso = TODAY_ISO  # YYYY-MM-DD
-        for race in races:
-            race_date = race.get("date", "")
-            result["schedule"].append({
-                "round":    int(race.get("round", 0)),
-                "name":     race.get("raceName", ""),
-                "circuit":  race.get("Circuit", {}).get("circuitName", ""),
-                "country":  race.get("Circuit", {}).get("Location", {}).get("country", ""),
-                "date":     race_date,
-                "time":     race.get("time", ""),
-                "past":     race_date < today_iso,
-            })
-            if race_date >= today_iso and result["nextRace"] is None:
-                result["nextRace"] = result["schedule"][-1]
-    except Exception as exc:
-        log(f"F1 schedule (Ergast): {exc}", "WARN")
-
-    # Driver standings
-    try:
-        data = fetch_json(f"http://ergast.com/api/f1/{year}/driverStandings.json")
-        for s in (data.get("MRData", {}).get("StandingsTable", {})
-                      .get("StandingsLists", [{}])[0].get("DriverStandings") or [])[:20]:
-            drv = s.get("Driver", {})
-            ctor = (s.get("Constructors") or [{}])[0]
-            result["driverStandings"].append({
-                "pos":    int(s.get("position", 99)),
-                "name":   f"{drv.get('givenName','')} {drv.get('familyName','')}".strip(),
-                "code":   drv.get("code", ""),
-                "team":   ctor.get("name", ""),
-                "pts":    float(s.get("points", 0)),
-                "wins":   int(s.get("wins", 0)),
-                "nat":    drv.get("nationality", ""),
-            })
-    except Exception as exc:
-        log(f"F1 driver standings (Ergast): {exc}", "WARN")
-
-    # Constructor standings
-    try:
-        data = fetch_json(f"http://ergast.com/api/f1/{year}/constructorStandings.json")
-        for s in (data.get("MRData", {}).get("StandingsTable", {})
-                      .get("StandingsLists", [{}])[0].get("ConstructorStandings") or [])[:10]:
-            ctor = s.get("Constructor", {})
-            result["constructorStandings"].append({
-                "pos":  int(s.get("position", 99)),
-                "name": ctor.get("name", ""),
-                "pts":  float(s.get("points", 0)),
-                "wins": int(s.get("wins", 0)),
-            })
-    except Exception as exc:
-        log(f"F1 constructor standings (Ergast): {exc}", "WARN")
-
-    # ESPN F1 standings (top 10)
-    try:
-        espn_data = fetch_json(f"{ESPN_BASE}/racing/f1/standings")
-        if espn_data:
-            espn_standings = (espn_data.get("standings", {}).get("entries") or [])[:10]
-            result["espnStandings"] = [
-                {
-                    "pos": int(e.get("stats", [{}])[0].get("value", i + 1)),
-                    "name": e.get("athlete", {}).get("displayName", ""),
-                    "team": e.get("team", {}).get("displayName", ""),
-                    "pts": float((next((s for s in e.get("stats", []) if s.get("name") == "points"), {}) or {}).get("value", 0)),
-                }
-                for i, e in enumerate(espn_standings)
-            ]
-    except Exception as exc:
-        log(f"F1 ESPN standings: {exc}", "WARN")
-        result["espnStandings"] = []
-
-    log(f"F1: {len(result['schedule'])} races | {len(result['driverStandings'])} drivers | next: {result['nextRace'] and result['nextRace']['name']}")
-    return result
-
-
-def fetch_f1_analytics() -> dict:
-    """Fetch F1 race analysis data from f1datastop.com."""
-    url = "https://f1datastop.com/race-analysis"
-    result: dict = {"source": "f1datastop.com", "fetchedAt": TODAY_ISO, "data": [], "error": None}
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,*/*",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        r = requests.get(url, headers=headers, timeout=20)
-        if r.ok:
-            soup = BeautifulSoup(r.text, "html.parser")
-            # Extract race analysis cards/sections
-            cards = soup.find_all(["article", "section", "div"], class_=lambda c: c and any(
-                k in c for k in ["race", "analysis", "driver", "lap", "pace"]
-            ))
-            for card in cards[:20]:
-                txt = card.get_text(separator=" ", strip=True)
-                if len(txt) > 30:
-                    result["data"].append({"text": txt[:300], "tag": card.name})
-            # Also grab any tables
-            tables = soup.find_all("table")
-            for tbl in tables[:5]:
-                rows = tbl.find_all("tr")
-                for row in rows[:15]:
-                    cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
-                    if cells:
-                        result["data"].append({"row": cells})
-        else:
-            result["error"] = f"HTTP {r.status_code}"
-    except Exception as exc:
-        result["error"] = str(exc)
-        log(f"F1 analytics (f1datastop.com): {exc}", "WARN")
-    log(f"F1 analytics: {len(result['data'])} items | error: {result['error']}")
-    return result
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Linemate cheatsheet (recent-form — Playwright optional)
-# ═══════════════════════════════════════════════════════════════════════════════
-def fetch_linemate_cheatsheet(sport: str) -> list[dict]:
-    """Scrape Linemate recent-form cheatsheet for prop trend context."""
+def _linemate_playwright(url: str, selectors: list[str], limit: int = 100) -> list[str]:
+    """Generic Playwright scraper — returns list of raw inner_text strings."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        return []
-    url = f"https://linemate.io/{sport}/cheatsheets/recent-form"
-    items: list[dict] = []
+        log("Playwright not installed — skipping", "WARN"); return []
+    items: list[str] = []
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
-            ctx = browser.new_context(user_agent=HEADERS["User-Agent"],
-                                      viewport={"width": 1280, "height": 900})
-            page = ctx.new_page()
-            page.goto(url, wait_until="networkidle", timeout=45_000)
-            page.wait_for_timeout(3_000)
-            for sel in ["[class*='Row']", "[class*='row']", "table tr", "li", "article"]:
-                rows = page.query_selector_all(sel)
-                if len(rows) > 3:
-                    for row in rows[:80]:
-                        txt = row.inner_text().strip()
-                        if len(txt) > 8:
-                            items.append({"raw": txt, "sport": sport.upper(), "src": "Linemate/form"})
-                    break
-            browser.close()
-        log(f"Linemate cheatsheet {sport}: {len(items)} rows")
-    except Exception as exc:
-        log(f"Linemate cheatsheet {sport}: {exc}", "WARN")
-    return items
-
-
-def fetch_linemate_trends(sport: str) -> list[dict]:
-    """Scrape Linemate trends page for player and team trend data."""
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return []
-    url = f"https://linemate.io/{sport}/trends"
-    trends: list[dict] = []
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
-            ctx = browser.new_context(user_agent=HEADERS["User-Agent"],
-                                      viewport={"width": 1280, "height": 900})
-            page = ctx.new_page()
+            ctx     = browser.new_context(user_agent=HEADERS["User-Agent"],
+                                          viewport={"width":1280,"height":900})
+            page    = ctx.new_page()
             page.goto(url, wait_until="networkidle", timeout=45_000)
             page.wait_for_timeout(4_000)
-            # Try multiple selectors for trend rows
-            selectors = [
-                "[class*='TrendRow']", "[class*='trend-row']", "[class*='PlayerRow']",
-                "[class*='player-row']", "table tr", "li[class*='trend']", "article",
-            ]
-            rows = []
             for sel in selectors:
                 rows = page.query_selector_all(sel)
                 if len(rows) > 3:
+                    for row in rows[:limit]:
+                        txt = row.inner_text().strip()
+                        if len(txt) > 8: items.append(txt)
                     break
-            for row in rows[:100]:
-                try:
-                    txt = row.inner_text().strip()
-                    if len(txt) < 8:
-                        continue
-                    # Parse raw text into structured fields
-                    parts = [p.strip() for p in txt.split("\n") if p.strip()]
-                    player = parts[0] if parts else txt[:40]
-                    category = parts[1] if len(parts) > 1 else ""
-                    # Detect trend direction from keywords
-                    txt_lower = txt.lower()
-                    if any(k in txt_lower for k in ["hot", "fire", "🔥", "streak"]):
-                        direction = "hot"
-                    elif any(k in txt_lower for k in ["cold", "slump", "❄"]):
-                        direction = "cold"
-                    elif any(k in txt_lower for k in ["up", "↑", "rising", "over"]):
-                        direction = "up"
-                    elif any(k in txt_lower for k in ["down", "↓", "falling", "under"]):
-                        direction = "down"
-                    else:
-                        direction = "neutral"
-                    # Try to extract L5/L10 hit rates from numeric tokens
-                    nums = re.findall(r'(\d+)/(\d+)', txt)
-                    l5 = f"{nums[0][0]}/{nums[0][1]}" if nums else ""
-                    l10 = f"{nums[1][0]}/{nums[1][1]}" if len(nums) > 1 else ""
-                    # Line movement
-                    line_move = "up" if "line up" in txt_lower or "moved up" in txt_lower else \
-                                "down" if "line down" in txt_lower or "moved down" in txt_lower else ""
-                    trends.append({
-                        "player": player,
-                        "category": category,
-                        "direction": direction,
-                        "l5": l5,
-                        "l10": l10,
-                        "lineMove": line_move,
-                        "raw": txt[:200],
-                        "sport": sport.upper(),
-                        "src": "Linemate/trends",
-                    })
-                except Exception:
-                    pass
             browser.close()
-        log(f"Linemate trends {sport}: {len(trends)} entries")
     except Exception as exc:
-        log(f"Linemate trends {sport}: {exc}", "WARN")
-    return trends
+        log(f"Playwright {url}: {exc}", "WARN")
+    return items
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Linemate props (Playwright — optional)
-# ═══════════════════════════════════════════════════════════════════════════════
 def fetch_linemate_props(sport: str) -> list[dict]:
-    """
-    Scrape linemate.io prop cards using Playwright (headless Chromium).
-    Requires: pip install playwright && playwright install chromium
-    Falls back gracefully if Playwright is not installed.
-    """
-    try:
-        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-    except ImportError:
-        vlog("Playwright not installed — skipping Linemate. Run: pip install playwright && playwright install chromium")
-        return []
-
-    url = f"https://linemate.io/{sport}"
-    props: list[dict] = []
-
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
-            ctx = browser.new_context(
-                user_agent=HEADERS["User-Agent"],
-                viewport={"width": 1280, "height": 900},
-            )
-            page = ctx.new_page()
-            page.goto(url, wait_until="networkidle", timeout=45_000)
-            page.wait_for_timeout(4_000)   # let JS hydrate
-
-            # Try multiple selectors — linemate changes class names
-            selectors = [
-                "[class*='PlayerPropCard']",
-                "[class*='prop-card']",
-                "[class*='PropCard']",
-                "[data-testid*='prop']",
-                "article",
-            ]
-            cards = []
-            for sel in selectors:
-                cards = page.query_selector_all(sel)
-                if cards:
-                    break
-
-            for card in cards[:60]:
-                try:
-                    text = card.inner_text().strip()
-                    if len(text) < 10:
-                        continue
-                    props.append({
-                        "raw":   text,
-                        "sport": sport.upper(),
-                        "src":   "Linemate",
-                    })
-                except Exception:
-                    continue
-
-            browser.close()
-        log(f"Linemate {sport.upper()}: {len(props)} prop cards scraped")
-    except Exception as e:
-        log(f"Linemate {sport} error: {e}", "WARN")
-
+    log(f"Linemate props {sport.upper()}…")
+    raw = _linemate_playwright(
+        f"https://linemate.io/{sport}",
+        ["[class*='PlayerPropCard']","[class*='PropCard']","[class*='prop-card']","[data-testid*='prop']","article"],
+    )
+    props = [{"raw":t, "sport":sport.upper(), "src":"Linemate"} for t in raw]
+    log(f"  Linemate {sport.upper()}: {len(props)} cards")
     return props
 
+def fetch_linemate_trends(sport: str) -> list[dict]:
+    log(f"Linemate trends {sport.upper()}…")
+    raw = _linemate_playwright(
+        f"https://linemate.io/{sport}/trends",
+        ["[class*='TrendRow']","[class*='trend-row']","[class*='PlayerRow']","table tr","article"],
+    )
+    trends: list[dict] = []
+    for txt in raw:
+        parts     = [p.strip() for p in txt.split("\n") if p.strip()]
+        txt_lower = txt.lower()
+        direction = ("hot" if any(k in txt_lower for k in ["hot","fire","streak"]) else
+                     "cold" if any(k in txt_lower for k in ["cold","slump"]) else
+                     "up"   if any(k in txt_lower for k in ["up","↑","over"]) else
+                     "down" if any(k in txt_lower for k in ["down","↓","under"]) else "neutral")
+        nums = re.findall(r'(\d+)/(\d+)', txt)
+        trends.append({
+            "player":    parts[0] if parts else txt[:40],
+            "category":  parts[1] if len(parts)>1 else "",
+            "direction": direction,
+            "l5":        f"{nums[0][0]}/{nums[0][1]}" if nums else "",
+            "l10":       f"{nums[1][0]}/{nums[1][1]}" if len(nums)>1 else "",
+            "lineMove":  "up" if "line up" in txt_lower else ("down" if "line down" in txt_lower else ""),
+            "raw":       txt[:200], "sport": sport.upper(), "src": "Linemate/trends",
+        })
+    log(f"  Linemate trends {sport.upper()}: {len(trends)} entries")
+    return trends
+
+def fetch_linemate_cheatsheet(sport: str) -> list[dict]:
+    log(f"Linemate cheatsheet {sport.upper()}…")
+    raw = _linemate_playwright(
+        f"https://linemate.io/{sport}/cheatsheets/recent-form",
+        ["[class*='Row']","[class*='row']","table tr","li","article"],
+    )
+    return [{"raw":t, "sport":sport.upper(), "src":"Linemate/form"} for t in raw]
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# Best bets calculator
+# Sports news + injuries
+# ═══════════════════════════════════════════════════════════════════════════════
+_INJURY_KEYWORDS = [
+    "injured","out","doubtful","questionable","day-to-day","IR","scratch",
+    "suspended","illness","flu","knee","ankle","shoulder","back","concussion",
+    "unavailable","game-time","sidelined","hamstring","wrist","hand","elbow",
+]
+
+def fetch_sports_news() -> dict:
+    news: dict = {}
+    sport_map = {
+        "mlb":    "baseball/mlb",
+        "nhl":    "hockey/nhl",
+        "nba":    "basketball/nba",
+        "tennis": "tennis/atp",
+    }
+    for sport_key, espn_path in sport_map.items():
+        try:
+            url      = f"https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news"
+            articles = (fetch_json(url) or {}).get("articles",[])
+            items    = []
+            for a in articles[:30]:
+                title = a.get("headline","")
+                desc  = a.get("description","")
+                combined = (title + " " + desc).lower()
+                if any(kw in combined for kw in _INJURY_KEYWORDS):
+                    items.append({
+                        "headline":  title,
+                        "summary":   desc[:200],
+                        "published": a.get("published",""),
+                        "link":      a.get("links",{}).get("web",{}).get("href",""),
+                    })
+            news[sport_key] = items[:10]
+        except Exception as exc:
+            log(f"News {sport_key}: {exc}", "WARN"); news[sport_key] = []
+    return news
+
+def fetch_injuries_all() -> dict:
+    """Dedicated injury fetcher for all sports."""
+    log("ESPN injury reports…")
+    return {
+        "mlb":  fetch_espn_injuries("baseball/mlb",    "mlb"),
+        "nba":  fetch_espn_injuries("basketball/nba",  "nba"),
+        "nhl":  fetch_espn_injuries("hockey/nhl",      "nhl"),
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Best Bets Calculator  (EV + Confidence scoring)
 # ═══════════════════════════════════════════════════════════════════════════════
 def _ml_to_prob(ml) -> float | None:
     try:
         ml = int(ml)
-        return abs(ml) / (abs(ml) + 100) if ml < 0 else 100 / (ml + 100)
-    except (TypeError, ValueError):
-        return None
+        return abs(ml)/(abs(ml)+100) if ml < 0 else 100/(ml+100)
+    except: return None
 
 def _ml_to_dec(ml) -> float:
     try:
         ml = int(ml)
-        return (100 / abs(ml) + 1) if ml < 0 else (ml / 100 + 1)
-    except (TypeError, ValueError):
-        return 1.91
+        return (100/abs(ml)+1) if ml < 0 else (ml/100+1)
+    except: return 1.91
 
-def _ev(prob: float, dec_odds: float) -> float:
-    return prob * dec_odds - 1
+def _ev(prob: float, dec: float) -> float:
+    return prob * dec - 1
+
+def _ev_grade(ev_pct: float) -> str:
+    if ev_pct >= 12: return "A+"
+    if ev_pct >= 8:  return "A"
+    if ev_pct >= 4:  return "B"
+    if ev_pct >= 1:  return "C"
+    return "D"
+
+def _confidence(prob: float, ev_pct: float, extra_signals: int = 0) -> int:
+    """Return 0–100 confidence score."""
+    base = int(prob * 70)             # max 70 from implied prob
+    ev_bonus = min(20, int(ev_pct))   # max 20 from EV
+    signal_bonus = min(10, extra_signals * 3)
+    return min(100, base + ev_bonus + signal_bonus)
 
 def calculate_best_bets(
-    nba_today: list, mlb_today: list, nhl_today: list, weather: dict
+    nba_today: list, mlb_today: list, nhl_today: list,
+    weather: dict, mp: dict | None = None, nhl_edge: dict | None = None,
 ) -> list[dict]:
     log("Calculating best bets…")
     picks: list[dict] = []
 
-    def add(sport, game_str, pick_str, prob, ml, grade, note=""):
-        dec = _ml_to_dec(ml)
-        ev = round(_ev(prob, dec) * 100, 1)
+    def add(sport, game_str, pick_str, prob, ml, grade, note="", extra_signals=0):
+        dec     = _ml_to_dec(ml)
+        ev_pct  = round(_ev(prob, dec) * 100, 1)
+        conf    = _confidence(prob, ev_pct, extra_signals)
+        ev_letter = _ev_grade(ev_pct)
         picks.append({
-            "sport":   sport,
-            "game":    game_str,
-            "pick":    pick_str,
-            "prob":    round(prob * 100, 1),
-            "ev":      ev,
-            "ml":      f"+{ml}" if isinstance(ml, int) and ml > 0 else str(ml),
-            "grade":   grade,
-            "note":    note,
+            "sport":      sport,
+            "game":       game_str,
+            "pick":       pick_str,
+            "prob":       round(prob * 100, 1),
+            "ev":         ev_pct,
+            "evGrade":    ev_letter,
+            "confidence": conf,
+            "ml":         f"+{ml}" if isinstance(ml,int) and ml>0 else str(ml),
+            "grade":      grade,
+            "note":       note,
+            "date":       TODAY_ISO,
         })
 
-    # NBA moneylines — find +EV favorites
+    # NBA moneylines
     for g in nba_today:
-        if g.get("state") != "pre":
-            continue
-        hml, aml = g.get("homeML"), g.get("awayML")
+        if g.get("state") != "pre": continue
+        hml, aml  = g.get("homeML"), g.get("awayML")
         hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
-        home, away = g.get("home", ""), g.get("away", "")
-        game_str = f"{away} @ {home}"
-
+        home, away = g.get("home",""), g.get("away","")
+        game_str   = f"{away} @ {home}"
         if hprob and hprob > 0.62:
-            add("NBA", game_str, f"{home} ML {hml}", hprob,
-                hml, "LOCK" if hprob > 0.67 else "GOOD",
-                note=g.get("seriesNote", ""))
+            add("NBA", game_str, f"{home} ML {hml}", hprob, hml,
+                "LOCK" if hprob>0.67 else "GOOD", note=g.get("seriesNote",""))
         elif aprob and aprob > 0.62:
-            add("NBA", game_str, f"{away} ML {aml}", aprob,
-                aml, "LOCK" if aprob > 0.67 else "GOOD",
-                note=g.get("seriesNote", ""))
-
-        # O/U: flag if lines are available
+            add("NBA", game_str, f"{away} ML {aml}", aprob, aml,
+                "LOCK" if aprob>0.67 else "GOOD", note=g.get("seriesNote",""))
+        # O/U info
         ou = g.get("ou")
         if ou and hml and aml:
             picks.append({
-                "sport": "NBA", "game": game_str,
-                "pick": f"O/U {ou}", "prob": 52.0, "ev": 0.0,
-                "ml": "-110", "grade": "INFO",
-                "note": f"Line: {home} {hml} / {away} {aml}",
+                "sport":"NBA","game":game_str,"pick":f"O/U {ou}","prob":52.0,
+                "ev":0.0,"evGrade":"D","confidence":52,"ml":"-110","grade":"INFO",
+                "note":f"Line: {home} {hml} / {away} {aml}","date":TODAY_ISO,
             })
 
-    # MLB — wind-adjusted O/U + moneylines
+    # MLB — wind-adjusted O/U + ML favorites
     for g in mlb_today:
-        if g.get("state") != "pre":
-            continue
-        home, away = g.get("home", ""), g.get("away", "")
-        game_str = f"{away} @ {home}"
-        w = weather.get(home, {})
-        hml, aml = g.get("homeML"), g.get("awayML")
-        ou = g.get("ou")
-
-        # Wind factor
+        if g.get("state") != "pre": continue
+        home, away = g.get("home",""), g.get("away","")
+        game_str   = f"{away} @ {home}"
+        w          = weather.get(home,{})
+        hml, aml   = g.get("homeML"), g.get("awayML")
+        ou         = g.get("ou")
         if w and not w.get("indoor"):
-            wind = w.get("wind", 0) or 0
-            wind_dir = w.get("windDir", 0) or 0
+            wind     = w.get("wind",0) or 0
+            wind_dir = w.get("windDir",0) or 0
             blowing_out = 45 <= wind_dir <= 135
             if wind >= 12 and ou:
                 pick_dir = "OVER" if blowing_out else "UNDER"
-                prob = 0.58 if wind >= 18 else 0.54
+                prob     = 0.58 if wind >= 18 else 0.54
                 add("MLB", game_str,
                     f"{pick_dir} {ou} (wind {wind}mph {'out' if blowing_out else 'in'})",
                     prob, -110, "GOOD" if prob > 0.56 else "INFO",
-                    note=f"{w.get('condition')}, {w.get('temp')}°F")
-
-        # Heavy ML favorites
+                    note=f"{w.get('condition')}, {w.get('temp')}°F", extra_signals=1)
         hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
         if hprob and hprob > 0.65:
-            add("MLB", game_str, f"{home} ML {hml}", hprob,
-                hml, "LOCK" if hprob > 0.70 else "GOOD")
+            add("MLB", game_str, f"{home} ML {hml}", hprob, hml,
+                "LOCK" if hprob>0.70 else "GOOD")
         elif aprob and aprob > 0.65:
-            add("MLB", game_str, f"{away} ML {aml}", aprob,
-                aml, "LOCK" if aprob > 0.70 else "GOOD")
+            add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
+                "LOCK" if aprob>0.70 else "GOOD")
 
-    # NHL moneylines
+    # NHL moneylines — with MoneyPuck xGF boost
+    mp_teams = (mp or {}).get("teams",{}) if mp else {}
     for g in nhl_today:
-        if g.get("state") not in ("FUT", "PRE"):
-            continue
-        # NHL odds come from ESPN overlay or embedded — only if present
-        hml, aml = g.get("homeML"), g.get("awayML")
-        home, away = g.get("home", ""), g.get("away", "")
-        game_str = f"{away} @ {home}"
+        if g.get("state") not in ("FUT","PRE"): continue
+        hml, aml    = g.get("homeML"), g.get("awayML")
+        home, away  = g.get("home",""), g.get("away","")
+        game_str    = f"{away} @ {home}"
         hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
+        # MP xGF boost
+        home_mp = mp_teams.get(home,{}).get("5on5",{})
+        away_mp = mp_teams.get(away,{}).get("5on5",{})
+        home_xgf = float(home_mp.get("xgfPct") or 0.5)
+        away_xgf = float(away_mp.get("xgfPct") or 0.5)
+        extra = 1 if abs(home_xgf - away_xgf) > 5 else 0
         if hprob and hprob > 0.60:
-            add("NHL", game_str, f"{home} ML {hml}", hprob,
-                hml, "GOOD", note=g.get("seriesStatus", ""))
+            add("NHL", game_str, f"{home} ML {hml}", hprob, hml or -120, "GOOD",
+                note=g.get("seriesStatus",""), extra_signals=extra)
+        elif aprob and aprob > 0.60:
+            add("NHL", game_str, f"{away} ML {aml}", aprob, aml or -120, "GOOD",
+                note=g.get("seriesStatus",""), extra_signals=extra)
 
-    # Sort by grade then EV
-    grade_order = {"LOCK": 0, "GOOD": 1, "INFO": 2}
-    picks.sort(key=lambda p: (grade_order.get(p["grade"], 9), -p["ev"]))
-    top = picks[:12]
-
+    grade_order = {"LOCK":0,"GOOD":1,"INFO":2}
+    picks.sort(key=lambda p: (grade_order.get(p["grade"],9), -p.get("confidence",0)))
+    top = picks[:15]
     (DATA / "best_bets.json").write_text(json.dumps(top, indent=2))
-    log(f"Best bets: {len(top)} picks generated")
+    log(f"Best bets: {len(top)} picks | top EV grade: {top[0]['evGrade'] if top else '—'}")
     return top
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Auto-settle (server-side)
+# Auto-settle (enhanced — checks ML, RL, OU, Spread, Puck Line, Run Line)
 # ═══════════════════════════════════════════════════════════════════════════════
-def auto_settle(
-    nba_final: list, mlb_final: list, nhl_final: list
-) -> list[dict]:
-    """
-    Compare locked bets against final scores.
-    Reads data/locked_props.json (exported by frontend via exportBets()),
-    writes data/settled.json for the frontend to import on next load.
-    """
+def auto_settle(nba_final: list, mlb_final: list, nhl_final: list) -> list[dict]:
     locked_path  = DATA / "locked_props.json"
     settled_path = DATA / "settled.json"
-
     if not locked_path.exists():
-        vlog("No locked_props.json — skipping server-side auto-settle")
-        return []
+        vlog("No locked_props.json — skipping server-side auto-settle"); return []
 
-    locked: list[dict] = json.loads(locked_path.read_text())
+    locked:   list[dict] = json.loads(locked_path.read_text())
     existing: list[dict] = json.loads(settled_path.read_text()) if settled_path.exists() else []
-    settled_ids = {s["id"] for s in existing}
-    new_settled = list(existing)
+    settled_ids = {s.get("id","") for s in existing}
+    new_settled  = list(existing)
 
-    # Build final-score lookup: (home, away) → game
     def game_index(games: list) -> dict:
         idx = {}
         for g in games:
-            h, a = g.get("home", ""), g.get("away", "")
-            state = str(g.get("state", ""))
-            if state in ("post", "FINAL", "OFF", "7") and h and a:
-                idx[(h, a)] = g
-                idx[(a, h)] = g
+            h, a  = g.get("home",""), g.get("away","")
+            state = str(g.get("state",""))
+            if state in ("post","FINAL","OFF","7","F","OT","SO") and h and a:
+                idx[(h,a)] = g; idx[(a,h)] = g
         return idx
 
     all_idx: dict = {}
@@ -1165,66 +1255,108 @@ def auto_settle(
     all_idx.update(game_index(mlb_final))
     all_idx.update(game_index(nhl_final))
 
-    settled_count = 0
     for bet in locked:
-        if bet.get("outcome") != "pending":
-            continue
-        if bet.get("id", "") in settled_ids:
-            continue
-
-        hA, awA = bet.get("hA", ""), bet.get("awA", "")
+        if bet.get("outcome","pending") != "pending": continue
+        bet_id = bet.get("id","")
+        if bet_id in settled_ids: continue
+        hA, awA = bet.get("hA","") or bet.get("home",""), bet.get("awA","") or bet.get("away","")
         game = all_idx.get((hA, awA))
-        if not game:
-            continue
-
-        hs = int(game.get("homeScore") or 0)
-        as_ = int(game.get("awayScore") or 0)
-        bet_type = bet.get("betType", "ML")
-        outcome = None
+        if not game: continue
+        hs, as_ = int(game.get("homeScore") or 0), int(game.get("awayScore") or 0)
+        bet_type = str(bet.get("betType","ML")).upper()
+        outcome  = None
 
         if bet_type == "ML":
-            winner = game.get("home") if hs > as_ else game.get("away")
-            outcome = "win" if bet.get("team", "") == winner else "loss"
+            winner  = game.get("home") if hs > as_ else game.get("away")
+            outcome = "win" if bet.get("team","") == winner else "loss"
 
-        elif bet_type in ("RL", "PL"):
-            line = float(str(bet.get("line", "1.5")).replace("+", "").replace("−", "-") or 1.5)
-            is_home = bet.get("team") == game.get("home")
-            diff = (hs - as_) if is_home else (as_ - hs)
-            if diff + line > 0:
-                outcome = "win"
-            elif diff + line == 0:
-                outcome = "push"
-            else:
-                outcome = "loss"
+        elif bet_type in ("RL","PL","RUNLINE","PUCKLINE","SPREAD"):
+            line    = float(str(bet.get("line","1.5")).replace("+","").replace("−","-") or 1.5)
+            is_home = bet.get("team","") == game.get("home","")
+            diff    = (hs - as_) if is_home else (as_ - hs)
+            outcome = "win" if diff+line > 0 else ("push" if diff+line == 0 else "loss")
 
-        elif bet_type == "OU":
-            total = hs + as_
-            line_val = float(bet.get("ou") or bet.get("line") or 0)
-            over = "OVER" in str(bet.get("betOn", "")).upper() or bet.get("over", True)
-            if over:
-                outcome = "win" if total > line_val else ("push" if total == line_val else "loss")
-            else:
-                outcome = "win" if total < line_val else ("push" if total == line_val else "loss")
+        elif bet_type in ("OU","OVER_UNDER","TOTAL"):
+            total   = hs + as_
+            lv      = float(bet.get("ou") or bet.get("line") or 0)
+            over    = "OVER" in str(bet.get("betOn","")).upper() or bet.get("over", True)
+            outcome = ("win" if total > lv else ("push" if total == lv else "loss")) if over else \
+                      ("win" if total < lv else ("push" if total == lv else "loss"))
 
         elif bet_type == "PROP":
-            # Props cannot be settled from final game score alone — skip
-            continue
+            continue   # props need player stat data — skip server-side settle
 
         if outcome:
-            sb = {**bet, "outcome": outcome,
-                  "settledAt": NOW.isoformat(),
+            sb = {**bet, "outcome": outcome, "settledAt": NOW.isoformat(),
                   "hScore": hs, "aScore": as_}
             new_settled.append(sb)
-            settled_ids.add(bet.get("id", ""))
-            settled_count += 1
-            log(f"  SETTLED: {bet.get('betOn', '')} → {outcome.upper()}")
+            settled_ids.add(bet_id)
+            log(f"  SETTLED: {bet.get('betOn',bet.get('pick',''))} → {outcome.upper()}")
 
     settled_path.write_text(json.dumps(new_settled, indent=2))
-    log(f"Auto-settle: +{settled_count} new, {len(new_settled)} total")
+    log(f"Auto-settle: {len(new_settled)} total settled")
     return new_settled
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Bundle + data.json writer
+# Bet History (persistent log + CSV export)
+# ═══════════════════════════════════════════════════════════════════════════════
+def load_bet_history() -> list[dict]:
+    if BET_HISTORY_JSON.exists():
+        return json.loads(BET_HISTORY_JSON.read_text())
+    return []
+
+def merge_settled_to_history(settled: list[dict]) -> list[dict]:
+    history     = load_bet_history()
+    existing_ids = {b.get("id","") for b in history}
+    new_bets    = [b for b in settled if b.get("id","") and b.get("id","") not in existing_ids]
+    history.extend(new_bets)
+    BET_HISTORY_JSON.write_text(json.dumps(history, indent=2))
+    if new_bets: note(f"Bet history: +{len(new_bets)} new records ({len(history)} total)")
+    return history
+
+def export_bet_history_csv(history: list[dict]) -> None:
+    if not history: return
+    fields = [
+        "id","sport","game","betOn","betType","pick","line","ou","prob",
+        "ev","evGrade","confidence","ml","grade","outcome","settledAt",
+        "hScore","aScore","note","date",
+    ]
+    with open(BET_HISTORY_CSV, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader(); w.writerows(history)
+    docs_csv = ROOT / "docs" / "bet_history.csv"
+    shutil.copy(BET_HISTORY_CSV, docs_csv)
+    note(f"Bet history CSV: {len(history)} rows → docs/bet_history.csv")
+
+def build_overall_stats(history: list[dict]) -> dict:
+    """Aggregate win/loss/push from bet history for Overall tab."""
+    from collections import defaultdict
+    total: dict = {"w":0,"l":0,"push":0,"total":0}
+    by_sport: dict = defaultdict(lambda: {"w":0,"l":0,"push":0,"total":0})
+    by_type:  dict = defaultdict(lambda: {"w":0,"l":0,"push":0,"total":0})
+    by_date:  dict = defaultdict(lambda: {"w":0,"l":0,"push":0,"total":0})
+
+    for b in history:
+        o = b.get("outcome","pending")
+        if o not in ("win","loss","push"): continue
+        sport = b.get("sport","?")
+        btype = b.get("betType","ML")
+        day   = (b.get("settledAt","") or b.get("date",""))[:10]
+        for bucket in (total, by_sport[sport], by_type[btype], by_date[day]):
+            bucket[o if o!="win" else "w"] = bucket.get(o if o!="win" else "w",0) + 1
+            bucket["total"] = bucket.get("total",0) + 1
+
+    def pct(d): return round(d["w"]/d["total"]*100,1) if d["total"] else 0
+    return {
+        "total":     {**total, "pct": pct(total)},
+        "bySport":   {k: {**v,"pct":pct(v)} for k,v in by_sport.items()},
+        "byBetType": {k: {**v,"pct":pct(v)} for k,v in by_type.items()},
+        "byDate":    dict(sorted(by_date.items())[-30:]),   # last 30 days
+        "fetchedAt": TODAY_ISO,
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# data.json writer + HTML timestamp patcher
 # ═══════════════════════════════════════════════════════════════════════════════
 def write_data_json(bundle: dict) -> None:
     payload = json.dumps(bundle, indent=2)
@@ -1232,108 +1364,94 @@ def write_data_json(bundle: dict) -> None:
     DC_DATA.write_text(payload)
     note(f"data.json written ({len(payload)//1024} KB) → frontend/ + docs/")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# HTML timestamp patch
-# ═══════════════════════════════════════════════════════════════════════════════
 def patch_html_timestamp() -> None:
-    html = FE.read_text(encoding="utf-8")
-    original = html
-
-    # Pattern: LAST_AUTO_UPDATE = 'YYYY-MM-DD HH:MM ET'
-    ts_pat = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
-    if re.search(ts_pat, html):
-        html = re.sub(ts_pat, rf"\g<1>{TS_DISPLAY}\g<3>", html)
-    else:
-        # Inject declaration near the top of the first <script> block
-        html = html.replace(
-            "<script>",
-            f"<script>\n  const LAST_AUTO_UPDATE = '{TS_DISPLAY}';",
-            1,
-        )
-
-    # Cache-bust the data.json fetch query param
-    cb = int(time.time())
-    cb_pat = r"(data\.json\?)\d+"
-    if re.search(cb_pat, html):
-        html = re.sub(cb_pat, rf"\g<1>{cb}", html)
-
-    if html != original:
-        FE.write_text(html, encoding="utf-8")
-        DOCS.write_text(html, encoding="utf-8")
-        note("HTML timestamp updated")
+    for html_file in (FE, DOCS_IDX):
+        if not html_file.exists(): continue
+        html     = html_file.read_text(encoding="utf-8")
+        ts_pat   = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
+        if re.search(ts_pat, html):
+            html = re.sub(ts_pat, rf"\g<1>{TS_DISPLAY}\g<3>", html)
+        else:
+            html = html.replace("<script>",
+                f'<script>\nconst LAST_AUTO_UPDATE = "{TS_DISPLAY}";\n', 1)
+        html_file.write_text(html, encoding="utf-8")
+    vlog(f"HTML timestamp patched → {TS_DISPLAY}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Git push
 # ═══════════════════════════════════════════════════════════════════════════════
-def git_push(summary: str) -> bool:
+def git_push(summary: str = "") -> bool:
     try:
-        os.chdir(ROOT)
-        # Stage data outputs
-        subprocess.run(
-            ["git", "add",
-             "frontend/index.html", "docs/index.html",
-             "frontend/data.json",  "docs/data.json",
-             "data/"],
-            check=True, capture_output=True,
-        )
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--stat"],
-            capture_output=True, text=True,
-        )
-        if not result.stdout.strip():
-            log("Git: nothing to commit")
-            return False
-
-        msg = (
-            f"auto: data refresh {TS_DISPLAY}\n\n"
-            f"{summary}\n\n"
-            "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-        )
-        subprocess.run(["git", "commit", "-m", msg], check=True, capture_output=True)
-        subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True)
-        log("Git: pushed to origin/main ✓")
+        subprocess.run(["git","-C",str(ROOT),"add",
+            "docs/data.json","frontend/data.json",
+            "docs/index.html","frontend/index.html",
+            "docs/bet_history.csv","data/bet_history.json",
+            "docs/live_data.json","frontend/live_data.json",
+            "docs/card.png","frontend/card.png",
+            "docs/social_copy.json","frontend/social_copy.json",
+        ], capture_output=True, check=False)
+        diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
+                              capture_output=True)
+        if diff.returncode == 0:
+            log("git: nothing to commit"); return True
+        msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}"
+        subprocess.run(["git","-C",str(ROOT),"commit","-m",msg], check=True, capture_output=True)
+        subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
+        note("git push → main ✓")
         return True
-    except subprocess.CalledProcessError as e:
-        log(f"Git error: {e.stderr.decode()}", "ERROR")
-        return False
+    except Exception as exc:
+        log(f"git push failed: {exc}", "WARN"); return False
 
-def fetch_sports_news() -> dict:
-    """Scrape injury/lineup news from ESPN headlines API."""
-    news = {}
-    sport_map = {
-        'mlb': 'baseball/mlb',
-        'nhl': 'hockey/nhl',
-        'nba': 'basketball/nba',
-        'tennis': 'tennis'
-    }
-    injury_keywords = ['injured', 'out', 'doubtful', 'questionable', 'day-to-day',
-                       'IR', 'scratch', 'suspended', 'illness', 'flu', 'knee',
-                       'ankle', 'shoulder', 'back', 'concussion', 'listed', 'unavailable',
-                       'game-time', 'will not play', 'sidelined']
-    for sport_key, espn_path in sport_map.items():
+# ═══════════════════════════════════════════════════════════════════════════════
+# Live Window  (17:00–23:00 MT continuous refresh)
+# ═══════════════════════════════════════════════════════════════════════════════
+def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
+    log("=== LIVE WINDOW MODE STARTED ===")
+    live_data_fe   = ROOT / "frontend" / "live_data.json"
+    live_data_docs = ROOT / "docs"     / "live_data.json"
+
+    while True:
         try:
-            url = f'https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news'
-            r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-            if r.status_code == 200:
-                articles = r.json().get('articles', [])
-                items = []
-                for a in articles[:20]:
-                    title = a.get('headline', '')
-                    desc = a.get('description', '')
-                    combined = (title + ' ' + desc).lower()
-                    if any(kw in combined for kw in injury_keywords):
-                        items.append({
-                            'headline': title,
-                            'summary': desc[:200],
-                            'published': a.get('published', ''),
-                            'link': a.get('links', {}).get('web', {}).get('href', '')
-                        })
-                news[sport_key] = items[:8]
-        except Exception as e:
-            print(f'[WARN] News fetch failed for {sport_key}: {e}')
-            news[sport_key] = []
-    return news
+            now_mt = datetime.now().astimezone()  # uses system TZ (set to America/Denver in cron)
+        except Exception:
+            now_mt = datetime.now()
+        hour = now_mt.hour
+        if hour >= 23 or hour < 1:
+            log("=== LIVE WINDOW END ==="); break
 
+        log(f"Live refresh {now_mt.strftime('%H:%M')}…")
+        try:
+            mlb_t, _  = fetch_mlb_scoreboard()
+            nba_t, _  = fetch_nba_scoreboard()
+            nhl_t, _  = fetch_nhl_schedule()
+            tennis    = fetch_tennis_schedule()
+            live_bundle = {
+                "generatedMT": now_mt.isoformat(),
+                "ts":          now_mt.strftime("%H:%M MT"),
+                "mlbLive":     [g for g in mlb_t  if g.get("state") == "in"],
+                "nbaLive":     [g for g in nba_t  if g.get("state") == "in"],
+                "nhlLive":     [g for g in nhl_t  if g.get("state") in ("LIVE","CRIT","IN")],
+                "tennisLive":  [m for m in tennis if m.get("state") == "in"],
+                "mlbAll":      mlb_t,
+                "nbaAll":      nba_t,
+                "nhlAll":      nhl_t,
+            }
+            for p in (live_data_fe, live_data_docs):
+                p.write_text(json.dumps(live_bundle, indent=2))
+
+            if push:
+                subprocess.run(["git","-C",str(ROOT),"add",
+                    "docs/live_data.json","frontend/live_data.json"], capture_output=True)
+                diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
+                                      capture_output=True)
+                if diff.returncode != 0:
+                    subprocess.run(["git","-C",str(ROOT),"commit","-m",
+                        f"live: {now_mt.strftime('%H:%M')} MT scores"], capture_output=True)
+                    subprocess.run(["git","-C",str(ROOT),"push","origin","main"],
+                                   capture_output=True)
+        except Exception as exc:
+            log(f"Live refresh error: {exc}", "WARN")
+        time.sleep(interval_sec)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Main orchestrator
@@ -1341,161 +1459,217 @@ def fetch_sports_news() -> dict:
 def main() -> None:
     global _verbose
 
-    parser = argparse.ArgumentParser(description="Clairvoyance daily data refresh")
-    parser.add_argument("--push",        action="store_true", help="Commit + push to GitHub")
-    parser.add_argument("--dry-run",     action="store_true", help="Fetch only, skip writes")
-    parser.add_argument("--no-linemate", action="store_true", help="Skip Linemate (no Playwright)")
-    parser.add_argument("--sport",       choices=["nba","mlb","nhl","tennis","f1","all"], default="all")
-    parser.add_argument("--verbose","-v",action="store_true")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Clairvoyance v5.0 data refresh")
+    parser.add_argument("--push",          action="store_true", help="Commit + push to GitHub")
+    parser.add_argument("--dry-run",       action="store_true", help="Fetch only, no writes")
+    parser.add_argument("--no-linemate",   action="store_true", help="Skip Playwright/Linemate")
+    parser.add_argument("--no-reference",  action="store_true", help="Skip Baseball/Basketball/Hockey Reference")
+    parser.add_argument("--mode",          choices=["full","live","props"], default="full")
+    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","f1","all"], default="all")
+    parser.add_argument("--verbose","-v",  action="store_true")
+    args    = parser.parse_args()
     _verbose = args.verbose
 
-    log(f"{'='*60}")
-    log(f"Clairvoyance Update — {TS_DISPLAY}")
-    log(f"Sport filter: {args.sport}")
-    log(f"{'='*60}")
+    # ── live-window short-circuit ────────────────────────────────────────────
+    if args.mode == "live":
+        run_live_window(push=args.push)
+        return
 
-    # ── fetch phase ───────────────────────────────────────────────────────────
-    mlb_today, mlb_tom     = fetch_mlb_scoreboard()   if args.sport in ("mlb","all") else ([], [])
-    mlb_standings          = fetch_mlb_standings()     if args.sport in ("mlb","all") else {}
-    nba_today, nba_tom     = fetch_nba_scoreboard()    if args.sport in ("nba","all") else ([], [])
-    nba_standings          = fetch_nba_standings()     if args.sport in ("nba","all") else {}
-    nba_players            = fetch_nba_player_stats()  if args.sport in ("nba","all") else []
-    nhl_today, nhl_tom     = fetch_nhl_schedule()      if args.sport in ("nhl","all") else ([], [])
-    nhl_standings          = fetch_nhl_standings()     if args.sport in ("nhl","all") else {}
-    nhl_edge               = fetch_nhl_edge()          if args.sport in ("nhl","all") else {}
-    mp                     = fetch_moneypuck()         if args.sport in ("nhl","all") else {}
-    atp_elo                = fetch_tennis_elo("atp")      if args.sport in ("tennis","all") else []
-    wta_elo                = fetch_tennis_elo("wta")      if args.sport in ("tennis","all") else []
-    atp_yelo               = fetch_tennis_yelo("atp")     if args.sport in ("tennis","all") else []
-    wta_yelo               = fetch_tennis_yelo("wta")     if args.sport in ("tennis","all") else []
-    tennis_schedule        = fetch_tennis_schedule()      if args.sport in ("tennis","all") else []
-    f1_data                = fetch_f1()                   if args.sport in ("f1","all") else {}
-    f1_analytics           = fetch_f1_analytics()         if args.sport in ("f1","all") else {}
+    log("=" * 60)
+    log(f"Clairvoyance v5.0 — {TS_DISPLAY}")
+    log(f"Mode: {args.mode} | Sport: {args.sport}")
+    log("=" * 60)
+
+    S = args.sport  # shorthand
+
+    # ── props-only mode ──────────────────────────────────────────────────────
+    if args.mode == "props":
+        lm: dict = {}
+        for sport in ["mlb","nba","nhl"]:
+            if S in (sport,"all"):
+                lm[sport] = {
+                    "props":  fetch_linemate_props(sport),
+                    "trends": fetch_linemate_trends(sport),
+                    "form":   fetch_linemate_cheatsheet(sport),
+                }
+                time.sleep(1)
+        (DATA / "linemate.json").write_text(json.dumps(lm, indent=2))
+        if args.push: git_push("props-only refresh")
+        return
+
+    # ── full fetch phase ─────────────────────────────────────────────────────
+    mlb_today, mlb_tom   = fetch_mlb_scoreboard()         if S in ("mlb","all") else ([],[])
+    mlb_standings        = fetch_mlb_standings()          if S in ("mlb","all") else {}
+    mlb_week             = fetch_mlb_schedule_week()      if S in ("mlb","all") else []
+    mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
+    mlb_nrfi             = fetch_mlb_nrfi_data(mlb_today) if S in ("mlb","all") else []
+
+    nba_today, nba_tom   = fetch_nba_scoreboard()         if S in ("nba","all") else ([],[])
+    nba_standings        = fetch_nba_standings()          if S in ("nba","all") else {}
+    nba_players          = fetch_nba_player_stats()       if S in ("nba","all") else []
+    nba_bracket          = fetch_nba_playoff_bracket()    if S in ("nba","all") else {}
+    nba_ref              = (fetch_basketball_reference()  if not args.no_reference else {}) if S in ("nba","all") else {}
+
+    nhl_today, nhl_tom   = fetch_nhl_schedule()           if S in ("nhl","all") else ([],[])
+    nhl_standings        = fetch_nhl_standings()          if S in ("nhl","all") else {}
+    nhl_bracket          = fetch_nhl_playoff_bracket()    if S in ("nhl","all") else {}
+    nhl_edge             = fetch_nhl_edge()               if S in ("nhl","all") else {}
+    mp                   = fetch_moneypuck()              if S in ("nhl","all") else {}
+    hockeyviz            = fetch_hockeyviz()              if S in ("nhl","all") else {}
+    hockey_ref           = (fetch_hockey_reference()      if not args.no_reference else {}) if S in ("nhl","all") else {}
+
+    atp_elo   = fetch_tennis_elo("atp")      if S in ("tennis","all") else []
+    wta_elo   = fetch_tennis_elo("wta")      if S in ("tennis","all") else []
+    atp_yelo  = fetch_tennis_yelo("atp")     if S in ("tennis","all") else []
+    wta_yelo  = fetch_tennis_yelo("wta")     if S in ("tennis","all") else []
+    tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
+    tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
+    tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
+
+    f1_data          = fetch_f1()               if S in ("f1","all") else {}
+    f1_analytics     = fetch_f1_analytics()     if S in ("f1","all") else {}
+    f1_tracing       = fetch_f1_tracing_insights() if S in ("f1","all") else {}
+    f1_calendar      = fetch_f1_calendar_datastop() if S in ("f1","all") else []
 
     # Weather for MLB home teams
     weather: dict = {}
-    if args.sport in ("mlb", "all"):
+    if S in ("mlb","all"):
         log("Fetching MLB weather…")
         for g in mlb_today:
-            home = g.get("home", "")
+            home = g.get("home","")
             if home and home not in weather:
                 w = fetch_weather(home)
-                if w:
-                    weather[home] = w
-                time.sleep(0.3)   # rate-limit Open-Meteo
+                if w: weather[home] = w
+                time.sleep(0.3)
 
-    # Linemate props + cheatsheets + trends (optional, requires Playwright)
-    lm_props: dict = {"nba": [], "mlb": [], "nhl": []}
-    lm_cheatsheets: dict = {"nba": [], "mlb": [], "nhl": []}
-    lm_trends: dict = {"mlb": [], "nhl": []}
+    # Linemate
+    lm_props:  dict = {"nba":[],"mlb":[],"nhl":[]}
+    lm_trends: dict = {"nba":[],"mlb":[],"nhl":[]}
+    lm_form:   dict = {"nba":[],"mlb":[],"nhl":[]}
     if not args.no_linemate:
-        for sport in ["nba", "mlb", "nhl"]:
-            if args.sport in (sport, "all"):
-                lm_props[sport] = fetch_linemate_props(sport)
-                time.sleep(1)
-                lm_cheatsheets[sport] = fetch_linemate_cheatsheet(sport)
-                time.sleep(1)
-        # Fetch trends for MLB and NHL
-        for sport in ["mlb", "nhl"]:
-            if args.sport in (sport, "all"):
-                lm_trends[sport] = fetch_linemate_trends(sport)
-                time.sleep(2)
+        for sport in ["nba","mlb","nhl"]:
+            if S in (sport,"all"):
+                lm_props[sport]  = fetch_linemate_props(sport);     time.sleep(1)
+                lm_trends[sport] = fetch_linemate_trends(sport);    time.sleep(1)
+                lm_form[sport]   = fetch_linemate_cheatsheet(sport); time.sleep(1)
 
-    # ── fetch news ────────────────────────────────────────────────────────────
-    log("Fetching sports injury/lineup news…")
+    # News + injuries
     sports_news = fetch_sports_news()
+    injuries    = fetch_injuries_all()
 
-    # ── calculate ─────────────────────────────────────────────────────────────
-    best_bets = calculate_best_bets(nba_today, mlb_today, nhl_today, weather)
-    settled   = auto_settle(nba_today + nba_tom, mlb_today + mlb_tom, nhl_today + nhl_tom)
+    # Best bets + auto-settle
+    best_bets = calculate_best_bets(nba_today, mlb_today, nhl_today, weather, mp, nhl_edge)
+    settled   = auto_settle(
+        nba_today + nba_tom,
+        mlb_today + mlb_tom,
+        nhl_today + nhl_tom,
+    )
 
-    # ── bundle ────────────────────────────────────────────────────────────────
-    bundle = {
+    # Bet history
+    history = merge_settled_to_history(settled)
+    export_bet_history_csv(history)
+    overall_stats = build_overall_stats(history)
+
+    # ── bundle ───────────────────────────────────────────────────────────────
+    bundle: dict = {
         "generated":    NOW.isoformat(),
-        "generatedET":  TS_DISPLAY,
+        "generatedMT":  TS_DISPLAY,
+        "version":      "5.0",
         "mlb": {
             "today":     mlb_today,
             "tomorrow":  mlb_tom,
             "standings": mlb_standings,
+            "weekSchedule": mlb_week,
+            "nrfi":      mlb_nrfi,
+            "reference": mlb_ref,
         },
         "nba": {
             "today":     nba_today,
             "tomorrow":  nba_tom,
             "standings": nba_standings,
             "players":   nba_players,
+            "bracket":   nba_bracket,
+            "reference": nba_ref,
         },
         "nhl": {
             "today":     nhl_today,
             "tomorrow":  nhl_tom,
             "standings": nhl_standings,
+            "bracket":   nhl_bracket,
             "edge":      nhl_edge,
+            "hockeyviz": hockeyviz,
+            "hockeyRef": hockey_ref,
         },
         "mp":      mp,
         "weather": weather,
         "tennis": {
-            "atpElo":    atp_elo[:100],
-            "wtaElo":    wta_elo[:100],
-            "atpYelo":   atp_yelo[:100],
-            "wtaYelo":   wta_yelo[:100],
-            "schedule":  tennis_schedule,
-            "scheduleDate": TODAY_ISO,
+            "atpElo":        atp_elo[:100],
+            "wtaElo":        wta_elo[:100],
+            "atpYelo":       atp_yelo[:100],
+            "wtaYelo":       wta_yelo[:100],
+            "schedule":      tennis_schedule,
+            "scheduleFull":  tennis_sched_full,
+            "rankings":      tennis_rankings,
+            "scheduleDate":  TODAY_ISO,
         },
-        "f1": {**f1_data, "analytics": f1_analytics},
-        "linemate":      lm_props,
-        "linemateForm":  {**lm_cheatsheets, "mlbTrends": lm_trends.get("mlb", []), "nhlTrends": lm_trends.get("nhl", [])},
-        "bestBets":  best_bets,
-        "settled":   settled,
-        "news":      sports_news,
+        "f1": {
+            **f1_data,
+            "analytics":  f1_analytics,
+            "tracing":    f1_tracing,
+            "calendar":   f1_calendar,
+        },
+        "linemate": {
+            "props":  lm_props,
+            "trends": lm_trends,
+            "form":   lm_form,
+        },
+        "bestBets":      best_bets,
+        "settled":       settled,
+        "betHistory":    history[-200:],  # last 200 for frontend
+        "overallStats":  overall_stats,
+        "news":          sports_news,
+        "injuries":      injuries,
     }
 
-    # Save full bundle for debugging
     (DATA / "bundle.json").write_text(json.dumps(bundle, indent=2))
 
     if args.dry_run:
-        log("Dry run — skipping writes and push")
-        return
+        log("Dry run — skipping writes and push"); return
 
-    # ── write data.json ───────────────────────────────────────────────────────
     write_data_json(bundle)
     patch_html_timestamp()
 
-    # ── generate social content ───────────────────────────────────────────────
+    # Social content + card
     try:
+        sys.path.insert(0, str(ROOT / "scripts"))
         from content_generator import generate_content, write_social_copy
         from generate_card import generate_card
         social = generate_content(bundle, verbose=_verbose)
         if social:
             write_social_copy(social)
             note("social_copy.json written")
-            # Generate card image
             img = generate_card(bundle, social)
-            fe_card = ROOT / "frontend" / "card.png"
-            dc_card = ROOT / "docs"     / "card.png"
-            img.save(str(fe_card), format="PNG", optimize=True)
-            img.save(str(dc_card), format="PNG", optimize=True)
-            note(f"card.png written ({fe_card.stat().st_size//1024} KB)")
+            for p in (ROOT/"frontend"/"card.png", ROOT/"docs"/"card.png"):
+                img.save(str(p), format="PNG", optimize=True)
+            note("card.png written")
     except Exception as exc:
         log(f"Content generation skipped: {exc}", "WARN")
 
-    # ── git push ──────────────────────────────────────────────────────────────
+    # Always push
     if args.push:
-        summary_lines = [
-            f"MLB: {len(mlb_today)} games today",
-            f"NBA: {len(nba_today)} games today",
-            f"NHL: {len(nhl_today)} games today",
-            f"ATP ELO: {len(atp_elo)} players | WTA ELO: {len(wta_elo)} players",
-            f"Best bets: {len(best_bets)} | Settled: {len(settled)}",
-        ]
-        if any(lm_props.values()):
-            summary_lines.append(f"Linemate: {sum(len(v) for v in lm_props.values())} props")
-        git_push("\n".join(summary_lines))
+        summary = (
+            f"MLB: {len(mlb_today)} games | NBA: {len(nba_today)} games | "
+            f"NHL: {len(nhl_today)} games\n"
+            f"Best bets: {len(best_bets)} | Settled: {len(settled)} | "
+            f"History: {len(history)} total\n"
+            f"ATP ELO: {len(atp_elo)} | WTA ELO: {len(wta_elo)}"
+        )
+        git_push(summary)
 
-    log(f"{'='*60}")
-    log(f"Update complete. Changes: {len(_changes)}")
-    for c in _changes:
-        log(f"  • {c}")
-    log(f"{'='*60}")
+    log("=" * 60)
+    log(f"Done. {len(_changes)} changes.")
+    for c in _changes: log(f"  • {c}")
+    log("=" * 60)
 
 
 if __name__ == "__main__":
