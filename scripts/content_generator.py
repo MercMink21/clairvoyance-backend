@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-content_generator.py — Clairvoyance Social Media Content Generator
+content_generator.py — Clairvoyance Daily Content Engine (v2)
 
-Reads data.json, calls Claude API to generate platform-specific content,
-writes social_copy.json to frontend/ and docs/.
+5 daily posting slots (Mountain Time):
+  10am   — Morning Preview
+  2pm    — Midday Adjustments
+  445pm  — Pre-Game Window
+  7pm    — Live + Late Slate
+  10pm   — Day Recap
+
+Output: ~/Desktop/Clairvoyance/YYYY-MM-DD/
+  x/           — X post + thread text files per slot
+  instagram/   — Instagram caption + hashtags + story bullets per slot
+  cards/       — PNG cards (x_<slot>.png + ig_<slot>.png)
 
 Usage:
-  python3 scripts/content_generator.py              # auto-detect session from time
-  python3 scripts/content_generator.py --session morning
-  python3 scripts/content_generator.py --print      # also print to stdout
-  python3 scripts/content_generator.py --verbose    # debug context output
+  python3 scripts/content_generator.py              # auto-detect slot from MT time
+  python3 scripts/content_generator.py --slot 10am
+  python3 scripts/content_generator.py --slot all   # generate all 5 slots
+  python3 scripts/content_generator.py --verbose
+  python3 scripts/content_generator.py --print
 """
 
-import argparse
-import json
-import os
-import sys
-from datetime import datetime, timezone, timedelta
+import argparse, json, os, subprocess, sys
+from datetime import datetime, date, timezone, timedelta
 from pathlib import Path
 
-# Load .env from project root if present (key=value format, one per line)
+# ── .env loader ───────────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent.parent / ".env"
 if _env_file.exists():
     for _line in _env_file.read_text().splitlines():
@@ -28,51 +35,79 @@ if _env_file.exists():
         if _line and not _line.startswith("#") and "=" in _line:
             _k, _v = _line.split("=", 1)
             _v = _v.strip().strip('"').strip("'")
-            if _v:  # skip empty values
+            if _v:
                 os.environ.setdefault(_k.strip(), _v)
 
-ROOT      = Path(__file__).parent.parent
-FE_DATA   = ROOT / "frontend" / "data.json"
-FE_SOCIAL = ROOT / "frontend" / "social_copy.json"
-DC_SOCIAL = ROOT / "docs"     / "social_copy.json"
+ROOT        = Path(__file__).parent.parent
+FE_DATA     = ROOT / "frontend" / "data.json"
+FE_SOCIAL   = ROOT / "frontend" / "social_copy.json"
+DC_SOCIAL   = ROOT / "docs"     / "social_copy.json"
+DESKTOP_DIR = Path.home() / "Desktop" / "Clairvoyance"
+CARD_SCRIPT = Path(__file__).parent / "generate_card.py"
 
 try:
     import anthropic
 except ImportError:
-    import subprocess
     subprocess.run([sys.executable, "-m", "pip", "install", "anthropic"], check=True)
     import anthropic
 
-NOW         = datetime.now(timezone.utc)
-ET          = NOW - timedelta(hours=5)
-HOUR_ET     = ET.hour
-DATE_DISPLAY = ET.strftime("%B %d, %Y")
-DATE_SHORT  = ET.strftime("%m/%d")
+# ── Time (system locale = Mountain Time) ─────────────────────────────────────
+NOW_MT       = datetime.now()
+HOUR_MT      = NOW_MT.hour
+DATE_MT      = NOW_MT.date()
+DATE_DISPLAY = NOW_MT.strftime("%B %d, %Y")
+DATE_SLUG    = NOW_MT.strftime("%Y-%m-%d")
+
+# ── Tennis gate: only during Grand Slams ─────────────────────────────────────
+_SLAMS_2026 = [
+    (date(2026,  5, 25), date(2026,  6,  8)),   # Roland Garros
+    (date(2026,  6, 29), date(2026,  7, 12)),   # Wimbledon
+    (date(2026,  8, 31), date(2026,  9, 13)),   # US Open
+]
+INCLUDE_TENNIS = any(s <= DATE_MT <= e for s, e in _SLAMS_2026)
+
+# ── Slot system ───────────────────────────────────────────────────────────────
+SLOT_NAMES = ["10am", "2pm", "445pm", "7pm", "10pm"]
+SLOT_LABELS = {
+    "10am":  "Morning Preview",
+    "2pm":   "Midday Adjustments",
+    "445pm": "Pre-Game Window",
+    "7pm":   "Live + Late Slate",
+    "10pm":  "Day Recap",
+}
+
+def detect_slot() -> str:
+    if  9 <= HOUR_MT < 13: return "10am"
+    if 13 <= HOUR_MT < 16: return "2pm"
+    if 16 <= HOUR_MT < 18: return "445pm"
+    if 18 <= HOUR_MT < 22: return "7pm"
+    return "10pm"
 
 
-# ── session detection ─────────────────────────────────────────────────────────
+# ── EV helpers ────────────────────────────────────────────────────────────────
+def _ev_grade(edge_pct: float) -> str:
+    if edge_pct >= 12: return "A+"
+    if edge_pct >= 8:  return "A"
+    if edge_pct >= 4:  return "B"
+    if edge_pct >= 1:  return "C"
+    return "D"
 
-def get_session() -> str:
-    if 5  <= HOUR_ET < 12: return "morning"
-    if 12 <= HOUR_ET < 17: return "afternoon"
-    if 17 <= HOUR_ET < 22: return "evening"
-    return "night"
+def _ev_label(edge_pct: float) -> str:
+    grade = _ev_grade(edge_pct)
+    return f"EV {grade} ({edge_pct:+.1f}%)"
 
 
-# ── data context builder ──────────────────────────────────────────────────────
-
+# ── Context builder ───────────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
-    return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
+    return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
 
 def _game_line(g: dict) -> str:
-    """Format a single game into a compact context line."""
     state = g.get("state", "pre")
     away, home = g.get("away", ""), g.get("home", "")
     score = ""
     if state in ("in", "post"):
-        a_score = g.get("awayScore", 0)
-        h_score = g.get("homeScore", 0)
-        score = f" [{a_score}-{h_score}]"
+        a, h = g.get("awayScore", 0), g.get("homeScore", 0)
+        score = f" [{a}-{h}]"
         if state == "in":
             clk = g.get("displayClock", "")
             per = g.get("period", "")
@@ -82,7 +117,7 @@ def _game_line(g: dict) -> str:
     odds = ""
     ml_a, ml_h = g.get("awayML"), g.get("homeML")
     if ml_a and ml_h:
-        odds = f" | ML {away} {ml_a:+d} / {home} {ml_h:+d}"
+        odds = f" | ML {away} {ml_a:+d}/{home} {ml_h:+d}"
     ou = g.get("ou")
     if ou:
         odds += f" O/U {ou}"
@@ -90,57 +125,91 @@ def _game_line(g: dict) -> str:
     series_str = f" ({series})" if series else ""
     return f"  {away} @ {home}{score}{odds}{series_str}"
 
-def extract_context(data: dict, session: str) -> str:
-    lines = [f"Date: {DATE_DISPLAY}", f"Session: {session}", ""]
 
-    # Best bets (highest priority)
+def extract_context(data: dict, slot: str) -> str:
+    lines = [f"Date: {DATE_DISPLAY} (Mountain Time)", f"Slot: {slot} — {SLOT_LABELS[slot]}", ""]
+
+    # ── Model picks with EV grades ────────────────────────────────────────────
     best_bets = data.get("bestBets", [])
     if best_bets:
-        lines.append("=== MODEL BEST BETS ===")
-        for b in best_bets[:6]:
-            if isinstance(b, dict):
-                game  = b.get("game", "")
-                pick  = b.get("pick", "")
-                prob  = b.get("modelProb", b.get("prob", 0))
-                impl  = b.get("impliedProb", b.get("implied", 0))
-                edge  = b.get("edge", round((prob - impl) * 100, 1) if prob and impl else 0)
-                conf  = b.get("confidence", "")
-                lines.append(f"  {game} | {pick} | Model: {prob*100:.1f}% | Implied: {impl*100:.1f}% | Edge: {edge:+.1f}% | {conf}")
-            else:
+        lines.append("=== MODEL PICKS — EV RATINGS ===")
+        for b in best_bets[:8]:
+            if not isinstance(b, dict):
                 lines.append(f"  {b}")
+                continue
+            game  = b.get("game", "")
+            pick  = b.get("pick", "")
+            prob  = b.get("modelProb", b.get("prob", 0))
+            impl  = b.get("impliedProb", b.get("implied", 0))
+            edge  = b.get("edge", round((prob - impl) * 100, 1) if prob and impl else 0)
+            conf  = b.get("confidence", "")
+            ev    = _ev_label(edge)
+            lines.append(
+                f"  {game} | {pick} | Mdl {prob*100:.1f}% | Mkt {impl*100:.1f}% | Edge {edge:+.1f}% | {ev} | {conf}"
+            )
         lines.append("")
 
-    # Settled record
+    # ── Settled record + recent results ───────────────────────────────────────
     settled = data.get("settled", [])
     if settled:
         wins   = sum(1 for s in settled if s.get("result") == "win")
         losses = sum(1 for s in settled if s.get("result") == "loss")
         pushes = sum(1 for s in settled if s.get("result") == "push")
         units  = sum(s.get("units", 0) for s in settled)
-        lines.append(f"=== CLAIRVOYANCE RECORD === {wins}W-{losses}L-{pushes}P ({units:+.1f}u)")
+        lines.append(f"=== SEASON RECORD === {wins}W-{losses}L-{pushes}P ({units:+.1f}u)")
+        recent = settled[-5:]
+        for s in recent:
+            r = s.get("result", "").upper()
+            u = s.get("units", 0)
+            g = s.get("game", "")
+            p = s.get("pick", "")
+            lines.append(f"  {r} {u:+.1f}u — {g}: {p}")
         lines.append("")
 
-    # Today's game slates
+    # ── Today's slates ────────────────────────────────────────────────────────
     for sport, key in [("MLB", "mlb"), ("NBA", "nba"), ("NHL", "nhl")]:
         today = data.get(key, {}).get("today", [])
         if not today:
             continue
         live_ct  = sum(1 for g in today if g.get("state") == "in")
         final_ct = sum(1 for g in today if g.get("state") == "post")
-        lines.append(f"=== {sport} TODAY — {len(today)} games ({live_ct} live, {final_ct} final) ===")
-        for g in today[:8]:
+        lines.append(
+            f"=== {sport} TODAY — {len(today)} games ({live_ct} live, {final_ct} final) ==="
+        )
+        for g in today[:10]:
             lines.append(_game_line(g))
         lines.append("")
 
-    # Tomorrow's slate (brief)
+    # ── Tomorrow's slate ──────────────────────────────────────────────────────
     mlb_tom = data.get("mlb", {}).get("tomorrow", [])
     if mlb_tom:
         lines.append(f"=== MLB TOMORROW — {len(mlb_tom)} games ===")
-        for g in mlb_tom[:4]:
+        for g in mlb_tom[:5]:
             lines.append(f"  {g.get('away','')} @ {g.get('home','')}")
         lines.append("")
 
-    # MoneyPuck: top NHL teams by 5v5 xGF%
+    # ── Player props from Linemate recent-form ────────────────────────────────
+    lm = data.get("linemateForm", {})
+    for sk in ["nba", "mlb", "nhl"]:
+        props = lm.get(sk, [])
+        if not props:
+            continue
+        lines.append(f"=== {sk.upper()} PLAYER PROPS — RECENT FORM ===")
+        for p in props[:6]:
+            if not isinstance(p, dict):
+                continue
+            name    = p.get("player", "")
+            cat     = p.get("category", "")
+            line_v  = p.get("line", "")
+            trend   = p.get("trend", "")
+            hit_pct = p.get("hitRate", "")
+            ev_note = p.get("ev", "")
+            lines.append(
+                f"  {name} | {cat} {line_v} | Hit% {hit_pct} | Trend: {trend} | {ev_note}"
+            )
+        lines.append("")
+
+    # ── NHL MoneyPuck xGF% ────────────────────────────────────────────────────
     mp_teams = data.get("mp", {}).get("teams", {})
     if mp_teams:
         sorted_teams = sorted(
@@ -149,115 +218,152 @@ def extract_context(data: dict, session: str) -> str:
             reverse=True,
         )
         if sorted_teams:
-            lines.append("=== NHL MoneyPuck 5v5 xGF% LEADERS ===")
+            lines.append("=== NHL 5v5 xGF% LEADERS ===")
             for abbr, stats in sorted_teams[:5]:
                 s = stats.get("5on5", {})
-                lines.append(f"  {abbr}: xGF% {s.get('xgfPct', 0):.3f} | GF {s.get('gf', 0):.0f} | GA {s.get('ga', 0):.0f}")
+                lines.append(f"  {abbr}: xGF% {s.get('xgfPct', 0):.3f}")
             lines.append("")
 
-    # Tennis ELO top 5 ATP + WTA
-    atp = data.get("tennis", {}).get("atpElo", [])
-    wta = data.get("tennis", {}).get("wtaElo", [])
-    if atp:
-        lines.append("=== ATP ELO TOP 5 ===")
-        for p in atp[:5]:
-            lines.append(f"  {p.get('rank')}. {p.get('name')} — ELO {p.get('elo')} | H {p.get('hElo')} | C {p.get('cElo')}")
-        lines.append("")
-    if wta:
-        lines.append("=== WTA ELO TOP 5 ===")
-        for p in wta[:5]:
-            lines.append(f"  {p.get('rank')}. {p.get('name')} — ELO {p.get('elo')}")
+    # ── Weather factors ───────────────────────────────────────────────────────
+    weather = data.get("weather", {})
+    windy = [
+        (k, v) for k, v in weather.items()
+        if not v.get("indoor") and (v.get("wind") or 0) >= 10
+    ]
+    if windy:
+        lines.append("=== MLB WEATHER FACTORS ===")
+        for team, w in windy[:4]:
+            lines.append(
+                f"  {team}: {w.get('temp')}°F, {w.get('wind')} mph, {w.get('condition')}"
+            )
         lines.append("")
 
-    # Weather (outdoor parks with notable wind)
-    weather = data.get("weather", {})
-    windy = [(k, v) for k, v in weather.items()
-             if not v.get("indoor") and v.get("wind") and v.get("wind", 0) >= 10]
-    if windy:
-        lines.append("=== MLB WEATHER FACTORS (wind ≥10 mph) ===")
-        for team, w in windy[:4]:
-            lines.append(f"  {team}: {w.get('temp')}°F, {w.get('wind')} mph, {w.get('condition')}")
-        lines.append("")
+    # ── Tennis (only during Grand Slams) ──────────────────────────────────────
+    if INCLUDE_TENNIS:
+        atp = data.get("tennis", {}).get("atpElo", [])
+        if atp:
+            lines.append("=== ATP ELO TOP 5 ===")
+            for p in atp[:5]:
+                lines.append(f"  {p.get('rank')}. {p.get('name')} — ELO {p.get('elo')}")
+            lines.append("")
+        schedule = data.get("tennis", {}).get("schedule", [])
+        if schedule:
+            lines.append("=== TENNIS TODAY ===")
+            for m in schedule[:8]:
+                p1    = m.get("player1", "")
+                p2    = m.get("player2", "")
+                state = m.get("state", "pre")
+                tour  = m.get("tour", "")
+                tourn = m.get("tournament", "")
+                lines.append(f"  {p1} vs {p2} | {tourn} ({tour}) | {state}")
+            lines.append("")
 
     return "\n".join(lines)
 
 
-# ── Claude prompt ─────────────────────────────────────────────────────────────
-
+# ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """\
-You are the content writer for Clairvoyance Engine, a sports intelligence engine.
+You are the content writer for Clairvoyance Engine, a sports intelligence platform.
 
-Accounts:
+Platform handles:
   X (Twitter): @ClairvoyanceEng
   Instagram:   @clairvoyanceengine
 
-Voice: analytical, transparent, never hype, no "LOCK" language.
-Tone: Bloomberg Sports meets sharp bettor. Concise. Data-driven. Professional.
+Voice: analytical, transparent, data-first. Never hype. No prediction guarantees.
+Tone: Bloomberg Sports meets sharp bettor. Concise. Professional. Confident.
 
-Rules — strictly follow:
-- NEVER use: LOCK, guaranteed, can't miss, fire, 🔥, free play, best bet of the day
-- When model probabilities are available, always include them with the implied market prob and edge %
-- Be transparent about uncertainty — show the model's reasoning, not just output
-- Lead with data, follow with context
-- For X posts: punchy, information-dense, max 280 chars, no generic filler; do NOT include the handle in the post text
-- For X threads: each tweet self-contained, builds on the last; include data in each
-- For Instagram: slightly more narrative but still data-first; end with a clear insight; do NOT include the handle in the caption
-- Hashtags: analytical community, NOT gambling spam (no #bettingpicks, #freeplays)
-- story_bullets: each under 10 words, work as standalone chips
+EV Rating scale (always use when referencing picks or props):
+  A+ = edge > 12%  |  A = 8-12%  |  B = 4-8%  |  C = 1-4%  |  D = <1%
 
-Output EXACTLY this JSON — no markdown code fences, no explanation outside JSON:
+Content rules (strictly follow every time):
+- NEVER use: LOCK, guaranteed, can't miss, fire, 🔥, free play, easy money
+- Always include model probability, implied market prob, and EV grade when data is available
+- For player props: show hit rate trend and EV grade — do NOT say "best bet"
+- Reference trends, patterns, and line movement context — not "insider information"
+- NEVER reveal the engine's data sources, model architecture, or proprietary edge methodology
+- X posts: ≤280 chars, info-dense, no filler; do NOT include the handle in post text
+- X thread: 4 tweets, each self-contained with data, building on the previous
+- Instagram: 2-3 sentences, narrative but data-first, ends with a specific concrete insight
+- Hashtags: analytical/community tags only (no #FreePlays, #BettingPicks gambling spam)
+- story_bullets: each ≤10 words, works as a standalone Story chip
+- highlight_game: the single most analytically interesting matchup of the slot, or null
+
+Output EXACTLY this JSON — no markdown fences, no explanation outside the JSON:
 {
   "x_post": "string (≤280 chars)",
-  "x_thread": ["string", "string", "string"],
-  "instagram_caption": "string (2-3 sentences, data-first, ends with insight)",
+  "x_thread": ["tweet 1", "tweet 2", "tweet 3", "tweet 4"],
+  "instagram_caption": "string",
   "instagram_hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
   "story_bullets": ["≤10 words", "≤10 words", "≤10 words"],
-  "content_theme": "morning_preview|afternoon_analysis|live_update|results|education",
+  "content_theme": "morning_preview|midday_adjustment|pregame|live_update|recap",
   "highlight_game": "AWAY @ HOME or null"
 }"""
 
-_SESSION_INSTRUCTIONS = {
-    "morning": (
-        "Generate MORNING PREVIEW content. Focus on today's game slate, key matchups, "
-        "model projections, line value, and any weather or injury factors."
-    ),
-    "afternoon": (
-        "Generate MID-DAY ANALYSIS content. Focus on line movement since open, "
-        "sharp money signals, any injury news impact on model output. "
-        "Educational framing works well — explain WHY a line moved."
-    ),
-    "evening": (
-        "Generate GAME TIME content. Focus on tonight's featured matchups, "
-        "model confidence on any identified edges, and live tracking context. "
-        "Build analytical anticipation without hype."
-    ),
-    "night": (
-        "Generate LIVE/RESULTS content. Reference in-progress games with win probabilities, "
-        "or completed final scores. Real-time feel. Accountability if there were picks."
-    ),
-}
 
-def build_prompt(context: str, session: str) -> str:
-    return f"""{_SESSION_INSTRUCTIONS[session]}
+# ── Slot-specific prompts ─────────────────────────────────────────────────────
+def _slot_instruction(slot: str) -> str:
+    return {
+        "10am": (
+            f"Generate MORNING PREVIEW content for {DATE_DISPLAY}.\n\n"
+            "Focus: Today's full slate across MLB/NBA/NHL. The engine's approach for the day — "
+            "which matchups have the clearest signal, which are noisy. Lead with the highest-EV "
+            "model pick(s) and include at least 2 specific player props with their EV grade in the thread. "
+            "Include weather context if it affects totals. Reference any active playoff series. "
+            "Set an analytical tone — what is the engine watching today and why?"
+        ),
+        "2pm": (
+            f"Generate MIDDAY ADJUSTMENTS content for {DATE_DISPLAY}.\n\n"
+            "Focus: What has changed since the morning post. Line movement direction (toward or away "
+            "from the model), any early game results, injury news impact on the model's outputs. "
+            "If morning picks look better or worse at current lines, say so explicitly. "
+            "Educational angle: explain WHY a line moved in data terms — public percentage, "
+            "sharp money, injury report. Reference the morning post's picks and update confidence levels. "
+            "Include updated prop landscape with EV grades at current closing lines."
+        ),
+        "445pm": (
+            f"Generate PRE-GAME content for {DATE_DISPLAY}.\n\n"
+            "Focus: Tonight's primetime games (ET slate, tip-off/first-pitch within 2-3 hours). "
+            "Final model reads before action begins. Closing line analysis — are markets converging "
+            "with the model or diverging? If props are closing in a favorable direction, note it. "
+            "Build analytical anticipation without hype — this is the last pre-game assessment. "
+            "Be specific about what the model expects and why, without revealing methodology."
+        ),
+        "7pm": (
+            f"Generate LIVE + LATE SLATE content for {DATE_DISPLAY}.\n\n"
+            "Focus: Games currently in progress (check 'in' state in the data) — current scores, "
+            "how the game flow compares to model projections. Preview of the late west-coast slate "
+            "with fresh model reads. If any earlier picks are tracking well or have settled, "
+            "reference them transparently. Keep a real-time feel — specific scores, periods, live context. "
+            "Include late-slate prop opportunities with EV grades."
+        ),
+        "10pm": (
+            f"Generate DAY RECAP content for {DATE_DISPLAY}.\n\n"
+            "Focus: Full-day accountability report. All results across sports — wins, losses, exact units. "
+            "What did the model identify that markets missed? What did it get wrong and why? "
+            "Show the model's quality through honest transparency, not spin. "
+            "Highlight the most analytically notable call of the day (correct OR incorrect). "
+            "Close with one forward-looking insight for tomorrow — what does the engine see ahead."
+        ),
+    }[slot]
+
+
+def build_prompt(context: str, slot: str) -> str:
+    return f"""{_slot_instruction(slot)}
 
 CURRENT CLAIRVOYANCE DATA:
 {context}
 
-Generate platform-specific content. Remember: data-first, transparent, never hype."""
+Generate platform-specific content. Remember: data-first, transparent, never hype, always EV-graded."""
 
 
-# ── API call ──────────────────────────────────────────────────────────────────
-
-def generate_content(data: dict, session: str | None = None, verbose: bool = False) -> dict:
+# ── Claude API call ───────────────────────────────────────────────────────────
+def generate_content(data: dict, slot: str, verbose: bool = False) -> dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("[WARN] ANTHROPIC_API_KEY not set — skipping content generation", file=sys.stderr)
         return {}
 
-    if session is None:
-        session = get_session()
-
-    context = extract_context(data, session)
+    context = extract_context(data, slot)
     if verbose:
         print(f"[DEBUG] Context ({len(context)} chars):\n{context}\n")
 
@@ -265,72 +371,159 @@ def generate_content(data: dict, session: str | None = None, verbose: bool = Fal
     try:
         message = client.messages.create(
             model="claude-opus-4-7",
-            max_tokens=1200,
+            max_tokens=1600,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_prompt(context, session)}],
+            messages=[{"role": "user", "content": build_prompt(context, slot)}],
         )
         raw = message.content[0].text.strip()
 
-        # Strip any accidental markdown fences
+        # Strip accidental markdown fences
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:]).strip()
         if raw.endswith("```"):
             raw = "\n".join(raw.split("\n")[:-1]).strip()
 
-        result = json.loads(raw)
-        result["generated_at"] = ET.strftime("%Y-%m-%d %H:%M ET")
-        result["session"]      = session
+        result              = json.loads(raw)
+        result["generated_at"] = NOW_MT.strftime("%Y-%m-%d %H:%M MT")
+        result["slot"]      = slot
+        result["slot_label"] = SLOT_LABELS[slot]
         return result
 
     except json.JSONDecodeError as exc:
-        print(f"[ERROR] Could not parse Claude response: {exc}", file=sys.stderr)
+        print(f"[ERROR] JSON parse failed: {exc}", file=sys.stderr)
         if verbose:
-            print(f"[DEBUG] Raw response: {raw[:800]}", file=sys.stderr)
+            print(f"[DEBUG] Raw:\n{raw[:1000]}", file=sys.stderr)
         return {}
     except Exception as exc:
-        print(f"[ERROR] Claude API error: {exc}", file=sys.stderr)
+        print(f"[ERROR] Claude API: {exc}", file=sys.stderr)
         return {}
 
 
-# ── write output ──────────────────────────────────────────────────────────────
+# ── Desktop output writers ────────────────────────────────────────────────────
+def _write_x_file(path: Path, content: dict) -> None:
+    x_post  = content.get("x_post", "")
+    thread  = content.get("x_thread", [])
+    label   = content.get("slot_label", "")
+    gen_at  = content.get("generated_at", "")
+    lines = [
+        f"=== X POST — {label} ===",
+        f"Generated: {gen_at}  |  Chars: {len(x_post)}/280",
+        "",
+        x_post,
+        "",
+        "─" * 60,
+        "=== X THREAD ===",
+    ]
+    for i, tweet in enumerate(thread, 1):
+        lines.append(f"[{i}] {tweet}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
-def write_social_copy(content: dict) -> None:
+
+def _write_ig_file(path: Path, content: dict) -> None:
+    caption   = content.get("instagram_caption", "")
+    hashtags  = " ".join(f"#{t.lstrip('#')}" for t in content.get("instagram_hashtags", []))
+    bullets   = content.get("story_bullets", [])
+    label     = content.get("slot_label", "")
+    gen_at    = content.get("generated_at", "")
+    lines = [
+        f"=== INSTAGRAM — {label} ===",
+        f"Generated: {gen_at}",
+        "",
+        "=== CAPTION ===",
+        caption,
+        "",
+        "=== HASHTAGS ===",
+        hashtags,
+        "",
+        "=== STORY BULLETS ===",
+    ]
+    for b in bullets:
+        lines.append(f"• {b}")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _generate_card(out_path: Path, platform: str) -> None:
+    """Invoke generate_card.py for a given platform and output path."""
+    cmd = [
+        sys.executable, str(CARD_SCRIPT),
+        "--platform", platform,
+        "--output", str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(
+            f"[WARN] Card generation failed ({platform}): {result.stderr[:300]}",
+            file=sys.stderr,
+        )
+    elif out_path.exists():
+        kb = out_path.stat().st_size // 1024
+        print(f"[INFO] {out_path.name} ({kb} KB)")
+
+
+def write_desktop_output(content: dict) -> None:
+    """Write all platform files + PNG cards to ~/Desktop/Clairvoyance/YYYY-MM-DD/."""
+    if not content:
+        return
+
+    slot     = content.get("slot", "10am")
+    date_dir = DESKTOP_DIR / DATE_SLUG
+    x_dir    = date_dir / "x"
+    ig_dir   = date_dir / "instagram"
+    card_dir = date_dir / "cards"
+
+    for d in [x_dir, ig_dir, card_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    _write_x_file( x_dir  / f"{slot}.txt", content)
+    _write_ig_file(ig_dir  / f"{slot}.txt", content)
+
+    _generate_card(card_dir / f"x_{slot}.png",  "x")
+    _generate_card(card_dir / f"ig_{slot}.png", "instagram")
+
+    print(f"[INFO] Output → {date_dir}")
+
+
+def write_social_json(content: dict) -> None:
+    """Mirror latest content to frontend/social_copy.json + docs/social_copy.json."""
     if not content:
         return
     payload = json.dumps(content, indent=2)
     FE_SOCIAL.write_text(payload)
     DC_SOCIAL.write_text(payload)
-    print(f"[INFO] social_copy.json written → frontend/ + docs/")
+    print("[INFO] social_copy.json updated → frontend/ + docs/")
 
 
 def print_content(content: dict) -> None:
     if not content:
         return
-    print(f"\n{'='*60}")
-    print(f"SESSION: {content.get('session','').upper()}  |  {content.get('generated_at','')}")
-    print(f"THEME:   {content.get('content_theme','')}")
-    print(f"{'='*60}")
-    print(f"\nX POST ({len(content.get('x_post',''))} chars):")
-    print(f"  {content.get('x_post','')}")
+    print(f"\n{'='*62}")
+    print(f"SLOT:  {content.get('slot_label','').upper()}  |  {content.get('generated_at','')}")
+    print(f"THEME: {content.get('content_theme','')}")
+    print(f"{'='*62}")
+    x_post = content.get("x_post", "")
+    print(f"\nX POST ({len(x_post)} chars):\n  {x_post}")
     print(f"\nX THREAD:")
     for i, t in enumerate(content.get("x_thread", []), 1):
         print(f"  [{i}] {t}")
-    print(f"\nINSTAGRAM:")
-    print(f"  {content.get('instagram_caption','')}")
+    print(f"\nINSTAGRAM:\n  {content.get('instagram_caption','')}")
     print(f"  #{' #'.join(content.get('instagram_hashtags',[]))}")
-    print(f"\nSTORIES:")
+    print(f"\nSTORY BULLETS:")
     for b in content.get("story_bullets", []):
         print(f"  • {b}")
     print()
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Clairvoyance Social Content Generator")
-    parser.add_argument("--session",  choices=["morning","afternoon","evening","night"])
-    parser.add_argument("--verbose",  action="store_true")
-    parser.add_argument("--print",    action="store_true", dest="print_output",
+    parser = argparse.ArgumentParser(description="Clairvoyance Content Generator")
+    parser.add_argument(
+        "--slot",
+        choices=SLOT_NAMES + ["all"],
+        help="Content slot to generate (default: auto-detect from MT time)",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Print debug context")
+    parser.add_argument("--print",   action="store_true", dest="print_output",
                         help="Print generated content to stdout")
     args = parser.parse_args()
 
@@ -338,15 +531,25 @@ def main() -> None:
         print("[ERROR] data.json not found — run clairvoyance_update.py first", file=sys.stderr)
         sys.exit(1)
 
-    data    = json.loads(FE_DATA.read_text())
-    content = generate_content(data, session=args.session, verbose=args.verbose)
+    data  = json.loads(FE_DATA.read_text())
+    slots = SLOT_NAMES if args.slot == "all" else [args.slot or detect_slot()]
 
-    if content:
-        write_social_copy(content)
-        if args.print_output or args.verbose:
-            print_content(content)
-    else:
-        sys.exit(1)
+    any_success = False
+    for slot in slots:
+        label = SLOT_LABELS[slot]
+        print(f"[INFO] Generating: {slot} ({label})")
+
+        content = generate_content(data, slot, verbose=args.verbose)
+        if content:
+            write_desktop_output(content)
+            write_social_json(content)
+            if args.print_output or args.verbose:
+                print_content(content)
+            any_success = True
+        else:
+            print(f"[WARN] No content for slot: {slot}", file=sys.stderr)
+
+    sys.exit(0 if any_success else 1)
 
 
 if __name__ == "__main__":

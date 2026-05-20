@@ -30,6 +30,9 @@ DC_CARD   = ROOT / "docs"     / "card.png"
 
 W, H = 1080, 1350
 
+X_HANDLE  = "@ClairvoyanceEng"
+IG_HANDLE = "@clairvoyanceengine"
+
 # ── Brand palette (Clairvoyance logo) ─────────────────────────────────────────
 BG       = (10,   8,  20)
 PURPLE   = (192,  48, 240)
@@ -250,9 +253,8 @@ def _section_header(draw: ImageDraw.ImageDraw, y: int, label: str) -> int:
 def render_header(img: Image.Image) -> tuple[Image.Image, int]:
     draw = ImageDraw.Draw(img)
 
-    # Date top-right
-    et = datetime.now(timezone.utc) - timedelta(hours=5)
-    date_str = et.strftime("%b %d, %Y").upper()
+    # Date top-right (local system time = Mountain)
+    date_str = datetime.now().strftime("%b %d, %Y").upper()
     f_date = _font(13)
     draw.text((W - 68 - _tw(draw, date_str, f_date), 46),
               date_str, font=f_date, fill=MUTED)
@@ -552,20 +554,40 @@ def _render_intel(img: Image.Image, y: int, data: dict) -> tuple[Image.Image, in
 
 
 # ── Footer ──────────────────────────────────────────────────────────────────────
-def _render_footer(draw: ImageDraw.ImageDraw) -> None:
-    f_sm = _font(13)
-    f_xs = _font(10)
-    _sep_line(draw, H - 82)
-    draw.text((68, H - 66), "CLAIRVOYANCE ENGINE", font=f_sm, fill=PURPLE)
-    handle = "@ClairvoyanceEng"
-    draw.text((W - 68 - _tw(draw, handle, f_sm), H - 66), handle, font=f_sm, fill=CYAN)
-    draw.text((68, H - 42),
-              "Model outputs are probabilistic projections, not financial advice.",
-              font=f_xs, fill=MUTED)
+def _render_footer(draw: ImageDraw.ImageDraw, platform: str = "instagram") -> None:
+    f_sm  = _font(13)
+    f_hnd = _font(12)
+    f_xs  = _font(10)
+
+    _sep_line(draw, H - 86)
+
+    # Brand name — left
+    draw.text((68, H - 70), "CLAIRVOYANCE ENGINE", font=f_sm, fill=PURPLE)
+
+    # Both handles — right, platform one highlighted in CYAN the other muted
+    x_col  = CYAN if platform == "x"         else (90, 78, 128)
+    ig_col = CYAN if platform == "instagram" else (90, 78, 128)
+    dot    = "  ·  "
+
+    x_w   = _tw(draw, X_HANDLE,  f_hnd)
+    dot_w = _tw(draw, dot,        f_hnd)
+    ig_w  = _tw(draw, IG_HANDLE, f_hnd)
+    total = x_w + dot_w + ig_w
+    hx    = W - 68 - total
+
+    draw.text((hx,               H - 70), X_HANDLE,  font=f_hnd, fill=x_col)
+    draw.text((hx + x_w,         H - 70), dot,        font=f_hnd, fill=MUTED)
+    draw.text((hx + x_w + dot_w, H - 70), IG_HANDLE, font=f_hnd, fill=ig_col)
+
+    draw.text(
+        (68, H - 42),
+        "Model outputs are probabilistic projections, not financial advice.",
+        font=f_xs, fill=MUTED,
+    )
 
 
 # ── Compose full card ──────────────────────────────────────────────────────────
-def generate_card(data: dict, social: dict) -> Image.Image:
+def generate_card(data: dict, social: dict, platform: str = "instagram") -> Image.Image:
     img = Image.new("RGB", (W, H), BG)
     _draw_carbon_fiber(img)
     _draw_brackets(ImageDraw.Draw(img))
@@ -608,14 +630,18 @@ def generate_card(data: dict, social: dict) -> Image.Image:
     # Fill remaining vertical space with intel + tomorrow
     img, y = _render_intel(img, y, data)
 
-    _render_footer(ImageDraw.Draw(img))
+    _render_footer(ImageDraw.Draw(img), platform=platform)
     return img
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     p = argparse.ArgumentParser(description="Clairvoyance Card Generator")
-    p.add_argument("--open", action="store_true", help="Open preview after saving")
+    p.add_argument("--open",     action="store_true", help="Open preview after saving")
+    p.add_argument("--platform", choices=["x", "instagram"], default="instagram",
+                   help="Card variant: 'x' highlights @ClairvoyanceEng, 'instagram' highlights @clairvoyanceengine")
+    p.add_argument("--output",   type=str, default=None,
+                   help="Additional output path (PNG). Always also saves to frontend/ + docs/")
     args = p.parse_args()
 
     if not FE_DATA.exists():
@@ -626,12 +652,19 @@ def main() -> None:
     data   = json.loads(FE_DATA.read_text())
     social = json.loads(FE_SOCIAL.read_text()) if FE_SOCIAL.exists() else {}
 
-    img = generate_card(data, social)
+    img = generate_card(data, social, platform=args.platform)
+
     img.save(str(FE_CARD), "PNG", optimize=True)
     img.save(str(DC_CARD), "PNG", optimize=True)
-
     kb = FE_CARD.stat().st_size // 1024
     print(f"[INFO] card.png written ({kb} KB) → frontend/ + docs/")
+
+    if args.output:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        img.save(str(out), "PNG", optimize=True)
+        kb2 = out.stat().st_size // 1024
+        print(f"[INFO] card.png written ({kb2} KB) → {out}")
 
     if args.open:
         subprocess.run(["open", str(FE_CARD)])
