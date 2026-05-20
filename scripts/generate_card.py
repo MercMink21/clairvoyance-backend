@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-generate_card.py — Clairvoyance Daily Model Card Generator
+generate_card.py — Clairvoyance Engine Model Card Generator
 
-Renders a 1080×1080 dark-mode PNG from data.json + social_copy.json.
+1080×1350 dark-mode PNG matching the Clairvoyance brand:
+  • Carbon fiber background
+  • Neon eye icon, purple/cyan palette
+  • League-filtered sections (MLB / NBA / NHL)
+  • Original pick → score result → WIN / LOSS badge
+
 Output: frontend/card.png + docs/card.png
-
-Usage:
-  python3 scripts/generate_card.py
-  python3 scripts/generate_card.py --open    # open preview after generation
 """
 
-import argparse
-import json
-import subprocess
-import sys
+import argparse, json, math, subprocess, sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
 except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "Pillow"], check=True)
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT      = Path(__file__).parent.parent
 FE_DATA   = ROOT / "frontend" / "data.json"
@@ -30,349 +28,610 @@ FE_SOCIAL = ROOT / "frontend" / "social_copy.json"
 FE_CARD   = ROOT / "frontend" / "card.png"
 DC_CARD   = ROOT / "docs"     / "card.png"
 
-# ── palette ───────────────────────────────────────────────────────────────────
-BG       = (10, 12, 20)        # deep navy-black
-PANEL    = (16, 20, 32)        # slightly lighter panel
-ACCENT   = (74, 240, 200)      # teal/cyan — Clairvoyance signature
-ACCENT2  = (240, 180, 60)      # gold for record
-TEXT     = (230, 230, 230)     # primary text
-MUTED    = (130, 140, 160)     # secondary/label text
-SEP      = (35, 42, 65)        # separator line color
-WIN_CLR  = (74, 240, 140)      # green for wins
-LOSS_CLR = (240, 80, 80)       # red for losses
+W, H = 1080, 1350
 
-W, H = 1080, 1080
+# ── Brand palette (Clairvoyance logo) ─────────────────────────────────────────
+BG       = (10,   8,  20)
+PURPLE   = (192,  48, 240)
+PURPLE_D = ( 80,  18, 110)
+CYAN     = ( 48, 208, 240)
+CYAN_D   = ( 20,  80, 110)
+TEXT     = (218, 212, 232)
+MUTED    = ( 76,  66, 108)
+SEP      = ( 36,  28,  64)
+WIN_BG   = ( 14,  56,  32)
+WIN_FG   = ( 56, 224, 120)
+LOSS_BG  = ( 64,  14,  22)
+LOSS_FG  = (240,  60,  80)
+PUSH_BG  = ( 36,  34,  52)
+PUSH_FG  = (140, 128, 160)
+LIVE_FG  = (240, 178,  40)
+LIVE_BG  = ( 60,  36,   8)
 
-# ── font loader ───────────────────────────────────────────────────────────────
-_FONT_CANDIDATES = [
+# ── Font cache ─────────────────────────────────────────────────────────────────
+_FONT_PATHS = [
     "/System/Library/Fonts/HelveticaNeue.ttc",
     "/System/Library/Fonts/Helvetica.ttc",
     "/Library/Fonts/Arial.ttf",
-    "/System/Library/Fonts/SFCompact.ttf",
 ]
+_font_cache: dict[tuple, ImageFont.FreeTypeFont] = {}
 
-def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    for path in _FONT_CANDIDATES:
-        p = Path(path)
-        if not p.exists():
-            continue
-        try:
-            # TTC files: index 0 = regular, index 1 often bold
-            idx = 1 if (bold and path.endswith(".ttc")) else 0
-            return ImageFont.truetype(str(p), size, index=idx)
-        except Exception:
-            try:
-                return ImageFont.truetype(str(p), size)
-            except Exception:
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    key = (size, bold)
+    if key not in _font_cache:
+        for path in _FONT_PATHS:
+            p = Path(path)
+            if not p.exists():
                 continue
-    return ImageFont.load_default()
+            try:
+                idx = 1 if bold and path.endswith(".ttc") else 0
+                _font_cache[key] = ImageFont.truetype(str(p), size, index=idx)
+                break
+            except Exception:
+                try:
+                    _font_cache[key] = ImageFont.truetype(str(p), size)
+                    break
+                except Exception:
+                    continue
+        if key not in _font_cache:
+            _font_cache[key] = ImageFont.load_default()
+    return _font_cache[key]
 
-
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> int:
+def _tw(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     bb = draw.textbbox((0, 0), text, font=font)
     return bb[2] - bb[0]
 
-def _separator(draw: ImageDraw.ImageDraw, y: int, left: int = 60, right: int = W - 60) -> None:
-    draw.line([(left, y), (right, y)], fill=SEP, width=1)
-
-def _pill(draw: ImageDraw.ImageDraw, x: int, y: int, text: str,
-          bg: tuple, fg: tuple, font: ImageFont.FreeTypeFont) -> None:
-    tw = _text_width(draw, text, font)
-    pad = 10
-    draw.rounded_rectangle([x, y, x + tw + pad * 2, y + 22], radius=6, fill=bg)
-    draw.text((x + pad, y + 1), text, font=font, fill=fg)
-
-def _ordinal(n: int) -> str:
-    return {1:"1st", 2:"2nd", 3:"3rd"}.get(n, f"{n}th")
+def _th(draw: ImageDraw.ImageDraw, text: str, font) -> int:
+    bb = draw.textbbox((0, 0), text, font=font)
+    return bb[3] - bb[1]
 
 
-# ── section renderers ─────────────────────────────────────────────────────────
+# ── Carbon fiber background ───────────────────────────────────────────────────
+def _draw_carbon_fiber(img: Image.Image) -> None:
+    CW, CH = 8, 16
+    TILE_W, TILE_H = CW * 2, CH * 2
 
-def render_header(draw: ImageDraw.ImageDraw) -> int:
-    """Render top header. Returns y after header."""
-    font_logo = _load_font(32, bold=True)
-    font_date = _load_font(18)
+    tile = Image.new("RGB", (TILE_W, TILE_H))
+    pix = tile.load()
+    for ty in range(TILE_H):
+        for tx in range(TILE_W):
+            cx = tx // CW
+            cy = ty // CH
+            px = (tx % CW) / (CW - 1) if CW > 1 else 0
+            py = (ty % CH) / (CH - 1) if CH > 1 else 0
+            t = py if (cx + cy) % 2 == 0 else px   # fiber direction alternates
+            r = int(10 + 18 * t)
+            g = int( 8 + 12 * t)
+            b = int(20 + 30 * t)
+            if py < 0.12:                            # specular leading edge
+                r, g, b = r + 5, g + 3, b + 8
+            pix[tx, ty] = (min(r, 42), min(g, 30), min(b, 64))
 
-    # Brand mark
-    draw.text((60, 42), "◆ CLAIRVOYANCE", font=font_logo, fill=ACCENT)
-
-    # Date right-aligned
-    now_et = datetime.now(timezone.utc) - __import__("datetime").timedelta(hours=5)
-    date_str = now_et.strftime("%b %d, %Y").upper()
-    tw = _text_width(draw, date_str, font_date)
-    draw.text((W - 60 - tw, 52), date_str, font=font_date, fill=MUTED)
-
-    # Tagline
-    font_tag = _load_font(14)
-    draw.text((60, 82), "sports intelligence engine", font=font_tag, fill=MUTED)
-
-    _separator(draw, 114)
-    return 130
+    for y in range(0, H, TILE_H):
+        for x in range(0, W, TILE_W):
+            img.paste(tile, (x, y))
 
 
-def render_record(draw: ImageDraw.ImageDraw, y: int, settled: list) -> int:
-    """Render win/loss record bar. Returns y after section."""
-    font_label = _load_font(13)
-    font_val   = _load_font(22, bold=True)
+# ── Corner HUD brackets ────────────────────────────────────────────────────────
+def _draw_brackets(draw: ImageDraw.ImageDraw,
+                   margin: int = 32, size: int = 44, width: int = 2) -> None:
+    corners = [(margin, margin), (W - margin, margin),
+               (margin, H - margin), (W - margin, H - margin)]
+    for bx, by in corners:
+        sx = 1 if bx < W // 2 else -1
+        sy = 1 if by < H // 2 else -1
+        draw.line([(bx, by), (bx + sx * size, by)], fill=CYAN_D, width=width)
+        draw.line([(bx, by), (bx, by + sy * size)], fill=CYAN_D, width=width)
 
+
+# ── Eye icon with glow ─────────────────────────────────────────────────────────
+def _draw_eye(img: Image.Image, cx: int, cy: int, size: int = 106) -> Image.Image:
+    draw = ImageDraw.Draw(img)
+
+    ow, oh = int(size * 1.10), int(size * 0.36)  # wide flat oval like logo
+
+    # Outer orbital ellipse (cyan)
+    draw.ellipse([cx - ow//2, cy - oh//2, cx + ow//2, cy + oh//2],
+                 outline=CYAN, width=2)
+
+    # HUD tick marks
+    gap, tick = 7, 18
+    draw.line([(cx - ow//2 - gap - tick, cy), (cx - ow//2 - gap, cy)], fill=CYAN, width=1)
+    draw.line([(cx + ow//2 + gap, cy), (cx + ow//2 + gap + tick, cy)], fill=CYAN, width=1)
+    draw.line([(cx, cy - oh//2 - gap - 8), (cx, cy - oh//2 - gap)], fill=CYAN, width=1)
+    draw.line([(cx, cy + oh//2 + gap), (cx, cy + oh//2 + gap + 8)], fill=CYAN, width=1)
+
+    # Iris ring (purple)
+    ir = int(size * 0.42)
+    draw.ellipse([cx - ir, cy - ir, cx + ir, cy + ir], outline=PURPLE, width=3)
+
+    # Dark pupil base
+    pr = int(size * 0.26)
+    draw.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(14, 8, 28))
+
+    # Purple glow bloom
+    gr = int(size * 0.20)
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse([cx - gr, cy - gr, cx + gr, cy + gr], fill=(*PURPLE, 170))
+    glow = glow.filter(ImageFilter.GaussianBlur(16))
+    img_rgba = Image.alpha_composite(img.convert("RGBA"), glow)
+    img = img_rgba.convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Pupil fill
+    draw.ellipse([cx - gr, cy - gr, cx + gr, cy + gr], fill=PURPLE)
+
+    # Bright center dot
+    dr = int(size * 0.052)
+    draw.ellipse([cx - dr, cy - dr, cx + dr, cy + dr], fill=(220, 180, 255))
+
+    return img
+
+
+# ── Tracked letter-spaced text ─────────────────────────────────────────────────
+def _tracked_width(draw: ImageDraw.ImageDraw, text: str, font, spacing: int) -> int:
+    w = 0
+    for ch in text:
+        bb = draw.textbbox((0, 0), ch, font=font)
+        w += (bb[2] - bb[0]) + spacing
+    return max(w - spacing, 0)
+
+def _tracked_text(draw: ImageDraw.ImageDraw, xy: tuple, text: str,
+                  font, fill, spacing: int) -> None:
+    x, y = xy
+    for ch in text:
+        draw.text((x, y), ch, font=font, fill=fill)
+        bb = draw.textbbox((0, 0), ch, font=font)
+        x += (bb[2] - bb[0]) + spacing
+
+
+# ── Neon glow text (centered) ──────────────────────────────────────────────────
+def _glow_text(img: Image.Image, text: str, y: int, font,
+               text_color: tuple, glow_color: tuple,
+               glow_radius: int = 12, spacing: int = 0) -> Image.Image:
+    tmp = ImageDraw.Draw(img)
+    tw = _tracked_width(tmp, text, font, spacing) if spacing else _tw(tmp, text, font)
+    x = (W - tw) // 2
+
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    if spacing:
+        _tracked_text(gd, (x, y), text, font, (*glow_color, 210), spacing)
+    else:
+        gd.text((x, y), text, font=font, fill=(*glow_color, 210))
+    glow = glow.filter(ImageFilter.GaussianBlur(glow_radius))
+
+    img_rgba = Image.alpha_composite(img.convert("RGBA"), glow)
+    img = img_rgba.convert("RGB")
+    draw = ImageDraw.Draw(img)
+    if spacing:
+        _tracked_text(draw, (x, y), text, font, text_color, spacing)
+    else:
+        draw.text((x, y), text, font=font, fill=text_color)
+    return img
+
+
+# ── Pill badge ─────────────────────────────────────────────────────────────────
+def _badge(draw: ImageDraw.ImageDraw, rx: int, y: int,
+           label: str, bg: tuple, fg: tuple, font, pad_x: int = 9) -> int:
+    """Draw a right-aligned pill at x=rx. Returns badge width."""
+    tw = _tw(draw, label, font)
+    bw = tw + pad_x * 2
+    bh = 20
+    draw.rounded_rectangle([rx - bw, y, rx, y + bh], radius=4, fill=bg)
+    draw.text((rx - bw + pad_x, y + 2), label, font=font, fill=fg)
+    return bw
+
+
+# ── Separator with accent diamonds ────────────────────────────────────────────
+def _sep_line(draw: ImageDraw.ImageDraw, y: int,
+              lx: int = 60, rx: int = W - 60) -> None:
+    draw.line([(lx, y), (rx, y)], fill=SEP, width=1)
+    draw.rectangle([lx - 3, y - 2, lx + 3, y + 2], fill=CYAN)
+    draw.rectangle([rx - 3, y - 2, rx + 3, y + 2], fill=CYAN)
+
+
+# ── Section header (  ══ MLB ══  ) ────────────────────────────────────────────
+def _section_header(draw: ImageDraw.ImageDraw, y: int, label: str) -> int:
+    f = _font(12, bold=True)
+    pad = "    "
+    full = f"{pad}{label}{pad}"
+    tw = _tw(draw, full, f)
+    lx = (W - tw) // 2
+
+    draw.line([(68, y + 7), (lx, y + 7)],          fill=CYAN_D, width=1)
+    draw.text((lx, y), full,                         font=f, fill=CYAN)
+    draw.line([(lx + tw, y + 7), (W - 68, y + 7)],  fill=CYAN_D, width=1)
+    return y + 26
+
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+def render_header(img: Image.Image) -> tuple[Image.Image, int]:
+    draw = ImageDraw.Draw(img)
+
+    # Date top-right
+    et = datetime.now(timezone.utc) - timedelta(hours=5)
+    date_str = et.strftime("%b %d, %Y").upper()
+    f_date = _font(13)
+    draw.text((W - 68 - _tw(draw, date_str, f_date), 46),
+              date_str, font=f_date, fill=MUTED)
+
+    # Eye icon (wider/flatter to match logo oval)
+    img = _draw_eye(img, W // 2, 116, size=118)
+
+    # CLAIRVOYANCE neon purple
+    img = _glow_text(img, "CLAIRVOYANCE", 196, _font(52, bold=True),
+                     PURPLE, PURPLE_D, glow_radius=16)
+
+    # ENGINE subtitle cyan spaced
+    img = _glow_text(img, "PREDICTIVE SPORTS INTELLIGENCE ENGINE", 260,
+                     _font(12), CYAN, CYAN_D, glow_radius=5, spacing=4)
+
+    # Tagline muted
+    draw = ImageDraw.Draw(img)
+    f_tag = _font(11)
+    tag = "SEE  WHAT  OTHERS  CANNOT"
+    draw.text(((W - _tw(draw, tag, f_tag)) // 2, 288), tag, font=f_tag, fill=MUTED)
+
+    # Separator
+    _sep_line(draw, 316)
+    return img, 326
+
+
+# ── Record bar ─────────────────────────────────────────────────────────────────
+def render_record(img: Image.Image, y: int, settled: list) -> tuple[Image.Image, int]:
+    draw = ImageDraw.Draw(img)
     wins   = sum(1 for s in settled if s.get("result") == "win")
     losses = sum(1 for s in settled if s.get("result") == "loss")
     pushes = sum(1 for s in settled if s.get("result") == "push")
     units  = sum(s.get("units", 0) for s in settled)
     total  = wins + losses + pushes
 
-    draw.text((60, y), "RECORD", font=font_label, fill=MUTED)
+    f_lbl = _font(11)
+    f_val = _font(22, bold=True)
 
-    record_str = f"{wins}W-{losses}L" + (f"-{pushes}P" if pushes else "")
-    units_str  = f"{units:+.1f}u"
-    pct_str    = f"{wins/total*100:.1f}% ATS" if total else "—"
+    cols = [
+        ("RECORD",  f"{wins}W-{losses}L" + (f"-{pushes}P" if pushes else ""),
+         WIN_FG if wins >= losses else LOSS_FG),
+        ("UNITS",   f"{units:+.1f}u",
+         WIN_FG if units >= 0 else LOSS_FG),
+        ("WIN %",   f"{wins/total*100:.1f}%" if total else "—", CYAN),
+    ]
+    col_w = (W - 136) // 3
+    for i, (lbl, val, col) in enumerate(cols):
+        x = 68 + i * col_w
+        draw.text((x, y),      lbl, font=f_lbl, fill=MUTED)
+        draw.text((x, y + 15), val, font=f_val, fill=col)
 
-    draw.text((60, y + 18), record_str, font=font_val, fill=WIN_CLR if wins >= losses else LOSS_CLR)
-
-    tw = _text_width(draw, units_str, font_val)
-    center_x = W // 2 - tw // 2
-    draw.text((center_x, y + 18), units_str, font=font_val,
-              fill=WIN_CLR if units >= 0 else LOSS_CLR)
-
-    tw2 = _text_width(draw, pct_str, font_val)
-    draw.text((W - 60 - tw2, y + 18), pct_str, font=font_val, fill=ACCENT2)
-
-    _separator(draw, y + 58)
-    return y + 74
+    y += 52
+    _sep_line(draw, y)
+    return img, y + 10
 
 
-def render_games(draw: ImageDraw.ImageDraw, y: int, games: list, sport: str, max_games: int = 5) -> int:
-    """Render a sport's game list. Returns new y."""
-    if not games:
-        return y
+# ── Single game row ────────────────────────────────────────────────────────────
+_ORD = {1:"1ST",2:"2ND",3:"3RD",4:"4TH",5:"5TH",6:"6TH",
+        7:"7TH",8:"8TH",9:"9TH",10:"10TH"}
 
-    font_hdr  = _load_font(12, bold=True)
-    font_game = _load_font(15)
-    font_live = _load_font(12)
+def _game_row(draw: ImageDraw.ImageDraw, y: int, game: dict,
+              bet: dict | None, settled: dict | None) -> int:
+    """Render one game row. Returns y after row."""
+    f_name  = _font(15, bold=True)
+    f_sm    = _font(12)
+    f_badge = _font(11, bold=True)
+    f_xs    = _font(10)
 
-    draw.text((60, y), sport, font=font_hdr, fill=ACCENT)
-    y += 22
+    away  = game.get("away", "")
+    home  = game.get("home", "")
+    state = game.get("state", "pre")
+    rx    = W - 68      # right anchor
+    row_h = 36
 
-    for g in games[:max_games]:
-        state     = g.get("state", "pre")
-        away, home = g.get("away", ""), g.get("home", "")
-        matchup   = f"{away} @ {home}"
+    draw.text((68, y), f"{away} @ {home}", font=f_name, fill=TEXT)
 
-        # Score / clock
-        if state == "post":
-            score = f"{g.get('awayScore', 0)}-{g.get('homeScore', 0)} F"
-            score_col = MUTED
-        elif state == "in":
-            score = f"{g.get('awayScore', 0)}-{g.get('homeScore', 0)}"
-            score_col = WIN_CLR
+    if settled:
+        # ── SETTLED: pick → score → WIN / LOSS ──────────────────────────────
+        result = settled.get("result", "")
+        units  = settled.get("units", 0.0)
+        pick   = settled.get("pick", "")
+        a_s    = game.get("awayScore", "?")
+        h_s    = game.get("homeScore", "?")
+
+        if result == "win":
+            bg, fg, lbl = WIN_BG, WIN_FG, f"✓ WIN  {units:+.1f}u"
+        elif result == "loss":
+            bg, fg, lbl = LOSS_BG, LOSS_FG, f"✗ LOSS  {units:+.1f}u"
         else:
-            score = ""
-            score_col = MUTED
+            bg, fg, lbl = PUSH_BG, PUSH_FG, "PUSH"
 
-        draw.text((60, y), matchup, font=font_game, fill=TEXT)
+        bw = _badge(draw, rx, y + 2, lbl, bg, fg, f_badge)
 
-        if score:
-            tw = _text_width(draw, score, font_live)
-            draw.text((W - 60 - tw, y + 2), score, font=font_live, fill=score_col)
+        # Score line
+        score_str = f"{away} {a_s}  —  {home} {h_s}   FINAL"
+        draw.text((68, y + 19), score_str, font=f_sm, fill=MUTED)
 
-            if state == "in":
-                period = g.get("period", "")
-                clk    = g.get("displayClock", "")
-                lbl    = f"{_ordinal(period) if isinstance(period, int) else period} {clk}".strip()
-                tw2    = _text_width(draw, lbl, font_live)
-                draw.text((W - 60 - tw2 - tw - 12, y + 2), lbl, font=font_live, fill=ACCENT)
+        # Original pick label (left of badge)
+        if pick:
+            pk_str = f"Pick: {pick}"
+            draw.text((rx - bw - _tw(draw, pk_str, f_sm) - 14, y + 4),
+                      pk_str, font=f_sm, fill=TEXT)
+        row_h = 42
 
-        # Series note
-        series = g.get("seriesNote", "")
-        if series:
-            draw.text((60, y + 18), series, font=font_live, fill=MUTED)
-            y += 14
+    elif bet:
+        # ── PENDING MODEL PICK ───────────────────────────────────────────────
+        pick = bet.get("pick", "")
+        prob = bet.get("modelProb", bet.get("prob", 0))
+        impl = bet.get("impliedProb", bet.get("implied", 0))
+        edge = bet.get("edge",
+                       round((prob - impl) * 100, 1) if prob and impl else 0)
 
-        y += 26
+        _badge(draw, rx, y + 2, "◆ TRACKING", (18, 14, 44), CYAN, f_badge)
 
-    return y + 4
+        if pick:
+            detail = f"Pick: {pick}   Mdl {prob*100:.0f}%  Mkt {impl*100:.0f}%  Edge {edge:+.1f}%"
+            draw.text((68, y + 19), detail, font=f_sm, fill=MUTED)
+        row_h = 42
+
+    elif state == "in":
+        # ── LIVE ─────────────────────────────────────────────────────────────
+        a_s = game.get("awayScore", 0)
+        h_s = game.get("homeScore", 0)
+        per = game.get("period", "")
+        clk = game.get("displayClock", "")
+        per_str = _ORD.get(per, str(per)) if isinstance(per, int) else str(per)
+
+        _badge(draw, rx, y + 2, "● LIVE", LIVE_BG, LIVE_FG, f_badge)
+        score_str = f"{away} {a_s}  –  {home} {h_s}   {per_str} {clk}".rstrip()
+        draw.text((68, y + 19), score_str, font=f_sm, fill=LIVE_FG)
+        row_h = 42
+
+    elif state == "post":
+        # ── FINAL ────────────────────────────────────────────────────────────
+        a_s = game.get("awayScore", 0)
+        h_s = game.get("homeScore", 0)
+        draw.text((68, y + 19), f"{away} {a_s}  —  {home} {h_s}", font=f_sm, fill=MUTED)
+        draw.text((rx - _tw(draw, "FINAL", f_xs), y + 20), "FINAL", font=f_xs, fill=MUTED)
+        row_h = 38
+
+    else:
+        # ── PRE-GAME ──────────────────────────────────────────────────────────
+        game_dt = game.get("date", "")
+        time_str = ""
+        if game_dt:
+            try:
+                from datetime import datetime as _dt
+                gd = _dt.fromisoformat(game_dt.replace("Z", "+00:00"))
+                et_time = gd - timedelta(hours=5)
+                time_str = et_time.strftime("%-I:%M %p ET")
+            except Exception:
+                pass
+        if time_str:
+            draw.text((rx - _tw(draw, time_str, f_xs), y + 2),
+                      time_str, font=f_xs, fill=MUTED)
+        row_h = 28
+
+    # Playoff series note
+    series = game.get("seriesNote", "")
+    if series:
+        draw.text((68, y + row_h - 4), series, font=f_xs, fill=(58, 48, 88))
+        row_h += 12
+
+    # Row separator
+    draw.line([(68, y + row_h - 1), (rx, y + row_h - 1)], fill=(22, 17, 40), width=1)
+    return y + row_h
 
 
-def render_best_bets(draw: ImageDraw.ImageDraw, y: int, best_bets: list) -> int:
-    """Render best bets section. Returns new y."""
-    font_hdr  = _load_font(12, bold=True)
-    font_game = _load_font(14)
-    font_odds = _load_font(13)
-    font_sm   = _load_font(11)
+# ── League block ───────────────────────────────────────────────────────────────
+def _render_league(img: Image.Image, y: int, label: str, games: list,
+                   best_bets: list, settled_list: list,
+                   max_games: int = 6) -> tuple[Image.Image, int]:
+    if not games:
+        return img, y
 
-    draw.text((60, y), "MODEL EDGES", font=font_hdr, fill=ACCENT)
-    y += 22
+    draw = ImageDraw.Draw(img)
+    y = _section_header(draw, y, label)
 
-    if not best_bets:
-        draw.text((60, y), "No edges above threshold today", font=font_game, fill=MUTED)
-        return y + 30
+    def _gk(g: dict) -> str:
+        return f"{g.get('away','')}@{g.get('home','')}".upper().replace(" ", "")
 
-    for b in best_bets[:4]:
-        if not isinstance(b, dict):
-            continue
-        game = b.get("game", "")
-        pick = b.get("pick", "")
-        prob = b.get("modelProb", b.get("prob", 0))
-        impl = b.get("impliedProb", b.get("implied", 0))
-        edge = b.get("edge", round((prob - impl) * 100, 1) if prob and impl else 0)
-        conf = b.get("confidence", "")
+    bet_map = {b.get("game", "").upper().replace(" ", ""): b for b in best_bets}
+    stl_map = {s.get("game", "").upper().replace(" ", ""): s for s in settled_list}
 
-        draw.text((60, y), f"{game}  •  {pick}", font=font_game, fill=TEXT)
+    # Live first, then finals, then pre-game
+    priority = {"in": 0, "post": 1, "pre": 2}
+    ordered = sorted(games, key=lambda g: priority.get(g.get("state", "pre"), 2))
 
-        if prob:
-            odds_line = f"Model {prob*100:.1f}% vs Impl {impl*100:.1f}%  |  Edge {edge:+.1f}%"
-            edge_col  = WIN_CLR if edge >= 3 else ACCENT2 if edge >= 1 else LOSS_CLR
-            draw.text((60, y + 17), odds_line, font=font_sm, fill=edge_col)
-            y += 14
+    for game in ordered[:max_games]:
+        gk  = _gk(game)
+        bet = bet_map.get(gk)
+        stl = stl_map.get(gk)
+        y   = _game_row(draw, y, game, bet, stl)
 
-        if conf:
-            _pill(draw, W - 160, y - 12, conf.upper(), PANEL, ACCENT, font_sm)
+    if len(games) > max_games:
+        f_xs = _font(11)
+        draw.text((68, y), f"+ {len(games) - max_games} more games",
+                  font=f_xs, fill=MUTED)
+        y += 18
 
-        y += 32
-
-    return y + 4
+    return img, y + 6
 
 
-def render_intel_strip(draw: ImageDraw.ImageDraw, y: int, data: dict) -> int:
-    """Render a compact strip of analytics intel. Returns new y."""
-    font_hdr = _load_font(12, bold=True)
-    font_val = _load_font(13)
+# ── Intel strip + tomorrow ────────────────────────────────────────────────────
+def _render_intel(img: Image.Image, y: int, data: dict) -> tuple[Image.Image, int]:
+    """Model stats and tomorrow's slate. Only renders if space allows."""
+    footer_reserve = 94
+    min_space = 60
+    if y > H - footer_reserve - min_space:
+        return img, y
 
-    _separator(draw, y)
-    y += 16
+    draw = ImageDraw.Draw(img)
+    f_lbl = _font(11, bold=True)
+    f_val = _font(12)
+    f_xs  = _font(10)
 
-    items = []
+    y += 4
+    _sep_line(draw, y)
+    y += 12
 
-    # ATP #1
+    # Build intel items
+    items: list[tuple[str, str]] = []
+
+    # ATP #1 ELO
     atp = data.get("tennis", {}).get("atpElo", [])
     if atp:
         p = atp[0]
-        items.append(f"ATP #1  {p.get('name','')}  {p.get('elo','')} ELO")
+        items.append(("ATP #1", f"{p.get('name','')}  {p.get('elo','')} ELO"))
 
-    # NHL xGF% leader
+    # WTA #1 ELO
+    wta = data.get("tennis", {}).get("wtaElo", [])
+    if wta:
+        p = wta[0]
+        items.append(("WTA #1", f"{p.get('name','')}  {p.get('elo','')} ELO"))
+
+    # NHL MoneyPuck xGF% leader
     mp = data.get("mp", {}).get("teams", {})
     if mp:
-        leader = max(mp.items(), key=lambda kv: kv[1].get("5on5", {}).get("xgfPct", 0))
-        abbr, stats = leader
-        pct = stats.get("5on5", {}).get("xgfPct", 0)
-        items.append(f"NHL xGF%  {abbr}  {pct:.3f}")
+        leader = max(mp.items(), key=lambda kv: kv[1].get("5on5", {}).get("xgfPct", 0)
+                     if isinstance(kv[1], dict) else 0, default=(None, {}))
+        if leader[0]:
+            pct = leader[1].get("5on5", {}).get("xgfPct", 0)
+            items.append(("NHL xGF%", f"{leader[0]}  {pct:.3f}  (5v5 leader)"))
 
-    # Weather
+    # Weather factor
     weather = data.get("weather", {})
     windy = [(k, v) for k, v in weather.items()
-             if not v.get("indoor") and v.get("wind") and v.get("wind", 0) >= 15]
+             if not v.get("indoor") and (v.get("wind") or 0) >= 15]
     if windy:
         t, w = windy[0]
-        items.append(f"Wind  {t}  {w.get('wind')} mph")
+        items.append(("WIND", f"{t}  {w.get('wind')} mph  {w.get('temp','')}°F"))
 
-    col_w = (W - 120) // max(len(items), 1)
-    for i, item in enumerate(items[:3]):
-        parts = item.split("  ", 1)
-        label = parts[0]
-        value = parts[1] if len(parts) > 1 else ""
-        x = 60 + i * col_w
-        draw.text((x, y), label, font=font_hdr, fill=MUTED)
-        draw.text((x, y + 16), value, font=font_val, fill=TEXT)
+    # Draw intel items two-column
+    col_w = (W - 136) // 2
+    for i, (lbl, val) in enumerate(items[:4]):
+        row = i // 2
+        col = i % 2
+        ix = 68 + col * col_w
+        iy = y + row * 34
+        draw.text((ix, iy),      lbl, font=f_lbl, fill=MUTED)
+        draw.text((ix, iy + 14), val, font=f_val,  fill=TEXT)
 
-    return y + 46
+    if items:
+        rows = math.ceil(len(items) / 2)
+        y += rows * 34 + 8
+
+    # Tomorrow's slate (MLB only — most predictable)
+    mlb_tom = data.get("mlb", {}).get("tomorrow", [])
+    if mlb_tom and y < H - footer_reserve - 80:
+        _sep_line(draw, y)
+        y += 12
+        draw = ImageDraw.Draw(img)
+        draw.text((68, y), "TOMORROW  —  MLB", font=f_lbl, fill=MUTED)
+        y += 18
+        max_tom = min(4, (H - footer_reserve - y) // 22)
+        for g in mlb_tom[:max_tom]:
+            away, home = g.get("away", ""), g.get("home", "")
+            game_dt = g.get("date", "")
+            time_str = ""
+            if game_dt:
+                try:
+                    from datetime import datetime as _dt2
+                    gd = _dt2.fromisoformat(game_dt.replace("Z", "+00:00"))
+                    time_str = (gd - timedelta(hours=5)).strftime("%-I:%M %p")
+                except Exception:
+                    pass
+            draw.text((68, y), f"{away} @ {home}", font=f_val, fill=(160, 148, 192))
+            if time_str:
+                draw.text((W - 68 - _tw(draw, time_str, f_xs), y + 2),
+                          time_str, font=f_xs, fill=MUTED)
+            y += 22
+        if len(mlb_tom) > max_tom:
+            draw.text((68, y), f"+ {len(mlb_tom) - max_tom} more", font=f_xs, fill=MUTED)
+            y += 16
+
+    return img, y
 
 
-def render_footer(draw: ImageDraw.ImageDraw) -> None:
-    font = _load_font(13)
-    draw.line([(60, H - 68), (W - 60, H - 68)], fill=SEP, width=1)
-    draw.text((60, H - 50), "clairvoyancesports.com", font=font, fill=MUTED)
+# ── Footer ──────────────────────────────────────────────────────────────────────
+def _render_footer(draw: ImageDraw.ImageDraw) -> None:
+    f_sm = _font(13)
+    f_xs = _font(10)
+    _sep_line(draw, H - 82)
+    draw.text((68, H - 66), "CLAIRVOYANCE ENGINE", font=f_sm, fill=PURPLE)
     handle = "@clairvoyancesports"
-    tw = _text_width(draw, handle, font)
-    draw.text((W - 60 - tw, H - 50), handle, font=font, fill=ACCENT)
-
-    # Subtle version tag
-    font_xs = _load_font(11)
-    draw.text((60, H - 28), "Model outputs are probabilistic — not financial advice.",
-              font=font_xs, fill=(70, 80, 100))
+    draw.text((W - 68 - _tw(draw, handle, f_sm), H - 66), handle, font=f_sm, fill=CYAN)
+    draw.text((68, H - 42),
+              "Model outputs are probabilistic projections, not financial advice.",
+              font=f_xs, fill=MUTED)
 
 
-# ── card composer ─────────────────────────────────────────────────────────────
-
+# ── Compose full card ──────────────────────────────────────────────────────────
 def generate_card(data: dict, social: dict) -> Image.Image:
-    img  = Image.new("RGB", (W, H), BG)
+    img = Image.new("RGB", (W, H), BG)
+    _draw_carbon_fiber(img)
+    _draw_brackets(ImageDraw.Draw(img))
+
+    img, y = render_header(img)
     draw = ImageDraw.Draw(img)
 
-    # Subtle grid texture (faint horizontal bands)
-    for row in range(0, H, 80):
-        draw.line([(0, row), (W, row)], fill=(14, 17, 27), width=1)
-
-    # Left accent bar
-    draw.rectangle([(0, 0), (4, H)], fill=ACCENT)
-
-    y = render_header(draw)
-
-    settled   = data.get("settled", [])
+    settled   = data.get("settled",  [])
     best_bets = data.get("bestBets", [])
 
-    # Record only if we have tracked bets
+    # Record or tracking notice
     if settled:
-        y = render_record(draw, y, settled)
+        img, y = render_record(img, y, settled)
+        draw = ImageDraw.Draw(img)
     else:
-        # Show "tracking" state
-        font_sm = _load_font(13)
-        draw.text((60, y), "RECORD TRACKING ACTIVE — sample accumulating",
-                  font=font_sm, fill=MUTED)
-        y += 28
-        _separator(draw, y)
-        y += 16
+        f_xs = _font(11)
+        draw.text((68, y), "RECORD TRACKING ACTIVE — sample accumulating",
+                  font=f_xs, fill=MUTED)
+        y += 22
+        _sep_line(draw, y)
+        y += 10
 
-    # Best bets or model edges
-    y = render_best_bets(draw, y, best_bets)
-    _separator(draw, y)
-    y += 14
+    # Dynamic space budget across leagues
+    footer_reserve = 94
+    available      = H - y - footer_reserve
+    mlb = data.get("mlb", {}).get("today", [])
+    nba = data.get("nba", {}).get("today", [])
+    nhl = data.get("nhl", {}).get("today", [])
+    active = sum(1 for g in [mlb, nba, nhl] if g)
+    row_px = 44
+    per_league = max(2, (available // row_px) // max(active, 1))
 
-    # Sport game slates — fit remaining space
-    remaining = H - 160 - y
-    per_game  = 28
-    budget    = remaining // per_game
-    sports_share = budget // 3 or 2
+    img, y = _render_league(img, y, "MLB", mlb, best_bets, settled,
+                             max_games=min(per_league, 7))
+    img, y = _render_league(img, y, "NBA", nba, best_bets, settled,
+                             max_games=min(per_league, 4))
+    img, y = _render_league(img, y, "NHL", nhl, best_bets, settled,
+                             max_games=min(per_league, 4))
 
-    for sport, key in [("MLB", "mlb"), ("NBA", "nba"), ("NHL", "nhl")]:
-        games = data.get(key, {}).get("today", [])
-        if games:
-            y = render_games(draw, y, games, sport, max_games=sports_share)
+    # Fill remaining vertical space with intel + tomorrow
+    img, y = _render_intel(img, y, data)
 
-    # Intel strip
-    y = render_intel_strip(draw, y, data)
-
-    # Social caption snippet from Claude
-    if social.get("x_post"):
-        font_quote = _load_font(14)
-        font_attr  = _load_font(11)
-        quote = social["x_post"][:120] + ("…" if len(social["x_post"]) > 120 else "")
-        draw.text((60, H - 115), f'"{quote}"', font=font_quote, fill=MUTED)
-
-    render_footer(draw)
+    _render_footer(ImageDraw.Draw(img))
     return img
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
+# ── CLI ────────────────────────────────────────────────────────────────────────
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Clairvoyance Card Generator")
-    parser.add_argument("--open", action="store_true", help="Open preview after generation")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="Clairvoyance Card Generator")
+    p.add_argument("--open", action="store_true", help="Open preview after saving")
+    args = p.parse_args()
 
     if not FE_DATA.exists():
-        print("[ERROR] data.json not found", file=sys.stderr)
+        print("[ERROR] data.json not found — run clairvoyance_update.py first",
+              file=sys.stderr)
         sys.exit(1)
 
     data   = json.loads(FE_DATA.read_text())
     social = json.loads(FE_SOCIAL.read_text()) if FE_SOCIAL.exists() else {}
 
     img = generate_card(data, social)
-    img.save(str(FE_CARD), format="PNG", optimize=True)
-    img.save(str(DC_CARD), format="PNG", optimize=True)
+    img.save(str(FE_CARD), "PNG", optimize=True)
+    img.save(str(DC_CARD), "PNG", optimize=True)
 
-    size_kb = FE_CARD.stat().st_size // 1024
-    print(f"[INFO] card.png written ({size_kb} KB) → frontend/ + docs/")
+    kb = FE_CARD.stat().st_size // 1024
+    print(f"[INFO] card.png written ({kb} KB) → frontend/ + docs/")
 
     if args.open:
         subprocess.run(["open", str(FE_CARD)])
