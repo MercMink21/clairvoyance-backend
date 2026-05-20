@@ -769,7 +769,67 @@ def fetch_f1() -> dict:
     except Exception as exc:
         log(f"F1 constructor standings (Ergast): {exc}", "WARN")
 
+    # ESPN F1 standings (top 10)
+    try:
+        espn_data = fetch_json(f"{ESPN_BASE}/racing/f1/standings")
+        if espn_data:
+            espn_standings = (espn_data.get("standings", {}).get("entries") or [])[:10]
+            result["espnStandings"] = [
+                {
+                    "pos": int(e.get("stats", [{}])[0].get("value", i + 1)),
+                    "name": e.get("athlete", {}).get("displayName", ""),
+                    "team": e.get("team", {}).get("displayName", ""),
+                    "pts": float((next((s for s in e.get("stats", []) if s.get("name") == "points"), {}) or {}).get("value", 0)),
+                }
+                for i, e in enumerate(espn_standings)
+            ]
+    except Exception as exc:
+        log(f"F1 ESPN standings: {exc}", "WARN")
+        result["espnStandings"] = []
+
     log(f"F1: {len(result['schedule'])} races | {len(result['driverStandings'])} drivers | next: {result['nextRace'] and result['nextRace']['name']}")
+    return result
+
+
+def fetch_f1_analytics() -> dict:
+    """Fetch F1 race analysis data from f1datastop.com."""
+    url = "https://f1datastop.com/race-analysis"
+    result: dict = {"source": "f1datastop.com", "fetchedAt": TODAY_ISO, "data": [], "error": None}
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        r = requests.get(url, headers=headers, timeout=20)
+        if r.ok:
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Extract race analysis cards/sections
+            cards = soup.find_all(["article", "section", "div"], class_=lambda c: c and any(
+                k in c for k in ["race", "analysis", "driver", "lap", "pace"]
+            ))
+            for card in cards[:20]:
+                txt = card.get_text(separator=" ", strip=True)
+                if len(txt) > 30:
+                    result["data"].append({"text": txt[:300], "tag": card.name})
+            # Also grab any tables
+            tables = soup.find_all("table")
+            for tbl in tables[:5]:
+                rows = tbl.find_all("tr")
+                for row in rows[:15]:
+                    cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+                    if cells:
+                        result["data"].append({"row": cells})
+        else:
+            result["error"] = f"HTTP {r.status_code}"
+    except Exception as exc:
+        result["error"] = str(exc)
+        log(f"F1 analytics (f1datastop.com): {exc}", "WARN")
+    log(f"F1 analytics: {len(result['data'])} items | error: {result['error']}")
     return result
 
 
@@ -805,6 +865,80 @@ def fetch_linemate_cheatsheet(sport: str) -> list[dict]:
     except Exception as exc:
         log(f"Linemate cheatsheet {sport}: {exc}", "WARN")
     return items
+
+
+def fetch_linemate_trends(sport: str) -> list[dict]:
+    """Scrape Linemate trends page for player and team trend data."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return []
+    url = f"https://linemate.io/{sport}/trends"
+    trends: list[dict] = []
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
+            ctx = browser.new_context(user_agent=HEADERS["User-Agent"],
+                                      viewport={"width": 1280, "height": 900})
+            page = ctx.new_page()
+            page.goto(url, wait_until="networkidle", timeout=45_000)
+            page.wait_for_timeout(4_000)
+            # Try multiple selectors for trend rows
+            selectors = [
+                "[class*='TrendRow']", "[class*='trend-row']", "[class*='PlayerRow']",
+                "[class*='player-row']", "table tr", "li[class*='trend']", "article",
+            ]
+            rows = []
+            for sel in selectors:
+                rows = page.query_selector_all(sel)
+                if len(rows) > 3:
+                    break
+            for row in rows[:100]:
+                try:
+                    txt = row.inner_text().strip()
+                    if len(txt) < 8:
+                        continue
+                    # Parse raw text into structured fields
+                    parts = [p.strip() for p in txt.split("\n") if p.strip()]
+                    player = parts[0] if parts else txt[:40]
+                    category = parts[1] if len(parts) > 1 else ""
+                    # Detect trend direction from keywords
+                    txt_lower = txt.lower()
+                    if any(k in txt_lower for k in ["hot", "fire", "🔥", "streak"]):
+                        direction = "hot"
+                    elif any(k in txt_lower for k in ["cold", "slump", "❄"]):
+                        direction = "cold"
+                    elif any(k in txt_lower for k in ["up", "↑", "rising", "over"]):
+                        direction = "up"
+                    elif any(k in txt_lower for k in ["down", "↓", "falling", "under"]):
+                        direction = "down"
+                    else:
+                        direction = "neutral"
+                    # Try to extract L5/L10 hit rates from numeric tokens
+                    nums = re.findall(r'(\d+)/(\d+)', txt)
+                    l5 = f"{nums[0][0]}/{nums[0][1]}" if nums else ""
+                    l10 = f"{nums[1][0]}/{nums[1][1]}" if len(nums) > 1 else ""
+                    # Line movement
+                    line_move = "up" if "line up" in txt_lower or "moved up" in txt_lower else \
+                                "down" if "line down" in txt_lower or "moved down" in txt_lower else ""
+                    trends.append({
+                        "player": player,
+                        "category": category,
+                        "direction": direction,
+                        "l5": l5,
+                        "l10": l10,
+                        "lineMove": line_move,
+                        "raw": txt[:200],
+                        "sport": sport.upper(),
+                        "src": "Linemate/trends",
+                    })
+                except Exception:
+                    pass
+            browser.close()
+        log(f"Linemate trends {sport}: {len(trends)} entries")
+    except Exception as exc:
+        log(f"Linemate trends {sport}: {exc}", "WARN")
+    return trends
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1199,6 +1333,7 @@ def main() -> None:
     wta_yelo               = fetch_tennis_yelo("wta")     if args.sport in ("tennis","all") else []
     tennis_schedule        = fetch_tennis_schedule()      if args.sport in ("tennis","all") else []
     f1_data                = fetch_f1()                   if args.sport in ("f1","all") else {}
+    f1_analytics           = fetch_f1_analytics()         if args.sport in ("f1","all") else {}
 
     # Weather for MLB home teams
     weather: dict = {}
@@ -1212,15 +1347,21 @@ def main() -> None:
                     weather[home] = w
                 time.sleep(0.3)   # rate-limit Open-Meteo
 
-    # Linemate props + cheatsheets (optional, requires Playwright)
+    # Linemate props + cheatsheets + trends (optional, requires Playwright)
     lm_props: dict = {"nba": [], "mlb": [], "nhl": []}
     lm_cheatsheets: dict = {"nba": [], "mlb": [], "nhl": []}
+    lm_trends: dict = {"mlb": [], "nhl": []}
     if not args.no_linemate:
         for sport in ["nba", "mlb", "nhl"]:
             if args.sport in (sport, "all"):
                 lm_props[sport] = fetch_linemate_props(sport)
                 time.sleep(1)
                 lm_cheatsheets[sport] = fetch_linemate_cheatsheet(sport)
+                time.sleep(1)
+        # Fetch trends for MLB and NHL
+        for sport in ["mlb", "nhl"]:
+            if args.sport in (sport, "all"):
+                lm_trends[sport] = fetch_linemate_trends(sport)
                 time.sleep(2)
 
     # ── calculate ─────────────────────────────────────────────────────────────
@@ -1258,9 +1399,9 @@ def main() -> None:
             "schedule":  tennis_schedule,
             "scheduleDate": TODAY_ISO,
         },
-        "f1": f1_data,
+        "f1": {**f1_data, "analytics": f1_analytics},
         "linemate":      lm_props,
-        "linemateForm":  lm_cheatsheets,
+        "linemateForm":  {**lm_cheatsheets, "mlbTrends": lm_trends.get("mlb", []), "nhlTrends": lm_trends.get("nhl", [])},
         "bestBets":  best_bets,
         "settled":   settled,
     }
