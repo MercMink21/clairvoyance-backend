@@ -1297,6 +1297,44 @@ def git_push(summary: str) -> bool:
         log(f"Git error: {e.stderr.decode()}", "ERROR")
         return False
 
+def fetch_sports_news() -> dict:
+    """Scrape injury/lineup news from ESPN headlines API."""
+    news = {}
+    sport_map = {
+        'mlb': 'baseball/mlb',
+        'nhl': 'hockey/nhl',
+        'nba': 'basketball/nba',
+        'tennis': 'tennis'
+    }
+    injury_keywords = ['injured', 'out', 'doubtful', 'questionable', 'day-to-day',
+                       'IR', 'scratch', 'suspended', 'illness', 'flu', 'knee',
+                       'ankle', 'shoulder', 'back', 'concussion', 'listed', 'unavailable',
+                       'game-time', 'will not play', 'sidelined']
+    for sport_key, espn_path in sport_map.items():
+        try:
+            url = f'https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news'
+            r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            if r.status_code == 200:
+                articles = r.json().get('articles', [])
+                items = []
+                for a in articles[:20]:
+                    title = a.get('headline', '')
+                    desc = a.get('description', '')
+                    combined = (title + ' ' + desc).lower()
+                    if any(kw in combined for kw in injury_keywords):
+                        items.append({
+                            'headline': title,
+                            'summary': desc[:200],
+                            'published': a.get('published', ''),
+                            'link': a.get('links', {}).get('web', {}).get('href', '')
+                        })
+                news[sport_key] = items[:8]
+        except Exception as e:
+            print(f'[WARN] News fetch failed for {sport_key}: {e}')
+            news[sport_key] = []
+    return news
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Main orchestrator
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1364,6 +1402,10 @@ def main() -> None:
                 lm_trends[sport] = fetch_linemate_trends(sport)
                 time.sleep(2)
 
+    # ── fetch news ────────────────────────────────────────────────────────────
+    log("Fetching sports injury/lineup news…")
+    sports_news = fetch_sports_news()
+
     # ── calculate ─────────────────────────────────────────────────────────────
     best_bets = calculate_best_bets(nba_today, mlb_today, nhl_today, weather)
     settled   = auto_settle(nba_today + nba_tom, mlb_today + mlb_tom, nhl_today + nhl_tom)
@@ -1404,6 +1446,7 @@ def main() -> None:
         "linemateForm":  {**lm_cheatsheets, "mlbTrends": lm_trends.get("mlb", []), "nhlTrends": lm_trends.get("nhl", [])},
         "bestBets":  best_bets,
         "settled":   settled,
+        "news":      sports_news,
     }
 
     # Save full bundle for debugging
