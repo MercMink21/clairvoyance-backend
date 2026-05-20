@@ -209,9 +209,6 @@ def generate() -> Image.Image:
     # Corner brackets
     _brackets(draw)
 
-    # Date — top right
-    date_font = _font(22)
-    draw.text((W - 88, 42), DATE_STR, font=date_font, fill=DIM)
 
     # ── Eye logo ─────────────────────────────────────────────────────────────
     img = _draw_eye(img, W // 2, 148, size=90)
@@ -260,8 +257,8 @@ def generate() -> Image.Image:
 
     rows = [
         ("SPORTS COVERED",    "MLB  ·  NBA  ·  NHL  ·  TENNIS  ·  F1"),
-        ("EVERY PICK GRADED", "EV Rating  ·  Confidence Score  ·  Market Edge"),
-        ("REAL-TIME ENGINE",  "Live data  ·  Continuous refresh  ·  Auto-settle"),
+        ("EVERY PICK GRADED", "Advanced Analytics  ·  Confidence Scores  ·  Market Edge"),
+        ("REAL-TIME ENGINE",  "Cutting Edge Statistical Analysis  ·  Live Calibration"),
     ]
 
     for label, value in rows:
@@ -284,12 +281,36 @@ def generate() -> Image.Image:
     _tracked(draw, (fol_x, dy), "FOLLOW FOR DAILY SIGNALS", follow_font, TEXT, 2)
     dy += 40
 
-    # Handles side by side
-    handle_font = _font(28, bold=True)
-    handles     = f"{X_HANDLE}   ·   {IG_HANDLE}"
-    img = _glow(img, handles, dy, handle_font,
-                color=PURPLE, glow_color=PURPLE, radius=10)
+    # Handles — X (white) and IG (purple), platform labels in muted
+    lbl_font  = _font(17)
+    h_font    = _font(26, bold=True)
+    gap_mid   = 36
+
+    x_lbl_w  = _tw(draw, "X ", lbl_font)
+    x_h_w    = _tw(draw, X_HANDLE, h_font)
+    ig_lbl_w = _tw(draw, "IG ", lbl_font)
+    ig_h_w   = _tw(draw, IG_HANDLE, h_font)
+    total_w  = x_lbl_w + x_h_w + gap_mid + ig_lbl_w + ig_h_w
+    sx       = (W - total_w) // 2
+
+    # "X " label
+    draw.text((sx, dy + 5), "X ", font=lbl_font, fill=MUTED)
+    sx += x_lbl_w
+    # X handle white
+    draw.text((sx, dy), X_HANDLE, font=h_font, fill=WHITE)
+    sx += x_h_w + gap_mid
+    # "IG " label
+    draw.text((sx, dy + 5), "IG ", font=lbl_font, fill=MUTED)
+    sx += ig_lbl_w
+    # IG handle purple glow
+    gl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(gl)
+    gd.text((sx, dy), IG_HANDLE, font=h_font, fill=(*PURPLE, 210))
+    gl  = gl.filter(ImageFilter.GaussianBlur(8))
+    img = Image.alpha_composite(img.convert("RGBA"), gl).convert("RGB")
     draw = ImageDraw.Draw(img)
+    draw.text((sx, dy), IG_HANDLE, font=h_font, fill=PURPLE)
+
     dy += 46
 
     # Domain
