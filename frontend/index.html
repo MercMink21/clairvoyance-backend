@@ -266,13 +266,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="sp-home" class="spane act">
   <div class="sa" style="padding:16px">
     <div id="free-pick-banner" style="margin-bottom:16px"></div>
+    <!-- Best bets from remote data.json (written by clairvoyance_update.py) -->
+    <div id="home-best-bets" style="margin-bottom:16px"></div>
     <div class="sh"><span class="p">⚡</span> TODAY'S TOP PICKS</div>
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
     <div class="sh" style="margin-top:20px"><span class="p">📡</span> TONIGHT'S GAMES</div>
     <div id="home-games" style="margin-top:12px;display:grid;gap:10px"></div>
     <div class="sh" style="margin-top:20px"><span class="p">🎯</span> LOCKED PICKS TRACKER</div>
     <div id="home-tracker" style="margin-top:12px;display:grid;gap:8px"></div>
-    <div style="text-align:center;margin-top:24px;color:var(--t3);font-size:10px;letter-spacing:3px">SELECT A SPORT TAB ABOVE FOR FULL ANALYSIS</div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
+      <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json for server auto-settle">⬇ EXPORT BETS</button>
+      <span id="remote-data-ts" style="font-family:var(--mono);font-size:9px;color:var(--t3);align-self:center"></span>
+    </div>
+    <div style="text-align:center;margin-top:16px;color:var(--t3);font-size:10px;letter-spacing:3px">SELECT A SPORT TAB ABOVE FOR FULL ANALYSIS</div>
   </div>
 </div>
 
@@ -2596,6 +2602,8 @@ async function doUpdate(){
   if(st){st.textContent=`✓ SYNCED ${now.slice(0,16)} MST`;st.style.color='var(--nc)';}
   if(btn){btn.textContent='↻ SYNC';btn.style.color='';}
   updateAPIStatus();
+  // Pull latest data.json produced by the update script
+  try{await loadRemoteData(true);}catch(e){console.warn('remote refresh:',e);}
 }
 async function fetchNHLEdge(){
   const SEASON='20252026',GT='3';const BASE='https://api.nhle.com/stats/rest/en';
@@ -4862,6 +4870,174 @@ function renderMorningReport(){
   </div>`;
 }
 
+// ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
+let LAST_AUTO_UPDATE = '';
+window.__CV_DATA = null;
+
+async function loadRemoteData(force=false){
+  const cacheKey='cv_data_ts';
+  const cacheAge=Date.now()-(parseInt(localStorage.getItem(cacheKey)||'0'));
+  if(!force&&cacheAge<4*60*1000&&window.__CV_DATA){return;}
+  try{
+    const r=await fetch(`data.json?${Date.now()}`,{cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    const d=await r.json();
+    window.__CV_DATA=d;
+    localStorage.setItem(cacheKey,String(Date.now()));
+    LAST_AUTO_UPDATE=d.generatedET||d.generated||'';
+    if(d.nba?.today?.length)  patchNBATonight(d.nba.today);
+    if(d.nba?.standings)      patchNBAStandings(d.nba.standings);
+    if(d.nba?.players?.length)window._remoteNBAPlayers=d.nba.players;
+    if(d.mlb?.today?.length)  patchMLBTonight(d.mlb.today);
+    if(d.mlb?.standings)      patchMLBStandings(d.mlb.standings);
+    if(d.nhl?.today?.length)  patchNHLTonight(d.nhl.today);
+    if(d.nhl?.standings)      patchNHLStandings(d.nhl.standings);
+    if(d.mp?.goalies?.length) patchMoneyPuck(d.mp.goalies,d.mp.teams||{});
+    if(d.tennis?.atpElo?.length) patchATPElo(d.tennis.atpElo);
+    if(d.tennis?.wtaElo?.length) patchWTAElo(d.tennis.wtaElo);
+    if(d.tennis?.atpYelo?.length)window._remoteATPYelo=d.tennis.atpYelo;
+    if(d.weather)             patchWeather(d.weather);
+    if(d.bestBets?.length)    renderBestBetsFromRemote(d.bestBets);
+    if(d.settled?.length)     applyServerSettlements(d.settled);
+    if(d.linemate)            patchLinemateProps(d.linemate);
+    const tsEl=document.getElementById('remote-data-ts');
+    if(tsEl)tsEl.textContent=LAST_AUTO_UPDATE?`DATA AS OF ${LAST_AUTO_UPDATE}`:'';
+    console.log('[CV] Remote data:',LAST_AUTO_UPDATE,'NBA:',
+      (d.nba?.today||[]).length,'MLB:',(d.mlb?.today||[]).length,
+      'NHL:',(d.nhl?.today||[]).length);
+  }catch(e){console.warn('[CV] data.json offline:',e.message);}
+}
+
+function patchNBATonight(games){
+  window._remoteNBAGames=games;
+  const live=games.filter(g=>g.state==='in');
+  for(const g of live){
+    const el=document.querySelector(`[data-game-id="${g.id}"] .live-score`);
+    if(el)el.textContent=`${g.awayScore}–${g.homeScore} Q${g.period} ${g.displayClock}`;
+  }
+  try{renderNBAGames();}catch(e){}
+}
+function patchNBAStandings(s){window._remoteNBAStandings=s;}
+function patchMLBTonight(games){
+  window._remoteMLBGames=games;
+  if(!games||!games.length)return;
+  const mapped=games.map(g=>({
+    hA:g.home,awA:g.away,
+    hScore:g.homeScore!==null?parseInt(g.homeScore):null,
+    aScore:g.awayScore!==null?parseInt(g.awayScore):null,
+    status:g.state==='post'?'post':g.state==='in'?'in':'pre',
+    inning:g.period||0,ou:g.ou,
+  }));
+  mapped.forEach(m=>{
+    const idx=ESPN_GAMES.findIndex(e=>e.hA===m.hA&&e.awA===m.awA);
+    if(idx>=0)ESPN_GAMES[idx]={...ESPN_GAMES[idx],...m};
+    else ESPN_GAMES.push(m);
+  });
+  autoSettleFromESPN(ESPN_GAMES);
+  try{renderMLBGames&&renderMLBGames();}catch(e){}
+}
+function patchMLBStandings(standings){
+  window._remoteMLBStandings=standings;
+  for(const[abbr,s]of Object.entries(standings)){
+    const t=TEAMS[abbr]||Object.values(TEAMS).find(t2=>t2.abbr===abbr);
+    if(t&&s.w!==undefined)t.s={...t.s,W:parseInt(s.w)||t.s.W,L:parseInt(s.l)||t.s.L};
+  }
+  try{renderR();}catch(e){}
+}
+function patchNHLTonight(games){
+  window._remoteNHLGames=games;
+  const live=games.filter(g=>!['FUT','PRE'].includes(g.state));
+  if(!live.length)return;
+  for(const g of live){
+    const el=document.querySelector(`[data-nhl-game="${g.home}-${g.away}"] .score`);
+    if(el)el.textContent=`${g.awayScore}–${g.homeScore} P${g.period} ${g.clock}`;
+  }
+  try{renderNHLGames();}catch(e){}
+  try{autoSettleNHL&&autoSettleNHL();}catch(e){}
+}
+function patchNHLStandings(standings){
+  window._remoteNHLStandings=standings;
+  for(const[abbr,s]of Object.entries(standings)){
+    if(NHL[abbr]){NHL[abbr].w=s.w;NHL[abbr].l=s.l;NHL[abbr].otl=s.otl;NHL[abbr].pts=s.pts;}
+  }
+}
+function patchMoneyPuck(goalies,teams){
+  MONEYPUCK.goalies=goalies||[];
+  MONEYPUCK.teams=teams||{};
+  try{const el=document.getElementById('mp-content');if(el&&el.closest('.tab.act'))renderMoneyPuck();}catch(e){}
+}
+function patchATPElo(players){
+  for(const p of players){
+    const m=ATP_DB.find(a=>a.n===p.name);
+    if(m){m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;if(p.rank)m.rank=p.rank;}
+  }
+  window._remoteATPElo=players;
+  try{renderTennisRankings('atp','elo','');}catch(e){}
+}
+function patchWTAElo(players){
+  for(const p of players){
+    const m=WTA_DB.find(a=>a.n===p.name);
+    if(m){m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;if(p.rank)m.rank=p.rank;}
+  }
+  window._remoteWTAElo=players;
+  try{renderTennisRankings('wta','elo','');}catch(e){}
+}
+function patchWeather(weather){
+  window._remoteWeather=weather;
+  try{const el=document.getElementById('mlb-tab-nrfi');if(el&&el.classList.contains('act'))renderNRFI();}catch(e){}
+}
+function renderBestBetsFromRemote(bets){
+  const el=document.getElementById('home-best-bets');
+  if(!el||!bets||!bets.length)return;
+  const gc={LOCK:'var(--nc)',GOOD:'var(--pc)',INFO:'var(--t3)',FAIR:'var(--vc)'};
+  const picks=bets.filter(b=>b.grade!=='INFO');
+  if(!picks.length)return;
+  const ht=picks.map(b=>`
+  <div class="card cp" style="margin-bottom:7px;padding:10px;border-left:2px solid ${gc[b.grade]||'var(--t3)'}">
+    <div style="display:flex;justify-content:space-between;align-items:start">
+      <div>
+        <span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border:1px solid ${gc[b.grade]};color:${gc[b.grade]};border-radius:2px;margin-right:6px">${b.grade}</span>
+        <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${b.sport}</span>
+        <div style="font-family:var(--orb);font-size:12px;font-weight:700;margin-top:3px;color:var(--ic)">${b.pick}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-top:2px">${b.game}</div>
+        ${b.note?`<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">${b.note}</div>`:''}
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:8px">
+        <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--nc)">${b.ml}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${b.prob}%</div>
+        ${b.ev>0?`<div style="font-family:var(--mono);font-size:8px;color:var(--nc)">+${b.ev}% EV</div>`:''}
+      </div>
+    </div>
+  </div>`).join('');
+  el.innerHTML=`<div class="sh" style="margin-bottom:8px"><span class="g">⭐</span> TODAY'S BEST BETS <span id="remote-data-ts" style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-left:8px">${LAST_AUTO_UPDATE?'DATA AS OF '+LAST_AUTO_UPDATE:''}</span></div>${ht}`;
+}
+function applyServerSettlements(settled){
+  if(!settled||!settled.length)return;
+  const preds=getP();let changed=false;
+  for(const sb of settled){
+    const p=preds.find(x=>x.id===sb.id);
+    if(p&&p.outcome==='pending'&&sb.outcome&&sb.outcome!=='pending'){
+      p.outcome=sb.outcome;p.settledAt=sb.settledAt||Date.now();
+      if(sb.hScore!==undefined)p.hScore=sb.hScore;
+      if(sb.aScore!==undefined)p.aScore=sb.aScore;
+      changed=true;
+      toast(`// SERVER-SETTLED: ${p.betOn||p.betType} → ${sb.outcome.toUpperCase()}`);
+    }
+  }
+  if(changed){saveP(preds);updHdr();try{adaptiveTick();}catch(e){}}
+}
+function patchLinemateProps(linemate){
+  window._linematePropCards=linemate;
+  try{const np=document.getElementById('nba-tab-props');if(np&&np.classList.contains('act'))renderNBAProps();}catch(e){}
+  try{const mp=document.getElementById('mlb-tab-props');if(mp&&mp.classList.contains('act'))renderMLBProps('all');}catch(e){}
+}
+function exportLockedProps(){
+  const props=getP();
+  const blob=new Blob([JSON.stringify(props,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='locked_props.json';a.click();
+  toast(`// EXPORTED ${props.length} BETS → locked_props.json — place in data/ for server auto-settle`);
+}
+
 // ═══ INIT ════════════════════════════════════════════════════
 (async function INIT(){
   startSplash();
@@ -4919,6 +5095,10 @@ function renderMorningReport(){
   try{renderHomePage();}catch(e){console.error('renderHomePage',e);}
   try{renderNHLLockedBets();}catch(e){console.error('renderNHLLockedBets',e);}
   try{updateAPIStatus();}catch(e){console.error('updateAPIStatus',e);}
+  // Load remote data.json (written by clairvoyance_update.py)
+  try{await loadRemoteData();}catch(e){console.warn('loadRemoteData',e);}
+  // Auto-refresh remote data every 8 minutes
+  setInterval(()=>{try{loadRemoteData();}catch(e){}},8*60*1000);
 })();
 </script>
 </body>
