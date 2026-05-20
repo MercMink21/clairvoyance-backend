@@ -663,6 +663,151 @@ def fetch_weather(home_team: str) -> dict | None:
     }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Tennis schedule (ESPN — today's matches)
+# ═══════════════════════════════════════════════════════════════════════════════
+def fetch_tennis_schedule() -> list[dict]:
+    """Fetch today's ATP + WTA schedule from ESPN scoreboard API."""
+    matches: list[dict] = []
+    for tour in ("atp", "wta"):
+        try:
+            url = (f"https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}"
+                   f"/scoreboard?dates={TODAY_ET}")
+            data = fetch_json(url)
+            for ev in (data.get("events") or []):
+                comp = (ev.get("competitions") or [{}])[0]
+                players = comp.get("competitors") or []
+                p1  = players[0].get("athlete", {}).get("displayName", "TBD") if players else "TBD"
+                p2  = players[1].get("athlete", {}).get("displayName", "TBD") if len(players) > 1 else "TBD"
+                fl1 = players[0].get("athlete", {}).get("flag", {}).get("href", "") if players else ""
+                fl2 = players[1].get("athlete", {}).get("flag", {}).get("href", "") if len(players) > 1 else ""
+                st  = comp.get("status", {})
+                state = st.get("type", {}).get("state", "pre")
+                sc1 = players[0].get("score", "") if players else ""
+                sc2 = players[1].get("score", "") if len(players) > 1 else ""
+                venue = comp.get("venue", {})
+                matches.append({
+                    "tour":       tour.upper(),
+                    "player1":    p1,
+                    "player2":    p2,
+                    "flag1":      fl1,
+                    "flag2":      fl2,
+                    "state":      state,
+                    "score1":     sc1,
+                    "score2":     sc2,
+                    "statusText": st.get("type", {}).get("shortDetail", ""),
+                    "tournament": venue.get("fullName", ""),
+                    "round":      ev.get("season", {}).get("displayName", ""),
+                    "date":       ev.get("date", ""),
+                    "network":    (comp.get("broadcasts") or [{}])[0].get("names", [None])[0] or "",
+                })
+        except Exception as exc:
+            log(f"Tennis schedule {tour}: {exc}", "WARN")
+    log(f"Tennis schedule: {len(matches)} matches for {TODAY_ISO}")
+    return matches
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Formula 1 (ESPN + Ergast)
+# ═══════════════════════════════════════════════════════════════════════════════
+def fetch_f1() -> dict:
+    """Fetch F1 race schedule, driver standings, and constructor standings."""
+    result: dict = {"schedule": [], "driverStandings": [], "constructorStandings": [], "nextRace": None}
+    year = (NOW - timedelta(hours=5)).year
+
+    # Race schedule from Ergast
+    try:
+        data = fetch_json(f"http://ergast.com/api/f1/{year}.json?limit=25")
+        races = (data.get("MRData", {}).get("RaceTable", {}).get("Races") or [])
+        today_iso = TODAY_ISO  # YYYY-MM-DD
+        for race in races:
+            race_date = race.get("date", "")
+            result["schedule"].append({
+                "round":    int(race.get("round", 0)),
+                "name":     race.get("raceName", ""),
+                "circuit":  race.get("Circuit", {}).get("circuitName", ""),
+                "country":  race.get("Circuit", {}).get("Location", {}).get("country", ""),
+                "date":     race_date,
+                "time":     race.get("time", ""),
+                "past":     race_date < today_iso,
+            })
+            if race_date >= today_iso and result["nextRace"] is None:
+                result["nextRace"] = result["schedule"][-1]
+    except Exception as exc:
+        log(f"F1 schedule (Ergast): {exc}", "WARN")
+
+    # Driver standings
+    try:
+        data = fetch_json(f"http://ergast.com/api/f1/{year}/driverStandings.json")
+        for s in (data.get("MRData", {}).get("StandingsTable", {})
+                      .get("StandingsLists", [{}])[0].get("DriverStandings") or [])[:20]:
+            drv = s.get("Driver", {})
+            ctor = (s.get("Constructors") or [{}])[0]
+            result["driverStandings"].append({
+                "pos":    int(s.get("position", 99)),
+                "name":   f"{drv.get('givenName','')} {drv.get('familyName','')}".strip(),
+                "code":   drv.get("code", ""),
+                "team":   ctor.get("name", ""),
+                "pts":    float(s.get("points", 0)),
+                "wins":   int(s.get("wins", 0)),
+                "nat":    drv.get("nationality", ""),
+            })
+    except Exception as exc:
+        log(f"F1 driver standings (Ergast): {exc}", "WARN")
+
+    # Constructor standings
+    try:
+        data = fetch_json(f"http://ergast.com/api/f1/{year}/constructorStandings.json")
+        for s in (data.get("MRData", {}).get("StandingsTable", {})
+                      .get("StandingsLists", [{}])[0].get("ConstructorStandings") or [])[:10]:
+            ctor = s.get("Constructor", {})
+            result["constructorStandings"].append({
+                "pos":  int(s.get("position", 99)),
+                "name": ctor.get("name", ""),
+                "pts":  float(s.get("points", 0)),
+                "wins": int(s.get("wins", 0)),
+            })
+    except Exception as exc:
+        log(f"F1 constructor standings (Ergast): {exc}", "WARN")
+
+    log(f"F1: {len(result['schedule'])} races | {len(result['driverStandings'])} drivers | next: {result['nextRace'] and result['nextRace']['name']}")
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Linemate cheatsheet (recent-form — Playwright optional)
+# ═══════════════════════════════════════════════════════════════════════════════
+def fetch_linemate_cheatsheet(sport: str) -> list[dict]:
+    """Scrape Linemate recent-form cheatsheet for prop trend context."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return []
+    url = f"https://linemate.io/{sport}/cheatsheets/recent-form"
+    items: list[dict] = []
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
+            ctx = browser.new_context(user_agent=HEADERS["User-Agent"],
+                                      viewport={"width": 1280, "height": 900})
+            page = ctx.new_page()
+            page.goto(url, wait_until="networkidle", timeout=45_000)
+            page.wait_for_timeout(3_000)
+            for sel in ["[class*='Row']", "[class*='row']", "table tr", "li", "article"]:
+                rows = page.query_selector_all(sel)
+                if len(rows) > 3:
+                    for row in rows[:80]:
+                        txt = row.inner_text().strip()
+                        if len(txt) > 8:
+                            items.append({"raw": txt, "sport": sport.upper(), "src": "Linemate/form"})
+                    break
+            browser.close()
+        log(f"Linemate cheatsheet {sport}: {len(items)} rows")
+    except Exception as exc:
+        log(f"Linemate cheatsheet {sport}: {exc}", "WARN")
+    return items
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Linemate props (Playwright — optional)
 # ═══════════════════════════════════════════════════════════════════════════════
 def fetch_linemate_props(sport: str) -> list[dict]:
@@ -1028,7 +1173,7 @@ def main() -> None:
     parser.add_argument("--push",        action="store_true", help="Commit + push to GitHub")
     parser.add_argument("--dry-run",     action="store_true", help="Fetch only, skip writes")
     parser.add_argument("--no-linemate", action="store_true", help="Skip Linemate (no Playwright)")
-    parser.add_argument("--sport",       choices=["nba","mlb","nhl","tennis","all"], default="all")
+    parser.add_argument("--sport",       choices=["nba","mlb","nhl","tennis","f1","all"], default="all")
     parser.add_argument("--verbose","-v",action="store_true")
     args = parser.parse_args()
     _verbose = args.verbose
@@ -1048,10 +1193,12 @@ def main() -> None:
     nhl_standings          = fetch_nhl_standings()     if args.sport in ("nhl","all") else {}
     nhl_edge               = fetch_nhl_edge()          if args.sport in ("nhl","all") else {}
     mp                     = fetch_moneypuck()         if args.sport in ("nhl","all") else {}
-    atp_elo                = fetch_tennis_elo("atp")   if args.sport in ("tennis","all") else []
-    wta_elo                = fetch_tennis_elo("wta")   if args.sport in ("tennis","all") else []
-    atp_yelo               = fetch_tennis_yelo("atp")  if args.sport in ("tennis","all") else []
-    wta_yelo               = fetch_tennis_yelo("wta")  if args.sport in ("tennis","all") else []
+    atp_elo                = fetch_tennis_elo("atp")      if args.sport in ("tennis","all") else []
+    wta_elo                = fetch_tennis_elo("wta")      if args.sport in ("tennis","all") else []
+    atp_yelo               = fetch_tennis_yelo("atp")     if args.sport in ("tennis","all") else []
+    wta_yelo               = fetch_tennis_yelo("wta")     if args.sport in ("tennis","all") else []
+    tennis_schedule        = fetch_tennis_schedule()      if args.sport in ("tennis","all") else []
+    f1_data                = fetch_f1()                   if args.sport in ("f1","all") else {}
 
     # Weather for MLB home teams
     weather: dict = {}
@@ -1065,12 +1212,15 @@ def main() -> None:
                     weather[home] = w
                 time.sleep(0.3)   # rate-limit Open-Meteo
 
-    # Linemate props (optional, requires Playwright)
+    # Linemate props + cheatsheets (optional, requires Playwright)
     lm_props: dict = {"nba": [], "mlb": [], "nhl": []}
+    lm_cheatsheets: dict = {"nba": [], "mlb": [], "nhl": []}
     if not args.no_linemate:
         for sport in ["nba", "mlb", "nhl"]:
             if args.sport in (sport, "all"):
                 lm_props[sport] = fetch_linemate_props(sport)
+                time.sleep(1)
+                lm_cheatsheets[sport] = fetch_linemate_cheatsheet(sport)
                 time.sleep(2)
 
     # ── calculate ─────────────────────────────────────────────────────────────
@@ -1101,12 +1251,16 @@ def main() -> None:
         "mp":      mp,
         "weather": weather,
         "tennis": {
-            "atpElo":   atp_elo[:100],
-            "wtaElo":   wta_elo[:100],
-            "atpYelo":  atp_yelo[:100],
-            "wtaYelo":  wta_yelo[:100],
+            "atpElo":    atp_elo[:100],
+            "wtaElo":    wta_elo[:100],
+            "atpYelo":   atp_yelo[:100],
+            "wtaYelo":   wta_yelo[:100],
+            "schedule":  tennis_schedule,
+            "scheduleDate": TODAY_ISO,
         },
-        "linemate":  lm_props,
+        "f1": f1_data,
+        "linemate":      lm_props,
+        "linemateForm":  lm_cheatsheets,
         "bestBets":  best_bets,
         "settled":   settled,
     }
