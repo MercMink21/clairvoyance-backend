@@ -39,7 +39,7 @@ except ImportError:
 # ── paths & config ────────────────────────────────────────────────────────────
 ROOT     = Path(__file__).parent.parent
 FE       = ROOT / "frontend" / "index.html"
-DOCS_IDX = ROOT / "docs"    / "index.html"
+DOCS_IDX = ROOT / "docs"    / "app.html"   # SPA lives at /app.html; / is the landing page
 FE_DATA  = ROOT / "frontend" / "data.json"
 DC_DATA  = ROOT / "docs"    / "data.json"
 DATA     = ROOT / "data"
@@ -1384,7 +1384,8 @@ def git_push(summary: str = "") -> bool:
     try:
         subprocess.run(["git","-C",str(ROOT),"add",
             "docs/data.json","frontend/data.json",
-            "docs/index.html","frontend/index.html",
+            "docs/app.html","frontend/index.html",
+            "docs/index.html","docs/CNAME",
             "docs/bet_history.csv","data/bet_history.json",
             "docs/live_data.json","frontend/live_data.json",
             "docs/card.png","frontend/card.png",
