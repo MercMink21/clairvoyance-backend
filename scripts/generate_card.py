@@ -557,7 +557,7 @@ def _render_footer(draw: ImageDraw.ImageDraw) -> None:
     f_xs = _font(10)
     _sep_line(draw, H - 82)
     draw.text((68, H - 66), "CLAIRVOYANCE ENGINE", font=f_sm, fill=PURPLE)
-    handle = "@clairvoyancesports"
+    handle = "@ClairvoyanceEng"
     draw.text((W - 68 - _tw(draw, handle, f_sm), H - 66), handle, font=f_sm, fill=CYAN)
     draw.text((68, H - 42),
               "Model outputs are probabilistic projections, not financial advice.",
