@@ -1122,6 +1122,24 @@ def main() -> None:
     write_data_json(bundle)
     patch_html_timestamp()
 
+    # ── generate social content ───────────────────────────────────────────────
+    try:
+        from content_generator import generate_content, write_social_copy
+        from generate_card import generate_card
+        social = generate_content(bundle, verbose=_verbose)
+        if social:
+            write_social_copy(social)
+            note("social_copy.json written")
+            # Generate card image
+            img = generate_card(bundle, social)
+            fe_card = ROOT / "frontend" / "card.png"
+            dc_card = ROOT / "docs"     / "card.png"
+            img.save(str(fe_card), format="PNG", optimize=True)
+            img.save(str(dc_card), format="PNG", optimize=True)
+            note(f"card.png written ({fe_card.stat().st_size//1024} KB)")
+    except Exception as exc:
+        log(f"Content generation skipped: {exc}", "WARN")
+
     # ── git push ──────────────────────────────────────────────────────────────
     if args.push:
         summary_lines = [
