@@ -82,11 +82,15 @@ NOW        = datetime.now(timezone.utc)
 try:
     import zoneinfo
     _MT = zoneinfo.ZoneInfo("America/Denver")
+    _ET = zoneinfo.ZoneInfo("America/New_York")
     NOW_MT = datetime.now(_MT)
+    NOW_ET = datetime.now(_ET)
 except Exception:
     NOW_MT = NOW - timedelta(hours=6)
+    NOW_ET = NOW - timedelta(hours=4)
 
 TODAY_MT   = NOW_MT.strftime("%Y%m%d")
+TODAY_ET   = NOW_ET.strftime("%Y%m%d")   # MLB uses Eastern Time for scheduling
 TODAY_ISO  = NOW_MT.strftime("%Y-%m-%d")
 TS_DISPLAY = NOW_MT.strftime("%Y-%m-%d %H:%M MT")
 
@@ -231,8 +235,9 @@ def fetch_espn_injuries(sport_path: str, sport_key: str) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # MLB
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_mlb_scoreboard(date: str = TODAY_MT) -> tuple[list, list]:
-    log(f"MLB scoreboard {date}…")
+def fetch_mlb_scoreboard(date: str = TODAY_ET) -> tuple[list, list]:
+    """Fetch MLB scoreboard. Uses Eastern Time date since MLB schedules games in ET."""
+    log(f"MLB scoreboard {date} (ET)…")
     data = fetch_json(f"{ESPN_BASE}/baseball/mlb/scoreboard?dates={date}&limit=30")
     if not data: return [], []
     games = [_espn_game(e, "MLB") for e in (data.get("events") or [])]
@@ -267,11 +272,11 @@ def fetch_mlb_standings() -> dict:
     return out
 
 def fetch_mlb_schedule_week() -> list[dict]:
-    """Fetch MLB schedule for next 7 days."""
+    """Fetch MLB schedule for next 7 days (using Eastern Time base)."""
     log("MLB week schedule…")
     games: list[dict] = []
     for offset in range(7):
-        d = (NOW_MT + timedelta(days=offset)).strftime("%Y%m%d")
+        d = (NOW_ET + timedelta(days=offset)).strftime("%Y%m%d")
         data = fetch_json(f"{ESPN_BASE}/baseball/mlb/scoreboard?dates={d}&limit=30")
         for e in (data or {}).get("events") or []:
             g = _espn_game(e, "MLB")
@@ -1191,6 +1196,7 @@ def _confidence(prob: float, ev_pct: float, extra_signals: int = 0) -> int:
 def calculate_best_bets(
     nba_today: list, mlb_today: list, nhl_today: list,
     weather: dict, mp: dict | None = None, nhl_edge: dict | None = None,
+    nhl_props: list | None = None, nhl_trends: list | None = None,
 ) -> list[dict]:
     log("Calculating best bets…")
     picks: list[dict] = []
@@ -1346,9 +1352,62 @@ def calculate_best_bets(
                     "note":f"Line: {home} {hml} / {away} {aml}","date":TODAY_ISO,
                 })
 
+    # ── NHL Player Props (from Linemate trends) ──────────────────────────────
+    if nhl_trends:
+        for trend in nhl_trends:
+            player    = trend.get("player", "")
+            category  = trend.get("category", "")
+            direction = trend.get("direction", "neutral")
+            l5_str    = trend.get("l5", "")
+            l10_str   = trend.get("l10", "")
+            if not player or not category:
+                continue
+            # Parse "X/Y" hit-rate strings
+            def _parse_rate(s):
+                m = re.match(r"(\d+)/(\d+)", s or "")
+                return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+            l5_hit, l5_tot  = _parse_rate(l5_str)
+            l10_hit, l10_tot = _parse_rate(l10_str)
+            # Score: require at least 4/5 or 7/10 hit rate to qualify
+            strong_l5  = l5_tot >= 5  and l5_hit / l5_tot  >= 0.80
+            strong_l10 = l10_tot >= 8 and l10_hit / l10_tot >= 0.70
+            if not (strong_l5 or strong_l10):
+                continue
+            hit_rate   = (l5_hit / l5_tot) if l5_tot else (l10_hit / l10_tot if l10_tot else 0.5)
+            bet_dir    = ("OVER" if direction in ("hot","up") else
+                          "UNDER" if direction in ("cold","down") else
+                          ("OVER" if hit_rate >= 0.8 else "UNDER"))
+            grade      = "LOCK" if (strong_l5 and l5_hit == l5_tot) else "GOOD" if strong_l5 else "INFO"
+            # Build note with trend streaks
+            note_parts = []
+            if l5_str:  note_parts.append(f"L5: {l5_str}")
+            if l10_str: note_parts.append(f"L10: {l10_str}")
+            if trend.get("lineMove"): note_parts.append(f"Line: {trend['lineMove']}")
+            trend_note = "  ".join(note_parts) if note_parts else "Linemate trend"
+            # Estimated prob from hit rate (regress to the mean slightly)
+            prop_prob = max(0.52, min(0.85, hit_rate * 0.88 + 0.10))
+            picks.append({
+                "sport":      "NHL",
+                "game":       player,
+                "pick":       f"{bet_dir} {category}",
+                "prob":       round(prop_prob * 100, 1),
+                "ev":         round((prop_prob * 1.909 - 1) * 100, 1),  # assume -110
+                "evGrade":    _ev_grade(round((prop_prob * 1.909 - 1) * 100, 1)),
+                "confidence": _confidence(prop_prob, round((prop_prob * 1.909 - 1) * 100, 1), 1),
+                "ml":         "-110",
+                "grade":      grade,
+                "note":       trend_note,
+                "date":       TODAY_ISO,
+                "betType":    "PROP",
+                "propPlayer": player,
+                "propStat":   category,
+                "propDir":    bet_dir,
+                "propHitRate": f"{l5_hit}/{l5_tot}" if l5_tot else f"{l10_hit}/{l10_tot}",
+            })
+
     grade_order = {"LOCK":0,"GOOD":1,"INFO":2}
     picks.sort(key=lambda p: (grade_order.get(p["grade"],9), -p.get("confidence",0)))
-    top = picks[:15]
+    top = picks[:20]   # bumped cap to 20 to include room for props
     (DATA / "best_bets.json").write_text(json.dumps(top, indent=2))
     log(f"Best bets: {len(top)} picks | top EV grade: {top[0]['evGrade'] if top else '—'}")
     return top
@@ -1630,7 +1689,7 @@ def main() -> None:
         return
 
     # ── full fetch phase ─────────────────────────────────────────────────────
-    mlb_today, mlb_tom   = fetch_mlb_scoreboard()         if S in ("mlb","all") else ([],[])
+    mlb_today, mlb_tom   = fetch_mlb_scoreboard(TODAY_ET)  if S in ("mlb","all") else ([],[])
     mlb_standings        = fetch_mlb_standings()          if S in ("mlb","all") else {}
     mlb_week             = fetch_mlb_schedule_week()      if S in ("mlb","all") else []
     mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
@@ -1690,7 +1749,11 @@ def main() -> None:
     injuries    = fetch_injuries_all()
 
     # Best bets + auto-settle
-    best_bets = calculate_best_bets(nba_today, mlb_today, nhl_today, weather, mp, nhl_edge)
+    best_bets = calculate_best_bets(
+        nba_today, mlb_today, nhl_today, weather, mp, nhl_edge,
+        nhl_props=lm_props.get("nhl", []),
+        nhl_trends=lm_trends.get("nhl", []),
+    )
     settled   = auto_settle(
         nba_today + nba_tom,
         mlb_today + mlb_tom,
@@ -1731,6 +1794,9 @@ def main() -> None:
             "edge":      nhl_edge,
             "hockeyviz": hockeyviz,
             "hockeyRef": hockey_ref,
+            "props":     lm_props.get("nhl", []),
+            "trends":    lm_trends.get("nhl", []),
+            "form":      lm_form.get("nhl", []),
         },
         "mp":      mp,
         "weather": weather,
