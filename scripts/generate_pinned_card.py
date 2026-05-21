@@ -20,10 +20,10 @@ except ImportError:
     from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT         = Path(__file__).parent.parent
-OUT_FE       = ROOT / "frontend" / "pinned_card.png"
-OUT_DOC      = ROOT / "docs"     / "pinned_card.png"
-OUT_FE_LIGHT = ROOT / "frontend" / "pinned_card_light.png"
-OUT_DOC_LIGHT= ROOT / "docs"     / "pinned_card_light.png"
+OUT_FE       = ROOT / "frontend" / "pinned_card_carbon.png"
+OUT_DOC      = ROOT / "docs"     / "pinned_card_carbon.png"
+OUT_FE_LIGHT = ROOT / "frontend" / "pinned_card_whitecarbon.png"
+OUT_DOC_LIGHT= ROOT / "docs"     / "pinned_card_whitecarbon.png"
 
 W = H = 1080
 
