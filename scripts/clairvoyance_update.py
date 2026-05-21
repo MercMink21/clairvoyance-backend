@@ -38,8 +38,8 @@ except ImportError:
 
 # ── paths & config ────────────────────────────────────────────────────────────
 ROOT     = Path(__file__).parent.parent
-FE       = ROOT / "frontend" / "index.html"   # SPA — local only, never pushed to docs/
-FE_DATA  = ROOT / "frontend" / "data.json"    # engine data stays in frontend/ only
+FE       = ROOT / "docs" / "index.html"       # Engine SPA — served at github.io/clairvoyance-backend/
+FE_DATA  = ROOT / "docs" / "data.json"        # Engine data pushed to docs/ → github.io
 DATA     = ROOT / "data"
 LOGS     = ROOT / "logs"
 
@@ -1487,10 +1487,13 @@ def build_overall_stats(history: list[dict]) -> dict:
 def write_data_json(bundle: dict) -> None:
     payload = json.dumps(bundle, indent=2)
     FE_DATA.write_text(payload)
-    note(f"data.json written ({len(payload)//1024} KB) → frontend/ (engine data stays private)")
+    # Also mirror to frontend/ for local dev
+    fe_mirror = ROOT / "frontend" / "data.json"
+    fe_mirror.write_text(payload)
+    note(f"data.json written ({len(payload)//1024} KB) → docs/ (github.io) + frontend/ (local)")
 
 def patch_html_timestamp() -> None:
-    # Only patch the local SPA — docs/ is the public landing page, engine stays private
+    # Patch the engine SPA in docs/ — served at mercmink21.github.io/clairvoyance-backend/
     if not FE.exists(): return
     html   = FE.read_text(encoding="utf-8")
     ts_pat = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
@@ -1508,21 +1511,18 @@ def patch_html_timestamp() -> None:
 def git_push(summary: str = "") -> bool:
     try:
         subprocess.run(["git","-C",str(ROOT),"add",
-            # engine data — frontend/ only, never pushed to docs/
+            # engine SPA + data — served at mercmink21.github.io/clairvoyance-backend/
+            "docs/index.html",
+            "docs/data.json",
+            "docs/live_data.json",
+            "docs/card.png",
+            "docs/social_copy.json",
+            # persistent records
+            "data/bet_history.json",
+            # local frontend mirror (not pushed to Pages but kept in sync)
             "frontend/data.json",
             "frontend/index.html",
             "frontend/live_data.json",
-            "frontend/card.png",
-            "frontend/social_copy.json",
-            # persistent records
-            "data/bet_history.json",
-            # public domain — landing page assets only
-            "docs/index.html",
-            "docs/landing.html",
-            "docs/CNAME",
-            "docs/card.png",
-            "docs/pinned_card.png",
-            "docs/clairvoyance-logo.svg",
         ], capture_output=True, check=False)
         diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
                               capture_output=True)
@@ -1541,7 +1541,7 @@ def git_push(summary: str = "") -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
     log("=== LIVE WINDOW MODE STARTED ===")
-    live_data_fe   = ROOT / "frontend" / "live_data.json"   # engine stays private
+    live_data_fe   = ROOT / "docs" / "live_data.json"        # served at github.io
 
     while True:
         try:
@@ -1573,7 +1573,7 @@ def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
 
             if push:
                 subprocess.run(["git","-C",str(ROOT),"add",
-                    "frontend/live_data.json"], capture_output=True)
+                    "docs/live_data.json"], capture_output=True)
                 diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
                                       capture_output=True)
                 if diff.returncode != 0:
