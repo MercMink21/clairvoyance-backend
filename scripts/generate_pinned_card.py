@@ -26,7 +26,7 @@ OUT_DOC = ROOT / "docs"     / "pinned_card.png"
 W = H = 1080
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-BG       = (10,   8,  20)
+BG       = (14,  14,  14)
 PURPLE   = (192,  48, 240)
 PURPLE_D = ( 80,  18, 110)
 CYAN     = ( 48, 208, 240)
@@ -104,11 +104,11 @@ def _draw_bg(img: Image.Image) -> None:
             px = (tx % CW) / (CW - 1) if CW > 1 else 0
             py = (ty % CH) / (CH - 1) if CH > 1 else 0
             t  = py if (cx + cy) % 2 == 0 else px
-            r  = int(10 + 18 * t)
-            g  = int( 8 + 12 * t)
-            b  = int(20 + 30 * t)
-            if py < 0.12: r, g, b = r + 5, g + 3, b + 8
-            pix[tx, ty] = (min(r, 42), min(g, 30), min(b, 64))
+            r  = int(16 + 26 * t)                    # neutral charcoal — no purple tint
+            g  = int(16 + 26 * t)
+            b  = int(17 + 26 * t)                    # barely-cool so fibers stay crisp
+            if py < 0.12: r, g, b = r + 8, g + 8, b + 8
+            pix[tx, ty] = (min(r, 52), min(g, 52), min(b, 54))
     for y in range(0, H, TH):
         for x in range(0, W, TW):
             img.paste(tile, (x, y))
@@ -319,7 +319,7 @@ def generate() -> Image.Image:
     draw.text((dx, dy), DOMAIN, font=dom_font, fill=CYAN_D)
 
     # ── Footer bar ────────────────────────────────────────────────────────────
-    draw.rectangle([(0, H - 60), (W, H)], fill=(6, 4, 14))
+    draw.rectangle([(0, H - 60), (W, H)], fill=(8, 8, 8))
     foot_font = _font(18, bold=True)
     draw.text((72, H - 38), "CLAIRVOYANCE ENGINE", font=foot_font, fill=MUTED)
     disc_font = _font(16)

@@ -34,7 +34,7 @@ X_HANDLE  = "@ClairvoyanceEng"
 IG_HANDLE = "@clairvoyanceengine"
 
 # ── Brand palette (Clairvoyance logo) ─────────────────────────────────────────
-BG       = (10,   8,  20)
+BG       = (14,  14,  14)
 PURPLE   = (192,  48, 240)
 PURPLE_D = ( 80,  18, 110)
 CYAN     = ( 48, 208, 240)
@@ -103,12 +103,12 @@ def _draw_carbon_fiber(img: Image.Image) -> None:
             px = (tx % CW) / (CW - 1) if CW > 1 else 0
             py = (ty % CH) / (CH - 1) if CH > 1 else 0
             t = py if (cx + cy) % 2 == 0 else px   # fiber direction alternates
-            r = int(10 + 18 * t)
-            g = int( 8 + 12 * t)
-            b = int(20 + 30 * t)
+            r = int(16 + 26 * t)                     # neutral charcoal — no purple tint
+            g = int(16 + 26 * t)
+            b = int(17 + 26 * t)                     # barely-cool so fibers stay crisp
             if py < 0.12:                            # specular leading edge
-                r, g, b = r + 5, g + 3, b + 8
-            pix[tx, ty] = (min(r, 42), min(g, 30), min(b, 64))
+                r, g, b = r + 8, g + 8, b + 8
+            pix[tx, ty] = (min(r, 52), min(g, 52), min(b, 54))
 
     for y in range(0, H, TILE_H):
         for x in range(0, W, TILE_W):
