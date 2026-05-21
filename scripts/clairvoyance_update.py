@@ -38,10 +38,8 @@ except ImportError:
 
 # ── paths & config ────────────────────────────────────────────────────────────
 ROOT     = Path(__file__).parent.parent
-FE       = ROOT / "frontend" / "index.html"
-DOCS_IDX = ROOT / "docs"    / "app.html"   # SPA lives at /app.html; / is the landing page
-FE_DATA  = ROOT / "frontend" / "data.json"
-DC_DATA  = ROOT / "docs"    / "data.json"
+FE       = ROOT / "frontend" / "index.html"   # SPA — local only, never pushed to docs/
+FE_DATA  = ROOT / "frontend" / "data.json"    # engine data stays in frontend/ only
 DATA     = ROOT / "data"
 LOGS     = ROOT / "logs"
 
@@ -75,7 +73,8 @@ REF_HEADERS = {          # Sports-Reference sites want a real browser UA
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 NHL_API   = "https://api-web.nhle.com/v1"
 NHL_STATS = "https://api.nhle.com/stats/rest/en"
-MP_BASE   = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2024/regular"
+MP_BASE_REG     = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2025/regular"
+MP_BASE_PLAYOFF = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2024/playoff"  # fallback
 SEASON    = "20252026"
 YEAR      = 2026
 
@@ -423,6 +422,49 @@ def fetch_basketball_reference() -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 # NHL
 # ═══════════════════════════════════════════════════════════════════════════════
+def _fetch_nhl_game_odds(event_id: str) -> dict:
+    """Fetch NHL game odds from ESPN Core API (returns ML, puck line, O/U)."""
+    try:
+        url  = (f"http://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl"
+                f"/events/{event_id}/competitions/{event_id}/odds")
+        data = fetch_json(url, timeout=10)
+        items = (data or {}).get("items", [])
+        if not items: return {}
+        ref = items[0].get("$ref", "")
+        if not ref: return {}
+        o = fetch_json(ref, timeout=10) or {}
+        home = o.get("homeTeamOdds", {})
+        away = o.get("awayTeamOdds", {})
+        return {
+            "homeML":      home.get("moneyLine"),
+            "awayML":      away.get("moneyLine"),
+            "ou":          o.get("overUnder"),
+            "spread":      o.get("spread"),
+            "homePL":      home.get("spreadOdds"),   # puck line odds
+            "awayPL":      away.get("spreadOdds"),
+            "details":     o.get("details", ""),
+            "provider":    o.get("provider", {}).get("name", ""),
+        }
+    except Exception as exc:
+        vlog(f"NHL odds {event_id}: {exc}")
+        return {}
+
+def _espn_nhl_event_ids(date: str) -> dict[str, str]:
+    """Return {home_abbr: event_id} for NHL games on a given date (YYYYMMDD)."""
+    try:
+        data = fetch_json(
+            f"https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl"
+            f"/events?dates={date}&limit=20"
+        )
+        ids: dict[str, str] = {}
+        for item in (data or {}).get("items", []):
+            ref = item.get("$ref", "")
+            eid = ref.split("/events/")[-1].split("?")[0] if "/events/" in ref else ""
+            if eid: ids[eid] = eid   # we'll resolve home team after fetching
+        return ids
+    except Exception:
+        return {}
+
 def fetch_nhl_schedule(date: str = TODAY_ISO) -> tuple[list, list]:
     log(f"NHL schedule {date}…")
     data = fetch_json(f"{NHL_API}/schedule/{date}")
@@ -455,6 +497,28 @@ def fetch_nhl_schedule(date: str = TODAY_ISO) -> tuple[list, list]:
     week = data.get("gameWeek") or []
     today_games    = parse_games(week[0] if week else {})
     tomorrow_games = parse_games(week[1] if len(week) > 1 else {})
+
+    # Enrich today's games with odds from ESPN Core API
+    today_str = date.replace("-", "")
+    event_ids = _espn_nhl_event_ids(today_str)
+    if event_ids and today_games:
+        # Map event IDs to games by fetching each event
+        for eid in list(event_ids.keys())[:len(today_games)]:
+            odds = _fetch_nhl_game_odds(eid)
+            if not odds: continue
+            # Match by the "details" field which has "HOME -175" style text
+            detail = odds.get("details", "")
+            fav_abbr = detail.split()[0] if detail else ""
+            for g in today_games:
+                if g.get("homeML") is not None: continue   # already has odds
+                if fav_abbr in (g.get("home",""), g.get("away","")):
+                    g.update(odds); break
+            else:
+                # Fallback: attach to first game without odds
+                for g in today_games:
+                    if g.get("homeML") is None:
+                        g.update(odds); break
+
     vlog(f"  NHL: {len(today_games)} today, {len(tomorrow_games)} tomorrow")
     return today_games, tomorrow_games
 
@@ -555,8 +619,8 @@ def fetch_moneypuck() -> dict:
     log("MoneyPuck stats…")
     out: dict = {"teams": {}, "goalies": [], "skaters": []}
 
-    # Teams CSV
-    rows = fetch_csv_rows(f"{MP_BASE}/teams.csv")
+    # Teams CSV — current regular season (playoff CSV not published mid-season)
+    rows = fetch_csv_rows(f"{MP_BASE_REG}/teams.csv")
     for row in rows:
         situation = row.get("situation","")
         team = row.get("team","")
@@ -581,7 +645,7 @@ def fetch_moneypuck() -> dict:
             pass
 
     # Goalies CSV
-    rows_g = fetch_csv_rows(f"{MP_BASE}/goalies.csv")
+    rows_g = fetch_csv_rows(f"{MP_BASE_REG}/goalies.csv")
     for row in rows_g:
         try:
             out["goalies"].append({
@@ -1199,26 +1263,88 @@ def calculate_best_bets(
             add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
                 "LOCK" if aprob>0.70 else "GOOD")
 
-    # NHL moneylines — with MoneyPuck xGF boost
+    # NHL — moneyline + puck line + O/U (pre-game and live)
     mp_teams = (mp or {}).get("teams",{}) if mp else {}
+    nhl_edge_teams = (nhl_edge or {}).get("teams",{}) if nhl_edge else {}
     for g in nhl_today:
-        if g.get("state") not in ("FUT","PRE"): continue
+        if g.get("state") not in ("FUT","PRE","LIVE","CRIT"): continue
         hml, aml    = g.get("homeML"), g.get("awayML")
         home, away  = g.get("home",""), g.get("away","")
         game_str    = f"{away} @ {home}"
+        series_note = g.get("seriesStatus","") or g.get("details","")
+        is_live     = g.get("state") in ("LIVE","CRIT")
+        live_tag    = " [LIVE]" if is_live else ""
+
+        # MoneyPuck 5v5 xGF% → model win probability (home-adjusted)
+        home_xgf_raw = float((mp_teams.get(home,{}).get("5on5") or {}).get("xgfPct") or 0.50)
+        away_xgf_raw = float((mp_teams.get(away,{}).get("5on5") or {}).get("xgfPct") or 0.50)
+        # Normalize so they sum to 1, then apply small home-ice bump (+3%)
+        total_xgf   = home_xgf_raw + away_xgf_raw if (home_xgf_raw + away_xgf_raw) > 0 else 1
+        model_home  = min(0.80, max(0.20, home_xgf_raw / total_xgf + 0.03))
+        model_away  = 1.0 - model_home
+        xgf_edge    = 1 if abs(home_xgf_raw - away_xgf_raw) > 0.04 else 0
+        xgf_note    = (f"xGF%: {home} {home_xgf_raw*100:.1f} / {away} {away_xgf_raw*100:.1f}"
+                       f"  model: {model_home*100:.1f}% / {model_away*100:.1f}%")
+
+        # Market-implied probs
         hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
-        # MP xGF boost
-        home_mp = mp_teams.get(home,{}).get("5on5",{})
-        away_mp = mp_teams.get(away,{}).get("5on5",{})
-        home_xgf = float(home_mp.get("xgfPct") or 0.5)
-        away_xgf = float(away_mp.get("xgfPct") or 0.5)
-        extra = 1 if abs(home_xgf - away_xgf) > 5 else 0
-        if hprob and hprob > 0.60:
-            add("NHL", game_str, f"{home} ML {hml}", hprob, hml or -120, "GOOD",
-                note=g.get("seriesStatus",""), extra_signals=extra)
-        elif aprob and aprob > 0.60:
-            add("NHL", game_str, f"{away} ML {aml}", aprob, aml or -120, "GOOD",
-                note=g.get("seriesStatus",""), extra_signals=extra)
+
+        # ── Moneyline — pick side with highest positive EV ───────────────
+        h_ev = _ev(model_home, _ml_to_dec(hml)) * 100 if hml else -99
+        a_ev = _ev(model_away, _ml_to_dec(aml)) * 100 if aml else -99
+        if h_ev > a_ev and h_ev > 1.0:
+            grade = "LOCK" if h_ev > 8 else "GOOD" if h_ev > 4 else "INFO"
+            add("NHL", game_str, f"{home} ML {hml}{live_tag}",
+                model_home, hml, grade,
+                note=f"{series_note}  {xgf_note}".strip(), extra_signals=xgf_edge)
+        elif a_ev > 1.0:
+            grade = "LOCK" if a_ev > 8 else "GOOD" if a_ev > 4 else "INFO"
+            add("NHL", game_str, f"{away} ML {aml}{live_tag}",
+                model_away, aml, grade,
+                note=f"{series_note}  {xgf_note}".strip(), extra_signals=xgf_edge)
+
+        # ── Puck Line ────────────────────────────────────────────────────
+        hpl_odds = g.get("homePL")   # e.g. +142 for COL -1.5
+        apl_odds = g.get("awayPL")   # e.g. -170 for VGK +1.5
+        spread   = g.get("spread")   # e.g. -1.5 (home favored)
+        if spread is not None and hprob:
+            # Underdog puck line (+1.5) is worth flagging when favourite is heavy
+            if apl_odds and _ml_to_prob(-abs(int(apl_odds or 110))) and hprob > 0.60:
+                apl_prob = _ml_to_prob(-abs(int(apl_odds)))
+                add("NHL", game_str, f"{away} +1.5 ({apl_odds}){live_tag}",
+                    apl_prob or 0.55, int(apl_odds or -170), "GOOD",
+                    note=f"Puck line · {series_note}".strip(), extra_signals=xgf_edge)
+            # Favourite -1.5 only if very strong
+            if hpl_odds and hprob > 0.68:
+                add("NHL", game_str, f"{home} -1.5 ({hpl_odds}){live_tag}",
+                    0.45, int(hpl_odds or 140), "INFO",
+                    note=f"Puck line · {series_note}".strip())
+
+        # ── Over / Under ─────────────────────────────────────────────────
+        ou = g.get("ou")
+        if ou:
+            # Pull goalie save% from MoneyPuck to tilt O/U
+            mp_goalies = (mp or {}).get("goalies",[])
+            def best_goalie_sv(team):
+                gl = [g2 for g2 in mp_goalies if g2.get("team") == team]
+                return max((g2.get("savePct",0) for g2 in gl), default=0)
+            h_sv = best_goalie_sv(home)
+            a_sv = best_goalie_sv(away)
+            avg_sv = (h_sv + a_sv) / 2 if (h_sv and a_sv) else 0
+            # High combined save% → lean UNDER
+            if avg_sv > 0.915:
+                add("NHL", game_str, f"UNDER {ou}{live_tag}", 0.56, -115, "GOOD",
+                    note=f"Goalie SV%: {home} {h_sv:.3f} / {away} {a_sv:.3f}")
+            elif avg_sv < 0.900 and avg_sv > 0:
+                add("NHL", game_str, f"OVER {ou}{live_tag}", 0.54, -115, "INFO",
+                    note=f"Goalie SV%: {home} {h_sv:.3f} / {away} {a_sv:.3f}")
+            else:
+                picks.append({
+                    "sport":"NHL","game":game_str,"pick":f"O/U {ou}{live_tag}",
+                    "prob":52.0,"ev":0.0,"evGrade":"D","confidence":52,
+                    "ml":"-110","grade":"INFO",
+                    "note":f"Line: {home} {hml} / {away} {aml}","date":TODAY_ISO,
+                })
 
     grade_order = {"LOCK":0,"GOOD":1,"INFO":2}
     picks.sort(key=lambda p: (grade_order.get(p["grade"],9), -p.get("confidence",0)))
@@ -1361,20 +1487,19 @@ def build_overall_stats(history: list[dict]) -> dict:
 def write_data_json(bundle: dict) -> None:
     payload = json.dumps(bundle, indent=2)
     FE_DATA.write_text(payload)
-    DC_DATA.write_text(payload)
-    note(f"data.json written ({len(payload)//1024} KB) → frontend/ + docs/")
+    note(f"data.json written ({len(payload)//1024} KB) → frontend/ (engine data stays private)")
 
 def patch_html_timestamp() -> None:
-    for html_file in (FE, DOCS_IDX):
-        if not html_file.exists(): continue
-        html     = html_file.read_text(encoding="utf-8")
-        ts_pat   = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
-        if re.search(ts_pat, html):
-            html = re.sub(ts_pat, rf"\g<1>{TS_DISPLAY}\g<3>", html)
-        else:
-            html = html.replace("<script>",
-                f'<script>\nconst LAST_AUTO_UPDATE = "{TS_DISPLAY}";\n', 1)
-        html_file.write_text(html, encoding="utf-8")
+    # Only patch the local SPA — docs/ is the public landing page, engine stays private
+    if not FE.exists(): return
+    html   = FE.read_text(encoding="utf-8")
+    ts_pat = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
+    if re.search(ts_pat, html):
+        html = re.sub(ts_pat, rf"\g<1>{TS_DISPLAY}\g<3>", html)
+    else:
+        html = html.replace("<script>",
+            f'<script>\nconst LAST_AUTO_UPDATE = "{TS_DISPLAY}";\n', 1)
+    FE.write_text(html, encoding="utf-8")
     vlog(f"HTML timestamp patched → {TS_DISPLAY}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1383,13 +1508,21 @@ def patch_html_timestamp() -> None:
 def git_push(summary: str = "") -> bool:
     try:
         subprocess.run(["git","-C",str(ROOT),"add",
-            "docs/data.json","frontend/data.json",
-            "docs/app.html","frontend/index.html",
-            "docs/index.html","docs/CNAME",
-            "docs/bet_history.csv","data/bet_history.json",
-            "docs/live_data.json","frontend/live_data.json",
-            "docs/card.png","frontend/card.png",
-            "docs/social_copy.json","frontend/social_copy.json",
+            # engine data — frontend/ only, never pushed to docs/
+            "frontend/data.json",
+            "frontend/index.html",
+            "frontend/live_data.json",
+            "frontend/card.png",
+            "frontend/social_copy.json",
+            # persistent records
+            "data/bet_history.json",
+            # public domain — landing page assets only
+            "docs/index.html",
+            "docs/landing.html",
+            "docs/CNAME",
+            "docs/card.png",
+            "docs/pinned_card.png",
+            "docs/clairvoyance-logo.svg",
         ], capture_output=True, check=False)
         diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
                               capture_output=True)
@@ -1408,8 +1541,7 @@ def git_push(summary: str = "") -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
     log("=== LIVE WINDOW MODE STARTED ===")
-    live_data_fe   = ROOT / "frontend" / "live_data.json"
-    live_data_docs = ROOT / "docs"     / "live_data.json"
+    live_data_fe   = ROOT / "frontend" / "live_data.json"   # engine stays private
 
     while True:
         try:
@@ -1437,12 +1569,11 @@ def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
                 "nbaAll":      nba_t,
                 "nhlAll":      nhl_t,
             }
-            for p in (live_data_fe, live_data_docs):
-                p.write_text(json.dumps(live_bundle, indent=2))
+            live_data_fe.write_text(json.dumps(live_bundle, indent=2))
 
             if push:
                 subprocess.run(["git","-C",str(ROOT),"add",
-                    "docs/live_data.json","frontend/live_data.json"], capture_output=True)
+                    "frontend/live_data.json"], capture_output=True)
                 diff = subprocess.run(["git","-C",str(ROOT),"diff","--cached","--quiet"],
                                       capture_output=True)
                 if diff.returncode != 0:
