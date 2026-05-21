@@ -19,9 +19,11 @@ except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "Pillow"], check=True)
     from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-ROOT    = Path(__file__).parent.parent
-OUT_FE  = ROOT / "frontend" / "pinned_card.png"
-OUT_DOC = ROOT / "docs"     / "pinned_card.png"
+ROOT         = Path(__file__).parent.parent
+OUT_FE       = ROOT / "frontend" / "pinned_card.png"
+OUT_DOC      = ROOT / "docs"     / "pinned_card.png"
+OUT_FE_LIGHT = ROOT / "frontend" / "pinned_card_light.png"
+OUT_DOC_LIGHT= ROOT / "docs"     / "pinned_card_light.png"
 
 W = H = 1080
 
@@ -98,17 +100,30 @@ def _draw_bg(img: Image.Image) -> None:
     TW, TH = CW * 2, CH * 2
     tile = Image.new("RGB", (TW, TH))
     pix  = tile.load()
+    # Detect light vs dark mode from BG brightness
+    _light_mode = (BG[0] > 128)
     for ty in range(TH):
         for tx in range(TW):
             cx = tx // CW; cy = ty // CH
             px = (tx % CW) / (CW - 1) if CW > 1 else 0
             py = (ty % CH) / (CH - 1) if CH > 1 else 0
             t  = py if (cx + cy) % 2 == 0 else px
-            r  = int(16 + 26 * t)                    # neutral charcoal — no purple tint
-            g  = int(16 + 26 * t)
-            b  = int(17 + 26 * t)                    # barely-cool so fibers stay crisp
-            if py < 0.12: r, g, b = r + 8, g + 8, b + 8
-            pix[tx, ty] = (min(r, 52), min(g, 52), min(b, 54))
+            if _light_mode:
+                # White/grey charcoal — light fiber, charcoal grooves
+                r = int(200 + 32 * t)
+                g = int(200 + 32 * t)
+                b = int(202 + 30 * t)
+                hi = 10
+                cap = 242
+            else:
+                # Black/grey charcoal — dark fiber, bright specular
+                r = int(16 + 26 * t)
+                g = int(16 + 26 * t)
+                b = int(17 + 26 * t)
+                hi = 8
+                cap = 54
+            if py < 0.12: r, g, b = r + hi, g + hi, b + hi
+            pix[tx, ty] = (min(r, cap), min(g, cap), min(b, cap))
     for y in range(0, H, TH):
         for x in range(0, W, TW):
             img.paste(tile, (x, y))
@@ -319,7 +334,8 @@ def generate() -> Image.Image:
     draw.text((dx, dy), DOMAIN, font=dom_font, fill=CYAN_D)
 
     # ── Footer bar ────────────────────────────────────────────────────────────
-    draw.rectangle([(0, H - 60), (W, H)], fill=(8, 8, 8))
+    _footer_fill = (200, 200, 204) if BG[0] > 128 else (8, 8, 8)
+    draw.rectangle([(0, H - 60), (W, H)], fill=_footer_fill)
     foot_font = _font(18, bold=True)
     draw.text((72, H - 38), "CLAIRVOYANCE ENGINE", font=foot_font, fill=MUTED)
     disc_font = _font(16)
@@ -330,9 +346,34 @@ def generate() -> Image.Image:
 
 
 if __name__ == "__main__":
-    print("Generating pinned post card…")
-    img = generate()
+    # ── Dark variant (default) ────────────────────────────────────────────────
+    print("Generating pinned post card — dark (black/grey charcoal)…")
+    img_dark = generate()
     for path in (OUT_FE, OUT_DOC):
-        img.save(str(path), format="PNG", optimize=True)
+        img_dark.save(str(path), format="PNG", optimize=True)
         print(f"  Saved → {path}")
-    print("Done.")
+
+    # ── Light variant ─────────────────────────────────────────────────────────
+    print("Generating pinned post card — light (white/grey charcoal)…")
+    _LIGHT = {
+        "BG":       (235, 235, 235),
+        "PURPLE":   (160,  20, 210),
+        "PURPLE_D": (100,  10, 150),
+        "CYAN":     ( 10, 150, 180),
+        "CYAN_D":   (  8,  90, 120),
+        "TEXT":     ( 30,  24,  46),
+        "MUTED":    ( 90,  80, 115),
+        "DIM":      (140, 130, 160),
+        "SEP":      (180, 172, 200),
+    }
+    # Temporarily swap palette globals → generate → restore
+    import builtins
+    _orig = {k: globals()[k] for k in _LIGHT}
+    globals().update(_LIGHT)
+    img_light = generate()
+    globals().update(_orig)
+    for path in (OUT_FE_LIGHT, OUT_DOC_LIGHT):
+        img_light.save(str(path), format="PNG", optimize=True)
+        print(f"  Saved → {path}")
+
+    print("Done — both variants saved.")
