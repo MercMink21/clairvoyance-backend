@@ -1301,6 +1301,7 @@ function ml2d(ml){const m=parseFloat(ml);return m>0?m/100+1:100/Math.abs(m)+1}
 function ev(p,d){return+(p*d-1).toFixed(4)}
 function tier(p,e){if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;}
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'⭐ ELITE'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// LOCK'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
+function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
 function today(){const d=new Date();return d.toISOString().slice(0,10)}
 function tomorrow(){const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)}
@@ -2429,19 +2430,26 @@ function renderNHLGamesOffline(){
   for(const g of TONIGHT){
     const h=NHL[g.h],aw=NHL[g.a];if(!h||!aw)continue;
     const ens=nhlEns(g.h,g.a);const hP=ens.p,aP=1-ens.p;
+    const hD=ml2d(g.hL||p2ml(hP)),aD=ml2d(g.aL||p2ml(aP));
+    const hEV=+(ev(hP,hD)*100).toFixed(1),aEV=+(ev(aP,aD)*100).toFixed(1);
+    const topEV=hEV>=aEV?{pct:hEV,team:g.h}:{pct:aEV,team:g.a};
+    const eg=evGrd(topEV.pct);
     html+=`<div class="card ci" style="margin-bottom:8px;padding:11px">
-      <div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:2px;color:var(--ic);margin-bottom:4px">${g.h} vs ${g.a}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:2px;color:var(--ic)">${g.h} vs ${g.a}</div>
+        ${topEV.pct>1?`<span style="font-family:var(--mono);font-size:7px;padding:1px 5px;border:1px solid ${eg.col};color:${eg.col};border-radius:2px">${eg.lbl}</span>`:''}
+      </div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--t2)">GAME ${g.gn} · ${g.ctx} · ${g.time} ${g.net}</div>
       <div style="display:flex;gap:8px;margin-top:7px">
         <div style="flex:1;text-align:center;background:rgba(0,229,255,.07);border:1px solid rgba(0,229,255,.2);border-radius:2px;padding:6px">
           <div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc)">${g.h}</div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--t)">${(hP*100).toFixed(1)}%</div>
-          <div style="font-size:9px;color:var(--t3)">${p2ml(hP)}</div>
+          <div style="font-size:9px;color:${hEV>0?'var(--nc)':'var(--t3)'}">${p2ml(hP)} · EV ${hEV>0?'+':''}${hEV}%</div>
         </div>
         <div style="flex:1;text-align:center;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.2);border-radius:2px;padding:6px">
           <div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--pc)">${g.a}</div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--t)">${(aP*100).toFixed(1)}%</div>
-          <div style="font-size:9px;color:var(--t3)">${p2ml(aP)}</div>
+          <div style="font-size:9px;color:${aEV>0?'var(--nc)':'var(--t3)'}">${p2ml(aP)} · EV ${aEV>0?'+':''}${aEV}%</div>
         </div>
       </div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:5px">O/U ${g.ou} · ${g.h} ${g.hL>0?'+':''}${g.hL} · ${g.a} ${g.aL>0?'+':''}${g.aL}</div>
@@ -2578,6 +2586,7 @@ async function updLive(){
       const pkn=PARK_NOTES[g.hA];
       const ens=!final?mlbEns(g.hA,g.awA,g):{p:null};
       const ev2=ens.p&&g.hML?+(ens.p*(g.hML>0?g.hML/100+1:100/Math.abs(g.hML)+1)-1).toFixed(3):null;
+      const eg=ev2!==null?evGrd(ev2*100):null;
       return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${col}">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div><div style="font-size:13px;font-weight:700">${g.awA} @ ${g.hA}</div>
@@ -2587,7 +2596,7 @@ async function updLive(){
             ${proj&&!final?`<div style="font-family:var(--mono);font-size:9px;color:var(--ic);margin-top:3px">PROJ: ${g.hA} <strong>${proj.hProj}</strong> – ${g.awA} <strong>${proj.aProj}</strong> · TOT: <strong>${proj.total}</strong></div>`:''}
             ${proj&&g.ou&&!final?`<div style="font-family:var(--mono);font-size:8px;color:${proj.total>parseFloat(g.ou)?'var(--hc)':'var(--nc)'}">O/U ${g.ou} → ${proj.total>parseFloat(g.ou)?'OVER LEAN':'UNDER LEAN'}</div>`:''}
             ${pkn?`<div style="font-family:var(--mono);font-size:8px;color:var(--mc);margin-top:1px">${pkn.note}</div>`:''}
-            ${ens.p&&!final?`<div style="font-family:var(--mono);font-size:9px;color:${ens.p>=.55?'var(--nc)':'var(--t3)'};margin-top:2px">MODEL: ${g.hA} ${(ens.p*100).toFixed(0)}%${ev2!==null?' · EV: '+(ev2>=0?'+':'')+((ev2*100).toFixed(1))+'%':''}</div>`:''}
+            ${ens.p&&!final?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px"><span style="font-family:var(--mono);font-size:9px;color:${ens.p>=.55?'var(--nc)':'var(--t3)'}">MODEL: ${g.hA} ${(ens.p*100).toFixed(0)}%${ev2!==null?' · EV: '+(ev2>=0?'+':'')+((ev2*100).toFixed(1))+'%':''}</span>${eg&&ev2>0?`<span style="font-family:var(--mono);font-size:7px;padding:1px 4px;border:1px solid ${eg.col};color:${eg.col};border-radius:2px">${eg.lbl}</span>`:''}</div>`:''}
           </div>
           <div style="text-align:right;min-width:80px">
             <div style="font-size:${live||final?'20':'14'}px;font-weight:900;font-family:var(--orb)">${live||final?g.aScore+' – '+g.hScore:g.ou?'O/U '+g.ou:''}</div>
@@ -3237,19 +3246,32 @@ async function renderNBAGames(){
     const r=await fetch(url,{mode:'cors',cache:'no-cache'});const d=await r.json();
     const events=d.events||[];
     if(!events.length){el.innerHTML='<div class="empty">NO NBA GAMES TODAY</div>';return;}
-    el.innerHTML=events.map(ev=>{
-      const c=ev.competitions?.[0];if(!c)return '';
+    el.innerHTML=events.map(espnEv=>{
+      const c=espnEv.competitions?.[0];if(!c)return '';
       const h=c.competitors?.find(t=>t.homeAway==='home'),a=c.competitors?.find(t=>t.homeAway==='away');
       const hn=h?.team?.abbreviation||'HOM',an=a?.team?.abbreviation||'AWY';
       const hs=h?.score||'',as=a?.score||'';
       const st=c.status?.type?.description||'Scheduled';
       const live=c.status?.type?.state==='in';
+      const pre=c.status?.type?.state==='pre';
+      // Model probability via nbaEns if team data exists
+      let modelLine='';
+      try{
+        const ens=nbaEns(hn,an);
+        if(ens&&ens.p&&pre){
+          const hML=p2ml(ens.p),hD=ml2d(hML),hEV=+(ev(ens.p,hD)*100).toFixed(1);
+          const aML=p2ml(1-ens.p),aD=ml2d(aML),aEV=+(ev(1-ens.p,aD)*100).toFixed(1);
+          const top=ens.p>=.5?{t:hn,p:ens.p,eV:hEV}:{t:an,p:1-ens.p,eV:aEV};
+          const eg=evGrd(top.eV);
+          modelLine=`<div style="display:flex;align-items:center;gap:5px;margin-top:4px"><span style="font-family:var(--mono);font-size:9px;color:${top.eV>0?'var(--nc)':'var(--t3)'}">MODEL: ${top.t} ${(top.p*100).toFixed(0)}%${top.eV>0?' · EV +'+top.eV+'%':''}</span>${top.eV>1?`<span style="font-family:var(--mono);font-size:7px;padding:1px 4px;border:1px solid ${eg.col};color:${eg.col};border-radius:2px">${eg.lbl}</span>`:''}</div>`;
+        }
+      }catch(e){}
       return `<div class="card" style="margin-bottom:8px;border-left:2px solid ${live?'var(--vc)':'var(--t3)'}">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-family:var(--orb);font-size:16px;font-weight:700">${hn} ${hs}</span>
           <span style="font-family:var(--mono);font-size:9px;color:${live?'var(--vc)':'var(--t3)'}">${st}</span>
           <span style="font-family:var(--orb);font-size:16px;font-weight:700">${as} ${an}</span>
-        </div></div>`;
+        </div>${modelLine}</div>`;
     }).join('');
   }catch(e){el.innerHTML='<div class="empty">ESPN UNAVAILABLE — CHECK CONNECTION</div>';}
 }
@@ -3278,7 +3300,7 @@ function renderNBAPicks(){
     const c={ELITE:'chip-g',LOCK:'chip-p',LEAN:'chip-n',SKIP:'chip-h'}[grade];
     return {g,fav,favT,conf:+conf.toFixed(1),eV,grade,c,hS,aS};
   });
-  el.innerHTML=picks.map(p=>`<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:var(--orb);font-size:15px;font-weight:900;color:var(--nc)">${p.g.h} vs ${p.g.a}</div><span class="${p.c}" style="font-size:8px">${p.grade}</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-bottom:6px">${p.g.ctx} · ${p.g.time}</div><div style="font-family:var(--mono);font-size:11px;color:var(--vc);margin-bottom:4px">▶ LEAN: ${p.fav} ML | CONF: ${p.conf}% | EV: ${p.eV>0?'+':''}${(p.eV*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">SCORE GAP: ${Math.abs(p.hS-p.aS)} pts | ${p.favT.star||''} matchup advantage</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-top:3px">${p.favT.note||''}</div></div>`).join('')||'<div class="empty">NO NBA GAMES TODAY</div>';
+  el.innerHTML=picks.map(p=>{const eg=evGrd(p.eV*100);return`<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:var(--orb);font-size:15px;font-weight:900;color:var(--nc)">${p.g.h} vs ${p.g.a}</div><div style="display:flex;align-items:center;gap:4px"><span class="${p.c}" style="font-size:8px">${p.grade}</span>${p.eV>0.01?`<span style="font-family:var(--mono);font-size:7px;padding:1px 4px;border:1px solid ${eg.col};color:${eg.col};border-radius:2px">${eg.lbl}</span>`:''}</div></div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-bottom:6px">${p.g.ctx} · ${p.g.time}</div><div style="font-family:var(--mono);font-size:11px;color:var(--vc);margin-bottom:4px">▶ LEAN: ${p.fav} ML | CONF: ${p.conf}% | EV: ${p.eV>0?'+':''}${(p.eV*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">SCORE GAP: ${Math.abs(p.hS-p.aS)} pts | ${p.favT.star||''} matchup advantage</div><div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-top:3px">${p.favT.note||''}</div></div>`}).join('')||'<div class="empty">NO NBA GAMES TODAY</div>';
 }
 // ── NBA PROPS: Real lines from Linemate/Covers/SBDime (May 19 2026, CLE@NY ECF G1) ──
 const NBA_PROPS_DATA=[
@@ -5545,28 +5567,41 @@ function renderBestBetsFromRemote(bets){
   const el=document.getElementById('home-best-bets');
   if(!el||!bets||!bets.length)return;
   const gc={LOCK:'var(--nc)',GOOD:'var(--pc)',INFO:'var(--t3)',FAIR:'var(--vc)'};
+  const egc={'A+':'var(--gc)','A':'var(--nc)','B':'var(--pc)','C':'var(--t2)','D':'var(--t3)'};
   const todayStr=today();
-  // Filter to only show today's picks and non-INFO grade
-  const picks=bets.filter(b=>b.grade!=='INFO'&&(!b.date||b.date===todayStr));
-  if(!picks.length){el.innerHTML=`<div class="sh" style="margin-bottom:8px"><span class="g">⭐</span> TODAY'S BEST BETS</div><div class="empty">NO BEST BETS FOR TODAY — CHECK BACK AFTER DATA REFRESH</div>`;return;}
-  const ht=picks.map(b=>`
-  <div class="card cp" style="margin-bottom:7px;padding:10px;border-left:2px solid ${gc[b.grade]||'var(--t3)'}">
+  // Show only picks where the confidence interval encourages placing a bet:
+  // confidence >= 58 AND LOCK or GOOD grade only
+  const picks=bets.filter(b=>
+    b.grade!=='INFO'&&
+    (b.confidence==null||b.confidence>=58)&&
+    (!b.date||b.date===todayStr)
+  );
+  if(!picks.length){el.innerHTML=`<div class="sh" style="margin-bottom:8px"><span class="p">⚡</span> TODAY'S TOP PICKS</div><div class="empty">NO HIGH-CONFIDENCE PICKS FOR TODAY — CHECK BACK AFTER DATA REFRESH</div>`;return;}
+  const ht=picks.map(b=>{
+    const gradeCol=gc[b.grade]||'var(--t3)';
+    const evCol=egc[b.evGrade]||'var(--t3)';
+    return`<div class="card cp" style="margin-bottom:7px;padding:10px;border-left:2px solid ${gradeCol}">
     <div style="display:flex;justify-content:space-between;align-items:start">
-      <div>
-        <span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border:1px solid ${gc[b.grade]};color:${gc[b.grade]};border-radius:2px;margin-right:6px">${b.grade}</span>
-        <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${b.sport}</span>
-        <div style="font-family:var(--orb);font-size:12px;font-weight:700;margin-top:3px;color:var(--ic)">${b.pick}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border:1px solid ${gradeCol};color:${gradeCol};border-radius:2px">${b.grade}</span>
+          ${b.evGrade?`<span style="font-family:var(--mono);font-size:8px;padding:1px 5px;border:1px solid ${evCol};color:${evCol};border-radius:2px">EV ${b.evGrade}</span>`:''}
+          <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${b.sport}</span>
+          ${b.confidence!=null?`<span style="font-family:var(--mono);font-size:8px;color:var(--t3)">CONF ${b.confidence}%</span>`:''}
+        </div>
+        <div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--ic);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.pick}</div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-top:2px">${b.game}</div>
         ${b.note?`<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">${b.note}</div>`:''}
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:8px">
         <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--nc)">${b.ml}</div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${b.prob}%</div>
-        ${b.ev>0?`<div style="font-family:var(--mono);font-size:8px;color:var(--nc)">+${b.ev}% EV</div>`:''}
+        ${b.ev>0?`<div style="font-family:var(--mono);font-size:9px;color:${evCol};font-weight:700">+${b.ev}% EV</div>`:''}
       </div>
     </div>
-  </div>`).join('');
-  el.innerHTML=`<div class="sh" style="margin-bottom:8px"><span class="g">⭐</span> TODAY'S BEST BETS <span id="remote-data-ts" style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-left:8px">${LAST_AUTO_UPDATE?'DATA AS OF '+LAST_AUTO_UPDATE:''}</span></div>${ht}`;
+  </div>`;
+  }).join('');
+  el.innerHTML=`<div class="sh" style="margin-bottom:8px"><span class="p">⚡</span> TODAY'S TOP PICKS <span id="remote-data-ts" style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-left:8px">${LAST_AUTO_UPDATE?'DATA AS OF '+LAST_AUTO_UPDATE:''}</span></div>${ht}`;
 }
 function applyServerSettlements(settled){
   if(!settled||!settled.length)return;

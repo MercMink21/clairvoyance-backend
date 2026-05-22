@@ -107,6 +107,17 @@ def vlog(msg: str) -> None:
 def note(msg: str) -> None:
     _changes.append(msg); log(msg)
 
+def _notify(title: str, msg: str) -> None:
+    """macOS system notification via osascript."""
+    try:
+        subprocess.run(
+            ["osascript", "-e",
+             f'display notification "{msg}" with title "Clairvoyance ⚡ {title}" sound name "Glass"'],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass  # non-macOS or osascript unavailable — silent fail
+
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 _session = requests.Session()
 _session.headers.update(HEADERS)
@@ -309,6 +320,172 @@ def fetch_baseball_reference() -> dict:
             log(f"Baseball Ref {key}: {exc}", "WARN")
     return result
 
+def fetch_mlb_team_sabermetrics() -> dict:
+    """
+    Fetch team-level sabermetrics from Baseball Reference 2026 team batting/pitching.
+    Returns dict keyed by team abbreviation with wOBA, ISO, FIP, ERA-.
+    """
+    log("MLB team sabermetrics…")
+    result: dict = {}
+    try:
+        # Team batting — OPS+, ISO, wOBA proxy
+        time.sleep(2)
+        soup = fetch_html("https://www.baseball-reference.com/leagues/majors/2026-standard-batting.shtml",
+                          timeout=25, ref=True)
+        if soup:
+            tbl = soup.find("table", {"id": "teams_standard_batting"})
+            if tbl:
+                for tr in tbl.find_all("tr")[1:]:
+                    cells = tr.find_all(["th","td"])
+                    if len(cells) < 18: continue
+                    tm = cells[0].get_text(strip=True)
+                    if tm in ("","Tm","LgAvg","--"): continue
+                    try:
+                        ops_plus = float(cells[15].get_text(strip=True) or 100)
+                    except: ops_plus = 100.0
+                    try:
+                        iso = float(cells[17].get_text(strip=True) or 0.15)
+                    except: iso = 0.15
+                    result[tm] = result.get(tm, {})
+                    result[tm].update({"ops_plus": ops_plus, "iso": iso})
+    except Exception as exc:
+        log(f"MLB team batting sabermetrics: {exc}", "WARN")
+    try:
+        # Team pitching — FIP, ERA-
+        time.sleep(2)
+        soup = fetch_html("https://www.baseball-reference.com/leagues/majors/2026-standard-pitching.shtml",
+                          timeout=25, ref=True)
+        if soup:
+            tbl = soup.find("table", {"id": "teams_standard_pitching"})
+            if tbl:
+                for tr in tbl.find_all("tr")[1:]:
+                    cells = tr.find_all(["th","td"])
+                    if len(cells) < 20: continue
+                    tm = cells[0].get_text(strip=True)
+                    if tm in ("","Tm","LgAvg","--"): continue
+                    try:
+                        fip = float(cells[18].get_text(strip=True) or 4.20)
+                    except: fip = 4.20
+                    try:
+                        era_minus = float(cells[19].get_text(strip=True) or 100)
+                    except: era_minus = 100.0
+                    result[tm] = result.get(tm, {})
+                    result[tm].update({"fip": fip, "era_minus": era_minus})
+    except Exception as exc:
+        log(f"MLB team pitching sabermetrics: {exc}", "WARN")
+    log(f"MLB team sabermetrics: {len(result)} teams")
+    return result
+
+
+def fetch_nba_team_advanced() -> dict:
+    """
+    Fetch team-level NBA playoff advanced stats from Basketball Reference.
+    Returns dict keyed by team abbreviation with ortg, drtg, pace, efg_pct, ts_pct.
+    Used for probability adjustment in calculate_best_bets.
+    """
+    log("NBA team advanced stats…")
+    result: dict = {}
+    # BBRef abbreviation → ESPN abbreviation mapping (common playoff teams 2026)
+    ABBR_MAP = {
+        "NYK":"NY","CLE":"CLE","OKC":"OKC","SAS":"SA","BOS":"BOS","MIA":"MIA",
+        "MIN":"MIN","DEN":"DEN","GSW":"GS","PHX":"PHX","LAL":"LAL","LAC":"LAC",
+        "MIL":"MIL","PHI":"PHI","TOR":"TOR","CHI":"CHI","ATL":"ATL","MEM":"MEM",
+    }
+    try:
+        time.sleep(2)
+        soup = fetch_html(
+            "https://www.basketball-reference.com/playoffs/NBA_2026.html",
+            timeout=25, ref=True
+        )
+        if not soup:
+            return result
+        # Team misc stats table: team_misc
+        tbl = soup.find("table", {"id": "misc_stats"})
+        if not tbl:
+            # Sometimes embedded in HTML comments
+            from bs4 import Comment
+            for cmt in soup.find_all(string=lambda t: isinstance(t, Comment)):
+                if "misc_stats" in cmt:
+                    frag = BeautifulSoup(cmt, "lxml")
+                    tbl = frag.find("table", {"id": "misc_stats"})
+                    if tbl: break
+        if tbl:
+            headers = [th.get("data-stat","") for th in tbl.find_all("th") if th.get("data-stat")]
+            for tr in tbl.find_all("tr"):
+                cells = {td.get("data-stat",""): td.get_text(strip=True)
+                         for td in tr.find_all(["td","th"])}
+                tm = cells.get("team_id","").upper()
+                if not tm or tm in ("TEAM","",): continue
+                espn_abbr = ABBR_MAP.get(tm, tm)
+                try:
+                    ortg = float(cells.get("off_rtg","") or 0)
+                    drtg = float(cells.get("def_rtg","") or 0)
+                    pace = float(cells.get("pace","") or 0)
+                    efg  = float(cells.get("efg_pct","") or 0)
+                    ts   = float(cells.get("ts_pct","") or 0)
+                    if ortg > 0:
+                        result[espn_abbr] = {
+                            "ortg": ortg, "drtg": drtg, "pace": pace,
+                            "efg_pct": efg, "ts_pct": ts,
+                            "net_rtg": ortg - drtg,
+                        }
+                except (ValueError, TypeError):
+                    continue
+    except Exception as exc:
+        log(f"NBA team advanced: {exc}", "WARN")
+    log(f"NBA team advanced: {len(result)} teams")
+    return result
+
+
+def fetch_best_odds(sport: str, game_list: list) -> dict:
+    """
+    Fetch best available moneyline odds from The Odds API (free tier).
+    Falls back to ESPN odds already in game_list if no API key.
+    Returns dict keyed by 'home_abbr:away_abbr' → {homeML, awayML, book}.
+    """
+    api_key = os.environ.get("ODDS_API_KEY", "")
+    best: dict = {}
+    if not api_key:
+        # No Odds API key — use ESPN lines already in game_list
+        for g in game_list:
+            key = f"{g.get('home','')}:{g.get('away','')}"
+            best[key] = {"homeML": g.get("homeML"), "awayML": g.get("awayML"), "book": "ESPN"}
+        return best
+    sport_key = {"mlb": "baseball_mlb", "nba": "basketball_nba",
+                 "nhl": "icehockey_nhl"}.get(sport, "")
+    if not sport_key:
+        return best
+    try:
+        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+        data = fetch_json(url, params={
+            "apiKey": api_key, "regions": "us", "markets": "h2h",
+            "oddsFormat": "american", "dateFormat": "iso",
+        }) or []
+        for event in data:
+            teams = event.get("teams") or []
+            if len(teams) < 2: continue
+            home_t, away_t = teams[0], teams[1]
+            # Match to ESPN abbreviation by partial name match
+            key = f"{home_t}:{away_t}"
+            best_home, best_away = None, None
+            for bk in (event.get("bookmakers") or []):
+                for market in (bk.get("markets") or []):
+                    if market.get("key") != "h2h": continue
+                    for outcome in (market.get("outcomes") or []):
+                        p = outcome.get("price", 0)
+                        if outcome.get("name") == home_t:
+                            if best_home is None or p > best_home:
+                                best_home = p
+                        elif outcome.get("name") == away_t:
+                            if best_away is None or p > best_away:
+                                best_away = p
+            if best_home or best_away:
+                best[key] = {"homeML": best_home, "awayML": best_away, "book": "best"}
+    except Exception as exc:
+        log(f"Best odds fetch ({sport}): {exc}", "WARN")
+    return best
+
+
 def fetch_mlb_nrfi_data(mlb_today: list) -> list[dict]:
     """Build NRFI entries from today's MLB game list + any weather data."""
     return [
@@ -321,8 +498,9 @@ def fetch_mlb_nrfi_data(mlb_today: list) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # NBA
 # ═══════════════════════════════════════════════════════════════════════════════
-def fetch_nba_scoreboard(date: str = TODAY_MT) -> tuple[list, list]:
-    log(f"NBA scoreboard {date}…")
+def fetch_nba_scoreboard(date: str = TODAY_ET) -> tuple[list, list]:
+    """Fetch NBA scoreboard. Uses Eastern Time date since NBA game times are listed in ET."""
+    log(f"NBA scoreboard {date} (ET)…")
     data = fetch_json(f"{ESPN_BASE}/basketball/nba/scoreboard?dates={date}&limit=20")
     if not data: return [], []
     games    = [_espn_game(e, "NBA") for e in (data.get("events") or [])]
@@ -1197,6 +1375,8 @@ def calculate_best_bets(
     nba_today: list, mlb_today: list, nhl_today: list,
     weather: dict, mp: dict | None = None, nhl_edge: dict | None = None,
     nhl_props: list | None = None, nhl_trends: list | None = None,
+    mlb_sabre: dict | None = None, best_odds: dict | None = None,
+    nba_adv: dict | None = None,
 ) -> list[dict]:
     log("Calculating best bets…")
     picks: list[dict] = []
@@ -1220,36 +1400,108 @@ def calculate_best_bets(
             "date":       TODAY_ISO,
         })
 
+    # NBA advanced stats helper
+    _nba_adv = nba_adv or {}
+
+    def _nba_net_rtg_adj(home: str, away: str) -> tuple[float, str]:
+        """
+        Return (home_prob_adj, note) from net rating differential.
+        Net Rating gap of 10 pts → ~4% win probability swing.
+        """
+        ht = _nba_adv.get(home, {}); at = _nba_adv.get(away, {})
+        if not ht or not at: return 0.0, ""
+        h_net = ht.get("net_rtg", 0.0)
+        a_net = at.get("net_rtg", 0.0)
+        diff  = h_net - a_net
+        adj   = diff * 0.004       # 10pt gap → +4% for home
+        parts = []
+        if abs(adj) > 0.005:
+            parts.append(f"NetRtg: {home} {h_net:+.1f} / {away} {a_net:+.1f}")
+        h_efg = ht.get("efg_pct", 0); a_efg = at.get("efg_pct", 0)
+        efg_adj = (h_efg - a_efg) * 0.5  # 2% eFG gap → ~1% prob swing
+        if abs(efg_adj) > 0.005:
+            adj += efg_adj
+            parts.append(f"eFG%: {home} {h_efg*100:.1f} / {away} {a_efg*100:.1f}")
+        return adj, "  ".join(parts)
+
     # NBA moneylines
     for g in nba_today:
         if g.get("state") != "pre": continue
         hml, aml  = g.get("homeML"), g.get("awayML")
-        hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
+        hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
         home, away = g.get("home",""), g.get("away","")
         game_str   = f"{away} @ {home}"
+        adv_adj, adv_note = _nba_net_rtg_adj(home, away)
+        extra_sig  = 1 if adv_note else 0
+        hprob = max(0.05, min(0.95, hprob_raw + adv_adj)) if hprob_raw else None
+        aprob = max(0.05, min(0.95, aprob_raw - adv_adj)) if aprob_raw else None
         if hprob and hprob > 0.62:
             add("NBA", game_str, f"{home} ML {hml}", hprob, hml,
-                "LOCK" if hprob>0.67 else "GOOD", note=g.get("seriesNote",""))
+                "LOCK" if hprob>0.67 else "GOOD",
+                note=(g.get("seriesNote","") + ("  " + adv_note if adv_note else "")).strip(),
+                extra_signals=extra_sig)
         elif aprob and aprob > 0.62:
             add("NBA", game_str, f"{away} ML {aml}", aprob, aml,
-                "LOCK" if aprob>0.67 else "GOOD", note=g.get("seriesNote",""))
+                "LOCK" if aprob>0.67 else "GOOD",
+                note=(g.get("seriesNote","") + ("  " + adv_note if adv_note else "")).strip(),
+                extra_signals=extra_sig)
         # O/U info
         ou = g.get("ou")
         if ou and hml and aml:
+            # Pace-adjusted O/U lean
+            h_pace = _nba_adv.get(home, {}).get("pace", 0)
+            a_pace = _nba_adv.get(away, {}).get("pace", 0)
+            avg_pace = (h_pace + a_pace) / 2 if h_pace and a_pace else 0
+            pace_note = f"Pace: {home} {h_pace:.1f} / {away} {a_pace:.1f}" if avg_pace else ""
             picks.append({
                 "sport":"NBA","game":game_str,"pick":f"O/U {ou}","prob":52.0,
                 "ev":0.0,"evGrade":"D","confidence":52,"ml":"-110","grade":"INFO",
-                "note":f"Line: {home} {hml} / {away} {aml}","date":TODAY_ISO,
+                "note":f"Line: {home} {hml} / {away} {aml}" + (f"  {pace_note}" if pace_note else ""),
+                "date":TODAY_ISO,
             })
 
-    # MLB — wind-adjusted O/U + ML favorites
+    # ── MLB sabermetric lookup helpers ──────────────────────────────────────
+    _sabre = mlb_sabre or {}
+    _best  = best_odds or {}
+
+    def _sabre_edge(home: str, away: str) -> tuple[float, float, str]:
+        """
+        Return (home_adj, away_adj, note) probability adjustments from sabermetrics.
+        Uses OPS+, ISO (offense) and FIP, ERA- (pitching) to shift win probability.
+        League average: OPS+=100, ERA-=100, FIP≈4.20
+        """
+        hs = _sabre.get(home, {}); as_ = _sabre.get(away, {})
+        if not hs and not as_:
+            return 0.0, 0.0, ""
+        # Offensive edge: OPS+ above/below 100 → ±0.5% per point
+        h_ops  = hs.get("ops_plus", 100.0); a_ops  = as_.get("ops_plus", 100.0)
+        ops_adj = (h_ops - a_ops) * 0.003   # 10pt gap → ~3% swing
+        # Pitching edge: ERA- (lower = better); FIP (lower = better)
+        h_fip  = hs.get("fip", 4.20);  a_fip  = as_.get("fip", 4.20)
+        h_era  = hs.get("era_minus", 100.0); a_era = as_.get("era_minus", 100.0)
+        fip_adj = (a_fip - h_fip) * 0.015   # 0.5 FIP gap → ~0.75% swing for home
+        era_adj = (a_era - h_era) * 0.002
+        total   = ops_adj + fip_adj + era_adj
+        parts   = []
+        if abs(ops_adj) > 0.005:
+            parts.append(f"OPS+: {home} {h_ops:.0f} / {away} {a_ops:.0f}")
+        if abs(fip_adj) > 0.005:
+            parts.append(f"FIP: {home} {h_fip:.2f} / {away} {a_fip:.2f}")
+        note = "  ".join(parts)
+        return total, -total, note
+
+    # MLB — wind-adjusted O/U + sabermetric ML model
     for g in mlb_today:
         if g.get("state") != "pre": continue
         home, away = g.get("home",""), g.get("away","")
         game_str   = f"{away} @ {home}"
         w          = weather.get(home,{})
-        hml, aml   = g.get("homeML"), g.get("awayML")
-        ou         = g.get("ou")
+        # Best available odds (Odds API if key present, else ESPN)
+        bk  = _best.get(f"{home}:{away}", {})
+        hml = bk.get("homeML") or g.get("homeML")
+        aml = bk.get("awayML") or g.get("awayML")
+        ou  = g.get("ou")
+        # Wind-adjusted O/U
         if w and not w.get("indoor"):
             wind     = w.get("wind",0) or 0
             wind_dir = w.get("windDir",0) or 0
@@ -1261,13 +1513,22 @@ def calculate_best_bets(
                     f"{pick_dir} {ou} (wind {wind}mph {'out' if blowing_out else 'in'})",
                     prob, -110, "GOOD" if prob > 0.56 else "INFO",
                     note=f"{w.get('condition')}, {w.get('temp')}°F", extra_signals=1)
-        hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
-        if hprob and hprob > 0.65:
-            add("MLB", game_str, f"{home} ML {hml}", hprob, hml,
-                "LOCK" if hprob>0.70 else "GOOD")
-        elif aprob and aprob > 0.65:
-            add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
-                "LOCK" if aprob>0.70 else "GOOD")
+        # Sabermetric-adjusted moneyline
+        h_adj, a_adj, sabre_note = _sabre_edge(home, away)
+        hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
+        extra_sig = 1 if sabre_note else 0
+        if hprob_raw:
+            hprob = max(0.05, min(0.95, hprob_raw + h_adj))
+            if hprob > 0.62:
+                add("MLB", game_str, f"{home} ML {hml}", hprob, hml,
+                    "LOCK" if hprob>0.70 else "GOOD",
+                    note=sabre_note, extra_signals=extra_sig)
+        if aprob_raw:
+            aprob = max(0.05, min(0.95, aprob_raw + a_adj))
+            if aprob > 0.62:
+                add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
+                    "LOCK" if aprob>0.70 else "GOOD",
+                    note=sabre_note, extra_signals=extra_sig)
 
     # NHL — moneyline + puck line + O/U (pre-game and live)
     mp_teams = (mp or {}).get("teams",{}) if mp else {}
@@ -1291,6 +1552,47 @@ def calculate_best_bets(
         xgf_edge    = 1 if abs(home_xgf_raw - away_xgf_raw) > 0.04 else 0
         xgf_note    = (f"xGF%: {home} {home_xgf_raw*100:.1f} / {away} {away_xgf_raw*100:.1f}"
                        f"  model: {model_home*100:.1f}% / {model_away*100:.1f}%")
+
+        # PDO regression: PDO = sh% + sv% (league avg ≈ 1.000 in 5v5)
+        # High PDO (>1.025) → likely to regress negatively; Low PDO (<0.975) → positive regression
+        pdo_adj  = 0.0
+        pdo_note = ""
+        h_edge = nhl_edge_teams.get(home, {})
+        a_edge = nhl_edge_teams.get(away, {})
+        if h_edge and a_edge:
+            h_sf60 = float(h_edge.get("sf60") or 0)
+            h_gf60 = float(h_edge.get("gf60") or 0)
+            h_sa60 = float(h_edge.get("sa60") or 0)
+            h_ga60 = float(h_edge.get("ga60") or 0)
+            a_sf60 = float(a_edge.get("sf60") or 0)
+            a_gf60 = float(a_edge.get("gf60") or 0)
+            a_sa60 = float(a_edge.get("sa60") or 0)
+            a_ga60 = float(a_edge.get("ga60") or 0)
+            # sh% = gf / sf (avoid div/0)
+            h_sh = h_gf60 / h_sf60 if h_sf60 > 0 else 0.08
+            a_sh = a_gf60 / a_sf60 if a_sf60 > 0 else 0.08
+            # sv% = 1 - ga/sa (goalie; lower ga/sa = better)
+            h_sv = 1 - (h_ga60 / h_sa60) if h_sa60 > 0 else 0.915
+            a_sv = 1 - (a_ga60 / a_sa60) if a_sa60 > 0 else 0.915
+            h_pdo = h_sh + h_sv
+            a_pdo = a_sh + a_sv
+            # PDO above 1.050 is unusually lucky; adjust model_home
+            # Each 0.010 PDO above 1.025 reduces win prob by ~1.5%
+            h_pdo_adj = -max(0, (h_pdo - 1.025)) * 1.5  # negative if home over-performing
+            a_pdo_adj = -max(0, (a_pdo - 1.025)) * 1.5
+            # Home benefiting from away's negative regression = positive adj for home
+            pdo_adj = h_pdo_adj - a_pdo_adj
+            pdo_adj = max(-0.06, min(0.06, pdo_adj))  # cap at ±6%
+            if abs(pdo_adj) > 0.01:
+                pdo_note = (f"PDO: {home} {h_pdo:.3f}{'↓' if h_pdo>1.025 else ''} / "
+                            f"{away} {a_pdo:.3f}{'↓' if a_pdo>1.025 else ''}")
+                xgf_edge += 1  # extra signal strength
+
+        # Apply PDO adjustment to model probabilities
+        model_home = min(0.80, max(0.20, model_home + pdo_adj))
+        model_away = 1.0 - model_home
+        if pdo_note:
+            xgf_note = f"{xgf_note}  {pdo_note}"
 
         # Market-implied probs
         hprob, aprob = _ml_to_prob(hml), _ml_to_prob(aml)
@@ -1689,10 +1991,13 @@ def main() -> None:
         return
 
     # ── full fetch phase ─────────────────────────────────────────────────────
+    # Schedule accuracy: log the exact dates used per sport to confirm alignment
+    log(f"Schedule dates → MLB/NBA: {TODAY_ET} (ET) · NHL/Tennis/F1: {TODAY_ISO} (MT ISO)")
     mlb_today, mlb_tom   = fetch_mlb_scoreboard(TODAY_ET)  if S in ("mlb","all") else ([],[])
     mlb_standings        = fetch_mlb_standings()          if S in ("mlb","all") else {}
     mlb_week             = fetch_mlb_schedule_week()      if S in ("mlb","all") else []
     mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
+    mlb_sabre            = (fetch_mlb_team_sabermetrics() if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_nrfi             = fetch_mlb_nrfi_data(mlb_today) if S in ("mlb","all") else []
 
     nba_today, nba_tom   = fetch_nba_scoreboard()         if S in ("nba","all") else ([],[])
@@ -1700,6 +2005,7 @@ def main() -> None:
     nba_players          = fetch_nba_player_stats()       if S in ("nba","all") else []
     nba_bracket          = fetch_nba_playoff_bracket()    if S in ("nba","all") else {}
     nba_ref              = (fetch_basketball_reference()  if not args.no_reference else {}) if S in ("nba","all") else {}
+    nba_adv              = (fetch_nba_team_advanced()     if not args.no_reference else {}) if S in ("nba","all") else {}
 
     nhl_today, nhl_tom   = fetch_nhl_schedule()           if S in ("nhl","all") else ([],[])
     nhl_standings        = fetch_nhl_standings()          if S in ("nhl","all") else {}
@@ -1749,10 +2055,18 @@ def main() -> None:
     injuries    = fetch_injuries_all()
 
     # Best bets + auto-settle
+    # Best odds per sport (Odds API if key set, ESPN fallback)
+    mlb_best_odds = fetch_best_odds("mlb", mlb_today) if S in ("mlb","all") else {}
+    nba_best_odds = fetch_best_odds("nba", nba_today) if S in ("nba","all") else {}
+    nhl_best_odds = fetch_best_odds("nhl", nhl_today) if S in ("nhl","all") else {}
+
     best_bets = calculate_best_bets(
         nba_today, mlb_today, nhl_today, weather, mp, nhl_edge,
         nhl_props=lm_props.get("nhl", []),
         nhl_trends=lm_trends.get("nhl", []),
+        mlb_sabre=mlb_sabre,
+        best_odds={**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
+        nba_adv=nba_adv,
     )
     settled   = auto_settle(
         nba_today + nba_tom,
@@ -1785,6 +2099,7 @@ def main() -> None:
             "players":   nba_players,
             "bracket":   nba_bracket,
             "reference": nba_ref,
+            "teamAdv":   nba_adv,
         },
         "nhl": {
             "today":     nhl_today,
@@ -1850,6 +2165,9 @@ def main() -> None:
             for p in (ROOT/"frontend"/"card.png", ROOT/"docs"/"card.png"):
                 img.save(str(p), format="PNG", optimize=True)
             note("card.png written")
+            top_pick = bundle.get("bestBets", [{}])[0]
+            pick_summary = f"{top_pick.get('pick','—')}  EV {top_pick.get('ev','?')}%" if top_pick else "No picks today"
+            _notify("Content Delivered", f"card.png + social copy ready · {pick_summary}")
     except Exception as exc:
         log(f"Content generation skipped: {exc}", "WARN")
 
@@ -1862,7 +2180,13 @@ def main() -> None:
             f"History: {len(history)} total\n"
             f"ATP ELO: {len(atp_elo)} | WTA ELO: {len(wta_elo)}"
         )
-        git_push(summary)
+        pushed = git_push(summary)
+        if pushed:
+            n_bets = len(best_bets)
+            top_grade = best_bets[0].get("evGrade","—") if best_bets else "—"
+            _notify("Refresh Complete", f"Push done · {n_bets} picks · top grade {top_grade} · {TS_DISPLAY}")
+    else:
+        _notify("Refresh Complete", f"Data updated (no push) · {len(best_bets)} picks · {TS_DISPLAY}")
 
     log("=" * 60)
     log(f"Done. {len(_changes)} changes.")
