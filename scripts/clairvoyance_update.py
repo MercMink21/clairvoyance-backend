@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-clairvoyance_update.py — Clairvoyance Master Data Refresh Engine v5.0
+clairvoyance_update.py — Clairvoyance Master Data Refresh Engine v5.1
 Fetches live stats, odds, schedules, standings, props, injuries, advanced
 analytics across MLB, NBA, NHL, Tennis, F1 then pushes to GitHub Pages.
 
@@ -1840,6 +1840,118 @@ def build_overall_stats(history: list[dict]) -> dict:
         "byBetType": {k: {**v,"pct":pct(v)} for k,v in by_type.items()},
         "byDate":    dict(sorted(by_date.items())[-30:]),   # last 30 days
         "fetchedAt": TODAY_ISO,
+        "roi":       compute_roi(history),
+        "streak":    compute_streak(history),
+    }
+
+def compute_roi(history: list[dict]) -> dict:
+    """ROI and PnL from settled bet history."""
+    settled = [b for b in history if b.get("outcome") in ("win","loss","push")]
+    if not settled:
+        return {"roi": 0.0, "totalWagered": 0.0, "totalPnl": 0.0, "avgOdds": 0.0, "n": 0}
+    wagered = sum(float(b.get("wager", 100)) for b in settled)
+    pnl = sum(float(b.get("pnl") or 0) for b in settled)
+    odds_sum = 0; odds_n = 0
+    for b in settled:
+        ml = b.get("ml") or b.get("line")
+        try:
+            dec = _ml_to_dec(float(ml))
+            odds_sum += dec; odds_n += 1
+        except Exception:
+            pass
+    return {
+        "roi":          round(pnl / wagered * 100, 2) if wagered else 0.0,
+        "totalWagered": round(wagered, 2),
+        "totalPnl":     round(pnl, 2),
+        "avgOdds":      round(odds_sum / odds_n, 3) if odds_n else 0.0,
+        "n":            len(settled),
+    }
+
+def compute_streak(history: list[dict]) -> dict:
+    """Current and longest win/loss streaks from settled history."""
+    settled = sorted(
+        [b for b in history if b.get("outcome") in ("win","loss")],
+        key=lambda b: b.get("settledAt","") or b.get("date","")
+    )
+    if not settled:
+        return {"current": 0, "direction": "W", "longestW": 0, "longestL": 0}
+    cur = 1; cur_dir = "W" if settled[-1]["outcome"]=="win" else "L"
+    for i in range(len(settled)-2, -1, -1):
+        d = "W" if settled[i]["outcome"]=="win" else "L"
+        if d == cur_dir: cur += 1
+        else: break
+    lw = ll = run = 0
+    run_d = None
+    for b in settled:
+        d = "W" if b["outcome"]=="win" else "L"
+        if d == run_d: run += 1
+        else: run = 1; run_d = d
+        if d == "W": lw = max(lw, run)
+        else: ll = max(ll, run)
+    return {"current": cur, "direction": cur_dir, "longestW": lw, "longestL": ll}
+
+def surface_best_bets_for_day(best_bets: list[dict], n: int = 6) -> list[dict]:
+    """Top N deduped picks by composite EV+confidence score for the home tab hero section."""
+    seen_games: set = set()
+    ranked = sorted(
+        best_bets,
+        key=lambda b: (b.get("ev", 0) or 0) * 0.6 + (b.get("confidence", 0) or 0) * 0.4,
+        reverse=True
+    )
+    out = []
+    for b in ranked:
+        game_key = (b.get("sport",""), b.get("home","") or b.get("game",""))
+        if game_key in seen_games: continue
+        seen_games.add(game_key)
+        out.append(b)
+        if len(out) >= n: break
+    return out
+
+def compute_live_win_prob(game: dict, sport: str) -> dict:
+    """
+    Estimate in-game win probability from score + game state.
+    MLB: score diff + innings remaining via logit model.
+    NBA: point diff + time remaining (linear regression).
+    NHL: goal diff + period + time remaining.
+    """
+    h = game.get("hScore", 0) or 0
+    a = game.get("aScore", 0) or 0
+    diff = h - a
+    import math
+
+    if sport == "mlb":
+        inning = game.get("inning", 5) or 5
+        innings_left = max(0, 9 - inning)
+        # Run expectancy: ~0.5 runs/inning regression to mean
+        # logit(p) = diff * 0.45 - 0.015 * innings_left * abs(diff)
+        logit_val = diff * 0.45 - 0.015 * innings_left * abs(diff)
+        home_wp = round(1 / (1 + math.exp(-logit_val)), 3)
+    elif sport == "nba":
+        quarter = game.get("period", 4) or 4
+        mins_elapsed = (quarter - 1) * 12 + (game.get("minutesElapsed") or ((quarter-1)*12))
+        mins_left = max(0, 48 - mins_elapsed)
+        # ~2.5 pts per minute variance; logit from FiveThirtyEight-style model
+        sigma = math.sqrt(mins_left * 2.5)
+        logit_val = diff / (sigma + 1e-9) * 1.5
+        home_wp = round(1 / (1 + math.exp(-logit_val)), 3)
+    elif sport == "nhl":
+        period = game.get("period", 3) or 3
+        mins_left_est = max(0, (3 - period) * 20)
+        # ~0.15 goals/min base; logit from goal diff + time
+        logit_val = diff * 0.55 - 0.008 * mins_left_est * abs(diff)
+        home_wp = round(1 / (1 + math.exp(-logit_val)), 3)
+    else:
+        home_wp = 0.5
+
+    return {
+        "homeWinProb": home_wp,
+        "awayWinProb": round(1 - home_wp, 3),
+        "hScore": h,
+        "aScore": a,
+        "gameId": game.get("id",""),
+        "home": game.get("home",""),
+        "away": game.get("away",""),
+        "state": game.get("state",""),
     }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1878,8 +1990,10 @@ def git_push(summary: str = "") -> bool:
             "docs/live_data.json",
             "docs/card.png",
             "docs/social_copy.json",
+            "docs/bet_history.csv",
             # persistent records
             "data/bet_history.json",
+            "data/bet_history.csv",
             # local frontend mirror (not pushed to Pages but kept in sync)
             "frontend/data.json",
             "frontend/index.html",
@@ -1900,7 +2014,7 @@ def git_push(summary: str = "") -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Live Window  (17:00–23:00 MT continuous refresh)
 # ═══════════════════════════════════════════════════════════════════════════════
-def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
+def run_live_window(push: bool = True, interval_sec: int = 120) -> None:
     log("=== LIVE WINDOW MODE STARTED ===")
     live_data_fe   = ROOT / "docs" / "live_data.json"        # served at github.io
 
@@ -1930,6 +2044,15 @@ def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
                 "nbaAll":      nba_t,
                 "nhlAll":      nhl_t,
             }
+            live_probs = {"mlb":[], "nba":[], "nhl":[]}
+            for g in live_bundle["mlbLive"]:
+                live_probs["mlb"].append(compute_live_win_prob(g, "mlb"))
+            for g in live_bundle["nbaLive"]:
+                live_probs["nba"].append(compute_live_win_prob(g, "nba"))
+            for g in live_bundle["nhlLive"]:
+                live_probs["nhl"].append(compute_live_win_prob(g, "nhl"))
+            live_bundle["liveProbs"] = live_probs
+            live_bundle["autoSettled"] = auto_settle(live_bundle["mlbAll"], live_bundle["nbaAll"], live_bundle["nhlAll"])
             live_data_fe.write_text(json.dumps(live_bundle, indent=2))
 
             if push:
@@ -1952,7 +2075,7 @@ def run_live_window(push: bool = True, interval_sec: int = 90) -> None:
 def main() -> None:
     global _verbose
 
-    parser = argparse.ArgumentParser(description="Clairvoyance v5.0 data refresh")
+    parser = argparse.ArgumentParser(description="Clairvoyance v5.1 data refresh")
     parser.add_argument("--push",          action="store_true", help="Commit + push to GitHub")
     parser.add_argument("--dry-run",       action="store_true", help="Fetch only, no writes")
     parser.add_argument("--no-linemate",   action="store_true", help="Skip Playwright/Linemate")
@@ -1969,7 +2092,7 @@ def main() -> None:
         return
 
     log("=" * 60)
-    log(f"Clairvoyance v5.0 — {TS_DISPLAY}")
+    log(f"Clairvoyance v5.1 — {TS_DISPLAY}")
     log(f"Mode: {args.mode} | Sport: {args.sport}")
     log("=" * 60)
 
@@ -2083,13 +2206,14 @@ def main() -> None:
     bundle: dict = {
         "generated":    NOW.isoformat(),
         "generatedMT":  TS_DISPLAY,
-        "version":      "5.0",
+        "version":      "5.1",
         "mlb": {
             "today":     mlb_today,
             "tomorrow":  mlb_tom,
             "standings": mlb_standings,
             "weekSchedule": mlb_week,
             "nrfi":      mlb_nrfi,
+            "sabre":     mlb_sabre,
             "reference": mlb_ref,
         },
         "nba": {
@@ -2137,6 +2261,8 @@ def main() -> None:
             "form":   lm_form,
         },
         "bestBets":      best_bets,
+        "heroPicksForDay": surface_best_bets_for_day(best_bets),
+        "bestOdds":      {**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
         "settled":       settled,
         "betHistory":    history[-200:],  # last 200 for frontend
         "overallStats":  overall_stats,
