@@ -46,9 +46,9 @@ THEMES = {
         SEP=(45,40,60), FOOTER=(8,8,8), light=False, purple_fiber=False,
     ),
     "whitecarbon": dict(
-        BG=(235,235,235), PURPLE=(150,10,200), PURPLE_D=(100,10,150),
-        CYAN=(10,150,180), CYAN_D=(8,90,120),
-        TEXT=(30,24,46), MUTED=(90,80,115), DIM=(140,130,160),
+        BG=(235,235,235), PURPLE=_PURPLE, PURPLE_D=_PURP_D,
+        CYAN=_CYAN, CYAN_D=(0,160,190),
+        TEXT=(30,24,46), MUTED=(60,55,80), DIM=(120,115,140),
         SEP=(180,172,200), FOOTER=(200,200,204), light=True, purple_fiber=False,
     ),
     "purplecarbon": dict(
