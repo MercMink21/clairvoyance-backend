@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 generate_pinned_card.py — Clairvoyance Engine Pinned Post Cards
-Generates 3 × 1080×1080 PNGs for Instagram + X pinned posts.
+Generates 4 × 1080×1080 PNGs for Instagram + X pinned posts.
 
 Variants:
   pinned_card_carbon.png       — black/grey charcoal carbon fiber
   pinned_card_whitecarbon.png  — white/grey charcoal carbon fiber
   pinned_card_purplecarbon.png — deep purple carbon fiber (original brand)
+  pinned_card_plaid.png        — black/grey/white/purple tartan plaid
 
 Usage:
   python3 scripts/generate_pinned_card.py
@@ -48,12 +49,20 @@ THEMES = {
         TEXT=(218,212,232), MUTED=(96,86,128), DIM=(54,46,80),
         SEP=(36,28,60), FOOTER=(6,4,14), light=False, purple_fiber=True,
     ),
+    "plaid": dict(
+        BG=(10,10,12), PURPLE=(200,30,255), PURPLE_D=(90,10,130),
+        CYAN=(0,210,245), CYAN_D=(0,130,160),
+        TEXT=(12,10,18), MUTED=(30,24,44), DIM=(50,44,66),
+        SEP=(40,36,56), FOOTER=(6,6,8), light=False, purple_fiber=False,
+        plaid=True,
+    ),
 }
 
 OUTPUT = {
     "carbon":       (ROOT/"frontend"/"pinned_card_carbon.png",      ROOT/"docs"/"pinned_card_carbon.png"),
     "whitecarbon":  (ROOT/"frontend"/"pinned_card_whitecarbon.png",  ROOT/"docs"/"pinned_card_whitecarbon.png"),
     "purplecarbon": (ROOT/"frontend"/"pinned_card_purplecarbon.png", ROOT/"docs"/"pinned_card_purplecarbon.png"),
+    "plaid":        (ROOT/"frontend"/"pinned_card_plaid.png",        ROOT/"docs"/"pinned_card_plaid.png"),
 }
 
 # ── Font loader ────────────────────────────────────────────────────────────────
@@ -93,6 +102,65 @@ def _tracked(draw, xy, text, font, fill, sp):
         draw.text((x,y), ch, font=font, fill=fill); x += _tw(draw,ch,font)+sp
 def _tracked_cx(draw, text, font, sp):
     return (W-_tracked_w(draw,text,font,sp))//2
+
+# ── Plaid / tartan background ─────────────────────────────────────────────────
+def _draw_plaid_bg(img: Image.Image) -> None:
+    """
+    Classic black-and-white tartan with cool-grey transitions.
+    White and black are the dominant bands; grey creates the authentic
+    woven mid-tones at intersections.  No purple in the background —
+    purple/cyan are reserved for the text layer above.
+    """
+    # Palette — strictly black · grey family · off-white
+    BLK  = (8,   8,   9)     # near-black base
+    DG   = (32,  32,  36)    # dark grey transition
+    MG   = (72,  70,  78)    # mid grey
+    LG   = (130, 128, 138)   # light grey highlight
+    WHT  = (215, 213, 220)   # cool off-white
+
+    # Symmetric tartan sett — wide black & white bands, grey accents
+    # One full repeat ≈ 104 px; gives ~10 visible checks across 1080 px
+    # fmt: off
+    SETT = [
+        (BLK, 20), (DG, 5),
+        (WHT, 16), (DG, 5),
+        (BLK, 10), (DG, 4),
+        (MG,   8), (LG, 4), (WHT, 4), (LG, 4), (MG, 8),
+        (DG,   4), (BLK, 10),
+        (DG,   5), (WHT, 16),
+        (DG,   5), (BLK,  1),
+    ]
+    # fmt: on
+
+    # Build the colour strip for one period
+    strip = []
+    for col, w in SETT:
+        strip.extend([col] * w)
+    n = len(strip)
+
+    def avg(a, b):
+        """Average blend — gives authentic grey mid-tones where b/w threads cross."""
+        return tuple((a[i] + b[i]) // 2 for i in range(3))
+
+    # Build the square tile using a 2×2 twill weave
+    tile = Image.new("RGB", (n, n))
+    pix  = tile.load()
+    for ty in range(n):
+        vc = strip[ty]
+        for tx in range(n):
+            hc = strip[tx]
+            # Twill: alternate which thread sits on top in each 2×2 block
+            if (tx // 2 + ty // 2) % 2 == 0:
+                # Warp (horizontal thread) on top
+                pix[tx, ty] = avg(hc, avg(hc, vc))   # 75% hc, 25% vc
+            else:
+                # Weft (vertical thread) on top
+                pix[tx, ty] = avg(vc, avg(vc, hc))   # 75% vc, 25% hc
+
+    # Tile across the full canvas
+    for y in range(0, H, n):
+        for x in range(0, W, n):
+            img.paste(tile, (x, y))
 
 # ── Carbon fiber background (mode-aware) ───────────────────────────────────────
 def _draw_bg(img: Image.Image, t: dict) -> None:
@@ -177,7 +245,10 @@ def _sep(draw, y, t, mx=72):
 # ── Main card generator ───────────────────────────────────────────────────────
 def generate(t: dict) -> Image.Image:
     img  = Image.new("RGB",(W,H),t["BG"])
-    _draw_bg(img, t)
+    if t.get("plaid"):
+        _draw_plaid_bg(img)
+    else:
+        _draw_bg(img, t)
     draw = ImageDraw.Draw(img)
 
     # Top-only corner brackets
@@ -297,4 +368,4 @@ if __name__ == "__main__":
         for path in OUTPUT[name]:
             img.save(str(path), format="PNG", optimize=True)
             print(f"  Saved → {path}")
-    print("Done — all 3 variants saved.")
+    print("Done — all 4 variants saved.")
