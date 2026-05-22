@@ -18,9 +18,11 @@ from pathlib import Path
 
 try:
     from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import numpy as np
 except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "Pillow"], check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "Pillow", "numpy"], check=True)
     from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import numpy as np
 
 ROOT = Path(__file__).parent.parent
 W = H = 1080
@@ -29,13 +31,19 @@ X_HANDLE  = "@ClairvoyanceEng"
 IG_HANDLE = "@clairvoyanceengine"
 DOMAIN    = "clairvoyanceengine.info"
 
-# ── Three theme palettes ───────────────────────────────────────────────────────
+# ── Brand colors (canonical) ───────────────────────────────────────────────────
+_PURPLE  = (240,   0, 255)   # neon purple  rgb(240,0,255)
+_CYAN    = (  0, 240, 255)   # neon cyan    rgb(0,240,255)
+_CYAN_D  = (  0, 130, 155)   # dim cyan for brackets / domain
+_PURP_D  = (110,   0, 130)   # dim purple for dashed ring
+
+# ── Theme palettes ─────────────────────────────────────────────────────────────
 THEMES = {
     "carbon": dict(
-        BG=(14,14,14), PURPLE=(192,48,240), PURPLE_D=(80,18,110),
-        CYAN=(48,208,240), CYAN_D=(20,80,110),
-        TEXT=(218,212,232), MUTED=(96,86,128), DIM=(54,46,80),
-        SEP=(36,28,60), FOOTER=(8,8,8), light=False, purple_fiber=False,
+        BG=(16,16,16), PURPLE=_PURPLE, PURPLE_D=_PURP_D,
+        CYAN=_CYAN, CYAN_D=_CYAN_D,
+        TEXT=(232,240,255), MUTED=(105,118,155), DIM=(55,50,72),
+        SEP=(45,40,60), FOOTER=(8,8,8), light=False, purple_fiber=False,
     ),
     "whitecarbon": dict(
         BG=(235,235,235), PURPLE=(150,10,200), PURPLE_D=(100,10,150),
@@ -44,10 +52,10 @@ THEMES = {
         SEP=(180,172,200), FOOTER=(200,200,204), light=True, purple_fiber=False,
     ),
     "purplecarbon": dict(
-        BG=(10,8,20), PURPLE=(192,48,240), PURPLE_D=(80,18,110),
-        CYAN=(48,208,240), CYAN_D=(20,80,110),
-        TEXT=(218,212,232), MUTED=(96,86,128), DIM=(54,46,80),
-        SEP=(36,28,60), FOOTER=(6,4,14), light=False, purple_fiber=True,
+        BG=(12,8,18), PURPLE=_PURPLE, PURPLE_D=_PURP_D,
+        CYAN=_CYAN, CYAN_D=_CYAN_D,
+        TEXT=(232,240,255), MUTED=(105,118,155), DIM=(55,50,72),
+        SEP=(45,40,60), FOOTER=(6,4,14), light=False, purple_fiber=True,
     ),
     "plaid": dict(
         BG=(10,10,12), PURPLE=(200,30,255), PURPLE_D=(90,10,130),
@@ -65,13 +73,14 @@ OUTPUT = {
     "plaid":        (ROOT/"frontend"/"pinned_card_plaid.png",        ROOT/"docs"/"pinned_card_plaid.png"),
 }
 
-# ── Font loader ────────────────────────────────────────────────────────────────
+# ── Font loader — Orbitron primary ────────────────────────────────────────────
 _FONT_PATHS = [
+    "/tmp/Orbitron.ttf",                                      # canonical brand font
+    "/Library/Fonts/Orbitron-Regular.ttf",
     "/System/Library/Fonts/HelveticaNeue.ttc",
-    "/System/Library/Fonts/Helvetica.ttc",
     "/Library/Fonts/Arial.ttf",
-    "/System/Library/Fonts/SFNSDisplay.ttf",
-    "/System/Library/Fonts/SFNS.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
 ]
 _cache: dict = {}
 
@@ -83,9 +92,9 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
             if not p.exists(): continue
             try:
                 idx = 1 if bold and path.endswith(".ttc") else 0
-                _cache[key] = ImageFont.truetype(str(p), size, index=idx); break
+                _cache[key] = ImageFont.truetype(str(p), max(6, size), index=idx); break
             except Exception:
-                try: _cache[key] = ImageFont.truetype(str(p), size); break
+                try: _cache[key] = ImageFont.truetype(str(p), max(6, size)); break
                 except Exception: continue
         if key not in _cache:
             _cache[key] = ImageFont.load_default()
@@ -162,31 +171,50 @@ def _draw_plaid_bg(img: Image.Image) -> None:
         for x in range(0, W, n):
             img.paste(tile, (x, y))
 
-# ── Carbon fiber background (mode-aware) ───────────────────────────────────────
+# ── Carbon fiber background ────────────────────────────────────────────────────
+# Exact brand spec: base rgb(16,16,16) · peak rgb(50,50,51) · fill rgb(24,24,24)
+# 14-pixel diagonal weave, alternating fiber directions (numpy-accelerated).
 def _draw_bg(img: Image.Image, t: dict) -> None:
-    CW, CH = 8, 16; TW, TH = CW*2, CH*2
-    tile = Image.new("RGB",(TW,TH)); pix = tile.load()
-    for ty in range(TH):
-        for tx in range(TW):
-            cx=tx//CW; cy=ty//CH
-            px=(tx%CW)/(CW-1) if CW>1 else 0
-            py=(ty%CH)/(CH-1) if CH>1 else 0
-            fib = py if (cx+cy)%2==0 else px
-            if t["purple_fiber"]:
-                r=int(10+18*fib); g=int(8+12*fib); b=int(20+30*fib)
-                if py<0.12: r,g,b=r+5,g+3,b+8
-                pix[tx,ty]=(min(r,42),min(g,30),min(b,64))
-            elif t["light"]:
-                v=int(200+32*fib)
-                if py<0.12: v=min(v+10,242)
-                pix[tx,ty]=(min(v,242),min(v,242),min(v+1,242))
-            else:
-                v=int(16+26*fib)
-                if py<0.12: v=min(v+8,52)
-                pix[tx,ty]=(min(v,52),min(v,52),min(v+1,54))
-    for y in range(0,H,TH):
-        for x in range(0,W,TW):
-            img.paste(tile,(x,y))
+    if t.get("light"):
+        # White carbon: base 200, peak 242
+        base_v, peak_v, fill_v = 200.0, 242.0, 218.0
+    else:
+        base_v, peak_v, fill_v = 16.0, 50.0, 24.0   # canonical brand CF values
+
+    CELL = 14
+    xs = np.arange(W, dtype=np.float32)
+    ys = np.arange(H, dtype=np.float32)
+    xg, yg = np.meshgrid(xs, ys)
+
+    cx = (xg // CELL).astype(np.int32)
+    cy = (yg // CELL).astype(np.int32)
+    px = (xg % CELL) / (CELL - 1)
+    py = (yg % CELL) / (CELL - 1)
+
+    # Alternating fiber direction per cell
+    fib  = np.where((cx + cy) % 2 == 0, py, px)
+    peak = 1.0 - np.abs(fib * 2.0 - 1.0)           # triangle: 0 at edges, 1 at centre
+
+    # Groove darkening at cell boundaries
+    edge         = np.minimum(np.minimum(px, 1.0-px), np.minimum(py, 1.0-py))
+    groove_fade  = np.clip(edge / (1.5 / CELL), 0.0, 1.0)
+    groove_v     = base_v + (fill_v - base_v) * groove_fade
+    strand_v     = fill_v + (peak_v - fill_v) * peak * 0.82
+    v = np.where(groove_fade < 1.0, np.minimum(groove_v, strand_v + 2), strand_v)
+    v = np.clip(v, base_v, peak_v).astype(np.uint8)
+
+    if t.get("purple_fiber"):
+        r = np.clip(v.astype(np.int32) - 3, 0, 255).astype(np.uint8)
+        g = np.clip(v.astype(np.int32) - 5, 0, 255).astype(np.uint8)
+        b = np.clip(v.astype(np.int32) + 9, 0, 255).astype(np.uint8)
+        arr = np.stack([r, g, b], axis=-1)
+    elif t.get("light"):
+        arr = np.stack([v, v, v], axis=-1)
+    else:
+        b = np.clip(v.astype(np.int32) + 1, 0, 255).astype(np.uint8)
+        arr = np.stack([v, v, b], axis=-1)
+
+    img.paste(Image.fromarray(arr))
 
 # ── Top-only corner HUD brackets ──────────────────────────────────────────────
 def _brackets(draw: ImageDraw.ImageDraw, t: dict, m=32, s=48, w=2) -> None:
