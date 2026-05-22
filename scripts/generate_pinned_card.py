@@ -171,41 +171,69 @@ def _draw_plaid_bg(img: Image.Image) -> None:
         for x in range(0, W, n):
             img.paste(tile, (x, y))
 
-# ── Carbon fiber background ────────────────────────────────────────────────────
-# Exact brand spec: base rgb(16,16,16) · peak rgb(50,50,51) · fill rgb(24,24,24)
-# 14-pixel diagonal weave, alternating fiber directions (numpy-accelerated).
+# ── Carbon fiber background — proper 2×2 twill weave ─────────────────────────
+# Each fiber tow = CELL×CELL px. Repeat unit = 2*CELL × 2*CELL.
+# Alternating horiz/vert fiber direction in a checkerboard of cells.
+# Over/under weave factor + directional bevel recreate authentic CF depth.
 def _draw_bg(img: Image.Image, t: dict) -> None:
-    if t.get("light"):
-        # White carbon: base 200, peak 242
-        base_v, peak_v, fill_v = 200.0, 242.0, 218.0
-    else:
-        base_v, peak_v, fill_v = 16.0, 50.0, 24.0   # canonical brand CF values
+    CELL   = 12    # fiber tow width in pixels
+    GROOVE = 1     # groove border thickness
 
-    CELL = 14
+    if t.get("light"):
+        base_v, fill_v, peak_v = 168.0, 208.0, 246.0
+    else:
+        base_v, fill_v, peak_v = 8.0, 22.0, 58.0
+
     xs = np.arange(W, dtype=np.float32)
     ys = np.arange(H, dtype=np.float32)
     xg, yg = np.meshgrid(xs, ys)
 
-    cx = (xg // CELL).astype(np.int32)
-    cy = (yg // CELL).astype(np.int32)
-    px = (xg % CELL) / (CELL - 1)
-    py = (yg % CELL) / (CELL - 1)
+    # Cell indices and local pixel position
+    ci  = (xg // CELL).astype(np.int32)
+    cj  = (yg // CELL).astype(np.int32)
+    lx  = xg % CELL   # 0 … CELL-1
+    ly  = yg % CELL
 
-    # Alternating fiber direction per cell
-    fib  = np.where((cx + cy) % 2 == 0, py, px)
-    peak = 1.0 - np.abs(fib * 2.0 - 1.0)           # triangle: 0 at edges, 1 at centre
+    # Normalized position within the cell
+    nx  = lx / (CELL - 1)   # 0=left, 1=right
+    ny  = ly / (CELL - 1)   # 0=top,  1=bottom
 
-    # Groove darkening at cell boundaries
-    edge         = np.minimum(np.minimum(px, 1.0-px), np.minimum(py, 1.0-py))
-    groove_fade  = np.clip(edge / (1.5 / CELL), 0.0, 1.0)
-    groove_v     = base_v + (fill_v - base_v) * groove_fade
-    strand_v     = fill_v + (peak_v - fill_v) * peak * 0.82
-    v = np.where(groove_fade < 1.0, np.minimum(groove_v, strand_v + 2), strand_v)
+    # Hard groove on leading (top + left) edge of every cell
+    is_groove = (lx < GROOVE) | (ly < GROOVE)
+
+    # 2×2 repeat: which of the 4 quadrants?
+    qx = ci % 2   # 0 or 1
+    qy = cj % 2   # 0 or 1
+
+    # Fiber direction: horizontal when (qx+qy)%2==0, vertical otherwise
+    is_horiz = ((qx + qy) % 2 == 0)
+
+    # Highlight bell-curve along fiber cross-section (peaks at centre)
+    h_horiz = 1.0 - np.abs(ny * 2.0 - 1.0)   # bright band at y=0.5
+    h_vert  = 1.0 - np.abs(nx * 2.0 - 1.0)   # bright band at x=0.5
+    highlight = np.where(is_horiz, h_horiz, h_vert)
+
+    # Over/under: alternating cells appear to sit on top → brighter
+    over        = ((ci + cj) % 2 == 0)
+    over_factor = np.where(over, 1.0, 0.65)
+
+    # Directional bevel — top-left light source
+    #   horiz fiber: top edge lit (ny=0 → bright)
+    #   vert  fiber: left edge lit (nx=0 → bright)
+    bevel = np.where(is_horiz,
+                     1.0 - ny * 0.40,
+                     1.0 - nx * 0.40)
+
+    v = np.where(
+        is_groove,
+        base_v,
+        fill_v + (peak_v - fill_v) * highlight * over_factor * bevel
+    )
     v = np.clip(v, base_v, peak_v).astype(np.uint8)
 
     if t.get("purple_fiber"):
-        r = np.clip(v.astype(np.int32) - 3, 0, 255).astype(np.uint8)
-        g = np.clip(v.astype(np.int32) - 5, 0, 255).astype(np.uint8)
+        r = np.clip(v.astype(np.int32) - 2, 0, 255).astype(np.uint8)
+        g = np.clip(v.astype(np.int32) - 4, 0, 255).astype(np.uint8)
         b = np.clip(v.astype(np.int32) + 9, 0, 255).astype(np.uint8)
         arr = np.stack([r, g, b], axis=-1)
     elif t.get("light"):
