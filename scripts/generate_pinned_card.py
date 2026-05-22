@@ -176,13 +176,13 @@ def _draw_plaid_bg(img: Image.Image) -> None:
 # Alternating horiz/vert fiber direction in a checkerboard of cells.
 # Over/under weave factor + directional bevel recreate authentic CF depth.
 def _draw_bg(img: Image.Image, t: dict) -> None:
-    CELL   = 12    # fiber tow width in pixels
-    GROOVE = 1     # groove border thickness
+    CELL   = 16    # fiber tow width in pixels — larger = more visible weave
+    GROOVE = 2     # groove border thickness (prominent dark gap between fibers)
 
     if t.get("light"):
-        base_v, fill_v, peak_v = 168.0, 208.0, 246.0
+        base_v, fill_v, peak_v = 162.0, 205.0, 248.0
     else:
-        base_v, fill_v, peak_v = 8.0, 22.0, 58.0
+        base_v, fill_v, peak_v = 6.0, 20.0, 64.0
 
     xs = np.arange(W, dtype=np.float32)
     ys = np.arange(H, dtype=np.float32)
@@ -194,35 +194,32 @@ def _draw_bg(img: Image.Image, t: dict) -> None:
     lx  = xg % CELL   # 0 … CELL-1
     ly  = yg % CELL
 
-    # Normalized position within the cell
-    nx  = lx / (CELL - 1)   # 0=left, 1=right
-    ny  = ly / (CELL - 1)   # 0=top,  1=bottom
+    # Normalized position within cell (offset by groove so body=0..1)
+    body  = float(CELL - GROOVE)
+    nx    = np.clip((lx - GROOVE) / (body - 1), 0.0, 1.0)
+    ny    = np.clip((ly - GROOVE) / (body - 1), 0.0, 1.0)
 
-    # Hard groove on leading (top + left) edge of every cell
+    # Hard groove on leading (top + left) edges
     is_groove = (lx < GROOVE) | (ly < GROOVE)
 
-    # 2×2 repeat: which of the 4 quadrants?
-    qx = ci % 2   # 0 or 1
-    qy = cj % 2   # 0 or 1
-
-    # Fiber direction: horizontal when (qx+qy)%2==0, vertical otherwise
+    # 2×2 repeat — fiber direction alternates in checkerboard
+    qx = ci % 2
+    qy = cj % 2
     is_horiz = ((qx + qy) % 2 == 0)
 
-    # Highlight bell-curve along fiber cross-section (peaks at centre)
-    h_horiz = 1.0 - np.abs(ny * 2.0 - 1.0)   # bright band at y=0.5
-    h_vert  = 1.0 - np.abs(nx * 2.0 - 1.0)   # bright band at x=0.5
+    # Highlight bell-curve — sharper (squared) for more vivid specular pop
+    h_horiz = (1.0 - np.abs(ny * 2.0 - 1.0)) ** 0.7   # bright band at y=0.5
+    h_vert  = (1.0 - np.abs(nx * 2.0 - 1.0)) ** 0.7   # bright band at x=0.5
     highlight = np.where(is_horiz, h_horiz, h_vert)
 
-    # Over/under: alternating cells appear to sit on top → brighter
+    # Over/under weave — strong contrast so the interlocking reads clearly
     over        = ((ci + cj) % 2 == 0)
-    over_factor = np.where(over, 1.0, 0.65)
+    over_factor = np.where(over, 1.0, 0.52)
 
-    # Directional bevel — top-left light source
-    #   horiz fiber: top edge lit (ny=0 → bright)
-    #   vert  fiber: left edge lit (nx=0 → bright)
+    # Directional bevel — top-left light source (45 % dimming at shadow edge)
     bevel = np.where(is_horiz,
-                     1.0 - ny * 0.40,
-                     1.0 - nx * 0.40)
+                     1.0 - ny * 0.45,
+                     1.0 - nx * 0.45)
 
     v = np.where(
         is_groove,
