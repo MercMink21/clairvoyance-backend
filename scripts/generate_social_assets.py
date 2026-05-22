@@ -259,8 +259,9 @@ def make_profile(theme: dict, variant: str, W: int, H: int) -> Image.Image:
 
     elif variant == "C":
         # ── Eye + wordmark + subtitle (full brand lockup) ─────────────────────
-        eye_sz = int(min(W, H) * 0.36)
-        ey     = int(H * 0.32)
+        # Zoomed-out: eye ~20% smaller, fonts reduced, more breathing room
+        eye_sz = int(min(W, H) * 0.28)        # was 0.36
+        ey     = int(H * 0.29)                 # was 0.32 — slightly higher to balance
         img    = _draw_eye(img, W // 2, ey, t, eye_sz)
         draw   = ImageDraw.Draw(img)
 
@@ -269,31 +270,39 @@ def make_profile(theme: dict, variant: str, W: int, H: int) -> Image.Image:
         _brackets(draw, W, H, t, m=m, s=s, w=max(1, W // 300))
 
         # Separator
-        sep_y = int(H * 0.575)
-        _sep(draw, W, sep_y, t, mx=int(W * 0.10))
+        sep_y = int(H * 0.535)                 # was 0.575 — tighter to smaller eye
+        _sep(draw, W, sep_y, t, mx=int(W * 0.14))
 
         # CLAIRVOYANCE
-        tf  = _font(int(W * 0.074), bold=True)
-        ty  = int(H * 0.60)
+        tf  = _font(int(W * 0.060), bold=True) # was 0.074
+        ty  = int(H * 0.555)                   # was 0.60
         sp  = max(1, int(W * 0.004))
         tx  = _tracked_cx(W, draw, "CLAIRVOYANCE", tf, sp)
         img = _glow_text(img, (tx, ty), "CLAIRVOYANCE", tf,
                          color=t["PURPLE"], glow_color=t["PURPLE"],
-                         radius=max(8, int(W * 0.013)), sp=sp)
+                         radius=max(8, int(W * 0.012)), sp=sp)
         draw = ImageDraw.Draw(img)
 
         # Subtitle
         sub    = "ADVANCED SPORTS INTELLIGENCE ENGINE"
-        sf     = _font(int(W * 0.024))
+        sf     = _font(int(W * 0.020))         # was 0.024
         sp_sub = max(1, int(W * 0.002))
         sx     = _tracked_cx(W, draw, sub, sf, sp_sub)
-        sy     = int(H * 0.74)
+        sy     = int(H * 0.695)                # was 0.74
         _tracked(draw, (sx, sy), sub, sf, t["CYAN"], sp_sub)
 
+        # Separator between subtitle and tagline
+        _sep(draw, W, int(H * 0.775), t, mx=int(W * 0.22))
+
         # Tagline
-        tg  = _font(int(W * 0.020))
+        tg  = _font(int(W * 0.017))            # was 0.020
         tgx = _tracked_cx(W, draw, "SEE WHAT OTHERS CANNOT", tg, 2)
-        _tracked(draw, (tgx, int(H * 0.83)), "SEE WHAT OTHERS CANNOT", tg, t["MUTED"], 2)
+        _tracked(draw, (tgx, int(H * 0.798)), "SEE WHAT OTHERS CANNOT", tg, t["MUTED"], 2)
+
+        # Domain
+        df  = _font(int(W * 0.021))
+        dx  = _cx(W, draw, "clairvoyanceengine.info", df)
+        draw.text((dx, int(H * 0.875)), "clairvoyanceengine.info", font=df, fill=t["CYAN"])
 
     return img
 
@@ -376,36 +385,37 @@ def make_x_header(theme: dict, variant: str) -> Image.Image:
 
     elif variant == "C":
         # ── Purple carbon · centred full-brand with section label & domain ────
-        eye_sz = int(H * 0.46)
-        img    = _draw_eye(img, W // 2, int(H * 0.38), t, eye_sz)
+        # Zoomed-out: eye ~20% smaller, fonts reduced, more breathing room
+        eye_sz = int(H * 0.37)                 # was 0.46
+        img    = _draw_eye(img, W // 2, int(H * 0.36), t, eye_sz)
         draw   = ImageDraw.Draw(img)
 
         # HUD brackets all corners
         _brackets(draw, W, H, t, m=28, s=40, w=1)
 
         # Section label above
-        lf  = _font(int(H * 0.042))
+        lf  = _font(int(H * 0.036))            # was 0.042
         lx  = _tracked_cx(W, draw, "// ADVANCED SPORTS INTELLIGENCE ENGINE", lf, 2)
-        _tracked(draw, (lx, int(H * 0.072)), "// ADVANCED SPORTS INTELLIGENCE ENGINE",
+        _tracked(draw, (lx, int(H * 0.068)), "// ADVANCED SPORTS INTELLIGENCE ENGINE",
                  lf, t["CYAN_D"], 2)
 
         # Separator before wordmark
-        _sep(draw, W, int(H * 0.655), t, mx=int(W * 0.30))
+        _sep(draw, W, int(H * 0.635), t, mx=int(W * 0.32))
 
         # CLAIRVOYANCE
-        tf  = _font(int(H * 0.185), bold=True)
+        tf  = _font(int(H * 0.152), bold=True) # was 0.185
         sp  = max(2, int(H * 0.005))
-        ty  = int(H * 0.675)
+        ty  = int(H * 0.653)
         tx  = _tracked_cx(W, draw, "CLAIRVOYANCE", tf, sp)
         img = _glow_text(img, (tx, ty), "CLAIRVOYANCE", tf,
                          color=t["PURPLE"], glow_color=t["PURPLE"],
-                         radius=24, sp=sp)
+                         radius=22, sp=sp)
         draw = ImageDraw.Draw(img)
 
         # Domain + tagline
-        df  = _font(int(H * 0.040))
+        df  = _font(int(H * 0.034))            # was 0.040
         dtx = _tracked_cx(W, draw, "SEE WHAT OTHERS CANNOT", df, 3)
-        _tracked(draw, (dtx, int(H * 0.875)), "SEE WHAT OTHERS CANNOT", df, t["MUTED"], 3)
+        _tracked(draw, (dtx, int(H * 0.868)), "SEE WHAT OTHERS CANNOT", df, t["MUTED"], 3)
 
     return img
 
