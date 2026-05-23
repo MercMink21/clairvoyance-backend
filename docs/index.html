@@ -519,6 +519,9 @@ body{line-height:1.5}
         <div id="nhl-live-scores" style="margin-bottom:14px"></div>
         <div class="sh" style="margin-bottom:8px"><span class="i">📋</span> SCHEDULE</div>
         <div id="nhl-games"><div class="loading"><span class="spi"></span></div></div>
+        <!-- v6.0: series series-status + top props inline -->
+        <div id="nhl-series-status" style="margin-top:14px"></div>
+        <div id="nhl-inline-props" style="margin-top:4px"></div>
         <div class="sh" style="margin-top:16px"><span class="g">🔒</span> LOCKED NHL BETS</div>
         <div id="nhl-locked"><div class="empty">NO LOCKED NHL BETS</div></div>
       </div>
@@ -2404,12 +2407,18 @@ async function renderNHLGames(){
       const st=c.status?.type?.description||'Scheduled';
       const live=c.status?.type?.state==='in';
       const gt=new Date(ev.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+'ET';
+      // v6.0: include series note from static NHL data when available
+      const hNHL=NHL[hn]||{},aNHL=NHL[an]||{};
+      const seriesNote=hNHL.series||aNHL.series||'';
+      const swsl=hNHL.sw!=null?` · ${hn} ${hNHL.sw}-${hNHL.sl}`:'';
       return`<div class="card ci" style="margin-bottom:8px;padding:11px;border-left:2px solid ${live?'var(--vc)':'var(--t3)'}">
         <div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:2px;color:var(--ic);margin-bottom:4px">${hn} vs ${an}</div>
         <div style="font-family:var(--mono);font-size:10px;color:${live?'var(--vc)':'var(--t2)'}">${st} · ${gt}</div>
+        ${seriesNote?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">${seriesNote}${swsl}</div>`:''}
         ${(hs!==''&&as!=='')?`<div style="font-family:var(--orb);font-size:20px;font-weight:900;color:var(--nc);margin-top:4px">${hs} – ${as}</div>`:''}
       </div>`;
     }).join('');
+    try{renderNHLSeriesAndProps();}catch(e){}
     return;
   }
   // Static fallback
@@ -2461,8 +2470,46 @@ function renderNHLGamesOffline(){
   }
   el.innerHTML=html||'<div class="empty">NO GAMES</div>';
   try{renderNHLLockedBets();}catch(e){}
+  try{renderNHLSeriesAndProps();}catch(e){}
 }
 function lockH(hA,awA,type,betOn,p,ml,d){lockPick(hA,awA,type,betOn,p,ml,d,today());}
+// v6.0: Render series series-status note + top player props in games tab
+function renderNHLSeriesAndProps(){
+  // ── Series status note ───────────────────────────────────────
+  const ssEl=document.getElementById('nhl-series-status');
+  if(ssEl){
+    const seriesNotes=[];
+    // Pull series status from static NHL data
+    Object.entries(NHL).filter(([a,t])=>!t.series.startsWith('ELIMINATED')).forEach(([abbr,t])=>{
+      if(t.sw!=null&&t.sl!=null){
+        const lead=t.sw>t.sl?abbr:(t.sl>t.sw?t.series.split(' ')[2]||'OPP':null);
+        if(lead)seriesNotes.push(`<span style="color:var(--nc)">${abbr}</span> leads ${t.sw}-${t.sl}`);
+        else if(t.sw===t.sl&&t.sw>0)seriesNotes.push(`${abbr} tied ${t.sw}-${t.sl}`);
+      }
+    });
+    if(seriesNotes.length){
+      ssEl.innerHTML=`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px;margin-bottom:6px">// SERIES STATUS</div>`+
+        `<div style="display:flex;gap:8px;flex-wrap:wrap">` +
+        seriesNotes.map(n=>`<span style="font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid rgba(0,229,255,.2);border-radius:2px;color:var(--t2)">${n}</span>`).join('')+
+        `</div>`;
+    }else ssEl.innerHTML='';
+  }
+  // ── Top player props from Linemate ──────────────────────────
+  const propsEl=document.getElementById('nhl-inline-props');
+  if(!propsEl)return;
+  const props=(window.__CV_DATA?.linemate?.nhl?.props||window._remoteNHLProps||[]).slice(0,4);
+  if(!props.length){propsEl.innerHTML='';return;}
+  let ph=`<div class="sh" style="margin-top:4px"><span class="g">🎯</span> TOP NHL PROPS TODAY</div>`;
+  ph+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">`;
+  props.forEach(p=>{
+    const bet=p.bet||p.direction||'OVER';
+    const line=p.line||p.threshold||'';
+    const hitStr=p.l5||p.l10||'';
+    ph+=`<div class="card" style="border-left:2px solid var(--gc);padding:10px"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc)">${p.player||p.name||'—'}</div><div style="font-family:var(--mono);font-size:9px;color:var(--gc);margin-top:3px">${bet} ${p.category||p.prop||''} ${line}</div>${hitStr?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">${hitStr}</div>`:''}</div>`;
+  });
+  ph+=`</div>`;
+  propsEl.innerHTML=ph;
+}
 function renderGoalies(){
   const el=document.getElementById('goalies');if(!el)return;
   const active=Object.entries(NHL).filter(([a,t])=>!t.series.startsWith('ELIMINATED'));
@@ -4994,6 +5041,29 @@ function renderSlam(code){
         }).join(''):'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">Schedule TBD</div>'}
       </div>`;
     }).join('');
+    // ── Live RG data from backend (v6.0) ─────────────────────────
+    const rgLive=window.__CV_DATA?.tennis?.rolandGarros||{};
+    if(rgLive.atpMatches?.length||rgLive.wtaMatches?.length){
+      html+=`<div class="sh"><span style="color:var(--hc)">● LIVE</span> ROLAND GARROS TODAY</div>`;
+      const allRgMatches=[...(rgLive.atpMatches||[]).map(m=>({...m,_tour:'ATP'})),...(rgLive.wtaMatches||[]).map(m=>({...m,_tour:'WTA'}))];
+      html+=allRgMatches.map(m=>{
+        const live=m.state==='in';const done=m.state==='post';
+        const col=live?'var(--hc)':done?'var(--t3)':'var(--mc)';
+        return`<div class="card" style="margin-bottom:7px;border-left:2px solid ${col}"><div style="display:flex;justify-content:space-between;align-items:start"><div><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${m._tour} · ${m.round||''} ${live?'● LIVE':done?'FINAL':m.statusText||''}</div><div style="font-family:var(--orb);font-size:13px;font-weight:700">${m.player1||m.p1||''} ${m.score1!=null?'<span style="color:var(--gc)">'+m.score1+'</span>':''}</div><div style="font-family:var(--orb);font-size:13px;font-weight:700">${m.player2||m.p2||''} ${m.score2!=null?'<span style="color:var(--gc)">'+m.score2+'</span>':''}</div></div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);text-align:right">${m.network||''}</div></div></div>`;
+      }).join('');
+    }
+    // ── RG Bets from backend Elo model ────────────────────────
+    const rgBets=(rgLive.bets||[]).filter(b=>b.ev>0.04);
+    if(rgBets.length){
+      html+=`<div class="sh"><span style="color:var(--mc)">🎯</span> ROLAND GARROS BETS — ELO MODEL</div>`;
+      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:14px">`;
+      rgBets.forEach(b=>{
+        const evPct=((b.ev||0)*100).toFixed(1);
+        const evCol=b.ev>=0.08?'var(--gc)':b.ev>=0.04?'var(--nc)':'var(--vc)';
+        html+=`<div class="card" style="border-left:3px solid ${evCol}"><div style="font-family:var(--mono);font-size:9px;color:var(--mc);letter-spacing:1px;margin-bottom:4px">TENNIS · CLAY · ${b.tour||'RG'}</div><div style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--nc)">${b.pick||b.betOn||'—'}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:3px">${b.game||b.matchup||''}</div><div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center"><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${b.ml||b.odds||''}</span><span style="font-family:var(--mono);font-size:9px;color:${evCol}">EV +${evPct}%</span>${b.prob?`<span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(b.prob*100).toFixed(1)}% WIN</span>`:''}</div></div>`;
+      });
+      html+=`</div>`;
+    }
     // RG Draw
     html+=`<div class="sh"><span style="color:var(--mc)">🎾</span> ROLAND GARROS 2026 PROJECTED DRAW</div>`;
     html+=renderRGBracket('men',surf);
@@ -5451,7 +5521,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-05-22 16:00 MT';
+let LAST_AUTO_UPDATE = '2026-05-23 00:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -5660,12 +5730,15 @@ function exportBetHistoryCSV(){
   URL.revokeObjectURL(a.href);
 }
 
-// ── renderHomeBestBets (v5.1 — uses heroPicksForDay from data.json) ──────────
+// ── renderHomeBestBets (v6.0 — uses heroPicksForDay from data.json, filters garbage picks) ──
 function renderHomeBestBets(){
   const el=document.getElementById('home-best-bets');
   if(!el)return;
   const D=window.__CV_DATA;
-  const picks=(D&&D.heroPicksForDay)||(D&&D.bestBets?D.bestBets.slice(0,6):[]);
+  const _dateRe=/^\d{2}\/\d{2}\/\d{2}$/;
+  const rawPicks=(D&&D.heroPicksForDay)||(D&&D.bestBets?D.bestBets.slice(0,6):[]);
+  // v6.0 guard: filter out stale date-as-game prop entries
+  const picks=(rawPicks||[]).filter(b=>!(b.betType==='PROP'&&_dateRe.test(String(b.game||''))));
   if(!picks||!picks.length){
     el.innerHTML='<p style="color:var(--t3);font-size:11px;text-align:center;padding:20px">No high-confidence picks available yet — refresh scheduled at next update window.</p>';
     return;
@@ -6056,9 +6129,13 @@ function renderF1Constructors(){
 function renderF1Analysis(){
   const el=document.getElementById('f1-analysis-content');if(!el)return;
   const f1=window.__CV_DATA?.f1||{};
+  const comp=f1.comprehensive||{};
   const analytics=f1.analytics||{};
-  const drivers=(f1.driverStandings||[]).slice(0,10);
-  const nextRace=f1.nextRace||null;
+  const drivers=(comp.driverStandings||f1.driverStandings||[]).slice(0,10);
+  const nextRace=comp.nextRace||f1.nextRace||null;
+  const qualGrid=comp.qualifyingGrid||[];
+  const sprintRes=comp.sprintResults||[];
+  const raceBets=(comp.raceBets||[]).filter(b=>b.ev>0);
   const factors=[
     {name:'QUALIFYING PACE DELTA',desc:'Difference in qualifying lap time vs teammate. Key predictor of grid position.',weight:'HIGH',col:'var(--pc)',signal:'Varies by circuit type'},
     {name:'PIT STOP EFFICIENCY',desc:'Average pit stop time and consistency. Affects undercut/overcut windows.',weight:'HIGH',col:'var(--nc)',signal:'Target: <2.5s stationary'},
@@ -6066,7 +6143,41 @@ function renderF1Analysis(){
     {name:'WET PERFORMANCE INDEX',desc:'Historical wet race results weighted by rainfall intensity.',weight:'MED',col:'var(--mc)',signal:'Circuit-specific history'},
   ];
   const pct={HIGH:80,MED:55,LOW:30};
-  let html=`<div class="sh"><span class="v">🏎</span> NEXT RACE PREDICTION</div>`;
+  let html='';
+  // ── Qualifying Grid ──────────────────────────────────────────
+  if(qualGrid.length){
+    html+=`<div class="sh"><span class="v">🏁</span> QUALIFYING GRID</div>`;
+    html+=`<div style="overflow-x:auto;margin-bottom:14px"><table class="dt"><thead><tr><th>P</th><th>DRIVER</th><th>TEAM</th><th>TIME</th></tr></thead><tbody>`;
+    qualGrid.forEach((d,i)=>{
+      const posCol=i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--t3)';
+      const posStyle=i<3?`color:${posCol};font-weight:700`:`color:var(--t3)`;
+      html+=`<tr><td style="${posStyle}">${d.pos||i+1}</td><td style="font-family:var(--orb);font-weight:700;color:var(--nc)">${d.name||d.driver||''}</td><td style="font-size:10px;color:var(--t2)">${d.team||d.constructor||''}</td><td style="font-family:var(--mono);font-size:10px;color:var(--ic)">${d.time||d.lapTime||'—'}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  }
+  // ── Sprint Results ───────────────────────────────────────────
+  if(sprintRes.length){
+    html+=`<div class="sh"><span class="h">⚡</span> SPRINT RESULTS</div>`;
+    html+=`<div style="overflow-x:auto;margin-bottom:14px"><table class="dt"><thead><tr><th>P</th><th>DRIVER</th><th>TEAM</th><th>PTS</th></tr></thead><tbody>`;
+    sprintRes.forEach((d,i)=>{
+      const posCol=i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--t3)';
+      html+=`<tr><td style="color:${posCol};font-weight:700">${d.pos||i+1}</td><td style="font-family:var(--orb);font-weight:700;color:var(--nc)">${d.name||d.driver||''}</td><td style="font-size:10px;color:var(--t2)">${d.team||d.constructor||''}</td><td style="font-family:var(--mono);color:var(--gc)">${d.pts||d.points||''}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  }
+  // ── Race Bets ────────────────────────────────────────────────
+  if(raceBets.length){
+    html+=`<div class="sh"><span class="g">🎯</span> RACE BETS</div>`;
+    html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:14px">`;
+    raceBets.forEach(b=>{
+      const evPct=((b.ev||0)*100).toFixed(1);
+      const evCol=b.ev>=0.08?'var(--gc)':b.ev>=0.04?'var(--nc)':'var(--vc)';
+      html+=`<div class="card" style="border-left:3px solid ${evCol}"><div style="font-family:var(--mono);font-size:9px;color:var(--vc);letter-spacing:1px;margin-bottom:4px">F1 · RACE BET</div><div style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--nc)">${b.pick||b.betOn||'—'}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:3px">${b.note||b.type||''}</div><div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center"><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${b.ml||b.odds||''}</span><span style="font-family:var(--mono);font-size:9px;color:${evCol}">EV +${evPct}%</span>${b.prob?`<span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(b.prob*100).toFixed(1)}% WIN</span>`:''}</div></div>`;
+    });
+    html+=`</div>`;
+  }
+  // ── Next Race Prediction ─────────────────────────────────────
+  html+=`<div class="sh"><span class="v">🏎</span> NEXT RACE PREDICTION</div>`;
   if(nextRace){
     html+=`<div class="card" style="margin-bottom:12px;padding:13px;border-left:3px solid var(--vc)">
       <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:5px">NEXT RACE</div>
@@ -6076,7 +6187,8 @@ function renderF1Analysis(){
       <div style="margin-top:10px;font-family:var(--mono);font-size:9px;color:var(--t3)">// MODEL CONFIDENCE: Data insufficient for current race — check back closer to race weekend</div>
     </div>`;
   }
-  html+=`<div class="sh" style="margin-top:4px"><span class="n">📊</span> TOP 10 CURRENT STANDINGS</div>`;
+  // ── Driver Standings ─────────────────────────────────────────
+  html+=`<div class="sh"><span class="n">📊</span> TOP 10 CURRENT STANDINGS</div>`;
   if(drivers.length){
     html+=`<div style="overflow-x:auto;margin-bottom:14px"><table class="dt"><thead><tr><th>POS</th><th>DRIVER</th><th>TEAM</th><th>PTS</th><th>WINS</th></tr></thead><tbody>${
       drivers.map(d=>`<tr><td style="color:var(--vc);font-weight:700">${d.pos}</td><td style="font-family:var(--orb);font-weight:700;color:var(--nc)">${d.name}<span style="color:var(--t3);font-size:9px;margin-left:4px">${d.code||''}</span></td><td style="font-size:10px;color:var(--t2)">${d.team}</td><td style="font-family:var(--mono);font-weight:700;color:var(--gc)">${d.pts}</td><td style="color:var(--t3)">${d.wins}</td></tr>`)
@@ -6084,6 +6196,7 @@ function renderF1Analysis(){
   }else{
     html+=`<div class="empty" style="margin-bottom:14px">STANDINGS NOT LOADED — VISIT DRIVERS TAB FIRST</div>`;
   }
+  // ── Model Factor Weights ─────────────────────────────────────
   html+=`<div class="sh"><span class="i">🧠</span> MODEL FACTOR WEIGHTS</div>
   <div class="g2" style="gap:8px;margin-bottom:12px">${factors.map(f=>`<div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:9px;letter-spacing:1px;color:${f.col};margin-bottom:4px">${f.name}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t2);margin-bottom:4px">${f.desc}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px">SIGNAL: ${f.signal}</div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">WEIGHT</span><span style="font-family:var(--mono);font-size:8px;color:${f.col}">${f.weight}</span></div><div style="height:3px;background:rgba(77,121,255,.15);border-radius:1px"><div style="height:100%;width:${pct[f.weight]}%;background:${f.col};border-radius:1px"></div></div></div>`).join('')}</div>`;
   if(analytics.data?.length){
