@@ -3092,7 +3092,7 @@ const NBA_TEAMS={
 };
 // May 24 2026: WCF G4 OKC @ SA (SA home -148) | ECF G4 NY @ CLE tomorrow (NY leads 3-0)
 const NBA_TONIGHT=[
-  {h:'SA',a:'OKC',time:'8:30 PM ET',net:'NBC',gn:4,ctx:'WCF — SERIES TBD',hL:-148,aL:124,ou:219.5}
+  {h:'SA',a:'OKC',time:'8:30 PM ET',net:'NBC',gn:4,ctx:'WCF — OKC LEADS 2-1',hL:-148,aL:124,ou:219.5}
 ];
 // NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
 const NBA_PLAYERS=[
@@ -3362,7 +3362,7 @@ function renderNBACFCards(){
   const el=document.getElementById('nba-cf-cards');if(!el)return;
   const series=[
     {conf:'EAST FINAL',away:'NY',home:'CLE',awayW:3,homeW:0,gn:4,gDate:'May 25',awayML:-130,homeML:110,ou:216.5,note:'NY leads 3-0 — sweep in sight. G4 at CLE tomorrow. Brunson elite all series. CLE needs 4 straight miracles.',lean:'NY ML -130 — NY closing this series out. Brunson/KAT too much for CLE defense.',leanCol:'var(--nc)'},
-    {conf:'WEST FINAL',away:'OKC',home:'SA',awayW:0,homeW:0,gn:4,gDate:'May 24',awayML:124,homeML:-148,ou:219.5,note:'G4 TONIGHT at Frost Bank Center. SA home -148. SGA vs Wemby must-watch. Series status TBD after G3.',lean:'SA ML -148 — Wemby at home, SA crowd lifts energy. Must-win mentality.',leanCol:'var(--nc)'},
+    {conf:'WEST FINAL',away:'OKC',home:'SA',awayW:2,homeW:1,gn:4,gDate:'May 24',awayML:124,homeML:-148,ou:219.5,note:'G4 TONIGHT at Frost Bank Center. OKC LEADS 2-1. SA home -148, must-win scenario. SGA vs Wemby must-watch.',lean:'SA ML -148 — Wemby at home, SA crowd lifts energy. Must-win G4.',leanCol:'var(--nc)'},
   ];
   el.innerHTML=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--ic);margin:0 0 10px;padding-bottom:5px;border-bottom:1px solid rgba(77,121,255,.2)">// 2026 CONFERENCE FINALS — MAY 24</div><div class="g2">`+
   series.map(s=>{const seriesLbl=s.awayW>s.homeW?`${s.away} LEADS ${s.awayW}-${s.homeW}`:s.homeW>s.awayW?`${s.home} LEADS ${s.homeW}-${s.awayW}`:`SERIES ${s.awayW}-${s.homeW}`;return`<div class="card" style="border-left:2px solid ${s.leanCol}">
@@ -4351,7 +4351,7 @@ function T(sport,tabId){
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();}
-  if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams')renderSlam('fo');if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
+  if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams')renderSlam('fo');if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='live'){if(tabId==='games')renderGlobalLive();if(tabId==='bets')renderGlobalLiveBets();}
   document.getElementById(saId)?.scrollTo(0,0);
@@ -5498,6 +5498,40 @@ function lockTennisBet(tournament,match,pick,ml){
   const msg=document.createElement('div');
   msg.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(240,0,255,.9);color:#fff;font-family:var(--mono);font-size:11px;padding:8px 16px;border-radius:3px;z-index:9999;letter-spacing:2px';
   msg.textContent='🔒 TENNIS: '+pick;document.body.appendChild(msg);setTimeout(()=>msg.remove(),2000);
+  renderTennisPendingBets();
+}
+function renderTennisPendingBets(){
+  const el=document.getElementById('ten-pending');if(!el)return;
+  // Bets from lockTennisBet() — stored in locked_bets with sport:'TENNIS'
+  const lb=JSON.parse(localStorage.getItem('locked_bets')||'[]').filter(b=>b.sport==='TENNIS').map(b=>({...b,_store:'locked_bets'}));
+  // Bets from lockPick() with type 'TEN' — stored in preds store with sport:'TEN'
+  const pp=getP().filter(p=>p.sport==='TEN').map(p=>({
+    id:p.id,_store:'preds',sport:'TEN',
+    game:(p.hA&&p.awA)?p.hA+' vs '+p.awA:(p.hA||p.betOn||'Match'),
+    pick:p.betOn,ml:p.ml,date:p.date,outcome:p.outcome||'pending'
+  }));
+  const all=[...lb,...pp];
+  if(!all.length){el.innerHTML='<div style="font-family:var(--mono);font-size:9px;color:var(--t3);padding:10px 0;letter-spacing:1px">NO LOCKED TENNIS BETS</div>';return;}
+  el.innerHTML=all.slice(0,30).map(b=>{
+    const oc=b.outcome==='win'?'var(--nc)':b.outcome==='loss'?'var(--hc)':b.outcome==='push'?'var(--vc)':'var(--gc)';
+    const idStr=b._store==='preds'?`'${b.id}'`:b.id;
+    const tag=b._store==='preds'?'RG LOCK':'RG BET';
+    return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1;min-width:0;margin-right:8px">
+          <div style="font-family:var(--mono);font-size:8px;color:var(--t3);letter-spacing:1px">${tag} · TENNIS · ${b.date||''}</div>
+          <div style="font-family:var(--orb);font-size:12px;font-weight:700;margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.game||''}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--nc)">${b.pick||''}${b.ml?' <span style="color:var(--t3)">·</span> '+b.ml:''}</div>
+        </div>
+        <select onchange="updateBetOutcome(${idStr},'${b._store}',this.value,renderTennisPendingBets)" style="background:rgba(0,0,0,.7);color:var(--t);border:1px solid rgba(0,200,255,.3);font-family:var(--mono);font-size:9px;padding:2px 4px;border-radius:2px;flex-shrink:0;margin-top:2px">
+          <option value="pending" ${b.outcome==='pending'?'selected':''}>PENDING</option>
+          <option value="win" ${b.outcome==='win'?'selected':''}>WIN ✓</option>
+          <option value="loss" ${b.outcome==='loss'?'selected':''}>LOSS ✗</option>
+          <option value="push" ${b.outcome==='push'?'selected':''}>PUSH</option>
+        </select>
+      </div>
+    </div>`;
+  }).join('');
 }
 function renderRGDraw(tour,round){
   const el=document.getElementById('rg-draw-content');if(!el)return;
@@ -5540,7 +5574,7 @@ function renderRGDraw(tour,round){
       const mlStr=leanML>0?'+'+leanML:leanML;
       return`<div class="card" style="margin-bottom:7px;border-left:3px solid ${gb}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-          <span style="font-family:var(--mono);font-size:7px;color:var(--t3)">R2-${i+1}</span>
+          <span style="font-family:var(--mono);font-size:7px;color:var(--t3)">R2-${i+1} <span style="color:var(--mc)">· MAY 27-28</span></span>
           <span style="font-family:var(--mono);font-size:8px;font-weight:700;color:${gc};padding:1px 7px;border:1px solid ${gc};border-radius:2px">${m.grade}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -5550,7 +5584,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:9px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:8px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TENNIS','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">LOCK ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:8px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">LOCK ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:8px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   } else if(tour==='women'&&round==='r1'){
@@ -5569,7 +5603,7 @@ function renderRGDraw(tour,round){
       const mlStr=leanML>0?'+'+leanML:leanML;
       return`<div class="card" style="margin-bottom:7px;border-left:3px solid ${gb}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-          <span style="font-family:var(--mono);font-size:7px;color:var(--t3)">W-${i+1}</span>
+          <span style="font-family:var(--mono);font-size:7px;color:var(--t3)">W-${i+1} <span style="color:var(--mc)">· MAY 24-26</span></span>
           <span style="font-family:var(--mono);font-size:8px;font-weight:700;color:${gc};padding:1px 7px;border:1px solid ${gc};border-radius:2px">${m.grade}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -5579,7 +5613,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:9px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:8px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TENNIS','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">LOCK ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:8px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">LOCK ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:8px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   }
