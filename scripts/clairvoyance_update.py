@@ -1310,7 +1310,7 @@ def fetch_f1() -> dict:
 
     # Ergast schedule
     try:
-        data  = fetch_json(f"http://ergast.com/api/f1/{year}.json?limit=25")
+        data  = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}.json?limit=25")
         races = (data.get("MRData",{}).get("RaceTable",{}).get("Races") or [])
         for race in races:
             rd = race.get("date","")
@@ -1329,7 +1329,7 @@ def fetch_f1() -> dict:
 
     # Driver standings
     try:
-        data = fetch_json(f"http://ergast.com/api/f1/{year}/driverStandings.json")
+        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/driverStandings.json")
         for s in (data.get("MRData",{}).get("StandingsTable",{})
                       .get("StandingsLists",[{}])[0].get("DriverStandings") or [])[:20]:
             drv  = s.get("Driver",{})
@@ -1344,7 +1344,7 @@ def fetch_f1() -> dict:
 
     # Constructor standings
     try:
-        data = fetch_json(f"http://ergast.com/api/f1/{year}/constructorStandings.json")
+        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/constructorStandings.json")
         for s in (data.get("MRData",{}).get("StandingsTable",{})
                       .get("StandingsLists",[{}])[0].get("ConstructorStandings") or [])[:10]:
             ctor = s.get("Constructor",{})
