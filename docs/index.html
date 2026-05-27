@@ -1824,8 +1824,20 @@ function recR(id,outcome,hScore,aScore){
   preds[i].outcome=outcome;preds[i].settledAt=Date.now();
   if(hScore!==undefined)preds[i].hScore=hScore;if(aScore!==undefined)preds[i].aScore=aScore;
   saveP(preds);
-  const p=preds[i];const log=getDailyLog();
-  if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA&&r.lb===p.betOn);if(rec)rec.outcome=outcome;saveDailyLog(log);}
+  const p=preds[i];
+  // Always sync to daily_log — create the day + record if it doesn't exist yet
+  const log=getDailyLog();
+  if(!log[p.date])log[p.date]={recs:[],locked:[],assessed:false};
+  let rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA&&r.lb===p.betOn);
+  if(!rec){
+    // Bets locked via lockNHLGame/lockNBAGame/lockTennisBet/lockF1Bet never hit the log — create entry now
+    const upsertId=`${p.sport}_${p.hA}_${p.awA}_${p.betOn}`.replace(/\s/g,'_');
+    rec={id:upsertId,ha:p.hA,awa:p.awA||'',lb:p.betOn||'',p:p.winProb||0.55,ev2:0,ml:p.ml||0,tier:p.winProb>=.67?3:p.winProb>=.62?2:1,gt:p.sport||'',locked:true,skipped:false,outcome:null};
+    log[p.date].recs.push(rec);
+  }
+  rec.outcome=outcome;
+  rec.locked=true;
+  saveDailyLog(log);
   updHdr();toast(`// RECORDED: ${outcome.toUpperCase()}`);
   try{setTimeout(()=>{adaptiveTick();renderAdaptiveLearning();},200);}catch(e){}
   setTimeout(()=>{try{renderGlobalLiveBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}},120);
@@ -4175,6 +4187,34 @@ function renderAdaptiveLearning(){
       </div>
     </div>`;
   }
+  // ── WHERE WE'RE FALLING SHORT ──
+  if((state.weaknesses||[]).length){
+    html+=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--hc);margin:16px 0 8px">// WHERE THE MODEL IS FALLING SHORT</div>`;
+    html+=state.weaknesses.map(w=>`<div class="card" style="margin-bottom:7px;border-left:3px solid var(--hc);padding:10px 12px">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--hc);letter-spacing:1px;margin-bottom:5px">⚠ ${w.area}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t);line-height:1.75">${w.detail}</div>
+    </div>`).join('');
+  }else if(state.status==='OK'){
+    html+=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--nc);padding:10px 12px">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--nc);letter-spacing:1px;margin-bottom:4px">✓ NO STRUCTURAL WEAKNESSES DETECTED</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.75">Model is operating within acceptable calibration bounds across all tracked dimensions. Continue monitoring as sample grows.</div>
+    </div>`;
+  }
+  // ── RECOMMENDED ADJUSTMENTS ──
+  if((state.recommendations||[]).length){
+    const pColor={URGENT:'var(--hc)',HIGH:'var(--mc)',MEDIUM:'var(--vc)',LOW:'var(--nc)'};
+    html+=`<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gc);margin:14px 0 8px">// RECOMMENDED ADJUSTMENTS</div>`;
+    html+=state.recommendations.map(r=>{
+      const pc=pColor[r.priority]||'var(--t3)';
+      return`<div class="card" style="margin-bottom:7px;border-left:3px solid ${pc};padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="font-family:var(--mono);font-size:7px;padding:2px 5px;border:1px solid ${pc};color:${pc};border-radius:2px">${r.priority}</span>
+          <span style="font-family:var(--mono);font-size:9px;color:${pc};font-weight:700">${r.action}</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t);line-height:1.75">${r.detail}</div>
+      </div>`;
+    }).join('');
+  }
   // ── Morning report + controls ──
   html+=renderMorningReport();
   html+=`<button class="btn btn-p" style="width:100%;margin-top:12px;padding:9px" onclick="adaptiveTick();renderAdaptiveLearning();toast('// LEARNING CYCLE COMPLETE — WEIGHTS UPDATED')">[ RUN LEARNING CYCLE ]</button>`;
@@ -6236,6 +6276,76 @@ function adaptiveTick(){
   if(recentAcc>overallAcc+0.08)findings.push({type:'insight',component:'MOMENTUM',msg:`Recent 10-bet accuracy (${(recentAcc*100).toFixed(0)}%) is trending ABOVE 30-bet baseline (${(overallAcc*100).toFixed(0)}%) — model is improving.`});
   else if(recentAcc<overallAcc-0.08)findings.push({type:'alert',component:'REGRESSION',msg:`Recent 10-bet accuracy (${(recentAcc*100).toFixed(0)}%) is falling BELOW 30-bet baseline (${(overallAcc*100).toFixed(0)}%) — auto-recalibrating.`});
 
+  // ── Weakness detection & recommendations ────────────────────
+  const weaknesses=[];
+  const recommendations=[];
+
+  // Overall accuracy below breakeven
+  if(overallAcc<0.50&&W30.length>=10){
+    weaknesses.push({area:'OVERALL ACCURACY',detail:`${(overallAcc*100).toFixed(1)}% win rate on last ${W30.length} bets — below 50% breakeven. Model is not producing +EV outcomes at this sample size.`});
+    recommendations.push({priority:'HIGH',action:'RAISE EV THRESHOLD',detail:`Increase minimum EV requirement from ${+(S.g('evt')||2)}% to at least 4–5% to filter out marginal edges. Only lock LOCK-tier or higher chips.`});
+  }
+
+  // Calibration drift — overconfidence
+  for(const[bk,d] of Object.entries(calErrors)){
+    if(d.n>=4&&d.error>0.08){
+      weaknesses.push({area:`CALIBRATION — ${bk.toUpperCase()} TIER`,detail:`Model predicts ${(d.predicted*100).toFixed(1)}% win probability but actual rate is ${(d.actual*100).toFixed(1)}% — overconfident by ${(d.error*100).toFixed(1)}pp.`});
+      recommendations.push({priority:'HIGH',action:'REDUCE '+bk.toUpperCase()+' TIER EXPOSURE',detail:`The ${bk} confidence tier is systematically over-predicting. De-prioritize picks in the ${(d.lo*100).toFixed(0)}–${(d.hi*100).toFixed(0)}% model probability range until this corrects.`});
+    }
+    if(d.n>=4&&d.error<-0.07){
+      weaknesses.push({area:`CALIBRATION — ${bk.toUpperCase()} TIER`,detail:`Model under-estimates ${bk.toUpperCase()} tier: predicts ${(d.predicted*100).toFixed(1)}% but hitting at ${(d.actual*100).toFixed(1)}%. Leaving value on the table.`});
+      recommendations.push({priority:'MEDIUM',action:'LEAN INTO '+bk.toUpperCase()+' TIER',detail:`The ${bk} tier is outperforming model expectations. Consider lowering EV threshold for picks in the ${(d.lo*100).toFixed(0)}–${(d.hi*100).toFixed(0)}% range.`});
+    }
+  }
+
+  // Sport-specific underperformance
+  for(const[sport,perf] of Object.entries(sportPerf)){
+    if(perf.n>=5&&perf.acc<0.44){
+      weaknesses.push({area:`${sport} MODEL`,detail:`${sport} is hitting only ${(perf.acc*100).toFixed(0)}% over last ${perf.n} bets (${perf.wins}W–${perf.losses}L). This is materially below edge threshold.`});
+      recommendations.push({priority:'HIGH',action:`PAUSE ${sport} LOCKING`,detail:`${sport} bets are underperforming. Consider pausing new ${sport} locks until the model recalibrates. Focus on sports with ≥55% hit rate instead.`});
+    }
+    if(perf.n>=5&&perf.acc<0.50&&perf.acc>=0.44){
+      weaknesses.push({area:`${sport} CONSISTENCY`,detail:`${sport} is at ${(perf.acc*100).toFixed(0)}% — slightly below breakeven on ${perf.n} bets. Not yet alarming but trending wrong.`});
+      recommendations.push({priority:'MEDIUM',action:`REDUCE ${sport} UNIT SIZE`,detail:`Until ${sport} accuracy recovers to 53%+, reduce position size on ${sport} picks. Only lock ELITE chips for this sport.`});
+    }
+  }
+
+  // Bet type weakness
+  for(const[bt,perf] of Object.entries(typePerf)){
+    if(perf.n>=5&&perf.acc<0.42){
+      weaknesses.push({area:`${bt} BET TYPE`,detail:`${bt} bets are hitting ${(perf.acc*100).toFixed(0)}% on ${perf.n} bets — far below edge threshold.`});
+      recommendations.push({priority:'HIGH',action:`STOP ${bt} BETS`,detail:`${bt} bets are not producing edge. Stop placing ${bt} wagers until model shows sustained ≥55% accuracy on this market.`});
+    }
+  }
+
+  // Losing streak
+  if(streak>=4){
+    weaknesses.push({area:'LOSING STREAK',detail:`${streak}-game losing streak in progress. Model confidence signals may be mis-calibrated to current market conditions.`});
+    recommendations.push({priority:'URGENT',action:'RECALIBRATE NOW',detail:`After a ${streak}-game skid, reduce unit size to 0.5×, only lock ELITE picks (≥67% model prob, ≥8% EV), and let the model recalibrate over the next 10 bets before returning to full sizing.`});
+  }
+
+  // Recent regression
+  if(W10.length>=8&&recentAcc<overallAcc-0.10){
+    weaknesses.push({area:'RECENT REGRESSION',detail:`Last 10-bet accuracy (${(recentAcc*100).toFixed(0)}%) is ${((overallAcc-recentAcc)*100).toFixed(0)}pp below 30-bet baseline (${(overallAcc*100).toFixed(0)}%). Model is drifting.`});
+    recommendations.push({priority:'HIGH',action:'TIGHTEN PICK CRITERIA',detail:`Recent performance is deteriorating. Temporarily raise LOCK threshold to ELITE-only (≥67% win prob) and avoid bet types currently below 50% hit rate.`});
+  }
+
+  // EV threshold suggestion if no weaknesses
+  const hiEVBets=W30.filter(p=>p.decOdds&&p.winProb&&(p.winProb-(1/p.decOdds))>0.06);
+  const loEVBets=W30.filter(p=>p.decOdds&&p.winProb&&(p.winProb-(1/p.decOdds))<=0.02);
+  if(hiEVBets.length>=5&&loEVBets.length>=5){
+    const hiAcc=hiEVBets.filter(p=>p.outcome==='win').length/hiEVBets.length;
+    const loAcc=loEVBets.filter(p=>p.outcome==='win').length/loEVBets.length;
+    if(hiAcc-loAcc>0.12){
+      recommendations.push({priority:'MEDIUM',action:'INCREASE EV MINIMUM',detail:`High-EV picks (>6%) are hitting ${(hiAcc*100).toFixed(0)}% vs ${(loAcc*100).toFixed(0)}% for low-EV picks. Raising the EV floor to 4% would meaningfully improve overall accuracy.`});
+    }
+  }
+
+  // If model is performing well — surface strengths as guidance
+  if(!weaknesses.length&&overallAcc>=0.57){
+    recommendations.push({priority:'LOW',action:'MAINTAIN CURRENT APPROACH',detail:`Model is performing at ${(overallAcc*100).toFixed(1)}% — no structural weaknesses detected. Continue current pick criteria and unit sizing.`});
+  }
+
   // Load previous state and append to history
   const prev=S.g('adaptive_state')||{};
   const history=((prev.history)||[]).slice(-15);
@@ -6245,7 +6355,7 @@ function adaptiveTick(){
     lastRun:Date.now(),betsAnalyzed:W30.length,totalBets:allPreds.length,
     overallAcc,recentAcc,sportPerf,typePerf,calErrors,
     weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo}},
-    findings,history,evThreshold:+(S.g('evt')||2),status:'OK'
+    findings,weaknesses,recommendations,history,evThreshold:+(S.g('evt')||2),status:'OK'
   };
   S.s('adaptive_state',state);
   return state;
@@ -6769,6 +6879,8 @@ function renderFloatingLivePanel(bets){
 (async function INIT(){
   startSplash();
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
+  try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
+  try{const be=S.g('nba_ens');if(be)NBA_ENS=be;}catch{}
   try{buildMLB();}catch(e){console.error('buildMLB',e);}
   try{initELO();}catch(e){console.error('initELO',e);}
   try{updHdr();}catch(e){console.error('updHdr',e);}
