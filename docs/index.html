@@ -6826,6 +6826,7 @@ function renderFloatingLivePanel(bets){
   // MLB API auto-refresh every 5 minutes during game hours
   try{setInterval(()=>{const h=getMSTNow().getHours();if(h>=11&&h<=24)loadGames(todayESPN());},300000);}catch(e){}
   // Tennis init
+  try{renderTennisToday();}catch(e){console.error('tennisToday',e);}
   try{renderTennisPicks();}catch(e){console.error('tennisPicks',e);}
   try{renderSlam('fo');}catch(e){console.error('tennisSlam',e);}
   try{populateH2HPickers();}catch(e){console.error('h2hPickers',e);}
@@ -6837,74 +6838,87 @@ function renderTennisToday(filterTour='all'){
   const el=document.getElementById('ten-today-list');if(!el)return;
   const dateEl=document.getElementById('ten-today-date');
   if(dateEl){const d=new Date();dateEl.textContent=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}).toUpperCase();}
-  // Build model cards from TEN_TODAY_ATP / TEN_TODAY_WTA
+
+  // Highlight active filter button
+  ['all','atp','wta'].forEach(f=>{const b=document.getElementById('ten-today-'+f);if(b){b.style.borderColor=filterTour.toLowerCase()===f||(!f&&filterTour==='all')?'var(--pc)':'';b.style.color=filterTour.toLowerCase()===f?'var(--pc)':'var(--t3)';}});
+
   const atpMatches=TEN_TODAY_ATP.map(m=>({...m,_tour:'ATP'}));
   const wtaMatches=TEN_TODAY_WTA.map(m=>({...m,_tour:'WTA'}));
   const allMatches=filterTour==='ATP'?atpMatches:filterTour==='WTA'?wtaMatches:[...atpMatches,...wtaMatches];
-  if(!allMatches.length){el.innerHTML='<div class="empty">NO MATCHES SCHEDULED TODAY</div>';return;}
-  const gradeC={ELITE:'var(--gc)',LOCK:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
-  const gradeBorder={ELITE:'var(--gc)',LOCK:'var(--pc)',LEAN:'var(--nc)',SKIP:'rgba(255,255,255,.1)'};
+  if(!allMatches.length){el.innerHTML='<div class="empty">NO MATCHES SCHEDULED</div>';return;}
+
+  // ml2d: american odds → decimal
+  const ml2d_t=ml=>ml>0?ml/100+1:100/Math.abs(ml)+1;
   const surfCol={hard:'var(--ic)',clay:'var(--mc)',grass:'var(--nc)',indoor:'var(--pc)'};
-  const cards=allMatches.map(m=>{
+
+  let html=`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">// ${allMatches.length} MATCHES · ${allMatches[0]?.tournament||'TENNIS'} · MODEL + MARKET</div>`;
+
+  for(const m of allMatches){
     const isATP=m._tour==='ATP';
     const db=isATP?ATP_DB:WTA_DB;
     const d1=db[m.p1],d2=db[m.p2];
-    // Run model if both players found in DB, else use market odds only
-    let wp=null,ev1=0,ev2=0;
+
+    // Win probabilities — model if both in DB, else market-implied
+    let p1Win,p2Win,hasModel=false;
     if(d1&&d2){
-      wp=tennisMatchWinProbFull(d1,d2,m.surface,m.bo5);
-      ev1=tennisEV(wp,m.p1ml);
-      ev2=tennisEV(1-wp,m.p2ml);
+      try{p1Win=tennisMatchWinProbFull(d1,d2,m.surface,m.bo5);hasModel=true;}catch(e){}
     }
-    const p1Win=wp!=null?wp:(m.p1ml<0?Math.abs(m.p1ml)/(Math.abs(m.p1ml)+100):100/(100+m.p1ml));
-    const p2Win=1-p1Win;
-    // Determine lean (model or market)
-    const leanP1=p1Win>=p2Win;
-    const leanWp=leanP1?p1Win:p2Win;
-    const leanEv=leanP1?ev1:ev2;
-    const leanPick=leanP1?m.p1:m.p2;
-    const leanOpp=leanP1?m.p2:m.p1;
-    const leanML=leanP1?m.p1ml:m.p2ml;
-    const leanMLStr=leanML>0?'+'+leanML:String(leanML);
-    const dec=leanML>0?leanML/100+1:100/Math.abs(leanML)+1;
-    // Grade based on EV (if model available) or confidence margin
-    const evForGrade=wp!=null?leanEv:(leanWp-.5)*2;
-    const grade=evForGrade>=.10?'ELITE':evForGrade>=.06?'LOCK':evForGrade>=.02?'LEAN':'SKIP';
-    const gc=gradeC[grade];const gb=gradeBorder[grade];
-    const sc=surfCol[m.surface]||'var(--t3)';
+    if(!hasModel){
+      // Market-implied (remove vig via simple normalization)
+      const imp1=m.p1ml<0?Math.abs(m.p1ml)/(Math.abs(m.p1ml)+100):100/(100+Math.abs(m.p1ml));
+      const imp2=m.p2ml<0?Math.abs(m.p2ml)/(Math.abs(m.p2ml)+100):100/(100+Math.abs(m.p2ml));
+      const tot=imp1+imp2;p1Win=imp1/tot;
+    }
+    p2Win=1-p1Win;
+
+    // Decimal odds for each side
+    const d1ml=ml2d_t(m.p1ml),d2ml=ml2d_t(m.p2ml);
+    // EV for each side: p*d - 1
+    const ev1=ev(p1Win,d1ml),ev2=ev(p2Win,d2ml);
+    // chipC uses tier(p,e): tier 3=ELITE, 2=LOCK, 1=LEAN, 0=SKIP
+    const cs1=chipC(p1Win,ev1),cs2=chipC(p2Win,ev2);
+
     const p1MLStr=m.p1ml>0?'+'+m.p1ml:String(m.p1ml);
     const p2MLStr=m.p2ml>0?'+'+m.p2ml:String(m.p2ml);
-    const modelLine=wp!=null?`MODEL: ${(p1Win*100).toFixed(0)}% vs ${(p2Win*100).toFixed(0)}% · EV: <span style="color:${leanEv>=0?'var(--nc)':'var(--hc)'}">${leanEv>=0?'+':''}${(leanEv*100).toFixed(1)}%</span>`:'MARKET ONLY (not in DB)';
-    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gb}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);letter-spacing:1px">${m._tour} · ${m.tournament} · ${m.bo5?'BO5':'BO3'}</div>
-        <span style="font-family:var(--mono);font-size:8px;font-weight:700;color:${gc};padding:1px 6px;border:1px solid ${gc};border-radius:2px">${grade}</span>
+    const sc=surfCol[m.surface]||'var(--t3)';
+    const modelNote=hasModel
+      ?`MODEL: ${(p1Win*100).toFixed(1)}% / ${(p2Win*100).toFixed(1)}% · EV: ${ev1>=0?'+':''}${(ev1*100).toFixed(1)}% / ${ev2>=0?'+':''}${(ev2*100).toFixed(1)}%`
+      :`MARKET IMPLIED: ${(p1Win*100).toFixed(1)}% / ${(p2Win*100).toFixed(1)}%`;
+
+    // Build lock pick args
+    const p1ld=d1ml.toFixed(3),p2ld=d2ml.toFixed(3);
+    const td=today();
+
+    html+=`<div class="gc" style="border-left:2px solid rgba(0,200,200,.35)">
+      <div class="gch">
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="gtm" style="color:${p1Win>=.5?'var(--pc)':'var(--t2)'}">${m.p1}</span>
+            <span style="font-family:var(--mono);font-size:8px;color:var(--t3)">vs</span>
+            <span class="gtm" style="color:${p2Win>=.5?'var(--pc)':'var(--t2)'}">${m.p2}</span>
+          </div>
+          <div class="gsp">🎾 ${m._tour} · <span style="color:${sc}">${m.surface.toUpperCase()}</span> · ${m.bo5?'BO5 (Men)':'BO3 (Women)'} · ${m.tournament}</div>
+          <div class="gsp" style="color:var(--t3);font-size:9px">${modelNote}</div>
+        </div>
+        <div style="text-align:right"><span style="font-family:var(--mono);font-size:9px;color:var(--t3)">RG 2026</span></div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="text-align:center;flex:1;background:${leanP1?'rgba(240,0,255,.07)':'rgba(255,255,255,.03)'};border:1px solid ${leanP1?gb:'rgba(255,255,255,.08)'};border-radius:3px;padding:7px 4px">
-          <div style="font-family:var(--orb);font-size:13px;font-weight:900;color:${leanP1?gc:'var(--t)'};line-height:1.2">${m.p1}</div>
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--t);margin-top:2px">${p1MLStr}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(p1Win*100).toFixed(0)}% WIN</div>
+      <div class="brow">
+        <div class="${cs1.c} chip" style="flex:1" onclick="lockPick('${m.p1}','${m.p2}','TEN','${m.p1}',${p1Win.toFixed(4)},'${p1MLStr}',${p1ld},'${td}')">
+          <div class="cht">ML ${m.p1}</div>
+          <div class="cho">${p1MLStr}</div>
+          <div class="chp">${(p1Win*100).toFixed(1)}%</div>
+          <div style="margin-top:2px"><span class="pill ${cs1.pl}">${cs1.lb}</span></div>
         </div>
-        <div style="text-align:center;min-width:30px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">vs</div>
-          <div style="font-family:var(--mono);font-size:8px;color:${sc}">${m.surface.toUpperCase()}</div>
+        <div class="${cs2.c} chip" style="flex:1" onclick="lockPick('${m.p2}','${m.p1}','TEN','${m.p2}',${p2Win.toFixed(4)},'${p2MLStr}',${p2ld},'${td}')">
+          <div class="cht">ML ${m.p2}</div>
+          <div class="cho">${p2MLStr}</div>
+          <div class="chp">${(p2Win*100).toFixed(1)}%</div>
+          <div style="margin-top:2px"><span class="pill ${cs2.pl}">${cs2.lb}</span></div>
         </div>
-        <div style="text-align:center;flex:1;background:${!leanP1?'rgba(240,0,255,.07)':'rgba(255,255,255,.03)'};border:1px solid ${!leanP1?gb:'rgba(255,255,255,.08)'};border-radius:3px;padding:7px 4px">
-          <div style="font-family:var(--orb);font-size:13px;font-weight:900;color:${!leanP1?gc:'var(--t)'};line-height:1.2">${m.p2}</div>
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--t);margin-top:2px">${p2MLStr}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(p2Win*100).toFixed(0)}% WIN</div>
-        </div>
-      </div>
-      <div style="font-family:var(--mono);font-size:9px;color:${gc};margin-bottom:4px">▶ LEAN: ${leanPick} ML ${leanMLStr} · CONF: ${(leanWp*100).toFixed(0)}%</div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:6px">${modelLine}</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn btn-p btn-sm" onclick="lockPick('${m.p1}','${m.p2}','TEN','${m.p1}',${p1Win.toFixed(3)},'${p1MLStr}',${(m.p1ml>0?m.p1ml/100+1:100/Math.abs(m.p1ml)+1).toFixed(3)},'${today()}')">🔒 ${m.p1}</button>
-        <button class="btn btn-o btn-sm" onclick="lockPick('${m.p2}','${m.p1}','TEN','${m.p2}',${p2Win.toFixed(3)},'${p2MLStr}',${(m.p2ml>0?m.p2ml/100+1:100/Math.abs(m.p2ml)+1).toFixed(3)},'${today()}')">🔒 ${m.p2}</button>
       </div>
     </div>`;
-  });
-  el.innerHTML=`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">// ${allMatches.length} MATCHES · CLAY · ROLAND GARROS R2 · MODEL + MARKET ODDS</div>`+cards.join('');
+  }
+  el.innerHTML=html;
 }
 // ── F1 Functions ──────────────────────────────────────────────
 function renderF1Schedule(){
