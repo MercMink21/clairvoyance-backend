@@ -256,7 +256,7 @@ body{line-height:1.5}
     <div id="free-pick-banner" style="margin-bottom:16px"></div>
     <!-- Best bets from remote data.json (written by clairvoyance_update.py) -->
     <div id="home-best-bets" style="margin-bottom:16px"></div>
-    <div class="sh"><span class="p"></span> TODAY'S TOP PICKS <span id="home-date-display" style="font-family:var(--mono);font-size:10px;color:var(--t3);font-weight:400;margin-left:8px"></span></div>
+    <div class="sh" style="display:flex;justify-content:space-between;align-items:center"><span><span class="p"></span> TODAY'S TOP PICKS <span id="home-date-display" style="font-family:var(--mono);font-size:10px;color:var(--t3);font-weight:400;margin-left:8px"></span></span><span id="home-sync-status" style="font-family:var(--mono);font-size:8px;letter-spacing:1.5px;display:none"></span></div>
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
     <div class="sh" style="margin-top:20px"><span class="p"></span> LOCKED PICKS TRACKER</div>
     <div id="home-tracker" style="margin-top:12px;display:grid;gap:8px"></div>
@@ -613,20 +613,24 @@ body{line-height:1.5}
         <div id="nhl-stats-mp-tgt"><div class="loading"><span class="spi"></span></div></div>
       </div>
       <div id="nhl-tab-config" class="tab">
-        <div class="sh"><span class="i">⚙</span> NHL ENGINE CONFIG</div>
-        <div style="background:rgba(10,0,24,.8);border:1px solid rgba(240,0,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
-          <div style="margin-bottom:8px">NHL MC Weight: <input type="range" id="nhl-w-mc" min="0" max="100" value="50" oninput="document.getElementById('nhl-mc-v').textContent=this.value+'%'"> <span id="nhl-mc-v">50%</span></div>
-          <div style="margin-bottom:8px">Bayesian Weight: <input type="range" id="nhl-w-bay" min="0" max="100" value="20" oninput="document.getElementById('nhl-bay-v').textContent=this.value+'%'"> <span id="nhl-bay-v">20%</span></div>
-          <div style="margin-bottom:8px">ELO Weight: <input type="range" id="nhl-w-elo" min="0" max="100" value="30" oninput="document.getElementById('nhl-elo-v').textContent=this.value+'%'"> <span id="nhl-elo-v">30%</span></div>
-          <div style="margin-bottom:8px">HockeyViz Weight: <input type="range" id="nhl-w-hv" min="0" max="100" value="0" oninput="document.getElementById('nhl-hv-v').textContent=this.value+'%'"> <span id="nhl-hv-v">0%</span></div>
-          <button onclick="applyNHLWeights()" class="btn btn-p btn-fw">APPLY</button>
+        <div class="sh"><span class="i"></span> NHL ENGINE CONFIG</div>
+        <div class="sg">
+          <div class="sgt">// MODEL WEIGHTS</div>
+          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nhl-mc-v">50%</span></div><input type="range" id="nhl-w-mc2" min="10" max="70" value="50" oninput="document.getElementById('nhl-mc-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nhl-bay-v">20%</span></div><input type="range" id="nhl-w-bay2" min="5" max="50" value="20" oninput="document.getElementById('nhl-bay-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nhl-elo-v">30%</span></div><input type="range" id="nhl-w-elo2" min="5" max="50" value="30" oninput="document.getElementById('nhl-elo-v').textContent=this.value+'%'">
+          <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNHLWeights()">APPLY</button>
         </div>
-        <div class="sh" style="margin-top:14px"><span class="i">TARGET ACCURACY</span></div>
-        <div style="background:rgba(10,0,24,.8);border:1px solid rgba(240,0,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
-          <div style="margin-bottom:8px">EV Threshold: <input type="range" id="nhl-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('nhl-ev-v').textContent=this.value+'%'"> <span id="nhl-ev-v">2%</span></div>
-          <div style="margin-bottom:8px">Min Win Prob: <input type="range" id="nhl-min-p" min="50" max="75" value="55" oninput="document.getElementById('nhl-minp-v').textContent=this.value+'%'"> <span id="nhl-minp-v">55%</span></div>
-          <button onclick="applyNHLWeights()" class="btn btn-p btn-fw" style="margin-top:8px">SAVE CONFIG</button>
+        <div class="sg">
+          <div class="sgt">// PICK THRESHOLDS</div>
+          <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="nhl-ev-v">2%</span></div><input type="range" id="nhl-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('nhl-ev-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="nhl-minp-v">55%</span></div><input type="range" id="nhl-min-p" min="50" max="75" value="55" oninput="document.getElementById('nhl-minp-v').textContent=this.value+'%'">
+          <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNHLWeights()">SAVE</button>
         </div>
+        <div id="nhl-model-weights"></div>
       </div>
     </div>
     <nav id="mn2" style="display:none">
@@ -743,19 +747,24 @@ body{line-height:1.5}
         <div id="nba-model-weights"></div>
       </div>
       <div id="nba-tab-config" class="tab">
-        <div class="sh"><span class="i">⚙</span> NBA ENGINE CONFIG</div>
-        <div style="background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
-          <div style="margin-bottom:8px">NBA MC Weight: <input type="range" id="nba-w-mc" min="0" max="100" value="50" oninput="document.getElementById('nba-mc-v').textContent=this.value+'%'"> <span id="nba-mc-v">50%</span></div>
-          <div style="margin-bottom:8px">Bayesian Weight: <input type="range" id="nba-w-bay" min="0" max="100" value="20" oninput="document.getElementById('nba-bay-v').textContent=this.value+'%'"> <span id="nba-bay-v">20%</span></div>
-          <div style="margin-bottom:8px">ELO Weight: <input type="range" id="nba-w-elo" min="0" max="100" value="30" oninput="document.getElementById('nba-elo-v').textContent=this.value+'%'"> <span id="nba-elo-v">30%</span></div>
-          <button onclick="applyNBAWeights()" class="btn btn-p btn-fw">APPLY</button>
+        <div class="sh"><span class="i"></span> NBA ENGINE CONFIG</div>
+        <div class="sg">
+          <div class="sgt">// MODEL WEIGHTS</div>
+          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nba-mc-v">50%</span></div><input type="range" id="nba-w-mc" min="10" max="70" value="50" oninput="document.getElementById('nba-mc-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nba-bay-v">20%</span></div><input type="range" id="nba-w-bay" min="5" max="50" value="20" oninput="document.getElementById('nba-bay-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nba-elo-v">30%</span></div><input type="range" id="nba-w-elo" min="5" max="50" value="30" oninput="document.getElementById('nba-elo-v').textContent=this.value+'%'">
+          <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNBAWeights()">APPLY</button>
         </div>
-        <div class="sh" style="margin-top:14px"><span class="i">TARGET ACCURACY</span></div>
-        <div style="background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
-          <div style="margin-bottom:8px">EV Threshold: <input type="range" id="nba-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('nba-ev-v').textContent=this.value+'%'"> <span id="nba-ev-v">2%</span></div>
-          <div style="margin-bottom:8px">Min Win Prob: <input type="range" id="nba-min-p" min="50" max="75" value="55" oninput="document.getElementById('nba-minp-v').textContent=this.value+'%'"> <span id="nba-minp-v">55%</span></div>
-          <button onclick="applyNBAWeights()" class="btn btn-p btn-fw" style="margin-top:8px">SAVE CONFIG</button>
+        <div class="sg">
+          <div class="sgt">// PICK THRESHOLDS</div>
+          <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="nba-ev-v">2%</span></div><input type="range" id="nba-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('nba-ev-v').textContent=this.value+'%'">
+          <div class="dv"></div>
+          <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="nba-minp-v">55%</span></div><input type="range" id="nba-min-p" min="50" max="75" value="55" oninput="document.getElementById('nba-minp-v').textContent=this.value+'%'">
+          <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNBAWeights()">SAVE</button>
         </div>
+        <div id="nba-model-weights"></div>
       </div>
     </div>
     <nav id="mn3" style="display:none">
@@ -773,24 +782,30 @@ body{line-height:1.5}
 <div id="sp-ovr" class="spane">
   <nav class="inav" id="ovr-in">
     <button class="nb act" onclick="T('ovr','dash')">DASHBOARD</button>
+    <button class="nb" onclick="T('ovr','analytics')">ANALYTICS</button>
     <button class="nb" onclick="T('ovr','history')">ALL BETS</button>
     <button class="nb" onclick="T('ovr','adaptive')">ADAPTIVE</button>
   </nav>
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
-      <div class="sh"><span class="p">📊</span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
+      <div class="sh"><span class="p"></span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>SPORTS: MLB · NHL · NBA · TENNIS · PARLAY | TYPES: ML · RL/PL · OU · PARLAY · PROP</div>
       <div id="ovr-dashboard"><div class="loading"><span class="spi"></span></div></div>
     </div>
+    <div id="ovr-tab-analytics" class="tab">
+      <div class="sh"><span class="p"></span> CLAIRVOYANCE — ANALYTICS LAB</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">VISUAL PERFORMANCE ANALYTICS · TRENDS · CALIBRATION · TIER BREAKDOWN<br>BASED ON ALL SETTLED LOCKED PICKS</div>
+      <div id="ovr-analytics"><div class="loading"><span class="spi"></span></div></div>
+    </div>
     <div id="ovr-tab-history" class="tab">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        <div class="sh" style="margin:0"><span class="p">📋</span> ALL BETS — CROSS SPORT</div>
+        <div class="sh" style="margin:0"><span class="p"></span> ALL BETS — CROSS SPORT</div>
         <button class="btn btn-p btn-sm" onclick="renderOverallHistory()">↻</button>
       </div>
       <div id="ovr-history-list"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-adaptive" class="tab">
-      <div class="sh"><span class="i">🧠</span> ADAPTIVE LEARNING ENGINE</div>
+      <div class="sh"><span class="i"></span> ADAPTIVE LEARNING ENGINE</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.8">CLAIRVOYANCE SELF-ASSESSMENT · PATTERN RECOGNITION · MODEL CALIBRATION<br>UPDATED EACH SESSION BASED ON SETTLED BET OUTCOMES</div>
       <div id="ovr-adaptive"><div class="loading"><span class="spi"></span></div></div>
     </div>
@@ -965,15 +980,25 @@ body{line-height:1.5}
     </div>
     <!-- CONFIG -->
     <div id="ten-tab-config" class="tab">
-      <div class="sh"><span class="i">⚙</span> TENNIS ENGINE CONFIG</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
-        <div style="margin-bottom:8px">Surface ELO Weight: <input type="range" id="ten-w-surf" min="0" max="100" value="40" oninput="document.getElementById('ten-surf-v').textContent=this.value+'%'"> <span id="ten-surf-v">40%</span></div>
-        <div style="margin-bottom:8px">H2H Weight: <input type="range" id="ten-w-h2h" min="0" max="100" value="20" oninput="document.getElementById('ten-h2h-v').textContent=this.value+'%'"> <span id="ten-h2h-v">20%</span></div>
-        <div style="margin-bottom:8px">Serve/Return Weight: <input type="range" id="ten-w-srv" min="0" max="100" value="25" oninput="document.getElementById('ten-srv-v').textContent=this.value+'%'"> <span id="ten-srv-v">25%</span></div>
-        <div style="margin-bottom:8px">Fatigue Weight: <input type="range" id="ten-w-fat" min="0" max="100" value="15" oninput="document.getElementById('ten-fat-v').textContent=this.value+'%'"> <span id="ten-fat-v">15%</span></div>
-        <div style="margin-bottom:8px">Min EV %: <input type="range" id="ten-ev-thresh" min="0" max="10" value="3" step="0.5" oninput="document.getElementById('ten-ev-v').textContent=this.value+'%'"> <span id="ten-ev-v">3%</span></div>
-        <button class="btn btn-p btn-fw" style="margin-top:8px">SAVE CONFIG</button>
+      <div class="sh"><span class="i"></span> TENNIS ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">SURFACE ELO</span><span class="rrv" id="ten-surf-v">40%</span></div><input type="range" id="ten-w-surf" min="10" max="70" value="40" oninput="document.getElementById('ten-surf-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">H2H</span><span class="rrv" id="ten-h2h-v">20%</span></div><input type="range" id="ten-w-h2h" min="0" max="40" value="20" oninput="document.getElementById('ten-h2h-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">SERVE / RETURN</span><span class="rrv" id="ten-srv-v">25%</span></div><input type="range" id="ten-w-srv" min="5" max="50" value="25" oninput="document.getElementById('ten-srv-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FATIGUE</span><span class="rrv" id="ten-fat-v">15%</span></div><input type="range" id="ten-w-fat" min="0" max="30" value="15" oninput="document.getElementById('ten-fat-v').textContent=this.value+'%'">
       </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="ten-minp-v">55%</span></div><input type="range" id="ten-min-p" min="50" max="80" value="55" oninput="document.getElementById('ten-minp-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="ten-ev-v">3%</span></div><input type="range" id="ten-ev-thresh" min="0" max="10" value="3" step="0.5" oninput="document.getElementById('ten-ev-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px">SAVE</button>
+      </div>
+      <div id="ten-model-weights"></div>
     </div>
   </div>
 </div>
@@ -3885,13 +3910,17 @@ function renderOverall(){
   const bands=[{min:.55,max:.65,lbl:'55-65%'},{min:.65,max:.75,lbl:'65-75%'},{min:.75,max:1,lbl:'75%+'}];
   const cal=bands.map(b=>{const bp=settled.filter(p=>p.winProb>=b.min&&p.winProb<b.max);const bw=bp.filter(p=>p.outcome==='win').length;return{lbl:b.lbl,n:bp.length,act:bp.length?bw/bp.length:null,exp:(b.min+Math.min(b.max,.99))/2};});
   const accColor=acc===null?'var(--t3)':acc>=.56?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
+  // Recent form dots (last 15 settled)
+  const recentFifteen=settled.slice(-15);
+  const formDots=recentFifteen.map(p=>{const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';return`<span title="${p.betOn||''} ${p.outcome}" style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${c};box-shadow:0 0 5px ${c}55;flex-shrink:0"></span>`;}).join('');
   let html=`
   <div class="g4" style="gap:8px;margin-bottom:12px">
     <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${accColor}">${acc===null?'--':(acc*100).toFixed(1)+'%'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">OVERALL WIN %</div></div>
     <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:var(--t)">${wins}W-${losses}L${pushes?'-'+pushes+'P':''}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">RECORD</div></div>
     <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${roi===null?'var(--t3)':roi>=0?'var(--nc)':'var(--hc)'}">${roi===null?'--':((roi*100).toFixed(1)+'%')}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">ROI</div></div>
-    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${streakType==='win'?'var(--nc)':'var(--hc)'}">${streak>0?`${streak}${streakType==='win'?'W🔥':'L'}`:'--'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">STREAK</div></div>
+    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${streakType==='win'?'var(--nc)':'var(--hc)'}">${streak>0?`${streak}${streakType==='win'?'W':'L'}`:'--'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">STREAK</div></div>
   </div>
+  ${recentFifteen.length?`<div class="card" style="margin-bottom:12px;padding:9px 12px"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);letter-spacing:2px;margin-bottom:7px">RECENT FORM (LAST ${recentFifteen.length})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${formDots}</div></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY SPORT</div>
@@ -3939,7 +3968,336 @@ function renderOverall(){
       <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${streakType==='win'?'var(--nc)':'var(--hc)'}">${streak>0?streak+(streakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">STREAK</div></div>
       <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--t)">${settled.length}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">TOTAL BETS</div></div>
     </div>
+  </div>
+  <div style="text-align:center;margin-top:8px">
+    <button class="btn btn-p btn-sm" onclick="T('ovr','analytics')" style="letter-spacing:2px">OPEN ANALYTICS LAB →</button>
   </div>`;
+  el.innerHTML=html;
+}
+
+// ─── OVERALL ANALYTICS ───────────────────────────────────────────────────────
+function renderOverallAnalytics(){
+  const el=document.getElementById('ovr-analytics');if(!el)return;
+  const all=getP();
+  const settled=all.filter(p=>p.outcome!=='pending').sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
+  if(settled.length<3){el.innerHTML='<div class="empty">NOT ENOUGH SETTLED BETS FOR ANALYTICS<br><span style="font-size:9px;color:var(--t3)">LOCK AND SETTLE AT LEAST 3 PICKS TO UNLOCK ANALYTICS</span></div>';return;}
+
+  // ── Helpers ──
+  const pnl=(p)=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnlColor=(v)=>v>=0?'var(--nc)':'var(--hc)';
+  const barW=(pct,max)=>Math.max(2,Math.round((pct/max)*100));
+  const pctFmt=(v)=>v!=null?(v*100).toFixed(1)+'%':'--';
+
+  // ── 1. Running P&L sparkline (SVG) — last 60 settled bets ──
+  const sparkBets=settled.slice(-60);
+  let runUnits=0;
+  const sparkPts=sparkBets.map((p,i)=>{runUnits+=pnl(p);return{x:i,y:runUnits};});
+  const svgW=320,svgH=80,pad=8;
+  const minY=Math.min(0,...sparkPts.map(p=>p.y));
+  const maxY=Math.max(0,...sparkPts.map(p=>p.y));
+  const rangeY=Math.max(1,maxY-minY);
+  const scaleX=(i)=>pad+((i/(sparkPts.length-1||1))*(svgW-pad*2));
+  const scaleY=(y)=>svgH-pad-((y-minY)/rangeY)*(svgH-pad*2);
+  const zero=scaleY(0);
+  const pts=sparkPts.map((p,i)=>`${scaleX(i).toFixed(1)},${scaleY(p.y).toFixed(1)}`).join(' ');
+  const fillPts=`${scaleX(0).toFixed(1)},${zero.toFixed(1)} ${pts} ${scaleX(sparkPts.length-1).toFixed(1)},${zero.toFixed(1)}`;
+  const finalUnits=sparkPts.length?sparkPts[sparkPts.length-1].y:0;
+  const finalColor=finalUnits>=0?'#00f0ff':'#ff2090';
+  const sparkSVG=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="70" style="overflow:visible">
+    <defs><linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${finalColor}" stop-opacity="0.25"/><stop offset="100%" stop-color="${finalColor}" stop-opacity="0.02"/></linearGradient></defs>
+    <line x1="${pad}" y1="${zero.toFixed(1)}" x2="${svgW-pad}" y2="${zero.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <polygon points="${fillPts}" fill="url(#spkGrad)" stroke="none"/>
+    <polyline points="${pts}" fill="none" stroke="${finalColor}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${sparkPts.length?`<circle cx="${scaleX(sparkPts.length-1).toFixed(1)}" cy="${scaleY(finalUnits).toFixed(1)}" r="3" fill="${finalColor}" stroke="#010006" stroke-width="1.5"/>`:''}
+  </svg>`;
+
+  // ── 2. Recent form dots (last 20) ──
+  const recent=settled.slice(-20);
+  const dotRow=recent.map(p=>{
+    const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
+    return`<span title="${p.betOn||''} ${p.outcome}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};flex-shrink:0;box-shadow:0 0 4px ${c}"></span>`;
+  }).join('');
+
+  // ── 3. Sport performance bars ──
+  const sports=['MLB','NHL','NBA','TEN'];
+  const sportColors={'MLB':'var(--nc)','NHL':'var(--ic)','NBA':'var(--gc)','TEN':'var(--mc)'};
+  const sportData=sports.map(s=>{
+    const sp=settled.filter(p=>p.sport===s);
+    const sw=sp.filter(p=>p.outcome==='win').length;
+    const sl=sp.filter(p=>p.outcome==='loss').length;
+    const su=sp.reduce((a,p)=>a+pnl(p),0);
+    return{s,n:sp.length,w:sw,l:sl,acc:sp.length?sw/sp.length:null,units:su};
+  }).filter(d=>d.n>0).sort((a,b)=>b.acc-a.acc);
+  const maxSportAcc=Math.max(...sportData.map(d=>d.acc||0),0.01);
+  const sportBars=sportData.map(d=>{
+    const col=sportColors[d.s]||'var(--pc)';
+    const pct=d.acc||0;
+    const bw=barW(pct,maxSportAcc);
+    const uc=d.units>=0?'var(--nc)':'var(--hc)';
+    return`<div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:var(--orb);font-size:11px;font-weight:700;color:${col}">${d.s}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${d.w}W-${d.l}L</span>
+        <span style="font-family:var(--mono);font-size:10px;color:${d.acc>=.55?'var(--nc)':d.acc>=.50?'var(--vc)':'var(--hc)'};font-weight:700">${pctFmt(d.acc)}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:1px;height:6px;overflow:hidden">
+        <div style="width:${bw}%;height:100%;background:${col};border-radius:1px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── 4. Bet type breakdown with bars ──
+  const types=['ML','OU','RL','PL','PARLAY','PROP'];
+  const typeData=types.map(t=>{
+    const tp=settled.filter(p=>p.betType===t);
+    const tw=tp.filter(p=>p.outcome==='win').length;
+    const tl=tp.filter(p=>p.outcome==='loss').length;
+    const tu=tp.reduce((a,p)=>a+pnl(p),0);
+    return{t,n:tp.length,w:tw,l:tl,acc:tp.length?tw/tp.length:null,units:tu};
+  }).filter(d=>d.n>0).sort((a,b)=>b.n-a.n);
+  const typeBars=typeData.map(d=>{
+    const pct=d.acc||0;
+    const col=pct>=.55?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';
+    const bw=barW(pct,1);
+    const uc=d.units>=0?'var(--nc)':'var(--hc)';
+    return`<div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${d.t}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${d.w}W-${d.l}L · ${d.n} bets</span>
+        <span style="font-family:var(--mono);font-size:10px;color:${col};font-weight:700">${pctFmt(d.acc)}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:1px;height:5px;overflow:hidden">
+        <div style="width:${bw}%;height:100%;background:${col};border-radius:1px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── 5. Pick tier/grade accuracy (ELITE / LOCK / LEAN) ──
+  const tiers=[
+    {lbl:'ELITE',col:'var(--gc)',min:.67,max:1},
+    {lbl:'LOCK', col:'var(--pc)',min:.62,max:.67},
+    {lbl:'LEAN', col:'var(--nc)',min:.55,max:.62},
+    {lbl:'SKIP', col:'var(--t3)',min:0,  max:.55},
+  ];
+  const tierRows=tiers.map(tier=>{
+    const tb=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=tier.min&&wp<tier.max;});
+    const tw=tb.filter(p=>p.outcome==='win').length;
+    const tl=tb.filter(p=>p.outcome==='loss').length;
+    const acc=tb.length?tw/tb.length:null;
+    const tu=tb.reduce((a,p)=>a+pnl(p),0);
+    const bw=acc!=null?barW(acc,1):0;
+    const uc=tu>=0?'var(--nc)':'var(--hc)';
+    return`<tr>
+      <td style="padding:5px 6px;font-family:var(--mono);font-size:10px;color:${tier.col};font-weight:700">${tier.lbl}</td>
+      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px">${tb.length}</td>
+      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${tw}</td>
+      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${tl}</td>
+      <td style="text-align:center;padding:5px 6px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:5px;min-width:40px">
+            <div style="width:${bw}%;height:100%;background:${acc!=null&&acc>=.55?tier.col:'var(--hc)'};border-radius:1px"></div>
+          </div>
+          <span style="font-family:var(--mono);font-size:10px;color:${acc!=null&&acc>=.55?'var(--nc)':'var(--hc)'};">${pctFmt(acc)}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:5px 6px;font-family:var(--mono);font-size:10px;color:${uc}">${tu>=0?'+':''}${tu.toFixed(1)}u</td>
+    </tr>`;
+  }).join('');
+
+  // ── 6. Day-of-week breakdown ──
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dayData=days.map((d,i)=>{
+    const db=settled.filter(p=>{if(!p.lockedAt)return false;const dt=new Date(p.lockedAt);return dt.getDay()===i;});
+    const dw=db.filter(p=>p.outcome==='win').length;
+    const dl=db.filter(p=>p.outcome==='loss').length;
+    return{d,n:db.length,w:dw,l:dl,acc:db.length?dw/db.length:null};
+  });
+  const maxDayAcc=Math.max(...dayData.map(d=>d.acc||0),0.01);
+  const dayBars=dayData.map(({d,n,w,l,acc})=>{
+    if(!n)return`<div style="flex:1;text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div><div style="height:40px;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px"></div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">--</div></div>`;
+    const barH=Math.max(4,Math.round((acc/maxDayAcc)*40));
+    const col=acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
+    return`<div style="flex:1;text-align:center">
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div>
+      <div style="height:40px;display:flex;align-items:flex-end;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px">
+        <div style="width:100%;height:${barH}px;background:${col};border-radius:1px 1px 0 0;transition:height .4s"></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:8px;color:${col};font-weight:700">${pctFmt(acc)}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">${n}b</div>
+    </div>`;
+  }).join('');
+
+  // ── 7. Monthly trend (last 6 months) ──
+  const now=new Date();
+  const monthlyData=[];
+  for(let m=5;m>=0;m--){
+    const dt=new Date(now.getFullYear(),now.getMonth()-m,1);
+    const label=dt.toLocaleString('en-US',{month:'short',year:'2-digit'});
+    const yrM=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    const mb=settled.filter(p=>{if(!p.lockedAt)return false;const d=new Date(p.lockedAt);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===yrM;});
+    const mw=mb.filter(p=>p.outcome==='win').length;
+    const ml=mb.filter(p=>p.outcome==='loss').length;
+    const mu=mb.reduce((a,p)=>a+pnl(p),0);
+    monthlyData.push({label,n:mb.length,w:mw,l:ml,acc:mb.length?mw/mb.length:null,units:mu});
+  }
+  const maxMth=Math.max(...monthlyData.map(d=>d.n),1);
+  const monthRows=monthlyData.map(({label,n,w,l,acc,units})=>{
+    const col=acc===null?'var(--t3)':acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
+    const bw=n?barW(n,maxMth):0;
+    const uc=units>=0?'var(--nc)':'var(--hc)';
+    return`<tr>
+      <td style="padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--t3)">${label}</td>
+      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px">${n}</td>
+      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${w}</td>
+      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${l}</td>
+      <td style="padding:4px 6px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:5px;min-width:40px">
+            <div style="width:${bw}%;height:100%;background:${col};border-radius:1px"></div>
+          </div>
+          <span style="font-family:var(--mono);font-size:10px;color:${col}">${pctFmt(acc)}</span>
+        </div>
+      </td>
+      <td style="text-align:right;padding:4px 6px;font-family:var(--mono);font-size:10px;color:${uc}">${units>=0?'+':''}${units.toFixed(1)}u</td>
+    </tr>`;
+  }).join('');
+
+  // ── 8. Confidence calibration chart (SVG) ──
+  const calBands=[
+    {lbl:'55-60%',min:.55,max:.60},
+    {lbl:'60-65%',min:.60,max:.65},
+    {lbl:'65-70%',min:.65,max:.70},
+    {lbl:'70-75%',min:.70,max:.75},
+    {lbl:'75%+',  min:.75,max:1  },
+  ];
+  const calData=calBands.map(b=>{
+    const bets=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=b.min&&wp<b.max;});
+    const wins=bets.filter(p=>p.outcome==='win').length;
+    return{lbl:b.lbl,exp:(b.min+Math.min(b.max,.99))/2,act:bets.length?wins/bets.length:null,n:bets.length};
+  });
+  const calSvgW=280,calSvgH=100,calPad=20;
+  const calBarsW=(calSvgW-calPad*2)/calBands.length;
+  const calSvgBars=calData.map((b,i)=>{
+    if(b.n===0)return`<rect x="${calPad+i*calBarsW+2}" y="${calSvgH-calPad}" width="${calBarsW-4}" height="0" fill="rgba(255,255,255,.05)"/>`;
+    const expH=(b.exp/(1))*(calSvgH-calPad*2);
+    const actH=b.act!=null?(b.act/(1))*(calSvgH-calPad*2):0;
+    const col=b.act!=null&&Math.abs(b.act-b.exp)<.05?'#00f0ff':b.act!=null&&Math.abs(b.act-b.exp)<.10?'#bbff00':'#ff2090';
+    return`
+      <rect x="${(calPad+i*calBarsW+2).toFixed(1)}" y="${(calSvgH-calPad-expH).toFixed(1)}" width="${(calBarsW-4).toFixed(1)}" height="${expH.toFixed(1)}" fill="rgba(255,255,255,.08)" rx="1"/>
+      <rect x="${(calPad+i*calBarsW+2).toFixed(1)}" y="${(calSvgH-calPad-actH).toFixed(1)}" width="${(calBarsW-4).toFixed(1)}" height="${actH.toFixed(1)}" fill="${col}" rx="1" opacity="0.7"/>
+      <text x="${(calPad+i*calBarsW+calBarsW/2).toFixed(1)}" y="${(calSvgH-calPad+10).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="#6878a0">${b.lbl}</text>
+      ${b.act!=null?`<text x="${(calPad+i*calBarsW+calBarsW/2).toFixed(1)}" y="${(calSvgH-calPad-actH-3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="${col}">${pctFmt(b.act)}</text>`:''}
+    `;
+  }).join('');
+  const calSVG=`<svg viewBox="0 0 ${calSvgW} ${calSvgH}" width="100%" height="90" style="overflow:visible">
+    <text x="4" y="8" font-family="monospace" font-size="6" fill="#6878a0">ACTUAL</text>
+    <rect x="30" y="3" width="8" height="4" fill="#00f0ff" rx="1"/>
+    <text x="40" y="8" font-family="monospace" font-size="6" fill="#6878a0">EXP</text>
+    <rect x="54" y="3" width="8" height="4" fill="rgba(255,255,255,.2)" rx="1"/>
+    ${calSvgBars}
+    <line x1="${calPad}" y1="${calSvgH-calPad}" x2="${calSvgW-calPad}" y2="${calSvgH-calPad}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+  </svg>`;
+
+  // ── 9. Best win streaks ──
+  let bestStreak=0,bestStreakType='win',curSt=0,curStType='win';
+  for(const p of settled){
+    if(curStType===p.outcome){curSt++;}else{curSt=1;curStType=p.outcome;}
+    if(curStType==='win'&&curSt>bestStreak){bestStreak=curSt;}
+  }
+  let curLose=0,bestLose=0;
+  for(const p of settled){
+    if(p.outcome==='loss'){curLose++;if(curLose>bestLose)bestLose=curLose;}else{curLose=0;}
+  }
+
+  // ── BUILD HTML ──
+  const html=`
+  <div class="sh" style="margin-bottom:10px"><span class="n"></span> RUNNING P&L — UNITS OVER TIME</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">LAST ${sparkBets.length} SETTLED BETS · 1u / BET</span>
+      <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${pnlColor(finalUnits)}">${finalUnits>=0?'+':''}${finalUnits.toFixed(1)}u</span>
+    </div>
+    ${sparkSVG}
+    <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:4px">
+      <span>OLDEST</span><span>NEWEST</span>
+    </div>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="n"></span> RECENT FORM — LAST 20 PICKS</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+      ${dotRow}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:8px;font-family:var(--mono);font-size:8px;color:var(--t3)">
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#00f0ff;display:inline-block"></span>WIN</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ff2090;display:inline-block"></span>LOSS</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ffdd00;display:inline-block"></span>PUSH</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">BY SPORT</div>
+      ${sportBars}
+    </div>
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">BY BET TYPE</div>
+      ${typeBars}
+    </div>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="g"></span> PICK GRADE PERFORMANCE</div>
+  <div class="card" style="margin-bottom:14px;overflow-x:auto">
+    <table class="dt" style="font-size:9px;width:100%">
+      <thead><tr><th>GRADE</th><th>N</th><th>W</th><th>L</th><th>WIN %</th><th>UNITS</th></tr></thead>
+      <tbody>${tierRows}</tbody>
+    </table>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="n"></span> DAY OF WEEK BREAKDOWN</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="display:flex;gap:4px;align-items:flex-end;height:60px">
+      ${dayBars}
+    </div>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="p"></span> MONTHLY PERFORMANCE TREND</div>
+  <div class="card" style="margin-bottom:14px;overflow-x:auto">
+    <table class="dt" style="font-size:9px;width:100%">
+      <thead><tr><th>MONTH</th><th>N</th><th>W</th><th>L</th><th>WIN %</th><th>UNITS</th></tr></thead>
+      <tbody>${monthRows}</tbody>
+    </table>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="p"></span> CONFIDENCE CALIBRATION CHART</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:8px">// HOW WELL DOES ENGINE CONFIDENCE MATCH REAL-WORLD WIN RATE?</div>
+    ${calSVG}
+    <div style="display:flex;gap:10px;margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--t3)">
+      <span style="color:var(--nc)">CALIBRATED: actual within 5% of expected</span>
+      <span style="color:var(--vc)">SLIGHT DRIFT: 5-10%</span>
+      <span style="color:var(--hc)">RECALIBRATE: 10%+</span>
+    </div>
+  </div>
+
+  <div class="sh" style="margin-bottom:10px"><span class="g"></span> STREAK ANALYSIS</div>
+  <div class="g3" style="gap:8px;margin-bottom:14px">
+    <div class="card cp" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--nc)">${bestStreak}</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">BEST WIN STREAK</div>
+    </div>
+    <div class="card cp" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--hc)">${bestLose}</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">WORST LOSS STREAK</div>
+    </div>
+    <div class="card cp" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--t)">${settled.length}</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">TOTAL GRADED</div>
+    </div>
+  </div>`;
+
   el.innerHTML=html;
 }
 
@@ -4256,32 +4614,83 @@ async function autoSettleNBA(){
 function getMSTNow(){return new Date(new Date().toLocaleString('en-US',{timeZone:'America/Denver'}));}
 function getMSTDate(){return getMSTNow().toISOString().slice(0,10);}
 let lastMidDate=null,lastTenDate=null;
+// ─── MIDNIGHT AUTO-REFRESH ────────────────────────────────────────────────────
+// Runs every minute. At 00:00-00:02 MST triggers full day-rollover:
+//   settle yesterday → load new schedule → regenerate all picks → refresh home
+// At 08:00 MST re-renders picks so they're fully ready upon morning launch.
+// At 22:00 MST pre-generates tomorrow's MLB schedule.
 function checkMidMST(){
   const mst=getMSTNow();const h=mst.getHours(),m=mst.getMinutes();const mstDate=getMSTDate();
+
+  // ── MIDNIGHT ROLLOVER (00:00–00:02 MST) ──
   if(h===0&&m<3&&lastMidDate!==mstDate){
     lastMidDate=mstDate;
-    if(API_ONLINE()){api('POST','/admin/pipeline').then(()=>toast('// MIDNIGHT PIPELINE TRIGGERED'));}
-    else{autoSettleFromESPN(ESPN_GAMES);setTimeout(()=>doUpdate(),2000);prepareDayEnd();}
-    // Re-scrape all three sport schedules for the new day + settle all sports
-    setTimeout(()=>{
-      try{loadGames(todayESPN());}catch(e){}
-      try{renderNHLGames();}catch(e){}
-      try{renderNBAGames();}catch(e){}
+    S.s('midnight_synced',mstDate);
+    if(API_ONLINE()){
+      api('POST','/admin/pipeline').then(()=>{
+        toast('// MIDNIGHT AUTO-SYNC COMPLETE — NEW DAY READY');
+        showMidnightBanner();
+      });
+    } else {
+      // Settle yesterday's games across all sports
+      try{autoSettleFromESPN(ESPN_GAMES);}catch(e){}
       try{autoSettleNBA();}catch(e){}
       try{autoSettleNHL();}catch(e){}
-      try{autoSettleFromESPN(ESPN_GAMES);}catch(e){}
-      try{if(document.getElementById('ovr-sa')?.querySelector('.tab.act'))renderOverall();}catch(e){}
-    },3000);
+      prepareDayEnd();
+      // Full sync with 2s delay to let settle complete
+      setTimeout(()=>doUpdate(),2000);
+      // Re-scrape all sport schedules and re-render picks for new day
+      setTimeout(()=>{
+        try{loadGames(todayESPN());}catch(e){}
+        try{renderNHLGames();}catch(e){}
+        try{renderNBAGames();}catch(e){}
+        try{renderMLBGames&&renderMLBGames();}catch(e){}
+      },3500);
+      // Render picks 8s in (after data loads)
+      setTimeout(()=>{
+        try{renderNHLPicks();}catch(e){}
+        try{renderNBAPicks();}catch(e){}
+        try{renderHistory();}catch(e){}
+        try{if(document.getElementById('ovr-sa')?.querySelector('.tab.act'))renderOverall();}catch(e){}
+        try{renderHomePage();}catch(e){}
+        showMidnightBanner();
+        toast('// MIDNIGHT AUTO-SYNC COMPLETE — NEW DAY READY');
+      },8000);
+    }
   }
-  if(h===10&&m<3&&lastTenDate!==mstDate){lastTenDate=mstDate;try{renderNBAStats();renderNBAPlayers();renderNBAPicks();}catch(e){}toast('// 10AM DATA REFRESH COMPLETE');}
-  // E1: 10 PM MST — pre-generate tomorrow's picks
-  if(h===22&&m<2&&lastTenDate!==mstDate+'_22'){lastTenDate=mstDate+'_22';try{loadTmrw();}catch(e){}toast('// 10PM: TOMORROW\'S PICKS GENERATED');}
-  // E2: During game hours (18-24 MST): ensure live trackers active
+
+  // ── MORNING PICK REFRESH (08:00–08:02 MST) ──
+  if(h===8&&m<3&&lastTenDate!==mstDate+'_8'){
+    lastTenDate=mstDate+'_8';
+    try{renderNHLPicks();}catch(e){}
+    try{renderNBAPicks();}catch(e){}
+    try{renderTennisPicks();}catch(e){}
+    try{renderHomePage();}catch(e){}
+    toast('// 8AM MORNING REFRESH COMPLETE — PICKS READY');
+  }
+
+  // ── 10AM NBA DATA REFRESH ──
+  if(h===10&&m<3&&lastTenDate!==mstDate+'_10'){lastTenDate=mstDate+'_10';try{renderNBAStats();renderNBAPlayers();renderNBAPicks();}catch(e){}toast('// 10AM DATA REFRESH COMPLETE');}
+
+  // ── 10PM TOMORROW PRE-GENERATE ──
+  if(h===22&&m<2&&lastTenDate!==mstDate+'_22'){lastTenDate=mstDate+'_22';try{loadTmrw();}catch(e){}toast('// 10PM: TOMORROW\'S PICKS PRE-GENERATED');}
+
+  // ── GAME HOURS: ensure live trackers active ──
   if(h>=18&&h<=23){if(!LIV){try{startLive();}catch(e){}}}
-  const nm=new Date(mst);nm.setDate(nm.getDate()+(h>=0?1:0));nm.setHours(0,0,0,0);const diff=nm-mst;
+
+  // ── Update countdown & status ──
+  const nm=new Date(mst);nm.setDate(nm.getDate()+1);nm.setHours(0,0,0,0);const diff=nm-mst;
   const ne=document.getElementById('upd-nx');if(ne)ne.textContent=`${Math.floor(diff/3600000)}H ${Math.floor((diff%3600000)/60000)}M`;
   const lastDate=S.g('last_upd_date');const st=document.getElementById('upd-st');
   if(st&&lastDate===mstDate&&!st.textContent.includes('SYNC'))st.style.color='var(--nc)';
+}
+
+function showMidnightBanner(){
+  // Show a brief "AUTO-SYNCED" flash on the header sync button area
+  const btn=document.getElementById('sync-btn');
+  if(btn){btn.textContent='AUTO-SYNCED';btn.style.color='var(--nc)';setTimeout(()=>{btn.textContent='↻ SYNC';btn.style.color='';},8000);}
+  // Store flag so home page can show "ready for today" note
+  S.s('last_midnight_sync',getMSTDate());
 }
 function prepareDayEnd(){const yesterday=new Date(getMSTNow());yesterday.setDate(yesterday.getDate()-1);const yd=yesterday.toISOString().slice(0,10);const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
 
@@ -4345,6 +4754,14 @@ function renderHomePage(){
     }else{
       freeBanner.innerHTML='';
     }
+  }
+  // ── Auto-sync status indicator ──
+  const lastSync=S.g('last_midnight_sync');
+  const todayStr=getMSTDate();
+  const syncEl=document.getElementById('home-sync-status');
+  if(syncEl){
+    if(lastSync===todayStr){syncEl.innerHTML=`<span style="color:var(--nc)">AUTO-SYNCED TODAY</span>`;syncEl.style.display='';}
+    else{syncEl.innerHTML=`<span style="color:var(--t3)">LAST SYNC: ${lastSync||'NEVER'}</span>`;syncEl.style.display='';}
   }
   if(!picks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
   else{
@@ -4487,7 +4904,7 @@ function T(sport,tabId){
     }
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}
-  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();}
+  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')renderOverallAnalytics();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams')renderSlam('fo');if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='live'){if(tabId==='games')renderGlobalLive();if(tabId==='bets')renderGlobalLiveBets();}
