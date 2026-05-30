@@ -1,11 +1,12 @@
-// CLAIRVOYANCE ENGINE — Service Worker v2.0
-const CACHE = 'cv-engine-v2';
+// CLAIRVOYANCE ENGINE — Service Worker v2.1
+const CACHE = 'cv-engine-v3';
 const CORE = [
   './',
   './index.html',
   './config.js',
   './manifest.json',
-  './clairvoyance-logo.svg'
+  './clairvoyance-logo.svg',
+  './icon-1080.png'
 ];
 // Data files: always try network first so picks/live data stays fresh
 const DATA_PATHS = ['data.json', 'live_data.json', 'social_copy.json'];
