@@ -143,7 +143,7 @@ textarea.fi{resize:none;line-height:1.5}
 .spi{display:inline-block;width:11px;height:11px;border:1px solid var(--w2);border-top-color:var(--pc);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .empty{text-align:center;padding:30px;color:var(--t2);font-family:var(--mono);font-size:10px;line-height:2}
 .loading{text-align:center;padding:24px;color:var(--t);font-family:var(--mono);font-size:10px;letter-spacing:2px}
-#toast{position:fixed;bottom:66px;right:12px;background:rgba(14,0,35,.95);border:1px solid var(--pc);color:var(--pc);font-family:var(--mono);font-size:11px;padding:9px 14px;border-radius:2px;transform:translateY(100px);transition:transform .3s;z-index:9997;pointer-events:none;box-shadow:0 0 20px rgba(240,0,255,.2);max-width:280px}
+#toast{position:fixed;bottom:max(74px,env(safe-area-inset-bottom,0px) + 74px);right:12px;left:12px;background:rgba(14,0,35,.95);border:1px solid var(--pc);color:var(--pc);font-family:var(--mono);font-size:11px;padding:9px 14px;border-radius:2px;transform:translateY(200px);transition:transform .3s;z-index:10000;pointer-events:none;box-shadow:0 0 20px rgba(240,0,255,.2);max-width:340px;margin:0 auto;text-align:center;word-break:break-word}
 #toast.show{transform:translateY(0)}
 .dv{height:1px;background:rgba(77,121,255,.2);margin:10px 0}
 .mono{font-family:var(--mono)}.nn{color:var(--nc)}.nh{color:var(--hc)}.nv{color:var(--vc)}.ni{color:var(--ic)}.ngd{color:var(--gc)}.np{color:var(--pc)}.nm{color:var(--mc)}.nr{color:var(--rc)}
@@ -226,6 +226,11 @@ body{line-height:1.5}
 </div>
 
 <div id="app">
+<div id="date-strip" style="background:rgba(4,0,10,.98);border-bottom:1px solid rgba(240,0,255,.12);padding:2px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;font-family:var(--mono);font-size:8px;letter-spacing:1.5px;flex-shrink:0">
+  <span id="ds-date" style="color:var(--t3)">--</span>
+  <span id="ds-sync" style="color:var(--t3)">LAST REFRESH: --</span>
+  <span id="ds-status" style="color:var(--t3)">STATUS: --</span>
+</div>
 <header id="hdr">
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
@@ -260,10 +265,11 @@ body{line-height:1.5}
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
     <div class="sh" style="margin-top:20px"><span class="p"></span> LOCKED PICKS TRACKER</div>
     <div id="home-tracker" style="margin-top:12px;display:grid;gap:8px"></div>
-    <div class="sh" style="margin-top:16px"><span class="n"></span> LIVE-LOCKED BETS TRACKER</div>
-    <div id="home-locked" style="margin-bottom:16px"><div class="empty">NO LOCKED PICKS YET</div></div>
+
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
-      <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json for server auto-settle">EXPORT BETS</button>
+      <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json">EXPORT JSON</button>
+      <button class="btn btn-p btn-sm" onclick="exportBetsClipboard()" title="Copy bets to clipboard for cross-device sync">SYNC EXPORT</button>
+      <button class="btn btn-n btn-sm" onclick="showImportModal()" title="Import bets from another device">SYNC IMPORT</button>
       <span id="remote-data-ts" style="font-family:var(--mono);font-size:9px;color:var(--t3);align-self:center"></span>
     </div>
     <div style="text-align:center;margin-top:16px;color:var(--t3);font-size:10px;letter-spacing:3px">SELECT A SPORT TAB ABOVE FOR FULL ANALYSIS</div>
@@ -278,7 +284,6 @@ body{line-height:1.5}
     <button class="nb" onclick="T('mlb','games')">TODAY</button>
     <button class="nb" onclick="T('mlb','parlay')">PARLAY</button>
     <button class="nb" onclick="T('mlb','nrfi')">NRFI</button>
-    <button class="nb" onclick="T('mlb','live')">LIVE</button>
     <button class="nb" onclick="T('mlb','ranks')">STATS</button>
     <button class="nb" onclick="T('mlb','history')">HISTORY</button>
     <button class="nb" onclick="T('mlb','model')">MODEL</button>
@@ -432,7 +437,6 @@ body{line-height:1.5}
     <button class="mb" onclick="T('mlb','games')"><span class="mbi"></span>TODAY</button>
     <button class="mb" onclick="T('mlb','parlay')"><span class="mbi"></span>PARLAY</button>
     <button class="mb" onclick="T('mlb','nrfi')"><span class="mbi"></span>NRFI</button>
-    <button class="mb" onclick="T('mlb','live')"><span class="mbi"></span>LIVE</button>
     <button class="mb" onclick="T('mlb','ranks')"><span class="mbi"></span>STATS</button>
     <button class="mb" onclick="T('mlb','history')"><span class="mbi"></span>HIST</button>
     <button class="mb" onclick="T('mlb','model')"><span class="mbi"></span>MODEL</button>
@@ -461,7 +465,6 @@ body{line-height:1.5}
       <button class="nb ap" onclick="T('nhl','picks')">PICKS</button>
       <button class="nb" onclick="T('nhl','games')">TODAY</button>
       <button class="nb" onclick="T('nhl','parlay')">PARLAY</button>
-      <button class="nb" onclick="T('nhl','live')">LIVE</button>
       <button class="nb" onclick="T('nhl','history')">HISTORY</button>
       <button class="nb" onclick="T('nhl','model')">MODEL</button>
       <button class="nb" onclick="T('nhl','config')">CONFIG</button>
@@ -486,8 +489,7 @@ body{line-height:1.5}
         <!-- v6.0: series series-status + top props inline -->
         <div id="nhl-series-status" style="margin-top:14px"></div>
         <div id="nhl-inline-props" style="margin-top:4px"></div>
-        <div class="sh" style="margin-top:16px"><span class="g"></span> LOCKED NHL BETS</div>
-        <div id="nhl-locked"><div class="empty">NO LOCKED NHL BETS</div></div>
+
       </div>
       <div id="nhl-tab-edge" class="tab">
         <div class="sh"><span class="p"></span> NHL EDGE STATS</div>
@@ -616,11 +618,11 @@ body{line-height:1.5}
         <div class="sh"><span class="i"></span> NHL ENGINE CONFIG</div>
         <div class="sg">
           <div class="sgt">// MODEL WEIGHTS</div>
-          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nhl-mc-v">50%</span></div><input type="range" id="nhl-w-mc2" min="10" max="70" value="50" oninput="document.getElementById('nhl-mc-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nhl-mc-v">50%</span></div><input type="range" id="nhl-w-mc2" min="10" max="70" value="50" oninput="document.getElementById('nhl-mc-v').textContent=this.value+'%';applyNHLWeights()">
           <div class="dv"></div>
-          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nhl-bay-v">20%</span></div><input type="range" id="nhl-w-bay2" min="5" max="50" value="20" oninput="document.getElementById('nhl-bay-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nhl-bay-v">20%</span></div><input type="range" id="nhl-w-bay2" min="5" max="50" value="20" oninput="document.getElementById('nhl-bay-v').textContent=this.value+'%';applyNHLWeights()">
           <div class="dv"></div>
-          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nhl-elo-v">30%</span></div><input type="range" id="nhl-w-elo2" min="5" max="50" value="30" oninput="document.getElementById('nhl-elo-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nhl-elo-v">30%</span></div><input type="range" id="nhl-w-elo2" min="5" max="50" value="30" oninput="document.getElementById('nhl-elo-v').textContent=this.value+'%';applyNHLWeights()">
           <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNHLWeights()">APPLY</button>
         </div>
         <div class="sg">
@@ -637,7 +639,6 @@ body{line-height:1.5}
       <button class="mb ap" onclick="T('nhl','picks')"><span class="mbi"></span>PICKS</button>
       <button class="mb" onclick="T('nhl','games')"><span class="mbi"></span>TODAY</button>
       <button class="mb" onclick="T('nhl','parlay')"><span class="mbi"></span>PARLAY</button>
-      <button class="mb" onclick="T('nhl','live')"><span class="mbi"></span>LIVE</button>
       <button class="mb" onclick="T('nhl','history')"><span class="mbi"></span>HISTORY</button>
       <button class="mb" onclick="T('nhl','model')"><span class="mbi"></span>MODEL</button>
       <button class="mb" onclick="T('nhl','config')"><span class="mbi"></span>CONFIG</button>
@@ -655,7 +656,6 @@ body{line-height:1.5}
       <button class="nb" onclick="T('nba','games')">TODAY</button>
       <button class="nb" onclick="T('nba','props')">PROPS</button>
       <button class="nb" onclick="T('nba','parlay')">PARLAY</button>
-      <button class="nb" onclick="T('nba','live')">LIVE</button>
       <button class="nb" onclick="T('nba','history')">HISTORY</button>
       <button class="nb" onclick="T('nba','model')">MODEL</button>
       <button class="nb" onclick="T('nba','config')">CONFIG</button>
@@ -677,8 +677,7 @@ body{line-height:1.5}
         <div id="nba-live-scores" style="margin-bottom:14px"></div>
         <div class="sh" style="margin-bottom:8px"><span class="i"></span> SCHEDULE</div>
         <div id="nba-games"><div class="loading"><span class="spi"></span></div></div>
-        <div class="sh" style="margin-top:16px"><span class="n"></span> LOCKED NBA BETS</div>
-        <div id="nba-locked"><div class="empty">NO LOCKED NBA BETS</div></div>
+
       </div>
       <div id="nba-tab-stats" class="tab">
         <div class="sh"><span class="p"></span> NBA TEAM RATINGS</div>
@@ -750,11 +749,11 @@ body{line-height:1.5}
         <div class="sh"><span class="i"></span> NBA ENGINE CONFIG</div>
         <div class="sg">
           <div class="sgt">// MODEL WEIGHTS</div>
-          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nba-mc-v">50%</span></div><input type="range" id="nba-w-mc" min="10" max="70" value="50" oninput="document.getElementById('nba-mc-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nba-mc-v">50%</span></div><input type="range" id="nba-w-mc" min="10" max="70" value="50" oninput="document.getElementById('nba-mc-v').textContent=this.value+'%';applyNBAWeights()">
           <div class="dv"></div>
-          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nba-bay-v">20%</span></div><input type="range" id="nba-w-bay" min="5" max="50" value="20" oninput="document.getElementById('nba-bay-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nba-bay-v">20%</span></div><input type="range" id="nba-w-bay" min="5" max="50" value="20" oninput="document.getElementById('nba-bay-v').textContent=this.value+'%';applyNBAWeights()">
           <div class="dv"></div>
-          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nba-elo-v">30%</span></div><input type="range" id="nba-w-elo" min="5" max="50" value="30" oninput="document.getElementById('nba-elo-v').textContent=this.value+'%'">
+          <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="nba-elo-v">30%</span></div><input type="range" id="nba-w-elo" min="5" max="50" value="30" oninput="document.getElementById('nba-elo-v').textContent=this.value+'%';applyNBAWeights()">
           <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applyNBAWeights()">APPLY</button>
         </div>
         <div class="sg">
@@ -772,7 +771,6 @@ body{line-height:1.5}
       <button class="mb" onclick="T('nba','games')"><span class="mbi"></span>TODAY</button>
       <button class="mb" onclick="T('nba','props')"><span class="mbi"></span>PROPS</button>
       <button class="mb" onclick="T('nba','parlay')"><span class="mbi"></span>PARLAY</button>
-      <button class="mb" onclick="T('nba','live')"><span class="mbi"></span>LIVE</button>
       <button class="mb" onclick="T('nba','history')"><span class="mbi"></span>HISTORY</button>
       <button class="mb" onclick="T('nba','model')"><span class="mbi"></span>MODEL</button>
       <button class="mb" onclick="T('nba','config')"><span class="mbi"></span>CONFIG</button>
@@ -798,9 +796,14 @@ body{line-height:1.5}
       <div id="ovr-analytics"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-history" class="tab">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <div class="sh" style="margin:0"><span class="p"></span> ALL BETS — CROSS SPORT</div>
-        <button class="btn btn-p btn-sm" onclick="renderOverallHistory()">↻</button>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          <button class="btn btn-p btn-sm" onclick="renderOverallHistory()">↻</button>
+          <button class="btn btn-o btn-sm" onclick="exportBetsClipboard()" title="Export bets to sync across devices">EXPORT</button>
+          <button class="btn btn-n btn-sm" onclick="showImportModal()" title="Import bets from another device">IMPORT</button>
+          <button class="btn btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="clearAllPending()">CLEAR PENDING</button>
+        </div>
       </div>
       <div id="ovr-history-list"><div class="loading"><span class="spi"></span></div></div>
     </div>
@@ -823,7 +826,6 @@ body{line-height:1.5}
   <nav class="inav" id="ten-in">
     <button class="nb act" onclick="T('ten','picks')">PICKS</button>
     <button class="nb" onclick="T('ten','today')">TODAY</button>
-    <button class="nb" onclick="T('ten','live')">LIVE</button>
     <button class="nb" onclick="T('ten','slams')">SLAMS</button>
     <button class="nb" onclick="T('ten','h2h')">H2H</button>
     <button class="nb" onclick="T('ten','rankings')">RANKINGS</button>
@@ -935,13 +937,16 @@ body{line-height:1.5}
     <!-- LIVE -->
     <div id="ten-tab-live" class="tab">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="sh" style="margin:0"><span class="h"></span> LIVE TENNIS</div>
-        <button class="btn btn-o btn-sm" onclick="startTennisLive()">↻ REFRESH</button>
+        <div class="sh" style="margin:0"><span class="h"></span> LIVE TENNIS NOW</div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-o btn-sm" onclick="startTennisLive()">↻ LIVE</button>
+          <button class="btn btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="resetTennisLive()">RESET</button>
+        </div>
       </div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:10px">AUTO-REFRESH 30S · SET · SCORE · ELO MODEL LIVE MOVES · LOCK</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:10px">SHOWS ONLY MATCHES IN PROGRESS · AUTO-REFRESH 30S · TAP RESET TO CLEAR OLD EVENTS</div>
       <div id="tennis-live-scores" style="margin-bottom:12px"></div>
       <div id="ten-live-scores"></div>
-      <div class="sh" style="margin-top:14px"><span class="nv">🎟</span> PENDING TENNIS BETS</div>
+      <div class="sh" style="margin-top:14px"><span class="p"></span> PENDING TENNIS BETS</div>
       <div id="ten-pending"></div>
     </div>
     <!-- MODEL -->
@@ -989,9 +994,9 @@ body{line-height:1.5}
       <div class="sh"><span class="i"></span> TENNIS ENGINE CONFIG</div>
       <div class="sg">
         <div class="sgt">// MODEL WEIGHTS</div>
-        <div class="rr"><span class="rrl">SURFACE ELO</span><span class="rrv" id="ten-surf-v">40%</span></div><input type="range" id="ten-w-surf" min="10" max="70" value="40" oninput="document.getElementById('ten-surf-v').textContent=this.value+'%'">
+        <div class="rr"><span class="rrl">SURFACE ELO</span><span class="rrv" id="ten-surf-v">40%</span></div><input type="range" id="ten-w-surf" min="10" max="70" value="40" oninput="document.getElementById('ten-surf-v').textContent=this.value+'%';applyTennisWeights()">
         <div class="dv"></div>
-        <div class="rr"><span class="rrl">H2H</span><span class="rrv" id="ten-h2h-v">20%</span></div><input type="range" id="ten-w-h2h" min="0" max="40" value="20" oninput="document.getElementById('ten-h2h-v').textContent=this.value+'%'">
+        <div class="rr"><span class="rrl">H2H</span><span class="rrv" id="ten-h2h-v">20%</span></div><input type="range" id="ten-w-h2h" min="0" max="40" value="20" oninput="document.getElementById('ten-h2h-v').textContent=this.value+'%';applyTennisWeights()">
         <div class="dv"></div>
         <div class="rr"><span class="rrl">SERVE / RETURN</span><span class="rrv" id="ten-srv-v">25%</span></div><input type="range" id="ten-w-srv" min="5" max="50" value="25" oninput="document.getElementById('ten-srv-v').textContent=this.value+'%'">
         <div class="dv"></div>
@@ -1010,7 +1015,6 @@ body{line-height:1.5}
   <nav id="mn5" style="display:none">
     <button class="mb act" onclick="T('ten','picks')"><span class="mbi"></span>PICKS</button>
     <button class="mb" onclick="T('ten','today')"><span class="mbi"></span>TODAY</button>
-    <button class="mb" onclick="T('ten','live')"><span class="mbi"></span>LIVE</button>
     <button class="mb" onclick="T('ten','slams')"><span class="mbi"></span>SLAMS</button>
     <button class="mb" onclick="T('ten','h2h')"><span class="mbi"></span>H2H</button>
     <button class="mb" onclick="T('ten','rankings')"><span class="mbi"></span>RANKS</button>
@@ -2794,6 +2798,53 @@ function removePick(id){
   try{updHdr();}catch(e){}
   toast('// BET REMOVED');
 }
+
+// ── Clear ALL pending bets ──
+function clearAllPending(){
+  if(!confirm('Remove ALL pending bets? This cannot be undone.'))return;
+  const preds=getP().filter(p=>p.outcome!=='pending');
+  saveP(preds);
+  try{updHdr();}catch(e){}
+  try{renderOverall();}catch(e){}
+  try{renderHistory();}catch(e){}
+  try{renderNHLHistory();}catch(e){}
+  try{renderNBAHistory();}catch(e){}
+  try{renderHomePage();}catch(e){}
+  toast('// ALL PENDING BETS CLEARED');
+}
+
+// ── Lock NRFI bet ──
+function lockNRFIBet(gameStr,betLabel,awA,hA,prob){
+  const id='nrfi_'+Date.now();
+  const p={id,sport:'MLB',betType:'NRFI',betOn:betLabel,hA,awA,winProb:prob,ml:'+100',decOdds:2,wager:100,outcome:'pending',date:today(),lockedAt:Date.now(),ctx:gameStr};
+  const preds=getP();preds.push(p);saveP(preds);
+  if(API_ONLINE())api('POST','/picks',p).catch(()=>{});
+  try{updHdr();}catch(e){}
+  try{adaptiveTick();}catch(e){}
+  toast(`// LOCKED: ${betLabel} — ${gameStr}`);
+}
+
+// ── Date strip updater — called on init and after sync ──
+function updateDateStrip(syncOk){
+  const mst=getMSTNow();
+  const dayStr=mst.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase();
+  const timeStr=mst.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+  const lastUpd=S.g('last_upd');
+  const lastDate=S.g('last_upd_date');
+  const todayMST=getMSTDate();
+  const dsDate=document.getElementById('ds-date');
+  const dsSync=document.getElementById('ds-sync');
+  const dsStat=document.getElementById('ds-status');
+  if(dsDate)dsDate.textContent=dayStr;
+  if(dsSync)dsSync.textContent=`LAST REFRESH: ${lastUpd?lastUpd.slice(0,16)+' MST':'NEVER'}`;
+  if(dsStat){
+    if(syncOk===true){dsStat.textContent='STATUS: OK ✓';dsStat.style.color='var(--nc)';}
+    else if(syncOk===false){dsStat.textContent='STATUS: FAILED ✗';dsStat.style.color='var(--hc)';}
+    else if(lastDate===todayMST){dsStat.textContent='STATUS: CURRENT';dsStat.style.color='var(--nc)';}
+    else{dsStat.textContent='STATUS: STALE — TAP SYNC';dsStat.style.color='var(--gc)';}
+  }
+}
+
 function lockNHLGame(gameStr,pick,ml){
   const parts=gameStr.split(' @ ');const hA=parts[1]||parts[0]||gameStr;const awA=parts[0]||'';
   const mlNum=parseInt(String(ml).replace('+',''))||0;
@@ -2987,7 +3038,66 @@ function applyNHLWeightsModel(){
   if(bl){renderHistoryForSport('NHL','nhl-model-bet-log',null);bl.innerHTML='<div style="color:var(--nc);font-family:var(--mono);font-size:10px">// WEIGHTS APPLIED — PICKS RECALCULATED</div>';}
   toast('// NHL WEIGHTS APPLIED');
 }
-function applyNBAWeights(){const mc=+document.getElementById('nba-w-mc')?.value||50;const bay=+document.getElementById('nba-w-bay')?.value||20;const elo=+document.getElementById('nba-w-elo')?.value||30;const s=mc+bay+elo||100;NBA_ENS={mc:mc/s,bay:bay/s,elo:elo/s};S.s('nba_ens',NBA_ENS);toast('// NBA WEIGHTS APPLIED');}
+function applyNBAWeights(){const mc=+document.getElementById('nba-w-mc')?.value||50;const bay=+document.getElementById('nba-w-bay')?.value||20;const elo=+document.getElementById('nba-w-elo')?.value||30;const s=mc+bay+elo||100;NBA_ENS={mc:mc/s,bay:bay/s,elo:elo/s};S.s('nba_ens',NBA_ENS);try{renderNBAPicks();}catch(e){}toast('// NBA WEIGHTS LIVE — PICKS RECALCULATED');}
+function applyTennisWeights(){const surf=+document.getElementById('ten-w-surf')?.value||40;const h2h=+document.getElementById('ten-w-h2h')?.value||20;const rem=100-surf-h2h;window._TEN_ENS={surf:surf/100,h2h:h2h/100,base:Math.max(0,rem)/100};S.s('ten_ens',window._TEN_ENS);try{renderTennisPicks();}catch(e){}toast('// TENNIS WEIGHTS LIVE — PICKS RECALCULATED');}
+
+// ── Form dot tooltip ──
+let _dotTipEl=null;
+function showDotTip(el){
+  hideDotTip();
+  const tip=el.dataset.tip||'';
+  if(!tip)return;
+  const d=document.createElement('div');
+  d.id='dot-tip';
+  d.style.cssText='position:fixed;z-index:99999;background:rgba(4,0,12,.97);border:1px solid var(--pc);color:var(--t);font-family:var(--mono);font-size:10px;padding:7px 11px;border-radius:3px;max-width:240px;line-height:1.6;pointer-events:none;box-shadow:0 0 16px rgba(240,0,255,.3);white-space:pre-wrap';
+  d.textContent=tip.replace(/\|/g,'\n');
+  document.body.appendChild(d);
+  _dotTipEl=d;
+  // Position near element
+  const r=el.getBoundingClientRect();
+  let top=r.top-d.offsetHeight-8;
+  let left=r.left+r.width/2-d.offsetWidth/2;
+  if(top<8){top=r.bottom+8;}
+  left=Math.max(8,Math.min(left,window.innerWidth-d.offsetWidth-8));
+  d.style.top=top+'px';d.style.left=left+'px';
+  el.style.transform='scale(1.5)';
+}
+function hideDotTip(){
+  if(_dotTipEl){_dotTipEl.remove();_dotTipEl=null;}
+  document.querySelectorAll('.form-dot').forEach(d=>d.style.transform='');
+}
+
+// ── Mobile ↔ Desktop sync via clipboard export/import ──
+function exportBetsClipboard(){
+  const preds=getP();
+  const data=JSON.stringify({v:1,preds,ts:Date.now()});
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(data).then(()=>toast('// BETS COPIED TO CLIPBOARD — PASTE ON OTHER DEVICE')).catch(()=>{showExportModal(data);});
+  }else{showExportModal(data);}
+}
+function showExportModal(data){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  el.innerHTML=`<div style="background:rgba(4,0,12,.98);border:1px solid var(--pc);border-radius:4px;padding:16px;width:100%;max-width:400px"><div style="font-family:var(--orb);font-size:12px;color:var(--pc);margin-bottom:10px;letter-spacing:2px">SYNC CODE — COPY TO OTHER DEVICE</div><textarea style="width:100%;height:120px;background:rgba(10,0,24,.8);border:1px solid var(--w2);color:var(--t);font-family:var(--mono);font-size:9px;padding:8px;border-radius:2px;resize:none">${data}</textarea><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-p" onclick="this.closest('div').parentElement.parentElement.remove()" style="flex:1">CLOSE</button></div></div>`;
+  document.body.appendChild(el);
+}
+function importBetsFromCode(code){
+  try{
+    const obj=JSON.parse(code);
+    if(!obj.preds||!Array.isArray(obj.preds))throw new Error('Invalid');
+    const existing=getP();const existingIds=new Set(existing.map(p=>p.id));
+    let added=0;
+    for(const p of obj.preds){if(!existingIds.has(p.id)){existing.push(p);added++;}}
+    saveP(existing);updHdr();renderOverall();renderHomePage();
+    toast(`// IMPORTED ${added} BETS FROM SYNC CODE`);
+  }catch(e){toast('// IMPORT FAILED — INVALID CODE');}
+}
+function showImportModal(){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  el.innerHTML=`<div style="background:rgba(4,0,12,.98);border:1px solid var(--nc);border-radius:4px;padding:16px;width:100%;max-width:400px"><div style="font-family:var(--orb);font-size:12px;color:var(--nc);margin-bottom:10px;letter-spacing:2px">PASTE SYNC CODE FROM OTHER DEVICE</div><textarea id="import-code-ta" style="width:100%;height:120px;background:rgba(10,0,24,.8);border:1px solid var(--w2);color:var(--t);font-family:var(--mono);font-size:9px;padding:8px;border-radius:2px;resize:none" placeholder="Paste sync code here..."></textarea><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-n" onclick="importBetsFromCode(document.getElementById('import-code-ta').value);this.closest('div').parentElement.parentElement.remove()" style="flex:1">IMPORT</button><button class="btn btn-o" onclick="this.closest('div').parentElement.parentElement.remove()" style="flex:1">CANCEL</button></div></div>`;
+  document.body.appendChild(el);
+}
 function renderCal(){const el=document.getElementById('cal');if(!el)return;const p=getP().filter(x=>x.outcome!=='pending'&&x.betType==='ML');if(p.length<10){el.innerHTML='<div class="empty" style="padding:12px">NEED 10+ SETTLED ML BETS</div>';return;}const bins=[{lo:.50,hi:.55},{lo:.55,hi:.60},{lo:.60,hi:.65},{lo:.65,hi:.70},{lo:.70,hi:1}];let html='';for(const b of bins){const inB=p.filter(x=>x.winProb>=b.lo&&x.winProb<b.hi);if(inB.length<2)continue;const act=inB.filter(x=>x.outcome==='win').length/inB.length;const pred=(b.lo+b.hi)/2;html+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div class="mono" style="font-size:9px;color:var(--t2);width:52px">${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%</div><div style="flex:1;height:8px;background:rgba(240,0,255,.1);border-radius:1px;overflow:hidden;position:relative"><div style="height:100%;width:${pred*100}%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div><div style="position:absolute;top:0;left:0;height:100%;width:${act*100}%;background:var(--pc);opacity:.7"></div></div><div class="mono" style="font-size:9px;width:30px;text-align:right;color:${Math.abs(act-pred)>.05?'var(--hc)':'var(--nc)'}">${(act*100).toFixed(0)}%</div><div style="font-size:8px;color:var(--t3)">n=${inB.length}</div></div>`;}el.innerHTML=html?`<div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:8px">PURPLE=PREDICTED · NEON=ACTUAL</div>`+html:'<div class="empty">NO DATA</div>';}
 function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const sa=selfAssess();const p=getP().filter(x=>x.outcome!=='pending');let html=`<div class="g4" style="margin-bottom:10px">`;['ML','RL','OU','PARLAY'].forEach(bt=>{const bp=p.filter(x=>x.betType===bt);const bw=bp.filter(x=>x.outcome==='win').length;const bA=bp.length?bw/bp.length:null;html+=`<div class="card cp" style="text-align:center;padding:9px"><div class="ct">${bt}</div><div class="mono" style="font-size:19px;font-weight:700;color:${bA===null?'var(--t3)':bA>=.55?'var(--nc)':bA>=.45?'var(--vc)':'var(--hc)'}">${bA===null?'--':(bA*100).toFixed(0)+'%'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">${bw}W/${bp.length-bw}L</div></div>`;});html+='</div>';for(const w of sa.warns)html+=`<div class="sa-warn">// ${w}</div>`;for(const ins of sa.insights)html+=`<div class="sa-ins">// ${ins}</div>`;el.innerHTML=html;}
 
@@ -3116,6 +3226,7 @@ async function doUpdate(){
   if(st){st.textContent=`✓ SYNCED ${now.slice(0,16)} MST`;st.style.color='var(--nc)';}
   if(btn){btn.textContent='↻ SYNC';btn.style.color='';}
   updateAPIStatus();
+  try{updateDateStrip(true);}catch(e){}
   // Pull latest data.json produced by the update script
   try{await loadRemoteData(true);}catch(e){console.warn('remote refresh:',e);}
   try{startLiveRefresh();}catch(e){console.warn('startLiveRefresh:',e);}
@@ -3824,7 +3935,8 @@ function renderNRFI(){
         <div style="font-family:var(--mono);font-size:9px;color:var(--ic);margin-top:2px">PROJ: ${r.hA} ${proj.hProj} – ${r.awA} ${proj.aProj} · TOTAL: ${proj.total} [${proj.method||'MC'}]</div>
         ${pkn?`<div style="font-family:var(--mono);font-size:8px;color:var(--mc);margin-top:2px">${pkn.note}</div>`:''}
         ${weatherBadge(_WX_CACHE[r.hA],r.hA)}
-        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">⏰ ${r.gt} · 5K Poisson MC · ERA×OffRate×ParkFactor+Weather</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:2px">${r.gt} · 5K Poisson MC · ERA×OffRate×ParkFactor+Weather</div>
+        ${rec.side==='YES'?`<div style="margin-top:8px"><button class="btn btn-p btn-sm" onclick="lockNRFIBet('${r.awA} @ ${r.hA}','NRFI YES','${r.awA}','${r.hA}',${r.p.toFixed(3)})">LOCK NRFI</button></div>`:`<div style="margin-top:8px"><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="lockNRFIBet('${r.awA} @ ${r.hA}','NRFI FADE','${r.awA}','${r.hA}',${r.p.toFixed(3)})">LOCK FADE NRFI</button></div>`}
       </div>
     </div>`;
   }).join('');
@@ -3932,7 +4044,7 @@ function renderOverall(){
   const sports=['MLB','NHL','NBA','TEN'];
   const bySport={};sports.forEach(s=>{const sp=settled.filter(p=>p.sport===s);bySport[s]={w:sp.filter(p=>p.outcome==='win').length,l:sp.filter(p=>p.outcome==='loss').length,n:sp.length};});
   // By bet type
-  const types=['ML','OU','RL','PL','PARLAY'];
+  const types=['ML','OU','RL','PL','PARLAY','PROP','NRFI'];
   const byType={};types.forEach(t=>{const tp=settled.filter(p=>p.betType===t);byType[t]={w:tp.filter(p=>p.outcome==='win').length,l:tp.filter(p=>p.outcome==='loss').length,n:tp.length};});
   // Calibration bands
   const bands=[{min:.55,max:.65,lbl:'55-65%'},{min:.65,max:.75,lbl:'65-75%'},{min:.75,max:1,lbl:'75%+'}];
@@ -3940,7 +4052,12 @@ function renderOverall(){
   const accColor=acc===null?'var(--t3)':acc>=.56?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
   // Recent form dots (last 15 settled)
   const recentFifteen=settled.slice(-15);
-  const formDots=recentFifteen.map(p=>{const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';return`<span title="${p.betOn||''} ${p.outcome}" style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${c};box-shadow:0 0 5px ${c}55;flex-shrink:0"></span>`;}).join('');
+  const scorePart=(p)=>p.hScore!=null?` ${p.hScore}-${p.aScore}`:'';
+  const formDots=recentFifteen.map(p=>{
+    const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
+    const tip=`${p.sport||''} ${p.date||''} | ${p.betOn||''} ${p.ml||''} | ${p.outcome?.toUpperCase()||''}${scorePart(p)}`;
+    return`<span class="form-dot" data-tip="${tip.replace(/"/g,"'")}" style="display:inline-block;width:13px;height:13px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}88;flex-shrink:0;cursor:pointer;position:relative;transition:transform .15s" onmouseenter="showDotTip(this)" onmouseleave="hideDotTip()" ontouchstart="showDotTip(this)" ontouchend="setTimeout(hideDotTip,2000)"></span>`;
+  }).join('');
   let html=`
   <div class="g4" style="gap:8px;margin-bottom:12px">
     <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${accColor}">${acc===null?'--':(acc*100).toFixed(1)+'%'}</div><div style="font-size:9px;color:var(--t3);font-family:var(--mono)">OVERALL WIN %</div></div>
@@ -4004,279 +4121,229 @@ function renderOverall(){
 }
 
 // ─── OVERALL ANALYTICS ───────────────────────────────────────────────────────
-function renderOverallAnalytics(){
+function renderOverallAnalytics(filterUpdate){
   const el=document.getElementById('ovr-analytics');if(!el)return;
-  const all=getP();
-  const settled=all.filter(p=>p.outcome!=='pending').sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
-  if(settled.length<3){el.innerHTML='<div class="empty">NOT ENOUGH SETTLED BETS FOR ANALYTICS<br><span style="font-size:9px;color:var(--t3)">LOCK AND SETTLE AT LEAST 3 PICKS TO UNLOCK ANALYTICS</span></div>';return;}
+  // ── Filter state ──
+  if(!window._alyF)window._alyF={sport:'ALL',type:'ALL',range:'ALL'};
+  if(filterUpdate)Object.assign(window._alyF,filterUpdate);
+  const F=window._alyF;
+  const allRaw=getP();
+  let base=allRaw.filter(p=>p.outcome!=='pending').sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
+  // Time range filter
+  if(F.range!=='ALL'){
+    const days={D7:7,D30:30,D90:90}[F.range]||9999;
+    const cutoff=Date.now()-days*86400000;
+    base=base.filter(p=>(p.lockedAt||0)>=cutoff);
+  }
+  if(F.sport!=='ALL')base=base.filter(p=>p.sport===F.sport);
+  if(F.type!=='ALL')base=base.filter(p=>p.betType===F.type);
+  const settled=base;
+  if(settled.length<3){el.innerHTML=`
+  <div style="padding:10px">
+  ${buildAlyFilters(allRaw,F)}
+  </div>
+  <div class="empty">NOT ENOUGH DATA FOR SELECTED FILTERS<br><span style="font-size:9px;color:var(--t3)">TRY EXPANDING FILTERS OR LOCK MORE PICKS</span></div>`;return;}
 
-  // ── Helpers ──
+  // ── Core helpers ──
   const pnl=(p)=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
   const pnlColor=(v)=>v>=0?'var(--nc)':'var(--hc)';
-  const barW=(pct,max)=>Math.max(2,Math.round((pct/max)*100));
+  const barW=(pct,max)=>Math.max(1,Math.round((pct/(max||1))*100));
   const pctFmt=(v)=>v!=null?(v*100).toFixed(1)+'%':'--';
+  const chip=(lbl,key,val,cur)=>{const act=cur===val;return`<button onclick="renderOverallAnalytics({${key}:'${val}'})" style="font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:2px;border:1px solid ${act?'var(--pc)':'rgba(255,255,255,.15)'};background:${act?'rgba(240,0,255,.15)':'transparent'};color:${act?'var(--pc)':'var(--t3)'};cursor:pointer;white-space:nowrap;transition:all .2s">${lbl}</button>`;};
 
-  // ── 1. Running P&L sparkline (SVG) — last 60 settled bets ──
-  const sparkBets=settled.slice(-60);
-  let runUnits=0;
-  const sparkPts=sparkBets.map((p,i)=>{runUnits+=pnl(p);return{x:i,y:runUnits};});
-  const svgW=320,svgH=80,pad=8;
+  // ── Key aggregates ──
+  const totalN=settled.length;
+  const wins=settled.filter(p=>p.outcome==='win').length;
+  const losses=settled.filter(p=>p.outcome==='loss').length;
+  const pushes=settled.filter(p=>p.outcome==='push').length;
+  const totalUnits=settled.reduce((a,p)=>a+pnl(p),0);
+  const winPct=totalN?wins/totalN:null;
+  const roi=totalN?(totalUnits/totalN)*100:null;
+  let curStreak=0,curStreakType='';
+  for(let i=settled.length-1;i>=0;i--){const p=settled[i];if(i===settled.length-1){curStreak=1;curStreakType=p.outcome;}else if(p.outcome===curStreakType){curStreak++;}else break;}
+  let bestWin=0,bestLoss=0,cw=0,cl=0;
+  for(const p of settled){if(p.outcome==='win'){cw++;cl=0;if(cw>bestWin)bestWin=cw;}else if(p.outcome==='loss'){cl++;cw=0;if(cl>bestLoss)bestLoss=cl;}else{cw=0;cl=0;}}
+  const grossWin=settled.filter(p=>p.outcome==='win').reduce((a,p)=>a+pnl(p),0);
+  const grossLoss=Math.abs(settled.filter(p=>p.outcome==='loss').reduce((a,p)=>a+pnl(p),0));
+  const profitFactor=grossLoss>0?(grossWin/grossLoss).toFixed(2):'INF';
+  const avgDec=settled.length?settled.reduce((a,p)=>a+(p.decOdds||2),0)/settled.length:2;
+
+  // ── 1. Filter chips ──
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','F1'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const typeChips=['ALL','ML','OU','RL','PL','PARLAY','PROP','NRFI'].map(t=>chip(t,'type',t,F.type)).join('');
+  const rangeChips=[['ALL','ALL TIME'],['D7','7 DAYS'],['D30','30 DAYS'],['D90','90 DAYS']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
+  const filtersHtml=`<div class="card" style="margin-bottom:10px;padding:8px 10px">
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px;letter-spacing:1.5px">SPORT</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${sportChips}</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px;letter-spacing:1.5px">BET TYPE</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${typeChips}</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:5px;letter-spacing:1.5px">TIME RANGE</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${rangeChips}</div>
+  </div>`;
+
+  // ── 2. KPI cards ──
+  const streakCol=curStreakType==='win'?'var(--nc)':curStreakType==='loss'?'var(--hc)':'var(--t3)';
+  const streakLbl=(curStreakType==='win'?'W':curStreakType==='loss'?'L':'?')+curStreak;
+  const kpiCards=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px">
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${winPct>=.55?'var(--nc)':winPct>=.50?'var(--vc)':'var(--hc)'}">${pctFmt(winPct)}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">WIN%</div>
+    </div>
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${roi>=0?'var(--nc)':'var(--hc)'}">${roi!=null?(roi>=0?'+':'')+roi.toFixed(1)+'%':'--'}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">ROI</div>
+    </div>
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${streakCol}">${streakLbl}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">STREAK</div>
+    </div>
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${profitFactor==='INF'||parseFloat(profitFactor)>=1?'var(--nc)':'var(--hc)'}">${profitFactor}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">PROFIT FACTOR</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:14px">
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--t)">${wins}W-${losses}L${pushes?'-'+pushes+'P':''}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">RECORD</div>
+    </div>
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${totalUnits>=0?'var(--nc)':'var(--hc)'}">${totalUnits>=0?'+':''}${totalUnits.toFixed(1)}u</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">NET UNITS</div>
+    </div>
+    <div class="card" style="padding:8px;text-align:center">
+      <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--t2)">${avgDec.toFixed(2)}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3);margin-top:2px">AVG DEC ODDS</div>
+    </div>
+  </div>`;
+
+  // ── 3. P&L sparkline (SVG) ──
+  let runU=0;const sparkPts=settled.map((p,i)=>{runU+=pnl(p);return{x:i,y:runU};});
+  const svgW=320,svgH=90,pad=10;
   const minY=Math.min(0,...sparkPts.map(p=>p.y));
   const maxY=Math.max(0,...sparkPts.map(p=>p.y));
-  const rangeY=Math.max(1,maxY-minY);
-  const scaleX=(i)=>pad+((i/(sparkPts.length-1||1))*(svgW-pad*2));
-  const scaleY=(y)=>svgH-pad-((y-minY)/rangeY)*(svgH-pad*2);
-  const zero=scaleY(0);
-  const pts=sparkPts.map((p,i)=>`${scaleX(i).toFixed(1)},${scaleY(p.y).toFixed(1)}`).join(' ');
-  const fillPts=`${scaleX(0).toFixed(1)},${zero.toFixed(1)} ${pts} ${scaleX(sparkPts.length-1).toFixed(1)},${zero.toFixed(1)}`;
-  const finalUnits=sparkPts.length?sparkPts[sparkPts.length-1].y:0;
-  const finalColor=finalUnits>=0?'#00f0ff':'#ff2090';
-  const sparkSVG=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="70" style="overflow:visible">
-    <defs><linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${finalColor}" stop-opacity="0.25"/><stop offset="100%" stop-color="${finalColor}" stop-opacity="0.02"/></linearGradient></defs>
-    <line x1="${pad}" y1="${zero.toFixed(1)}" x2="${svgW-pad}" y2="${zero.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-    <polygon points="${fillPts}" fill="url(#spkGrad)" stroke="none"/>
-    <polyline points="${pts}" fill="none" stroke="${finalColor}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${sparkPts.length?`<circle cx="${scaleX(sparkPts.length-1).toFixed(1)}" cy="${scaleY(finalUnits).toFixed(1)}" r="3" fill="${finalColor}" stroke="#010006" stroke-width="1.5"/>`:''}
+  const rngY=Math.max(1,maxY-minY);
+  const sX=(i)=>pad+((i/(sparkPts.length-1||1))*(svgW-pad*2));
+  const sY=(y)=>svgH-pad-((y-minY)/rngY)*(svgH-pad*2);
+  const zero=sY(0);
+  const finalU=sparkPts.length?sparkPts[sparkPts.length-1].y:0;
+  const fCol=finalU>=0?'#00f0ff':'#ff2090';
+  const pathD=sparkPts.map((p,i)=>`${i===0?'M':'L'}${sX(i).toFixed(1)},${sY(p.y).toFixed(1)}`).join(' ');
+  const areaD=sparkPts.length>1?`M${sX(0).toFixed(1)},${zero.toFixed(1)} ${pathD.slice(1)} L${sX(sparkPts.length-1).toFixed(1)},${zero.toFixed(1)} Z`:'';
+  const mDots=sparkPts.filter((_,i)=>i>0&&(i+1)%10===0).map(p=>`<circle cx="${sX(p.x).toFixed(1)}" cy="${sY(p.y).toFixed(1)}" r="2" fill="${p.y>=0?'#00f0ff33':'#ff209033'}" stroke="${p.y>=0?'#00f0ff':'#ff2090'}" stroke-width="0.8"/>`).join('');
+  const sparkSVG=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="80" style="overflow:visible;display:block">
+    <defs><linearGradient id="spkG2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${fCol}" stop-opacity="0.3"/><stop offset="100%" stop-color="${fCol}" stop-opacity="0.02"/></linearGradient></defs>
+    <line x1="${pad}" y1="${zero.toFixed(1)}" x2="${svgW-pad}" y2="${zero.toFixed(1)}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="3,3"/>
+    ${sparkPts.length>1?`<path d="${areaD}" fill="url(#spkG2)" stroke="none"/>`:''}
+    ${sparkPts.length>1?`<path d="${pathD}" fill="none" stroke="${fCol}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`:''}
+    ${mDots}
+    ${sparkPts.length?`<circle cx="${sX(sparkPts.length-1).toFixed(1)}" cy="${sY(finalU).toFixed(1)}" r="3.5" fill="${fCol}" stroke="#010006" stroke-width="1.5"/>`:''}
+    <text x="${pad}" y="${(svgH-1).toFixed(1)}" font-family="monospace" font-size="7" fill="#6878a0">BET 1</text>
+    <text x="${(svgW-pad).toFixed(1)}" y="${(svgH-1).toFixed(1)}" text-anchor="end" font-family="monospace" font-size="7" fill="#6878a0">BET ${sparkPts.length}</text>
+    ${minY<0?`<text x="${(pad+2).toFixed(1)}" y="${(sY(minY)-2).toFixed(1)}" font-family="monospace" font-size="6" fill="rgba(255,32,144,.6)">${minY.toFixed(1)}u</text>`:''}
+    ${maxY>0?`<text x="${(pad+2).toFixed(1)}" y="${(sY(maxY)+8).toFixed(1)}" font-family="monospace" font-size="6" fill="rgba(0,240,255,.6)">+${maxY.toFixed(1)}u</text>`:''}
   </svg>`;
 
-  // ── 2. Recent form dots (last 20) ──
-  const recent=settled.slice(-20);
+  // ── 4. Recent form dots (last 30) ──
+  const recent=settled.slice(-30);
   const dotRow=recent.map(p=>{
     const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
-    return`<span title="${p.betOn||''} ${p.outcome}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};flex-shrink:0;box-shadow:0 0 4px ${c}"></span>`;
+    const sc=p.hScore!=null?` | ${p.hScore}-${p.aScore}`:'';
+    const tip=`${p.sport||''} · ${p.date||''}\n${p.betOn||''} ${p.ml||''}\n${p.outcome?.toUpperCase()||''}${sc}`;
+    return`<span class="form-dot" data-tip="${tip.replace(/"/g,"'")}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${c};flex-shrink:0;box-shadow:0 0 7px ${c}88;cursor:pointer;position:relative;transition:transform .15s" onmouseenter="showDotTip(this)" onmouseleave="hideDotTip()" ontouchstart="showDotTip(this)" ontouchend="setTimeout(hideDotTip,2000)"></span>`;
   }).join('');
+  const last10=settled.slice(-10).filter(p=>p.outcome!=='push');
+  const prev10=settled.slice(-20,-10).filter(p=>p.outcome!=='push');
+  const l10pct=last10.length?last10.filter(p=>p.outcome==='win').length/last10.length:null;
+  const p10pct=prev10.length?prev10.filter(p=>p.outcome==='win').length/prev10.length:null;
+  const momentumDir=l10pct!=null&&p10pct!=null?l10pct>p10pct?'IMPROVING':'DECLINING':'—';
+  const momentumCol=l10pct!=null&&p10pct!=null?l10pct>p10pct?'var(--nc)':'var(--hc)':'var(--t3)';
 
-  // ── 3. Sport performance bars ──
-  const sports=['MLB','NHL','NBA','TEN'];
-  const sportColors={'MLB':'var(--nc)','NHL':'var(--ic)','NBA':'var(--gc)','TEN':'var(--mc)'};
-  const sportData=sports.map(s=>{
-    const sp=settled.filter(p=>p.sport===s);
-    const sw=sp.filter(p=>p.outcome==='win').length;
-    const sl=sp.filter(p=>p.outcome==='loss').length;
-    const su=sp.reduce((a,p)=>a+pnl(p),0);
-    return{s,n:sp.length,w:sw,l:sl,acc:sp.length?sw/sp.length:null,units:su};
-  }).filter(d=>d.n>0).sort((a,b)=>b.acc-a.acc);
-  const maxSportAcc=Math.max(...sportData.map(d=>d.acc||0),0.01);
-  const sportBars=sportData.map(d=>{
-    const col=sportColors[d.s]||'var(--pc)';
-    const pct=d.acc||0;
-    const bw=barW(pct,maxSportAcc);
-    const uc=d.units>=0?'var(--nc)':'var(--hc)';
-    return`<div style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-family:var(--orb);font-size:11px;font-weight:700;color:${col}">${d.s}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${d.w}W-${d.l}L</span>
-        <span style="font-family:var(--mono);font-size:10px;color:${d.acc>=.55?'var(--nc)':d.acc>=.50?'var(--vc)':'var(--hc)'};font-weight:700">${pctFmt(d.acc)}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span>
-      </div>
-      <div style="background:rgba(255,255,255,.06);border-radius:1px;height:6px;overflow:hidden">
-        <div style="width:${bw}%;height:100%;background:${col};border-radius:1px;transition:width .4s"></div>
-      </div>
-    </div>`;
-  }).join('');
+  // ── 5. Sport bars (clickable filter) ──
+  const sportList=['MLB','NHL','NBA','TEN','F1'];
+  const sportColors={'MLB':'var(--nc)','NHL':'var(--ic)','NBA':'var(--gc)','TEN':'var(--mc)','F1':'var(--hc)'};
+  const allSettled2=allRaw.filter(p=>p.outcome!=='pending');
+  const sportData=sportList.map(s=>{const sp=allSettled2.filter(p=>p.sport===s);const sw=sp.filter(p=>p.outcome==='win').length;const sl=sp.filter(p=>p.outcome==='loss').length;const su=sp.reduce((a,p)=>a+pnl(p),0);return{s,n:sp.length,w:sw,l:sl,acc:sp.length?sw/sp.length:null,units:su};}).filter(d=>d.n>0).sort((a,b)=>(b.acc||0)-(a.acc||0));
+  const maxSAcc=Math.max(...sportData.map(d=>d.acc||0),0.01);
+  const sportBars=sportData.map(d=>{const col=sportColors[d.s]||'var(--pc)';const pct=d.acc||0;const isActive=F.sport===d.s;const uc=d.units>=0?'var(--nc)':'var(--hc)';return`<div onclick="renderOverallAnalytics({sport:'${isActive?'ALL':d.s}'})" style="margin-bottom:10px;cursor:pointer;padding:5px;border-radius:3px;border:1px solid ${isActive?'rgba(240,0,255,.4)':'transparent'};background:${isActive?'rgba(240,0,255,.07)':'transparent'};transition:all .2s"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-family:var(--orb);font-size:11px;font-weight:700;color:${col}">${d.s}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:10px;color:${pct>=.55?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)'};font-weight:700">${pctFmt(d.acc)}</span><span style="font-family:var(--mono);font-size:8px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div><div style="background:rgba(255,255,255,.06);border-radius:1px;height:6px;overflow:hidden"><div style="width:${barW(pct,maxSAcc)}%;height:100%;background:${col};border-radius:1px;transition:width .5s ease"></div></div></div>`;}).join('');
 
-  // ── 4. Bet type breakdown with bars ──
-  const types=['ML','OU','RL','PL','PARLAY','PROP'];
-  const typeData=types.map(t=>{
-    const tp=settled.filter(p=>p.betType===t);
-    const tw=tp.filter(p=>p.outcome==='win').length;
-    const tl=tp.filter(p=>p.outcome==='loss').length;
-    const tu=tp.reduce((a,p)=>a+pnl(p),0);
-    return{t,n:tp.length,w:tw,l:tl,acc:tp.length?tw/tp.length:null,units:tu};
-  }).filter(d=>d.n>0).sort((a,b)=>b.n-a.n);
-  const typeBars=typeData.map(d=>{
-    const pct=d.acc||0;
-    const col=pct>=.55?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';
-    const bw=barW(pct,1);
-    const uc=d.units>=0?'var(--nc)':'var(--hc)';
-    return`<div style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${d.t}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${d.w}W-${d.l}L · ${d.n} bets</span>
-        <span style="font-family:var(--mono);font-size:10px;color:${col};font-weight:700">${pctFmt(d.acc)}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span>
-      </div>
-      <div style="background:rgba(255,255,255,.06);border-radius:1px;height:5px;overflow:hidden">
-        <div style="width:${bw}%;height:100%;background:${col};border-radius:1px;transition:width .4s"></div>
-      </div>
-    </div>`;
-  }).join('');
+  // ── 6. Bet type bars (clickable) ──
+  const typeList=['ML','OU','RL','PL','PARLAY','PROP','NRFI'];
+  const typeData=typeList.map(t=>{const tp=settled.filter(p=>p.betType===t);const tw=tp.filter(p=>p.outcome==='win').length;const tl=tp.filter(p=>p.outcome==='loss').length;const tu=tp.reduce((a,p)=>a+pnl(p),0);return{t,n:tp.length,w:tw,l:tl,acc:tp.length?tw/tp.length:null,units:tu};}).filter(d=>d.n>0).sort((a,b)=>b.n-a.n);
+  const typeBars=typeData.map(d=>{const pct=d.acc||0;const col=pct>=.55?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';const isActive=F.type===d.t;const uc=d.units>=0?'var(--nc)':'var(--hc)';return`<div onclick="renderOverallAnalytics({type:'${isActive?'ALL':d.t}'})" style="margin-bottom:9px;cursor:pointer;padding:4px;border-radius:3px;border:1px solid ${isActive?'rgba(240,0,255,.4)':'transparent'};background:${isActive?'rgba(240,0,255,.07)':'transparent'};transition:all .2s"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">${d.t}</span><span style="font-family:var(--mono);font-size:8px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:10px;color:${col};font-weight:700">${pctFmt(d.acc)}</span><span style="font-family:var(--mono);font-size:8px;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div><div style="background:rgba(255,255,255,.06);border-radius:1px;height:5px;overflow:hidden"><div style="width:${barW(pct,1)}%;height:100%;background:${col};border-radius:1px;transition:width .5s"></div></div></div>`;}).join('');
 
-  // ── 5. Pick tier/grade accuracy (ELITE / LOCK / LEAN) ──
-  const tiers=[
-    {lbl:'ELITE',col:'var(--gc)',min:.67,max:1},
-    {lbl:'LOCK', col:'var(--pc)',min:.62,max:.67},
-    {lbl:'LEAN', col:'var(--nc)',min:.55,max:.62},
-    {lbl:'SKIP', col:'var(--t3)',min:0,  max:.55},
-  ];
-  const tierRows=tiers.map(tier=>{
-    const tb=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=tier.min&&wp<tier.max;});
-    const tw=tb.filter(p=>p.outcome==='win').length;
-    const tl=tb.filter(p=>p.outcome==='loss').length;
-    const acc=tb.length?tw/tb.length:null;
-    const tu=tb.reduce((a,p)=>a+pnl(p),0);
-    const bw=acc!=null?barW(acc,1):0;
-    const uc=tu>=0?'var(--nc)':'var(--hc)';
-    return`<tr>
-      <td style="padding:5px 6px;font-family:var(--mono);font-size:10px;color:${tier.col};font-weight:700">${tier.lbl}</td>
-      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px">${tb.length}</td>
-      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${tw}</td>
-      <td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${tl}</td>
-      <td style="text-align:center;padding:5px 6px">
-        <div style="display:flex;align-items:center;gap:4px">
-          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:5px;min-width:40px">
-            <div style="width:${bw}%;height:100%;background:${acc!=null&&acc>=.55?tier.col:'var(--hc)'};border-radius:1px"></div>
-          </div>
-          <span style="font-family:var(--mono);font-size:10px;color:${acc!=null&&acc>=.55?'var(--nc)':'var(--hc)'};">${pctFmt(acc)}</span>
-        </div>
-      </td>
-      <td style="text-align:right;padding:5px 6px;font-family:var(--mono);font-size:10px;color:${uc}">${tu>=0?'+':''}${tu.toFixed(1)}u</td>
-    </tr>`;
-  }).join('');
+  // ── 7. Pick grade table ──
+  const tiers=[{lbl:'ELITE',col:'var(--gc)',min:.67,max:1},{lbl:'LOCK',col:'var(--pc)',min:.62,max:.67},{lbl:'LEAN',col:'var(--nc)',min:.55,max:.62},{lbl:'VALUE',col:'var(--vc)',min:.50,max:.55},{lbl:'SKIP',col:'var(--t3)',min:0,max:.50}];
+  const tierRows=tiers.map(tier=>{const tb=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=tier.min&&wp<tier.max;});const tw=tb.filter(p=>p.outcome==='win').length;const tl=tb.filter(p=>p.outcome==='loss').length;const acc=tb.length?tw/tb.length:null;const tu=tb.reduce((a,p)=>a+pnl(p),0);const uc=tu>=0?'var(--nc)':'var(--hc)';return`<tr><td style="padding:5px 6px;font-family:var(--mono);font-size:10px;color:${tier.col};font-weight:700">${tier.lbl}</td><td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px">${tb.length}</td><td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${tw}</td><td style="text-align:center;padding:5px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${tl}</td><td style="padding:5px 6px"><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:6px;min-width:40px"><div style="width:${acc!=null?barW(acc,1):0}%;height:100%;background:${acc!=null&&acc>=.50?tier.col:'var(--hc)'};border-radius:1px;transition:width .4s"></div></div><span style="font-family:var(--mono);font-size:10px;color:${acc!=null&&acc>=.55?'var(--nc)':'var(--hc)'};">${pctFmt(acc)}</span></div></td><td style="text-align:right;padding:5px 6px;font-family:var(--mono);font-size:10px;color:${uc}">${tu>=0?'+':''}${tu.toFixed(1)}u</td></tr>`;}).join('');
 
-  // ── 6. Day-of-week breakdown ──
+  // ── 8. Day-of-week chart ──
   const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const dayData=days.map((d,i)=>{
-    const db=settled.filter(p=>{if(!p.lockedAt)return false;const dt=new Date(p.lockedAt);return dt.getDay()===i;});
-    const dw=db.filter(p=>p.outcome==='win').length;
-    const dl=db.filter(p=>p.outcome==='loss').length;
-    return{d,n:db.length,w:dw,l:dl,acc:db.length?dw/db.length:null};
-  });
-  const maxDayAcc=Math.max(...dayData.map(d=>d.acc||0),0.01);
-  const dayBars=dayData.map(({d,n,w,l,acc})=>{
-    if(!n)return`<div style="flex:1;text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div><div style="height:40px;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px"></div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">--</div></div>`;
-    const barH=Math.max(4,Math.round((acc/maxDayAcc)*40));
-    const col=acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
-    return`<div style="flex:1;text-align:center">
-      <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div>
-      <div style="height:40px;display:flex;align-items:flex-end;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px">
-        <div style="width:100%;height:${barH}px;background:${col};border-radius:1px 1px 0 0;transition:height .4s"></div>
-      </div>
-      <div style="font-family:var(--mono);font-size:8px;color:${col};font-weight:700">${pctFmt(acc)}</div>
-      <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">${n}b</div>
-    </div>`;
-  }).join('');
+  const dayData=days.map((d,i)=>{const db=settled.filter(p=>{if(!p.lockedAt)return false;const dt=new Date(p.lockedAt);return dt.getDay()===i;});const dw=db.filter(p=>p.outcome==='win').length;const dl=db.filter(p=>p.outcome==='loss').length;return{d,n:db.length,w:dw,l:dl,acc:db.length?dw/db.length:null};});
+  const maxDayN=Math.max(...dayData.map(d=>d.n),1);
+  const dayBars=dayData.map(({d,n,w,l,acc})=>{if(!n)return`<div style="flex:1;text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div><div style="height:50px;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px"></div><div style="font-family:var(--mono);font-size:7px;color:var(--t3)">—</div></div>`;const barH=Math.max(4,Math.round((n/maxDayN)*50));const winH=n?Math.round((w/n)*barH):0;const lossH=barH-winH;const col=acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';return`<div style="flex:1;text-align:center"><div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${d}</div><div style="height:50px;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(255,255,255,.03);border-radius:1px;margin-bottom:3px;overflow:hidden"><div style="width:100%;height:${winH}px;background:var(--nc);opacity:.75"></div><div style="width:100%;height:${lossH}px;background:var(--hc);opacity:.75"></div></div><div style="font-family:var(--mono);font-size:8px;color:${col};font-weight:700">${pctFmt(acc)}</div><div style="font-family:var(--mono);font-size:7px;color:var(--t3)">${n}</div></div>`;}).join('');
 
-  // ── 7. Monthly trend (last 6 months) ──
-  const now=new Date();
-  const monthlyData=[];
-  for(let m=5;m>=0;m--){
-    const dt=new Date(now.getFullYear(),now.getMonth()-m,1);
-    const label=dt.toLocaleString('en-US',{month:'short',year:'2-digit'});
-    const yrM=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
-    const mb=settled.filter(p=>{if(!p.lockedAt)return false;const d=new Date(p.lockedAt);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===yrM;});
-    const mw=mb.filter(p=>p.outcome==='win').length;
-    const ml=mb.filter(p=>p.outcome==='loss').length;
-    const mu=mb.reduce((a,p)=>a+pnl(p),0);
-    monthlyData.push({label,n:mb.length,w:mw,l:ml,acc:mb.length?mw/mb.length:null,units:mu});
-  }
-  const maxMth=Math.max(...monthlyData.map(d=>d.n),1);
-  const monthRows=monthlyData.map(({label,n,w,l,acc,units})=>{
-    const col=acc===null?'var(--t3)':acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
-    const bw=n?barW(n,maxMth):0;
-    const uc=units>=0?'var(--nc)':'var(--hc)';
-    return`<tr>
-      <td style="padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--t3)">${label}</td>
-      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px">${n}</td>
-      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${w}</td>
-      <td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${l}</td>
-      <td style="padding:4px 6px">
-        <div style="display:flex;align-items:center;gap:4px">
-          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:5px;min-width:40px">
-            <div style="width:${bw}%;height:100%;background:${col};border-radius:1px"></div>
-          </div>
-          <span style="font-family:var(--mono);font-size:10px;color:${col}">${pctFmt(acc)}</span>
-        </div>
-      </td>
-      <td style="text-align:right;padding:4px 6px;font-family:var(--mono);font-size:10px;color:${uc}">${units>=0?'+':''}${units.toFixed(1)}u</td>
-    </tr>`;
-  }).join('');
+  // ── 9. Odds bucket analysis ──
+  const oddsBuckets=[{lbl:'HEAVY FAV',rng:'-200+',f:(p)=>{const m=parseInt(p.ml||'0');return m<=-200;}},{lbl:'FAVORITE',rng:'-199/-101',f:(p)=>{const m=parseInt(p.ml||'0');return m>=-199&&m<=-101;}},{lbl:'PICK EM',rng:'-100/+100',f:(p)=>{const m=parseInt(p.ml||'0');return m>=-100&&m<=100;}},{lbl:'UNDERDOG',rng:'+101/+250',f:(p)=>{const m=parseInt(p.ml||'0');return m>=101&&m<=250;}},{lbl:'LONG DOG',rng:'+251+',f:(p)=>{const m=parseInt(p.ml||'0');return m>250;}}];
+  const oddsRows=oddsBuckets.map(b=>{const ob=settled.filter(p=>p.ml&&b.f(p));if(!ob.length)return'';const ow=ob.filter(p=>p.outcome==='win').length;const ol=ob.filter(p=>p.outcome==='loss').length;const oa=ob.length?ow/ob.length:null;const ou=ob.reduce((a,p)=>a+pnl(p),0);const col=oa===null?'var(--t3)':oa>=.55?'var(--nc)':oa>=.50?'var(--vc)':'var(--hc)';const uc=ou>=0?'var(--nc)':'var(--hc)';return`<tr><td style="padding:4px 6px;font-family:var(--mono);font-size:9px;color:var(--t2)">${b.lbl}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:8px;color:var(--t3)">${b.rng}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:9px">${ob.length}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:9px;color:${col};font-weight:700">${pctFmt(oa)}</td><td style="text-align:right;padding:4px 6px;font-family:var(--mono);font-size:9px;color:${uc}">${ou>=0?'+':''}${ou.toFixed(1)}u</td></tr>`;}).join('');
 
-  // ── 8. Confidence calibration chart (SVG) ──
-  const calBands=[
-    {lbl:'55-60%',min:.55,max:.60},
-    {lbl:'60-65%',min:.60,max:.65},
-    {lbl:'65-70%',min:.65,max:.70},
-    {lbl:'70-75%',min:.70,max:.75},
-    {lbl:'75%+',  min:.75,max:1  },
-  ];
-  const calData=calBands.map(b=>{
-    const bets=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=b.min&&wp<b.max;});
-    const wins=bets.filter(p=>p.outcome==='win').length;
-    return{lbl:b.lbl,exp:(b.min+Math.min(b.max,.99))/2,act:bets.length?wins/bets.length:null,n:bets.length};
-  });
-  const calSvgW=280,calSvgH=100,calPad=20;
-  const calBarsW=(calSvgW-calPad*2)/calBands.length;
-  const calSvgBars=calData.map((b,i)=>{
-    if(b.n===0)return`<rect x="${calPad+i*calBarsW+2}" y="${calSvgH-calPad}" width="${calBarsW-4}" height="0" fill="rgba(255,255,255,.05)"/>`;
-    const expH=(b.exp/(1))*(calSvgH-calPad*2);
-    const actH=b.act!=null?(b.act/(1))*(calSvgH-calPad*2):0;
-    const col=b.act!=null&&Math.abs(b.act-b.exp)<.05?'#00f0ff':b.act!=null&&Math.abs(b.act-b.exp)<.10?'#bbff00':'#ff2090';
-    return`
-      <rect x="${(calPad+i*calBarsW+2).toFixed(1)}" y="${(calSvgH-calPad-expH).toFixed(1)}" width="${(calBarsW-4).toFixed(1)}" height="${expH.toFixed(1)}" fill="rgba(255,255,255,.08)" rx="1"/>
-      <rect x="${(calPad+i*calBarsW+2).toFixed(1)}" y="${(calSvgH-calPad-actH).toFixed(1)}" width="${(calBarsW-4).toFixed(1)}" height="${actH.toFixed(1)}" fill="${col}" rx="1" opacity="0.7"/>
-      <text x="${(calPad+i*calBarsW+calBarsW/2).toFixed(1)}" y="${(calSvgH-calPad+10).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="#6878a0">${b.lbl}</text>
-      ${b.act!=null?`<text x="${(calPad+i*calBarsW+calBarsW/2).toFixed(1)}" y="${(calSvgH-calPad-actH-3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="${col}">${pctFmt(b.act)}</text>`:''}
-    `;
-  }).join('');
-  const calSVG=`<svg viewBox="0 0 ${calSvgW} ${calSvgH}" width="100%" height="90" style="overflow:visible">
-    <text x="4" y="8" font-family="monospace" font-size="6" fill="#6878a0">ACTUAL</text>
-    <rect x="30" y="3" width="8" height="4" fill="#00f0ff" rx="1"/>
-    <text x="40" y="8" font-family="monospace" font-size="6" fill="#6878a0">EXP</text>
-    <rect x="54" y="3" width="8" height="4" fill="rgba(255,255,255,.2)" rx="1"/>
-    ${calSvgBars}
-    <line x1="${calPad}" y1="${calSvgH-calPad}" x2="${calSvgW-calPad}" y2="${calSvgH-calPad}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
-  </svg>`;
+  // ── 10. Monthly trend ──
+  const now=new Date();const monthlyData=[];
+  for(let m=5;m>=0;m--){const dt=new Date(now.getFullYear(),now.getMonth()-m,1);const label=dt.toLocaleString('en-US',{month:'short',year:'2-digit'});const yrM=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;const mb=settled.filter(p=>{if(!p.lockedAt)return false;const d=new Date(p.lockedAt);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===yrM;});const mw=mb.filter(p=>p.outcome==='win').length;const ml=mb.filter(p=>p.outcome==='loss').length;const mu=mb.reduce((a,p)=>a+pnl(p),0);monthlyData.push({label,n:mb.length,w:mw,l:ml,acc:mb.length?mw/mb.length:null,units:mu});}
+  const maxMu=Math.max(...monthlyData.map(d=>Math.abs(d.units)),0.1);
+  const monthRows=monthlyData.map(({label,n,w,l,acc,units})=>{const col=acc===null?'var(--t3)':acc>=.55?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';const uc=units>=0?'var(--nc)':'var(--hc)';return`<tr><td style="padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--t3)">${label}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px">${n}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--nc)">${w}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--hc)">${l}</td><td style="padding:4px 6px"><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:5px;min-width:40px"><div style="width:${n?barW(acc||0,1):0}%;height:100%;background:${col};border-radius:1px"></div></div><span style="font-family:var(--mono);font-size:10px;color:${col}">${pctFmt(acc)}</span></div></td><td style="text-align:right;padding:4px 6px"><span style="font-family:var(--mono);font-size:10px;color:${uc}">${units>=0?'+':''}${units.toFixed(1)}u</span></td></tr>`;}).join('');
 
-  // ── 9. Best win streaks ──
-  let bestStreak=0,bestStreakType='win',curSt=0,curStType='win';
-  for(const p of settled){
-    if(curStType===p.outcome){curSt++;}else{curSt=1;curStType=p.outcome;}
-    if(curStType==='win'&&curSt>bestStreak){bestStreak=curSt;}
-  }
-  let curLose=0,bestLose=0;
-  for(const p of settled){
-    if(p.outcome==='loss'){curLose++;if(curLose>bestLose)bestLose=curLose;}else{curLose=0;}
-  }
+  // ── 11. Calibration SVG ──
+  const calBands=[{lbl:'55-60',min:.55,max:.60},{lbl:'60-65',min:.60,max:.65},{lbl:'65-70',min:.65,max:.70},{lbl:'70-75',min:.70,max:.75},{lbl:'75+',min:.75,max:1}];
+  const calData=calBands.map(b=>{const bets=settled.filter(p=>{const wp=p.winProb||p.conf||0;return wp>=b.min&&wp<b.max;});const ww=bets.filter(p=>p.outcome==='win').length;return{lbl:b.lbl,exp:(b.min+Math.min(b.max,.99))/2,act:bets.length?ww/bets.length:null,n:bets.length};});
+  const cW=300,cH=110,cP=24,cBW=(cW-cP*2)/calBands.length;
+  const calSvgBars=calData.map((b,i)=>{if(!b.n)return`<rect x="${(cP+i*cBW+2).toFixed(1)}" y="${(cH-cP).toFixed(1)}" width="${(cBW-4).toFixed(1)}" height="0" fill="rgba(255,255,255,.04)"/>`;const expH=b.exp*(cH-cP*2);const actH=b.act!=null?b.act*(cH-cP*2):0;const col=b.act!=null&&Math.abs(b.act-b.exp)<.05?'#00f0ff':b.act!=null&&Math.abs(b.act-b.exp)<.10?'#bbff00':'#ff2090';return`<rect x="${(cP+i*cBW+2).toFixed(1)}" y="${(cH-cP-expH).toFixed(1)}" width="${(cBW-4).toFixed(1)}" height="${expH.toFixed(1)}" fill="rgba(255,255,255,.07)" rx="1"/><rect x="${(cP+i*cBW+4).toFixed(1)}" y="${(cH-cP-actH).toFixed(1)}" width="${(cBW-8).toFixed(1)}" height="${actH.toFixed(1)}" fill="${col}" rx="1" opacity="0.85"/><text x="${(cP+i*cBW+cBW/2).toFixed(1)}" y="${(cH-cP+11).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6.5" fill="#6878a0">${b.lbl}%</text>${b.act!=null?`<text x="${(cP+i*cBW+cBW/2).toFixed(1)}" y="${(cH-cP-actH-3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6.5" fill="${col}">${pctFmt(b.act)}</text>`:''}<text x="${(cP+i*cBW+cBW/2).toFixed(1)}" y="${(cH-cP-expH-3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="5.5" fill="rgba(255,255,255,.28)">${pctFmt(b.exp)}</text>`;}).join('');
+  const calSVG=`<svg viewBox="0 0 ${cW} ${cH}" width="100%" height="95" style="overflow:visible;display:block"><line x1="${cP}" y1="${cH-cP}" x2="${cW-cP}" y2="${cH-cP}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>${calSvgBars}<rect x="4" y="3" width="8" height="4" fill="rgba(255,255,255,.15)" rx="1"/><text x="14" y="8" font-family="monospace" font-size="6" fill="#6878a0">EXPECTED</text><rect x="72" y="3" width="8" height="4" fill="#00f0ff" rx="1" opacity=".8"/><text x="82" y="8" font-family="monospace" font-size="6" fill="#6878a0">ACTUAL</text></svg>`;
+
+  // ── 12. Streak analysis ──
+  const streakBlocks=[];let sb=[];
+  for(const p of settled){if(!sb.length||sb[sb.length-1].outcome===p.outcome){sb.push(p);}else{streakBlocks.push({type:sb[0].outcome,len:sb.length,bets:[...sb]});sb=[p];}}
+  if(sb.length)streakBlocks.push({type:sb[0].outcome,len:sb.length,bets:sb});
+  const topWinStreaks=streakBlocks.filter(b=>b.type==='win').sort((a,b)=>b.len-a.len).slice(0,3);
+  const topLossStreaks=streakBlocks.filter(b=>b.type==='loss').sort((a,b)=>b.len-a.len).slice(0,3);
+  const streakTimeline=streakBlocks.slice(-20).map(b=>{const col=b.type==='win'?'#00f0ff':b.type==='loss'?'#ff2090':'#ffdd00';const w=Math.max(8,b.len*12);return`<div title="${b.len} ${b.type.toUpperCase()} streak" style="height:14px;width:${w}px;background:${col};opacity:${Math.min(0.4+b.len*0.1,1)};border-radius:2px;flex-shrink:0"></div>`;}).join('');
 
   // ── BUILD HTML ──
   const html=`
-  <div class="sh" style="margin-bottom:10px"><span class="n"></span> RUNNING P&L — UNITS OVER TIME</div>
+${filtersHtml}
+${kpiCards}
+
+  <div class="sh" style="margin-bottom:8px"><span class="n"></span> RUNNING P&L — ${settled.length} BETS</div>
   <div class="card" style="margin-bottom:14px;padding:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">LAST ${sparkBets.length} SETTLED BETS · 1u / BET</span>
-      <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${pnlColor(finalUnits)}">${finalUnits>=0?'+':''}${finalUnits.toFixed(1)}u</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${F.range==='ALL'?'ALL TIME':F.range.replace('D',' DAYS')} · FILTERED · 1u/BET</span>
+      <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:${pnlColor(finalU)}">${finalU>=0?'+':''}${finalU.toFixed(1)}u</span>
     </div>
     ${sparkSVG}
-    <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:4px">
-      <span>OLDEST</span><span>NEWEST</span>
-    </div>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="n"></span> RECENT FORM — LAST 20 PICKS</div>
+  <div class="sh" style="margin-bottom:8px"><span class="n"></span> RECENT FORM — LAST ${recent.length} PICKS</div>
   <div class="card" style="margin-bottom:14px;padding:10px">
-    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
-      ${dotRow}
+    <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px">${dotRow}</div>
+    <div style="display:flex;gap:12px;margin-bottom:6px;font-family:var(--mono);font-size:8px;color:var(--t3)">
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:50%;background:#00f0ff;display:inline-block"></span>WIN</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:50%;background:#ff2090;display:inline-block"></span>LOSS</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:50%;background:#ffdd00;display:inline-block"></span>PUSH</span>
     </div>
-    <div style="display:flex;gap:12px;margin-top:8px;font-family:var(--mono);font-size:8px;color:var(--t3)">
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#00f0ff;display:inline-block"></span>WIN</span>
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ff2090;display:inline-block"></span>LOSS</span>
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ffdd00;display:inline-block"></span>PUSH</span>
-    </div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">MOMENTUM L10 vs PREV10: <span style="color:${momentumCol};font-weight:700">${momentumDir}${l10pct!=null?' · '+pctFmt(l10pct):''}</span></div>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">BY SPORT</div>
+      <div style="font-family:var(--mono);font-size:8px;letter-spacing:1.5px;color:var(--pc);margin-bottom:8px">BY SPORT <span style="color:var(--t3);font-size:7px">TAP=FILTER</span></div>
       ${sportBars}
     </div>
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">BY BET TYPE</div>
+      <div style="font-family:var(--mono);font-size:8px;letter-spacing:1.5px;color:var(--pc);margin-bottom:8px">BY TYPE <span style="color:var(--t3);font-size:7px">TAP=FILTER</span></div>
       ${typeBars}
     </div>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="g"></span> PICK GRADE PERFORMANCE</div>
+  <div class="sh" style="margin-bottom:8px"><span class="g"></span> PICK GRADE ACCURACY</div>
   <div class="card" style="margin-bottom:14px;overflow-x:auto">
     <table class="dt" style="font-size:9px;width:100%">
       <thead><tr><th>GRADE</th><th>N</th><th>W</th><th>L</th><th>WIN %</th><th>UNITS</th></tr></thead>
@@ -4284,50 +4351,83 @@ function renderOverallAnalytics(){
     </table>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="n"></span> DAY OF WEEK BREAKDOWN</div>
+  <div class="sh" style="margin-bottom:8px"><span class="n"></span> ODDS BUCKET ANALYSIS</div>
+  <div class="card" style="margin-bottom:14px;overflow-x:auto">
+    <table class="dt" style="font-size:9px;width:100%">
+      <thead><tr><th>BUCKET</th><th>ODDS</th><th>N</th><th>WIN%</th><th>UNITS</th></tr></thead>
+      <tbody>${oddsRows||'<tr><td colspan="5" style="text-align:center;color:var(--t3);padding:8px;font-family:var(--mono);font-size:9px">NO ODDS DATA</td></tr>'}</tbody>
+    </table>
+  </div>
+
+  <div class="sh" style="margin-bottom:8px"><span class="n"></span> DAY OF WEEK</div>
   <div class="card" style="margin-bottom:14px;padding:10px">
-    <div style="display:flex;gap:4px;align-items:flex-end;height:60px">
-      ${dayBars}
+    <div style="display:flex;gap:3px;align-items:flex-end;height:72px">${dayBars}</div>
+    <div style="display:flex;gap:10px;margin-top:6px;font-family:var(--mono);font-size:7px;color:var(--t3)">
+      <span style="display:flex;align-items:center;gap:2px"><span style="width:7px;height:7px;background:var(--nc);opacity:.75;display:inline-block;border-radius:1px"></span>WIN</span>
+      <span style="display:flex;align-items:center;gap:2px"><span style="width:7px;height:7px;background:var(--hc);opacity:.75;display:inline-block;border-radius:1px"></span>LOSS</span>
+      <span>HEIGHT = VOLUME</span>
     </div>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="p"></span> MONTHLY PERFORMANCE TREND</div>
+  <div class="sh" style="margin-bottom:8px"><span class="p"></span> MONTHLY TREND</div>
   <div class="card" style="margin-bottom:14px;overflow-x:auto">
     <table class="dt" style="font-size:9px;width:100%">
-      <thead><tr><th>MONTH</th><th>N</th><th>W</th><th>L</th><th>WIN %</th><th>UNITS</th></tr></thead>
+      <thead><tr><th>MONTH</th><th>N</th><th>W</th><th>L</th><th>WIN %</th><th>P&L</th></tr></thead>
       <tbody>${monthRows}</tbody>
     </table>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="p"></span> CONFIDENCE CALIBRATION CHART</div>
+  <div class="sh" style="margin-bottom:8px"><span class="p"></span> CONFIDENCE CALIBRATION</div>
   <div class="card" style="margin-bottom:14px;padding:10px">
-    <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:8px">// HOW WELL DOES ENGINE CONFIDENCE MATCH REAL-WORLD WIN RATE?</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:8px">// ENGINE CONFIDENCE (grey) vs REAL WIN RATE (color) BY CONFIDENCE BAND</div>
     ${calSVG}
-    <div style="display:flex;gap:10px;margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--t3)">
-      <span style="color:var(--nc)">CALIBRATED: actual within 5% of expected</span>
-      <span style="color:var(--vc)">SLIGHT DRIFT: 5-10%</span>
-      <span style="color:var(--hc)">RECALIBRATE: 10%+</span>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-family:var(--mono);font-size:7px">
+      <span style="color:var(--nc)">CYAN = ≤5% DRIFT</span><span style="color:#bbff00">YELLOW = 5-10%</span><span style="color:var(--hc)">RED = RECALIBRATE</span>
     </div>
   </div>
 
-  <div class="sh" style="margin-bottom:10px"><span class="g"></span> STREAK ANALYSIS</div>
-  <div class="g3" style="gap:8px;margin-bottom:14px">
-    <div class="card cp" style="text-align:center;padding:10px">
-      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--nc)">${bestStreak}</div>
-      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">BEST WIN STREAK</div>
+  <div class="sh" style="margin-bottom:8px"><span class="g"></span> STREAK ANALYSIS</div>
+  <div class="g3" style="gap:6px;margin-bottom:10px">
+    <div class="card" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--nc)">${bestWin}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">BEST WIN STREAK</div>
     </div>
-    <div class="card cp" style="text-align:center;padding:10px">
-      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--hc)">${bestLose}</div>
-      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">WORST LOSS STREAK</div>
+    <div class="card" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--hc)">${bestLoss}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">WORST COLD RUN</div>
     </div>
-    <div class="card cp" style="text-align:center;padding:10px">
-      <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--t)">${settled.length}</div>
-      <div style="font-family:var(--mono);font-size:8px;color:var(--t3)">TOTAL GRADED</div>
+    <div class="card" style="text-align:center;padding:10px">
+      <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${streakCol}">${streakLbl}</div>
+      <div style="font-family:var(--mono);font-size:7px;color:var(--t3)">CURRENT STREAK</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:8px">// STREAK TIMELINE — LAST 20 RUNS (WIDTH = LENGTH · OPACITY = MAGNITUDE)</div>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;margin-bottom:10px">${streakTimeline}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <div><div style="font-family:var(--mono);font-size:8px;color:var(--nc);margin-bottom:4px">TOP WIN RUNS</div>${topWinStreaks.map((b,i)=>`<div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:2px">#${i+1}: ${b.len} W <span style="color:var(--t3)">${b.bets[0]?.date||''}</span></div>`).join('')||'<div style="color:var(--t3);font-size:8px">—</div>'}</div>
+      <div><div style="font-family:var(--mono);font-size:8px;color:var(--hc);margin-bottom:4px">WORST COLD RUNS</div>${topLossStreaks.map((b,i)=>`<div style="font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:2px">#${i+1}: ${b.len} L <span style="color:var(--t3)">${b.bets[0]?.date||''}</span></div>`).join('')||'<div style="color:var(--t3);font-size:8px">—</div>'}</div>
     </div>
   </div>`;
 
   el.innerHTML=html;
 }
+
+function buildAlyFilters(allRaw,F){
+  const chip=(lbl,key,val,cur)=>{const act=cur===val;return`<button onclick="renderOverallAnalytics({${key}:'${val}'})" style="font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:2px;border:1px solid ${act?'var(--pc)':'rgba(255,255,255,.15)'};background:${act?'rgba(240,0,255,.15)':'transparent'};color:${act?'var(--pc)':'var(--t3)'};cursor:pointer;white-space:nowrap">${lbl}</button>`;};
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','F1'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const typeChips=['ALL','ML','OU','RL','PL','PARLAY','PROP','NRFI'].map(t=>chip(t,'type',t,F.type)).join('');
+  const rangeChips=[['ALL','ALL TIME'],['D7','7 DAYS'],['D30','30 DAYS'],['D90','90 DAYS']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
+  return`<div class="card" style="padding:8px 10px">
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">SPORT</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${sportChips}</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">BET TYPE</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${typeChips}</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">TIME RANGE</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${rangeChips}</div>
+  </div>`;
+}
+
 
 function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const el=document.getElementById('ovr-history-list');if(!el)return;
@@ -6543,6 +6643,27 @@ async function refreshTennisLive(){
   }
 }
 function startTennisLive(){if(_tenLiveIv)clearInterval(_tenLiveIv);refreshTennisLive();_tenLiveIv=setInterval(refreshTennisLive,30000);}
+function resetTennisLive(){
+  // Clear completed/old tennis bets that are still pending
+  if(!confirm('Mark all pending tennis bets as settled and clear stale live data?'))return;
+  const preds=getP();
+  let changed=false;
+  for(const p of preds){
+    if(p.sport==='TEN'&&p.outcome==='pending'){
+      const locked=new Date(p.lockedAt||0);
+      const hoursAgo=(Date.now()-locked.getTime())/3600000;
+      if(hoursAgo>6){p.outcome='loss';p.settledAt=Date.now();changed=true;}// assume loss if >6h old pending
+    }
+  }
+  if(changed){saveP(preds);updHdr();toast('// OLD TENNIS BETS SETTLED — REVIEW IN HISTORY');}
+  // Clear live score displays
+  const s1=document.getElementById('ten-live-scores');if(s1)s1.innerHTML='';
+  const s2=document.getElementById('tennis-live-scores');if(s2)s2.innerHTML='';
+  // Restart live feed fresh
+  if(_tenLiveIv)clearInterval(_tenLiveIv);
+  setTimeout(()=>{refreshTennisLive();_tenLiveIv=setInterval(refreshTennisLive,30000);},500);
+  toast('// TENNIS LIVE RESET — FETCHING FRESH LIVE DATA');
+}
 // ── Tennis model architecture display ────────────────────────
 function renderTennisModel(){
   const el=document.getElementById('ten-model-info');if(!el)return;
@@ -6941,7 +7062,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-05-29 20:00 MT';
+let LAST_AUTO_UPDATE = '2026-05-30 15:39 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -7826,6 +7947,9 @@ function renderGlobalLiveBets(){
   try{renderHomePage();}catch(e){console.error('renderHomePage',e);}
   try{renderNHLLockedBets();}catch(e){console.error('renderNHLLockedBets',e);}
   try{updateAPIStatus();}catch(e){console.error('updateAPIStatus',e);}
+  try{updateDateStrip();}catch(e){console.error('updateDateStrip',e);}
+  // Refresh date strip every minute
+  setInterval(()=>{try{updateDateStrip();}catch(e){}},60000);
   // Load remote data.json (written by clairvoyance_update.py)
   try{await loadRemoteData();}catch(e){console.warn('loadRemoteData',e);}
   // Auto-refresh remote data every 8 minutes
