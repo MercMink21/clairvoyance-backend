@@ -2096,8 +2096,9 @@ function renderHistory(){
   const sa=selfAssess();const log=getDailyLog();const preds=getP();
   const saSummary=document.getElementById('sa-summary');
   if(saSummary){
-    const settled=preds.filter(x=>x.outcome!=='pending').length;
-    const wins=preds.filter(x=>x.outcome==='win').length;const acc=settled?wins/settled:0;
+    const mlbAllPreds=preds.filter(x=>!x.sport||x.sport==='MLB');
+    const settled=mlbAllPreds.filter(x=>x.outcome!=='pending').length;
+    const wins=mlbAllPreds.filter(x=>x.outcome==='win').length;const acc=settled?wins/settled:0;
     let html=`<div class="card cp" style="text-align:center;padding:16px;margin-bottom:12px">
       <div style="font-family:var(--orb);font-size:15px;letter-spacing:3px;color:var(--pc);margin-bottom:10px">MODEL PERFORMANCE</div>
       <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:12px">
@@ -2123,10 +2124,12 @@ function renderHistory(){
     });
   }
   const dates=Object.keys(log).sort((a,b)=>b.localeCompare(a)).slice(0,30);
+  // Filter preds to MLB only for MLB history tab
+  const mlbPreds=preds.filter(p=>!p.sport||p.sport==='MLB');
   const fmtDate=d=>{if(!d)return'—';try{const[y,m,dy]=d.split('-');return`${m}/${dy}/${y}`;}catch{return d;}};
   if(!dates.length){hl.innerHTML='<div class="empty">NO HISTORY YET<br>LOCK PICKS TO BUILD HISTORY</div>';return;}
   hl.innerHTML=dates.map(date=>{
-    const dayLog=log[date];const dayPreds=preds.filter(p=>p.date===date&&p.outcome!=='pending');
+    const dayLog=log[date];const dayPreds=mlbPreds.filter(p=>p.date===date&&p.outcome!=='pending');
     const dayWins=dayPreds.filter(p=>p.outcome==='win').length;const dayAcc=dayPreds.length?dayWins/dayPreds.length:null;
     const recCount=dayLog.recs?.length||0;const lockedCount=dayLog.recs?.filter(r=>r.locked).length||0;
     const accColor=dayAcc===null?'var(--t3)':dayAcc>=.55?'var(--nc)':dayAcc>=.45?'var(--vc)':'var(--hc)';
@@ -4677,78 +4680,60 @@ function renderOverallAnalytics(filterUpdate){
     </div>
   </div>`;
 
-  // ── SPORT RADAR CHART (SVG hexagon) ──────────────────────────────────────
+  // ── SPORT RADAR — separate mini-cards per sport, no overlapping ─────────
   const sportList=['MLB','NHL','NBA','TEN','F1'];
-  const sportColMap={'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','TEN':'#bbff00','F1':'#ff2090'};
+  const sportColors2={'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','TEN':'#bbff00','F1':'#ff2090'};
   const allSettledFull=allRaw.filter(p=>p.outcome!=='pending');
-  const sportStats=sportList.map(s=>{
+  const sportData=sportList.map(s=>{
     const sp=allSettledFull.filter(p=>p.sport===s);
     const sw=sp.filter(p=>p.outcome==='win').length;
     const su=sp.reduce((a,p)=>a+pnl(p),0);
-    return{s,n:sp.length,w:sw,l:sp.filter(p=>p.outcome==='loss').length,
-      acc:sp.length?sw/sp.length:0,units:su,
-      roi:sp.length?(su/sp.length)*100:0};
+    return{s,n:sp.length,w:sw,l:sp.filter(p=>p.outcome==='loss').length,acc:sp.length?sw/sp.length:0,units:su,roi:sp.length?(su/sp.length)*100:0};
   }).filter(d=>d.n>0);
-  // Radar: 5 axes [WIN%, ROI_norm, VOLUME_norm, PF_norm, STREAK_norm]
-  const maxVol=Math.max(...sportStats.map(d=>d.n),1);
-  const maxROI=Math.max(...sportStats.map(d=>Math.abs(d.roi)),1);
-  const axes=5,CX=90,CY=75,R=55;
-  const radarPts=(vals)=>vals.map((v,i)=>{const a=-Math.PI/2+(i/axes)*2*Math.PI;return[CX+R*v*Math.cos(a),CY+R*v*Math.sin(a)];});
-  const polyStr=(pts)=>pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
-  // Background hex rings
-  const hexRings=[0.25,0.5,0.75,1].map(r=>{
-    const ps=Array.from({length:axes},(_,i)=>{const a=-Math.PI/2+(i/axes)*2*Math.PI;return[CX+R*r*Math.cos(a),CY+R*r*Math.sin(a)];});
-    return`<polygon points="${polyStr(ps)}" fill="none" stroke="rgba(240,0,255,.12)" stroke-width="1"/>`;
-  }).join('');
-  // Axis lines
-  const axisLines=Array.from({length:axes},(_,i)=>{const a=-Math.PI/2+(i/axes)*2*Math.PI;return`<line x1="${CX}" y1="${CY}" x2="${(CX+R*Math.cos(a)).toFixed(1)}" y2="${(CY+R*Math.sin(a)).toFixed(1)}" stroke="rgba(240,0,255,.2)" stroke-width="1"/>`;}).join('');
-  const axisLabels=['WIN%','ROI','VOL','UNITS','REC'].map((lbl,i)=>{const a=-Math.PI/2+(i/axes)*2*Math.PI;const lx=CX+(R+12)*Math.cos(a),ly=CY+(R+12)*Math.sin(a);return`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="rgba(240,0,255,.85)">${lbl}</text>`;}).join('');
-  // Sport polygons
-  const sportPolys=sportStats.map(d=>{
-    const col=sportColMap[d.s]||'#f000ff';
-    const isActive=F.sport===d.s;
+
+  // Build one hex radar per sport (CX=50, CY=50, R=38, 5 axes)
+  const sportCardSVG=(d)=>{
+    const col=sportColors2[d.s]||'#f000ff';
+    const ax=5,CX=52,CY=52,R=36;
+    const axLabels=['WIN%','ROI','VOL','UNITS','REC'];
+    const maxVol=Math.max(...sportData.map(x=>x.n),1);
     const vals=[
       Math.min(1,d.acc),
       Math.min(1,Math.max(0,(d.roi+30)/60)),
       Math.min(1,d.n/maxVol),
       Math.min(1,Math.max(0,(d.units+10)/20)),
-      Math.min(1,Math.max(0,d.w/Math.max(d.n,1)))
+      Math.min(1,d.w/Math.max(d.n,1))
     ];
-    const pts=radarPts(vals);
-    return`<polygon points="${polyStr(pts)}" fill="${col}" fill-opacity="${isActive?.25:.1}" stroke="${col}" stroke-width="${isActive?2:1}" stroke-opacity="${isActive?.9:.5}" style="cursor:pointer" onclick="renderOverallAnalytics({sport:'${d.s==='ALL'?'ALL':F.sport===d.s?'ALL':d.s}'})"><title>${d.s}: ${pfmt(d.acc)} win · ${d.units>=0?'+':''}${d.units.toFixed(1)}u</title></polygon>`;
-  }).join('');
-  const radarLegend=sportStats.map(d=>{const col=sportColMap[d.s]||'#f000ff';return`<span onclick="renderOverallAnalytics({sport:'${F.sport===d.s?'ALL':d.s}'})" style="display:flex;align-items:center;gap:3px;cursor:pointer;font-family:var(--mono);font-size:12px;padding:2px 6px;border-radius:2px;border:1px solid ${F.sport===d.s?col:'transparent'};background:${F.sport===d.s?col+'22':'transparent'}"><span style="width:7px;height:7px;border-radius:50%;background:${col};box-shadow:0 0 5px ${col};display:inline-block"></span><span style="color:${col}">${d.s}</span></span>`;}).join('');
-  const radarSVG=`<svg viewBox="0 0 ${CX*2} ${CY*2+10}" width="180" height="160" style="display:block;margin:0 auto">
-    ${hexRings}${axisLines}${axisLabels}${sportPolys}
-    <circle cx="${CX}" cy="${CY}" r="2" fill="rgba(240,0,255,.82)"/>
-  </svg>`;
+    const pts=(r)=>Array.from({length:ax},(_,i)=>{const a=-Math.PI/2+(i/ax)*2*Math.PI;return[CX+r*Math.cos(a),CY+r*Math.sin(a)];});
+    const polyStr=(ps)=>ps.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+    const rings=[.25,.5,.75,1].map(r=>`<polygon points="${polyStr(pts(R*r))}" fill="none" stroke="${col}22" stroke-width="1"/>`).join('');
+    const axes=pts(R).map(([x,y],i)=>`<line x1="${CX}" y1="${CY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}30" stroke-width="1"/>`).join('');
+    const dataPolygon=`<polygon points="${polyStr(vals.map((v,i)=>{const a=-Math.PI/2+(i/ax)*2*Math.PI;return[CX+R*v*Math.cos(a),CY+R*v*Math.sin(a)];}).map(([x,y])=>[x,y]))}" fill="${col}28" stroke="${col}" stroke-width="1.5" opacity=".9"/>`;
+    const labels=pts(R+12).map(([x,y],i)=>`<text x="${x.toFixed(1)}" y="${(y+3).toFixed(1)}" text-anchor="middle" font-family="monospace" font-size="6" fill="${col}99">${axLabels[i]}</text>`).join('');
+    const neonCol2=(v,good=.55,ok=.50)=>v>=good?'#00f0ff':v>=ok?'#bbff00':'#ff2090';
+    const uc=d.units>=0?'#00f0ff':'#ff2090';
+    const isActive=F.sport===d.s;
+    return`<div onclick="renderOverallAnalytics({sport:'${isActive?'ALL':d.s}'})" style="cursor:pointer;background:rgba(10,4,24,.9);border:1px solid ${isActive?col+'88':col+'33'};border-radius:3px;padding:10px;transition:all .2s;box-shadow:${isActive?'0 0 16px '+col+'44':'none'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:${col};text-shadow:0 0 8px ${col}66">${d.s}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.55)">${d.w}W-${d.l}L</span>
+      </div>
+      <svg viewBox="0 0 104 104" width="100%" height="100" style="display:block">${rings}${axes}${dataPolygon}${labels}<circle cx="${CX}" cy="${CY}" r="2" fill="${col}77"/></svg>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px">
+        <div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:${neonCol2(d.acc)}">${pfmt(d.acc)}</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.5)">WIN%</div></div>
+        <div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.5)">UNITS</div></div>
+      </div>
+      ${isActive?`<div style="font-family:var(--mono);font-size:9px;color:${col};text-align:center;margin-top:5px">ACTIVE FILTER · TAP TO CLEAR</div>`:''}
+    </div>`;
+  };
   const radarHtml=`<div style="${glowBox('#f000ff')};border-radius:3px;padding:10px;margin-bottom:10px;position:relative;overflow:hidden">
-    <div style="font-family:var(--mono);font-size:12px;color:rgba(240,0,255,.92);letter-spacing:2px;margin-bottom:8px">// SPORT RADAR · TAP SHAPE TO FILTER</div>
-    ${radarSVG}
-    <div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-top:8px">${radarLegend}</div>
+    <div style="font-family:var(--mono);font-size:11px;color:rgba(240,0,255,.92);letter-spacing:2px;margin-bottom:10px">// SPORT RADAR — TAP CARD TO FILTER · AXES: WIN%/ROI/VOL/UNITS/REC</div>
+    <div style="display:grid;grid-template-columns:repeat(${Math.min(sportData.length,3)},1fr);gap:8px">
+      ${sportData.map(d=>sportCardSVG(d)).join('')}
+    </div>
+    ${sportData.length===0?'<div class="empty">NOT ENOUGH DATA PER SPORT</div>':''}
   </div>`;
 
-  // ── HOT ZONE HEATMAP (Day × BetType) ─────────────────────────────────────
-  const hzDays=['S','M','T','W','T','F','S'];
-  const hzTypes=['ML','OU','RL','PL','PARLAY','PROP'];
-  const hzData=hzDays.map((d,di)=>hzTypes.map(t=>{
-    const bets=settled.filter(p=>{if(!p.lockedAt)return false;return new Date(p.lockedAt).getDay()===di&&p.betType===t;});
-    const wins=bets.filter(p=>p.outcome==='win').length;
-    return{n:bets.length,acc:bets.length?wins/bets.length:null};
-  }));
-  const cellW=36,cellH=22;
-  const hzSvgW=hzDays.length*cellW+50,hzSvgH=hzTypes.length*cellH+28;
-  const hzCells=hzData.flatMap((row,di)=>row.map((cell,ti)=>{
-    if(!cell.n)return`<rect x="${(di*cellW+44).toFixed(0)}" y="${(ti*cellH+16).toFixed(0)}" width="${cellW-2}" height="${cellH-2}" fill="rgba(240,0,255,.04)" rx="1"/>`;
-    const a=cell.acc||0;
-    const col=a>=.65?'#00f0ff':a>=.55?'#bbff00':a>=.45?'#f000ff':'#ff2090';
-    const op=Math.max(.2,Math.min(.9,cell.n/5));
-    return`<rect x="${(di*cellW+44).toFixed(0)}" y="${(ti*cellH+16).toFixed(0)}" width="${cellW-2}" height="${cellH-2}" fill="${col}" fill-opacity="${op.toFixed(2)}" rx="1"><title>${hzDays[di]} · ${hzTypes[ti]} · ${cell.n} bets · ${pfmt(cell.acc)}</title></rect>
-    <text x="${(di*cellW+44+cellW/2-1).toFixed(0)}" y="${(ti*cellH+16+cellH/2+3).toFixed(0)}" text-anchor="middle" font-family="monospace" font-size="6.5" fill="${op>.5?'#000':'rgba(255,255,255,.6)'}">${cell.n}</text>`;
-  })).join('');
-  const hzAxisY=hzTypes.map((t,i)=>`<text x="42" y="${(i*cellH+16+cellH/2+3).toFixed(0)}" text-anchor="end" font-family="monospace" font-size="7" fill="rgba(240,0,255,.85)">${t}</text>`).join('');
-  const hzAxisX=hzDays.map((d,i)=>`<text x="${(i*cellW+44+cellW/2-1).toFixed(0)}" y="12" text-anchor="middle" font-family="monospace" font-size="7.5" fill="rgba(240,0,255,.85)">${d}</text>`).join('');
-  const hzSVG=`<svg viewBox="0 0 ${hzSvgW} ${hzSvgH}" width="100%" height="${hzSvgH}" style="display:block;overflow:visible">${hzAxisX}${hzAxisY}${hzCells}</svg>`;
   const hzHtml=`<div style="${glowBox('#f000ff')};border-radius:3px;padding:10px;margin-bottom:10px;position:relative;overflow:hidden">
     <div style="font-family:var(--mono);font-size:12px;color:rgba(240,0,255,.92);letter-spacing:2px;margin-bottom:8px">// HOT ZONE MAP · DAY × BET TYPE · OPACITY = VOLUME</div>
     <div style="overflow-x:auto">${hzSVG}</div>
@@ -5714,8 +5699,8 @@ function setSub(sport,sub){
   if(mn3)mn3.style.display=(sport==='nba'&&sub==='nba')?'flex':'none';
 }
 function T(sport,tabId){
-  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa'};
-  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in'};
+  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa'};
+  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in'};
   const saId=saMap[sport]||'mlb-sa';
   const navId=navMap[sport]||'mlb-in';
   const mnId=sport==='nhl'?'mn2':sport==='nba'?'mn3':sport==='ovr'?'mn4':sport==='ten'?'mn5':sport==='f1'?'mn6':sport==='live'?'mn7':'mn';
@@ -7806,7 +7791,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-05-30 20:00 MT';
+let LAST_AUTO_UPDATE = '2026-05-31 00:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
