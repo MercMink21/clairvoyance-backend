@@ -1782,12 +1782,47 @@ def _confidence(prob: float, ev_pct: float, extra_signals: int = 0) -> int:
     signal_bonus = min(10, extra_signals * 3)
     return min(100, base + ev_bonus + signal_bonus)
 
+def _pyth_win_pct(rs: float, ra: float, exp: float = 1.83) -> float:
+    """Pythagorean win expectation from runs scored/allowed."""
+    try:
+        if rs + ra == 0: return 0.5
+        return rs**exp / (rs**exp + ra**exp)
+    except: return 0.5
+
+def _estimate_prob_from_standings(home: str, away: str, standings: dict,
+                                   hfa: float = 0.04) -> tuple[float, float, int]:
+    """
+    Estimate win probabilities from standings when no book odds available.
+    Uses Pythagorean expectation (RS/RA) + home field advantage.
+    Returns (home_prob, away_prob, ml_estimate) — ml_estimate for home.
+    """
+    hs = standings.get(home, {})
+    as_ = standings.get(away, {})
+    if not hs or not as_:
+        return 0.5 + hfa, 0.5 - hfa, -110
+    try:
+        h_pyth = _pyth_win_pct(float(hs.get("rs", 200)), float(hs.get("ra", 200)))
+        a_pyth = _pyth_win_pct(float(as_.get("rs", 200)), float(as_.get("ra", 200)))
+        # Log5 formula: P(A beats B) = (A - A*B) / (A + B - 2*A*B)
+        if h_pyth + a_pyth == 0: return 0.54, 0.46, -120
+        h_prob_raw = (h_pyth - h_pyth * a_pyth) / (h_pyth + a_pyth - 2 * h_pyth * a_pyth)
+        h_prob = min(0.82, max(0.18, h_prob_raw + hfa))
+        a_prob = 1 - h_prob
+        # Convert to American ML
+        if h_prob >= 0.5:
+            ml = -int(round(h_prob / (1 - h_prob) * 100))
+        else:
+            ml = int(round((1 - h_prob) / h_prob * 100))
+        return h_prob, a_prob, ml
+    except:
+        return 0.54, 0.46, -120
+
 def calculate_best_bets(
     nba_today: list, mlb_today: list, nhl_today: list,
     weather: dict, mp: dict | None = None, nhl_edge: dict | None = None,
     nhl_props: list | None = None, nhl_trends: list | None = None,
     mlb_sabre: dict | None = None, best_odds: dict | None = None,
-    nba_adv: dict | None = None,
+    nba_adv: dict | None = None, mlb_standings: dict | None = None,
 ) -> list[dict]:
     log("Calculating best bets…")
     picks: list[dict] = []
@@ -1901,6 +1936,8 @@ def calculate_best_bets(
         note = "  ".join(parts)
         return total, -total, note
 
+    _standings = mlb_standings or {}
+
     # MLB — wind-adjusted O/U + sabermetric ML model
     for g in mlb_today:
         if g.get("state") != "pre": continue
@@ -1912,6 +1949,14 @@ def calculate_best_bets(
         hml = bk.get("homeML") or g.get("homeML")
         aml = bk.get("awayML") or g.get("awayML")
         ou  = g.get("ou")
+        # Fallback: estimate from standings when no book odds
+        using_estimated_odds = False
+        if hml is None and _standings:
+            h_est, a_est, hml_est = _estimate_prob_from_standings(home, away, _standings)
+            aml_est = (-int(round(a_est/(1-a_est)*100)) if a_est >= 0.5
+                       else int(round((1-a_est)/a_est*100)))
+            hml, aml = hml_est, aml_est
+            using_estimated_odds = True
         # Wind-adjusted O/U
         if w and not w.get("indoor"):
             wind     = w.get("wind",0) or 0
@@ -1928,12 +1973,13 @@ def calculate_best_bets(
         h_adj, a_adj, sabre_note = _sabre_edge(home, away)
         hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
         extra_sig = 1 if sabre_note else 0
+        est_note  = " [model est.]" if using_estimated_odds else ""
         if hprob_raw:
             hprob = max(0.05, min(0.95, hprob_raw + h_adj))
             if hprob > 0.62:
                 add("MLB", game_str, f"{home} ML {hml}", hprob, hml,
                     "LOCK" if hprob>0.70 else "GOOD",
-                    note=sabre_note, extra_signals=extra_sig)
+                    note=(sabre_note + est_note).strip(), extra_signals=extra_sig)
         if aprob_raw:
             aprob = max(0.05, min(0.95, aprob_raw + a_adj))
             if aprob > 0.62:
@@ -2624,6 +2670,7 @@ def main() -> None:
         mlb_sabre=mlb_sabre,
         best_odds={**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
         nba_adv=nba_adv,
+        mlb_standings=mlb_standings,
     )
     # Merge Roland Garros Elo bets into best_bets (already filtered for EV > 4% + prob > 65%)
     if roland_garros.get("bets"):
@@ -2725,11 +2772,12 @@ def main() -> None:
     # Social content + card
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
-        from content_generator import generate_content, write_social_copy
+        from content_generator import generate_content, write_social_json, detect_slot
         from generate_card import generate_card
-        social = generate_content(bundle, verbose=_verbose)
+        slot   = detect_slot()
+        social = generate_content(bundle, slot=slot, verbose=_verbose)
         if social:
-            write_social_copy(social)
+            write_social_json(social)
             note("social_copy.json written")
             img = generate_card(bundle, social)
             for p in (ROOT/"frontend"/"card.png", ROOT/"docs"/"card.png"):
