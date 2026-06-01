@@ -47,6 +47,14 @@ if [[ ! -f "$STAMP" ]]; then
   touch "$STAMP"
 fi
 
+# ── load .env (if present) ───────────────────────────────────────────────────
+if [[ -f "$REPO_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$REPO_DIR/.env"
+  set +a
+fi
+
 # ── run ───────────────────────────────────────────────────────────────────────
 echo ""                                                              | tee -a "$LOG_FILE"
 echo "════════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"

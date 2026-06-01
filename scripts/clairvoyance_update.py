@@ -30,6 +30,24 @@ import argparse, csv, io, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
+# ── load .env early (before any os.environ reads) ────────────────────────────
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader — no external deps required."""
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:   # don't override shell env
+                os.environ[key] = val
+    except Exception:
+        pass
+
+_load_dotenv(Path(__file__).parent.parent / ".env")
+
 # ── dependency bootstrap ──────────────────────────────────────────────────────
 try:
     import requests
@@ -505,52 +523,131 @@ def fetch_nba_team_advanced() -> dict:
     return result
 
 
+_TEAM_NAME_TO_ABBR: dict[str, str] = {
+    # MLB
+    "Arizona Diamondbacks":"ARI","Atlanta Braves":"ATL","Baltimore Orioles":"BAL",
+    "Boston Red Sox":"BOS","Chicago Cubs":"CHC","Chicago White Sox":"CWS",
+    "Cincinnati Reds":"CIN","Cleveland Guardians":"CLE","Colorado Rockies":"COL",
+    "Detroit Tigers":"DET","Houston Astros":"HOU","Kansas City Royals":"KC",
+    "Los Angeles Angels":"LAA","Los Angeles Dodgers":"LAD","Miami Marlins":"MIA",
+    "Milwaukee Brewers":"MIL","Minnesota Twins":"MIN","New York Mets":"NYM",
+    "New York Yankees":"NYY","Oakland Athletics":"OAK","Athletics":"OAK",
+    "Philadelphia Phillies":"PHI","Pittsburgh Pirates":"PIT","San Diego Padres":"SD",
+    "San Francisco Giants":"SF","Seattle Mariners":"SEA","St. Louis Cardinals":"STL",
+    "Tampa Bay Rays":"TB","Texas Rangers":"TEX","Toronto Blue Jays":"TOR",
+    "Washington Nationals":"WSH",
+    # NBA
+    "Atlanta Hawks":"ATL","Boston Celtics":"BOS","Brooklyn Nets":"BKN",
+    "Charlotte Hornets":"CHA","Chicago Bulls":"CHI","Cleveland Cavaliers":"CLE",
+    "Dallas Mavericks":"DAL","Denver Nuggets":"DEN","Detroit Pistons":"DET",
+    "Golden State Warriors":"GSW","Houston Rockets":"HOU","Indiana Pacers":"IND",
+    "Los Angeles Clippers":"LAC","Los Angeles Lakers":"LAL","Memphis Grizzlies":"MEM",
+    "Miami Heat":"MIA","Milwaukee Bucks":"MIL","Minnesota Timberwolves":"MIN",
+    "New Orleans Pelicans":"NOP","New York Knicks":"NYK","Oklahoma City Thunder":"OKC",
+    "Orlando Magic":"ORL","Philadelphia 76ers":"PHI","Phoenix Suns":"PHX",
+    "Portland Trail Blazers":"POR","Sacramento Kings":"SAC","San Antonio Spurs":"SAS",
+    "Toronto Raptors":"TOR","Utah Jazz":"UTA","Washington Wizards":"WSH",
+    # NHL
+    "Anaheim Ducks":"ANA","Arizona Coyotes":"ARI","Boston Bruins":"BOS",
+    "Buffalo Sabres":"BUF","Calgary Flames":"CGY","Carolina Hurricanes":"CAR",
+    "Chicago Blackhawks":"CHI","Colorado Avalanche":"COL","Columbus Blue Jackets":"CBJ",
+    "Dallas Stars":"DAL","Detroit Red Wings":"DET","Edmonton Oilers":"EDM",
+    "Florida Panthers":"FLA","Los Angeles Kings":"LAK","Minnesota Wild":"MIN",
+    "Montreal Canadiens":"MTL","Nashville Predators":"NSH","New Jersey Devils":"NJD",
+    "New York Islanders":"NYI","New York Rangers":"NYR","Ottawa Senators":"OTT",
+    "Philadelphia Flyers":"PHI","Pittsburgh Penguins":"PIT","San Jose Sharks":"SJS",
+    "Seattle Kraken":"SEA","St. Louis Blues":"STL","Tampa Bay Lightning":"TB",
+    "Toronto Maple Leafs":"TOR","Utah Hockey Club":"UTA","Vancouver Canucks":"VAN",
+    "Vegas Golden Knights":"VGK","Washington Capitals":"WSH","Winnipeg Jets":"WPG",
+}
+
+def _name_to_abbr(name: str) -> str:
+    """Convert Odds API team name → ESPN abbreviation. Falls back to first 3 chars."""
+    return _TEAM_NAME_TO_ABBR.get(name, name[:3].upper())
+
 def fetch_best_odds(sport: str, game_list: list) -> dict:
     """
-    Fetch best available moneyline odds from The Odds API (free tier).
+    Fetch best available moneyline + O/U odds from The Odds API (free tier).
     Falls back to ESPN odds already in game_list if no API key.
-    Returns dict keyed by 'home_abbr:away_abbr' → {homeML, awayML, book}.
+    Returns dict keyed by 'home_abbr:away_abbr' → {homeML, awayML, ou, book}.
     """
     api_key = os.environ.get("ODDS_API_KEY", "")
     best: dict = {}
     if not api_key:
-        # No Odds API key — use ESPN lines already in game_list
         for g in game_list:
             key = f"{g.get('home','')}:{g.get('away','')}"
-            best[key] = {"homeML": g.get("homeML"), "awayML": g.get("awayML"), "book": "ESPN"}
+            best[key] = {"homeML": g.get("homeML"), "awayML": g.get("awayML"),
+                         "ou": g.get("ou"), "book": "ESPN"}
         return best
+
     sport_key = {"mlb": "baseball_mlb", "nba": "basketball_nba",
                  "nhl": "icehockey_nhl"}.get(sport, "")
     if not sport_key:
         return best
+
     try:
-        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+        url  = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
         data = fetch_json(url, params={
-            "apiKey": api_key, "regions": "us", "markets": "h2h",
+            "apiKey": api_key, "regions": "us",
+            "markets": "h2h,totals",       # moneyline + over/under
             "oddsFormat": "american", "dateFormat": "iso",
         }) or []
+
+        remaining = None
+        log(f"Odds API {sport}: {len(data)} events")
+
         for event in data:
-            teams = event.get("teams") or []
-            if len(teams) < 2: continue
-            home_t, away_t = teams[0], teams[1]
-            # Match to ESPN abbreviation by partial name match
-            key = f"{home_t}:{away_t}"
-            best_home, best_away = None, None
+            home_name = event.get("home_team", "")
+            away_name = event.get("away_team", "")
+            home_abbr = _name_to_abbr(home_name)
+            away_abbr = _name_to_abbr(away_name)
+            key = f"{home_abbr}:{away_abbr}"
+
+            best_home_ml: int | None = None
+            best_away_ml: int | None = None
+            best_home_book = ""
+            best_away_book = ""
+            best_ou: float | None  = None
+
             for bk in (event.get("bookmakers") or []):
+                bk_title = bk.get("title", "")
                 for market in (bk.get("markets") or []):
-                    if market.get("key") != "h2h": continue
+                    mkey = market.get("key", "")
                     for outcome in (market.get("outcomes") or []):
-                        p = outcome.get("price", 0)
-                        if outcome.get("name") == home_t:
-                            if best_home is None or p > best_home:
-                                best_home = p
-                        elif outcome.get("name") == away_t:
-                            if best_away is None or p > best_away:
-                                best_away = p
-            if best_home or best_away:
-                best[key] = {"homeML": best_home, "awayML": best_away, "book": "best"}
+                        p   = outcome.get("price")
+                        nm  = outcome.get("name", "")
+                        pt  = outcome.get("point")          # for totals
+                        if p is None: continue
+
+                        if mkey == "h2h":
+                            if nm == home_name:
+                                if best_home_ml is None or int(p) > best_home_ml:
+                                    best_home_ml   = int(p)
+                                    best_home_book = bk_title
+                            elif nm == away_name:
+                                if best_away_ml is None or int(p) > best_away_ml:
+                                    best_away_ml   = int(p)
+                                    best_away_book = bk_title
+                        elif mkey == "totals" and nm == "Over" and pt is not None:
+                            # Take the highest (most favorable) total line
+                            if best_ou is None or float(pt) > best_ou:
+                                best_ou = float(pt)
+
+            if best_home_ml or best_away_ml:
+                book_str = best_home_book or best_away_book or "Odds API"
+                best[key] = {
+                    "homeML":   best_home_ml,
+                    "awayML":   best_away_ml,
+                    "ou":       best_ou,
+                    "book":     book_str,
+                    "homeBook": best_home_book,
+                    "awayBook": best_away_book,
+                }
+                vlog(f"  {key}: home {best_home_ml} ({best_home_book}) / "
+                     f"away {best_away_ml} ({best_away_book}) O/U {best_ou}")
+
     except Exception as exc:
-        log(f"Best odds fetch ({sport}): {exc}", "WARN")
+        log(f"Odds API fetch ({sport}): {exc}", "WARN")
     return best
 
 
@@ -1308,9 +1405,9 @@ def fetch_f1() -> dict:
     result: dict = {"schedule":[], "driverStandings":[], "constructorStandings":[], "nextRace":None}
     year = NOW_MT.year
 
-    # Ergast schedule
+    # Ergast schedule (short timeout — site often slow/down)
     try:
-        data  = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}.json?limit=25")
+        data  = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}.json?limit=25", timeout=6)
         races = (data.get("MRData",{}).get("RaceTable",{}).get("Races") or [])
         for race in races:
             rd = race.get("date","")
@@ -1329,7 +1426,7 @@ def fetch_f1() -> dict:
 
     # Driver standings
     try:
-        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/driverStandings.json")
+        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/driverStandings.json", timeout=6)
         for s in (data.get("MRData",{}).get("StandingsTable",{})
                       .get("StandingsLists",[{}])[0].get("DriverStandings") or [])[:20]:
             drv  = s.get("Driver",{})
@@ -1344,7 +1441,7 @@ def fetch_f1() -> dict:
 
     # Constructor standings
     try:
-        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/constructorStandings.json")
+        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{year}/constructorStandings.json", timeout=6)
         for s in (data.get("MRData",{}).get("StandingsTable",{})
                       .get("StandingsLists",[{}])[0].get("ConstructorStandings") or [])[:10]:
             ctor = s.get("Constructor",{})
@@ -1944,11 +2041,14 @@ def calculate_best_bets(
         home, away = g.get("home",""), g.get("away","")
         game_str   = f"{away} @ {home}"
         w          = weather.get(home,{})
-        # Best available odds (Odds API if key present, else ESPN)
-        bk  = _best.get(f"{home}:{away}", {})
-        hml = bk.get("homeML") or g.get("homeML")
-        aml = bk.get("awayML") or g.get("awayML")
-        ou  = g.get("ou")
+        # Best available odds: Odds API (real book lines) → ESPN → estimated
+        bk       = _best.get(f"{home}:{away}", {})
+        hml      = bk.get("homeML") or g.get("homeML")
+        aml      = bk.get("awayML") or g.get("awayML")
+        ou       = bk.get("ou") or g.get("ou")
+        book_src = bk.get("book", "")
+        hbook    = bk.get("homeBook", book_src)
+        abook    = bk.get("awayBook", book_src)
         # Fallback: estimate from standings when no book odds
         using_estimated_odds = False
         if hml is None and _standings:
@@ -1973,7 +2073,7 @@ def calculate_best_bets(
         h_adj, a_adj, sabre_note = _sabre_edge(home, away)
         hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
         extra_sig = 1 if sabre_note else 0
-        est_note  = " [model est.]" if using_estimated_odds else ""
+        est_note  = " [model est.]" if using_estimated_odds else (f" [{hbook}]" if hbook else "")
         if hprob_raw:
             hprob = max(0.05, min(0.95, hprob_raw + h_adj))
             if hprob > 0.62:
@@ -1983,17 +2083,21 @@ def calculate_best_bets(
         if aprob_raw:
             aprob = max(0.05, min(0.95, aprob_raw + a_adj))
             if aprob > 0.62:
+                book_n = f" [{abook}]" if abook and not using_estimated_odds else est_note
                 add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
                     "LOCK" if aprob>0.70 else "GOOD",
-                    note=sabre_note, extra_signals=extra_sig)
+                    note=(sabre_note + book_n).strip(), extra_signals=extra_sig)
 
     # NHL — moneyline + puck line + O/U (pre-game and live)
     mp_teams = (mp or {}).get("teams",{}) if mp else {}
     nhl_edge_teams = (nhl_edge or {}).get("teams",{}) if nhl_edge else {}
     for g in nhl_today:
         if g.get("state") not in ("FUT","PRE","LIVE","CRIT"): continue
-        hml, aml    = g.get("homeML"), g.get("awayML")
         home, away  = g.get("home",""), g.get("away","")
+        # Best odds: Odds API → ESPN fallback
+        nhl_bk = _best.get(f"{home}:{away}", {})
+        hml  = nhl_bk.get("homeML") or g.get("homeML")
+        aml  = nhl_bk.get("awayML") or g.get("awayML")
         game_str    = f"{away} @ {home}"
         series_note = g.get("seriesStatus","") or g.get("details","")
         is_live     = g.get("state") in ("LIVE","CRIT")
