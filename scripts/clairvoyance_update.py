@@ -1215,6 +1215,150 @@ def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
     vlog(f"  {tour.upper()} yElo: {len(players)} players")
     return players
 
+def fetch_tennis_odds() -> dict:
+    """
+    Fetch ATP/WTA French Open (Roland Garros) match odds from The Odds API.
+    Returns {matches: [{p1, p2, p1ml, p2ml, tour, commence, book}], source, remaining}.
+    """
+    api_key = os.environ.get("ODDS_API_KEY", "")
+    result: dict = {"matches": [], "source": "none", "remaining": None}
+    if not api_key:
+        return result
+    all_matches: list[dict] = []
+    for sport_key, tour_label in [
+        ("tennis_atp_french_open", "ATP"),
+        ("tennis_wta_french_open", "WTA"),
+    ]:
+        try:
+            url  = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+            resp = fetch_json(url, params={
+                "apiKey": api_key, "regions": "us",
+                "markets": "h2h", "oddsFormat": "american", "dateFormat": "iso",
+            })
+            if not isinstance(resp, list):
+                continue
+            for ev in resp:
+                p1_name = ev.get("home_team", "")
+                p2_name = ev.get("away_team", "")
+                commence = ev.get("commence_time", "")
+                best_p1_ml: int | None = None
+                best_p2_ml: int | None = None
+                best_book = ""
+                for bk in (ev.get("bookmakers") or []):
+                    for mkt in (bk.get("markets") or []):
+                        if mkt.get("key") != "h2h": continue
+                        for o in (mkt.get("outcomes") or []):
+                            p, nm = o.get("price"), o.get("name","")
+                            if p is None: continue
+                            if nm == p1_name and (best_p1_ml is None or int(p) > best_p1_ml):
+                                best_p1_ml = int(p); best_book = bk.get("title","")
+                            elif nm == p2_name and (best_p2_ml is None or int(p) > best_p2_ml):
+                                best_p2_ml = int(p)
+                if best_p1_ml is not None or best_p2_ml is not None:
+                    all_matches.append({
+                        "tour":    tour_label,
+                        "p1":      p1_name,
+                        "p2":      p2_name,
+                        "p1ml":    best_p1_ml,
+                        "p2ml":    best_p2_ml,
+                        "book":    best_book,
+                        "commence": commence,
+                        "surface": "clay",
+                        "tournament": f"Roland Garros 2026 {tour_label}",
+                    })
+            log(f"Tennis Odds API {tour_label}: {len([m for m in all_matches if m['tour']==tour_label])} matches")
+        except Exception as exc:
+            log(f"Tennis Odds API {sport_key}: {exc}", "WARN")
+    result["matches"] = all_matches
+    result["source"]  = "The Odds API" if all_matches else "none"
+    return result
+
+
+def fetch_futures_odds() -> dict:
+    """
+    Fetch championship futures odds from The Odds API.
+    Covers: MLB WS, NBA Title, NHL Cup, golf majors.
+    Returns {mlb, nba, nhl, golf} — each a list of {team/player, ml, book}.
+    """
+    api_key = os.environ.get("ODDS_API_KEY", "")
+    result: dict = {"mlb": [], "nba": [], "nhl": [], "golf": [], "source": "none"}
+    if not api_key:
+        return result
+    markets = [
+        ("baseball_mlb_world_series_winner", "mlb", "World Series"),
+        ("basketball_nba_championship_winner", "nba", "NBA Championship"),
+        ("icehockey_nhl_championship_winner", "nhl", "Stanley Cup"),
+        ("golf_us_open_winner", "golf", "US Open"),
+    ]
+    any_found = False
+    for sport_key, sport_cat, label in markets:
+        try:
+            resp = fetch_json(
+                f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/",
+                params={"apiKey": api_key, "regions": "us", "markets": "outrights",
+                        "oddsFormat": "american", "dateFormat": "iso"},
+            )
+            if not isinstance(resp, list) or not resp:
+                continue
+            # Take first event (the futures market)
+            ev = resp[0]
+            picks: dict[str, dict] = {}  # name → {ml, book}
+            for bk in (ev.get("bookmakers") or []):
+                for mkt in (bk.get("markets") or []):
+                    if mkt.get("key") != "outrights": continue
+                    for o in (mkt.get("outcomes") or []):
+                        nm, p = o.get("name",""), o.get("price")
+                        if not nm or p is None: continue
+                        ml = int(p)
+                        if nm not in picks or ml > picks[nm]["ml"]:
+                            picks[nm] = {"ml": ml, "book": bk.get("title",""), "label": label}
+            # Sort by best odds (ascending ml = biggest favorite first)
+            sorted_picks = sorted(picks.items(), key=lambda x: x[1]["ml"])
+            result[sport_cat] = [{"name": k, **v} for k, v in sorted_picks[:20]]
+            log(f"Futures {label}: {len(sorted_picks)} picks")
+            any_found = True
+        except Exception as exc:
+            log(f"Futures odds {sport_key}: {exc}", "WARN")
+    if any_found:
+        result["source"] = "The Odds API"
+    return result
+
+
+def _enrich_rg_bets(bets: list[dict], tennis_odds: dict) -> list[dict]:
+    """
+    Re-score Roland Garros ELO bets using real Odds API ML lines.
+    Falls back to original bet if no Odds API line found.
+    """
+    if not bets:
+        return []
+    odds_matches = tennis_odds.get("matches", [])
+    # Build lookup: lowercase player name → match
+    name_map: dict[str, dict] = {}
+    for m in odds_matches:
+        for field in ("p1", "p2"):
+            name_map[m[field].lower()] = m
+            # Last name only fallback
+            parts = m[field].split()
+            if parts:
+                name_map[parts[-1].lower()] = m
+
+    enriched = []
+    for bet in bets:
+        pick = bet.get("pick", "")
+        match = name_map.get(pick.lower()) or name_map.get(pick.split()[-1].lower() if pick else "")
+        if match:
+            is_p1 = pick.lower() in match["p1"].lower() or match["p1"].lower().endswith(pick.split()[-1].lower() if pick else "")
+            real_ml = match["p1ml"] if is_p1 else match["p2ml"]
+            if real_ml is not None:
+                dec = real_ml / 100 + 1 if real_ml > 0 else 100 / abs(real_ml) + 1
+                prob = bet.get("prob", 0.5) / 100
+                ev_new = round((prob * dec - 1) * 100, 1)
+                bet = {**bet, "ml": f"+{real_ml}" if real_ml > 0 else str(real_ml),
+                       "ev": ev_new, "book": match.get("book", ""), "oddsSource": "OddsAPI"}
+        enriched.append(bet)
+    return enriched
+
+
 def fetch_tennis_schedule() -> list[dict]:
     """Fetch today's ATP + WTA matches from ESPN scoreboard API."""
     matches: list[dict] = []
@@ -2780,6 +2924,8 @@ def main() -> None:
     f1_comprehensive = fetch_f1_data()          if S in ("f1","all") else {}
 
     roland_garros    = fetch_roland_garros()    if S in ("tennis","all") else {}
+    tennis_odds      = fetch_tennis_odds()      if S in ("tennis","all") else {}
+    futures_odds     = fetch_futures_odds()
 
     # Weather for MLB home teams
     weather: dict = {}
@@ -2839,10 +2985,11 @@ def main() -> None:
         nba_adv=nba_adv,
         mlb_standings=mlb_standings,
     )
-    # Merge Roland Garros Elo bets into best_bets (already filtered for EV > 4% + prob > 65%)
-    if roland_garros.get("bets"):
-        best_bets = best_bets + roland_garros["bets"]
-        log(f"Roland Garros bets merged: +{len(roland_garros['bets'])} → {len(best_bets)} total")
+    # Merge Roland Garros Elo bets (with real Odds API lines when available)
+    rg_bets = _enrich_rg_bets(roland_garros.get("bets", []), tennis_odds)
+    if rg_bets:
+        best_bets = best_bets + rg_bets
+        log(f"Roland Garros bets merged: +{len(rg_bets)} → {len(best_bets)} total")
     # Merge F1 race bets
     if f1_comprehensive.get("raceBets"):
         best_bets = best_bets + [b for b in f1_comprehensive["raceBets"] if b.get("ev", 0) > 0]
@@ -2905,7 +3052,10 @@ def main() -> None:
             "rankings":      tennis_rankings,
             "scheduleDate":  TODAY_ISO,
             "rolandGarros":  roland_garros,
+            "oddsMatches":   tennis_odds.get("matches", []),
+            "oddsSource":    tennis_odds.get("source", ""),
         },
+        "futures":   futures_odds,
         "f1": {
             **f1_data,
             "analytics":    f1_analytics,
