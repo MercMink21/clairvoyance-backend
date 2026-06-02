@@ -2916,6 +2916,9 @@ def patch_html_timestamp() -> None:
         html = html.replace("<script>",
             f'<script>\nconst LAST_AUTO_UPDATE = "{TS_DISPLAY}";\n', 1)
     FE.write_text(html, encoding="utf-8")
+    # Keep app.html in sync with index.html
+    app_html = FE.parent / "app.html"
+    app_html.write_text(html, encoding="utf-8")
     vlog(f"HTML timestamp patched → {TS_DISPLAY}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2926,6 +2929,7 @@ def git_push(summary: str = "") -> bool:
         subprocess.run(["git","-C",str(ROOT),"add",
             # engine SPA + data — served at mercmink21.github.io/clairvoyance-backend/
             "docs/index.html",
+            "docs/app.html",
             "docs/data.json",
             "docs/live_data.json",
             "docs/card.png",
