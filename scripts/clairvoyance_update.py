@@ -1953,31 +1953,169 @@ _INJURY_KEYWORDS = [
     "unavailable","game-time","sidelined","hamstring","wrist","hand","elbow",
 ]
 
+def fetch_ncaa_baseball() -> dict:
+    """Fetch NCAA Men's Baseball scoreboard, rankings, schedule from ESPN."""
+    log("NCAA Baseball scoreboard…")
+    result = {"today": [], "rankings": [], "schedule": []}
+    try:
+        data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/scoreboard?dates={TODAY_ET}&limit=25")
+        for ev in (data or {}).get("events", []):
+            g = _espn_game(ev, "NCAAB")
+            if g: result["today"].append(g)
+        log(f"NCAA Baseball today: {len(result['today'])} games")
+    except Exception as e: log(f"NCAA Baseball scoreboard: {e}", "WARN")
+    try:
+        rdata = fetch_json("https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/rankings")
+        for poll in ((rdata or {}).get("rankings") or [])[:1]:
+            for r in (poll.get("ranks") or [])[:25]:
+                t = r.get("team", {})
+                result["rankings"].append({
+                    "rank": r.get("current", 0),
+                    "team": t.get("displayName", ""),
+                    "abbr": t.get("abbreviation", ""),
+                    "record": r.get("recordSummary", ""),
+                })
+        log(f"NCAA Baseball rankings: {len(result['rankings'])}")
+    except Exception as e: log(f"NCAA Baseball rankings: {e}", "WARN")
+    try:
+        # Week schedule
+        from datetime import datetime, timedelta
+        for i in range(7):
+            d = (datetime.now() + timedelta(days=i)).strftime("%Y%m%d")
+            sdata = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/scoreboard?dates={d}&limit=10")
+            for ev in (sdata or {}).get("events", [])[:5]:
+                comp = (ev.get("competitions") or [{}])[0]
+                comps = comp.get("competitors") or []
+                h = next((c for c in comps if c.get("homeAway")=="home"), {})
+                a = next((c for c in comps if c.get("homeAway")=="away"), {})
+                result["schedule"].append({
+                    "date": d, "home": (h.get("team") or {}).get("displayName",""),
+                    "away": (a.get("team") or {}).get("displayName",""),
+                    "state": ev.get("status",{}).get("type",{}).get("state","pre"),
+                })
+            time.sleep(0.2)
+    except Exception as e: log(f"NCAA Baseball schedule: {e}", "WARN")
+    return result
+
+
+def fetch_wnba() -> dict:
+    """Fetch WNBA scoreboard, standings, schedule from ESPN."""
+    log("WNBA scoreboard…")
+    result = {"today": [], "standings": {}, "schedule": []}
+    try:
+        data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates={TODAY_ET}&limit=15")
+        for ev in (data or {}).get("events", []):
+            g = _espn_game(ev, "WNBA")
+            if g: result["today"].append(g)
+        log(f"WNBA today: {len(result['today'])} games")
+    except Exception as e: log(f"WNBA scoreboard: {e}", "WARN")
+    try:
+        sdata = fetch_json("https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/standings")
+        for conf in ((sdata or {}).get("children") or []):
+            cname = conf.get("name","")
+            for entry in (conf.get("standings",{}).get("entries") or []):
+                t = entry.get("team",{})
+                stats = {s["name"]:s.get("displayValue","") for s in entry.get("stats",[])}
+                result["standings"][t.get("abbreviation","")] = {
+                    "name": t.get("displayName",""), "conf": cname,
+                    "w": stats.get("wins","0"), "l": stats.get("losses","0"),
+                    "pct": stats.get("winPercent",""),
+                }
+    except Exception as e: log(f"WNBA standings: {e}", "WARN")
+    try:
+        from datetime import datetime, timedelta
+        for i in range(7):
+            d = (datetime.now() + timedelta(days=i)).strftime("%Y%m%d")
+            sdata = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates={d}&limit=8")
+            for ev in (sdata or {}).get("events", [])[:4]:
+                comp = (ev.get("competitions") or [{}])[0]
+                comps = comp.get("competitors") or []
+                h = next((c for c in comps if c.get("homeAway")=="home"), {})
+                a = next((c for c in comps if c.get("homeAway")=="away"), {})
+                odds = (comp.get("odds") or [{}])[0]
+                result["schedule"].append({
+                    "date": d,
+                    "home": (h.get("team") or {}).get("abbreviation",""),
+                    "away": (a.get("team") or {}).get("abbreviation",""),
+                    "homeName": (h.get("team") or {}).get("displayName",""),
+                    "awayName": (a.get("team") or {}).get("displayName",""),
+                    "homeML": (odds.get("homeTeamOdds") or {}).get("moneyLine"),
+                    "awayML": (odds.get("awayTeamOdds") or {}).get("moneyLine"),
+                    "state": ev.get("status",{}).get("type",{}).get("state","pre"),
+                })
+            time.sleep(0.2)
+    except Exception as e: log(f"WNBA schedule: {e}", "WARN")
+    return result
+
+
+def fetch_week_schedule(sport_path: str, sport_key: str, limit_per_day: int = 8) -> list[dict]:
+    """Fetch 7-day schedule for any ESPN sport."""
+    from datetime import datetime, timedelta
+    schedule = []
+    for i in range(7):
+        d = (datetime.now() + timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/{sport_path}/scoreboard?dates={d}&limit={limit_per_day}")
+            for ev in (data or {}).get("events", [])[:limit_per_day]:
+                comp = (ev.get("competitions") or [{}])[0]
+                comps = comp.get("competitors") or []
+                h = next((c for c in comps if c.get("homeAway")=="home"), {})
+                a = next((c for c in comps if c.get("homeAway")=="away"), {})
+                odds = (comp.get("odds") or [{}])[0]
+                schedule.append({
+                    "date": d, "sport": sport_key,
+                    "home": (h.get("team") or {}).get("abbreviation",""),
+                    "away": (a.get("team") or {}).get("abbreviation",""),
+                    "homeName": (h.get("team") or {}).get("displayName",""),
+                    "awayName": (a.get("team") or {}).get("displayName",""),
+                    "time": ev.get("date",""),
+                    "network": ((comp.get("broadcasts") or [{}])[0].get("names") or [""])[0],
+                    "homeML": (odds.get("homeTeamOdds") or {}).get("moneyLine"),
+                    "awayML": (odds.get("awayTeamOdds") or {}).get("moneyLine"),
+                    "ou": odds.get("overUnder"),
+                    "state": ev.get("status",{}).get("type",{}).get("state","pre"),
+                    "venue": (comp.get("venue") or {}).get("fullName",""),
+                })
+            time.sleep(0.15)
+        except Exception as e:
+            log(f"Week schedule {sport_key} {d}: {e}", "WARN")
+    return schedule
+
+
 def fetch_sports_news() -> dict:
+    """Fetch latest news articles for all sports from ESPN."""
     news: dict = {}
     sport_map = {
         "mlb":    "baseball/mlb",
         "nhl":    "hockey/nhl",
         "nba":    "basketball/nba",
+        "wnba":   "basketball/wnba",
+        "ncaab":  "baseball/college-baseball",
         "tennis": "tennis/atp",
+        "f1":     "racing/f1",
+        "football": "football/nfl",
     }
     for sport_key, espn_path in sport_map.items():
         try:
-            url      = f"https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news"
-            articles = (fetch_json(url) or {}).get("articles",[])
-            items    = []
-            for a in articles[:30]:
-                title = a.get("headline","")
-                desc  = a.get("description","")
-                combined = (title + " " + desc).lower()
-                if any(kw in combined for kw in _INJURY_KEYWORDS):
-                    items.append({
-                        "headline":  title,
-                        "summary":   desc[:200],
-                        "published": a.get("published",""),
-                        "link":      a.get("links",{}).get("web",{}).get("href",""),
-                    })
-            news[sport_key] = items[:10]
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news"
+            articles = (fetch_json(url) or {}).get("articles", [])
+            items = []
+            for a in articles[:20]:
+                title = a.get("headline", "")
+                if not title: continue
+                pub = a.get("published", "")
+                items.append({
+                    "headline": title,
+                    "summary": (a.get("description") or a.get("story",""))[:250],
+                    "published": pub,
+                    "date": pub[:10] if pub else TODAY_ISO,
+                    "link": a.get("links", {}).get("web", {}).get("href", ""),
+                    "image": ((a.get("images") or [{}])[0]).get("url",""),
+                    "sport": sport_key,
+                    "category": a.get("categories", [{}])[0].get("description","") if a.get("categories") else "",
+                })
+            news[sport_key] = items[:15]
+            log(f"News {sport_key}: {len(items)} articles")
         except Exception as exc:
             log(f"News {sport_key}: {exc}", "WARN"); news[sport_key] = []
     return news
@@ -2949,6 +3087,15 @@ def main() -> None:
                 lm_trends[sport] = fetch_linemate_trends(sport);    time.sleep(1)
                 lm_form[sport]   = fetch_linemate_cheatsheet(sport); time.sleep(1)
 
+    # NCAA Baseball + WNBA
+    ncaa_baseball = fetch_ncaa_baseball() if S in ("mlb","all") else {}
+    wnba          = fetch_wnba()          if S in ("nba","all") else {}
+
+    # Week schedules
+    mlb_week_schedule = fetch_week_schedule("baseball/mlb","mlb",10)      if S in ("mlb","all") else []
+    nba_week_schedule = fetch_week_schedule("basketball/nba","nba",8)      if S in ("nba","all") else []
+    nhl_week_schedule = fetch_week_schedule("hockey/nhl","nhl",8)          if S in ("nhl","all") else []
+
     # News + injuries
     sports_news = fetch_sports_news()
     injuries    = fetch_injuries_all()
@@ -3011,35 +3158,40 @@ def main() -> None:
         "generatedMT":  TS_DISPLAY,
         "version":      "6.0",
         "mlb": {
-            "today":     mlb_today,
-            "tomorrow":  mlb_tom,
-            "standings": mlb_standings,
+            "today":        mlb_today,
+            "tomorrow":     mlb_tom,
+            "standings":    mlb_standings,
             "weekSchedule": mlb_week,
-            "nrfi":      mlb_nrfi,
-            "sabre":     mlb_sabre,
-            "reference": mlb_ref,
+            "weekSchedule7": mlb_week_schedule,
+            "nrfi":         mlb_nrfi,
+            "sabre":        mlb_sabre,
+            "reference":    mlb_ref,
         },
         "nba": {
-            "today":     nba_today,
-            "tomorrow":  nba_tom,
-            "standings": nba_standings,
-            "players":   nba_players,
-            "bracket":   nba_bracket,
-            "reference": nba_ref,
-            "teamAdv":   nba_adv,
+            "today":        nba_today,
+            "tomorrow":     nba_tom,
+            "standings":    nba_standings,
+            "players":      nba_players,
+            "bracket":      nba_bracket,
+            "reference":    nba_ref,
+            "teamAdv":      nba_adv,
+            "weekSchedule": nba_week_schedule,
         },
         "nhl": {
-            "today":     nhl_today,
-            "tomorrow":  nhl_tom,
-            "standings": nhl_standings,
-            "bracket":   nhl_bracket,
-            "edge":      nhl_edge,
-            "hockeyviz": hockeyviz,
-            "hockeyRef": hockey_ref,
-            "props":     lm_props.get("nhl", []),
-            "trends":    lm_trends.get("nhl", []),
-            "form":      lm_form.get("nhl", []),
+            "today":        nhl_today,
+            "tomorrow":     nhl_tom,
+            "standings":    nhl_standings,
+            "bracket":      nhl_bracket,
+            "edge":         nhl_edge,
+            "hockeyviz":    hockeyviz,
+            "hockeyRef":    hockey_ref,
+            "props":        lm_props.get("nhl", []),
+            "trends":       lm_trends.get("nhl", []),
+            "form":         lm_form.get("nhl", []),
+            "weekSchedule": nhl_week_schedule,
         },
+        "ncaaBaseball": ncaa_baseball,
+        "wnba":         wnba,
         "mp":      mp,
         "weather": weather,
         "tennis": {
