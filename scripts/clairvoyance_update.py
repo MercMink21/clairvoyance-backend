@@ -2007,29 +2007,53 @@ def calculate_best_bets(
     _sabre = mlb_sabre or {}
     _best  = best_odds or {}
 
+    # Build abbr→full-name reverse map from whatever keys exist in _sabre
+    # Sabre data may be keyed by full name ("Tampa Bay Rays") or abbr ("TB")
+    _ABBR_TO_FULL: dict[str, str] = {v: k for k, v in _TEAM_NAME_TO_ABBR.items()}
+
+    def _sabre_lookup(abbr: str) -> dict:
+        """Look up sabre stats by ESPN abbr, tolerating full-name or abbr keys."""
+        d = _sabre.get(abbr)
+        if d: return d
+        full = _ABBR_TO_FULL.get(abbr, "")
+        return _sabre.get(full, {})
+
     def _sabre_edge(home: str, away: str) -> tuple[float, float, str]:
         """
-        Return (home_adj, away_adj, note) probability adjustments from sabermetrics.
-        Uses OPS+, ISO (offense) and FIP, ERA- (pitching) to shift win probability.
-        League average: OPS+=100, ERA-=100, FIP≈4.20
+        Return (home_adj, away_adj, note) capped at ±4% total.
+        Uses OPS+ (offense) and ERA- (pitching) — both scaled to 100 = league avg.
+        OPS+ typical range: 70–140. ERA- typical range: 65–140.
+        Values outside these ranges are treated as data errors and clamped.
         """
-        hs = _sabre.get(home, {}); as_ = _sabre.get(away, {})
+        hs = _sabre_lookup(home); as_ = _sabre_lookup(away)
         if not hs and not as_:
             return 0.0, 0.0, ""
-        # Offensive edge: OPS+ above/below 100 → ±0.5% per point
-        h_ops  = hs.get("ops_plus", 100.0); a_ops  = as_.get("ops_plus", 100.0)
-        ops_adj = (h_ops - a_ops) * 0.003   # 10pt gap → ~3% swing
-        # Pitching edge: ERA- (lower = better); FIP (lower = better)
-        h_fip  = hs.get("fip", 4.20);  a_fip  = as_.get("fip", 4.20)
-        h_era  = hs.get("era_minus", 100.0); a_era = as_.get("era_minus", 100.0)
-        fip_adj = (a_fip - h_fip) * 0.015   # 0.5 FIP gap → ~0.75% swing for home
-        era_adj = (a_era - h_era) * 0.002
-        total   = ops_adj + fip_adj + era_adj
-        parts   = []
+
+        def _clamp_ops(v) -> float:
+            try: v = float(v or 100)
+            except: v = 100.0
+            return max(50.0, min(160.0, v))  # clip outliers
+
+        def _clamp_era(v) -> float:
+            try: v = float(v or 100)
+            except: v = 100.0
+            return max(50.0, min(160.0, v))  # clip outliers
+
+        h_ops = _clamp_ops(hs.get("ops_plus", 100))
+        a_ops = _clamp_ops(as_.get("ops_plus", 100))
+        h_era = _clamp_era(hs.get("era_minus", 100))
+        a_era = _clamp_era(as_.get("era_minus", 100))
+
+        # 10pt OPS+ gap → ~1.5% win prob swing; 10pt ERA- gap → ~1% swing
+        ops_adj = (h_ops - a_ops) * 0.0015
+        era_adj = (a_era - h_era) * 0.001   # lower ERA- is better for pitching
+
+        total = max(-0.04, min(0.04, ops_adj + era_adj))  # hard cap ±4%
+        parts = []
         if abs(ops_adj) > 0.005:
             parts.append(f"OPS+: {home} {h_ops:.0f} / {away} {a_ops:.0f}")
-        if abs(fip_adj) > 0.005:
-            parts.append(f"FIP: {home} {h_fip:.2f} / {away} {a_fip:.2f}")
+        if abs(era_adj) > 0.005:
+            parts.append(f"ERA-: {home} {h_era:.0f} / {away} {a_era:.0f}")
         note = "  ".join(parts)
         return total, -total, note
 
@@ -2069,24 +2093,46 @@ def calculate_best_bets(
                     f"{pick_dir} {ou} (wind {wind}mph {'out' if blowing_out else 'in'})",
                     prob, -110, "GOOD" if prob > 0.56 else "INFO",
                     note=f"{w.get('condition')}, {w.get('temp')}°F", extra_signals=1)
-        # Sabermetric-adjusted moneyline
+        # Independent model probability + sabermetric edge vs book odds
+        # Step 1: Independent win probability from Pythagorean + Log5
+        h_model, a_model, _ = _estimate_prob_from_standings(home, away, _standings)
+        # Step 2: Sabermetric edge shifts the model probability
         h_adj, a_adj, sabre_note = _sabre_edge(home, away)
-        hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
+        h_model = max(0.10, min(0.90, h_model + h_adj))
+        a_model = max(0.10, min(0.90, a_model + a_adj))
         extra_sig = 1 if sabre_note else 0
+        real_odds = not using_estimated_odds and hml is not None
         est_note  = " [model est.]" if using_estimated_odds else (f" [{hbook}]" if hbook else "")
-        if hprob_raw:
-            hprob = max(0.05, min(0.95, hprob_raw + h_adj))
-            if hprob > 0.62:
-                add("MLB", game_str, f"{home} ML {hml}", hprob, hml,
-                    "LOCK" if hprob>0.70 else "GOOD",
-                    note=(sabre_note + est_note).strip(), extra_signals=extra_sig)
-        if aprob_raw:
-            aprob = max(0.05, min(0.95, aprob_raw + a_adj))
-            if aprob > 0.62:
-                book_n = f" [{abook}]" if abook and not using_estimated_odds else est_note
-                add("MLB", game_str, f"{away} ML {aml}", aprob, aml,
-                    "LOCK" if aprob>0.70 else "GOOD",
-                    note=(sabre_note + book_n).strip(), extra_signals=extra_sig)
+
+        # Step 3: EV = model_prob × book_decimal - 1
+        # Positive when our model thinks team more likely to win than book implies
+        if hml is not None:
+            hdec = _ml_to_dec(hml)
+            hev  = round(_ev(h_model, hdec) * 100, 1)
+            # Fire when: model prob ≥ 53%, EV ≥ 1.5% with real odds / ≥ 3% with estimated
+            ev_min = 1.5 if real_odds else 3.0
+            if h_model >= 0.53 and hev >= ev_min:
+                grade = "LOCK" if hev >= 8 else ("GOOD" if hev >= 4 else "LEAN")
+                note_parts = []
+                if sabre_note: note_parts.append(sabre_note)
+                note_parts.append(f"model {h_model*100:.1f}% vs book {(_ml_to_prob(hml) or 0)*100:.1f}%")
+                if est_note.strip(): note_parts.append(est_note.strip())
+                add("MLB", game_str, f"{home} ML {hml}", h_model, hml,
+                    grade, note="  ".join(note_parts), extra_signals=extra_sig)
+
+        if aml is not None:
+            adec = _ml_to_dec(aml)
+            aev  = round(_ev(a_model, adec) * 100, 1)
+            ev_min = 1.5 if real_odds else 3.0
+            if a_model >= 0.53 and aev >= ev_min:
+                grade = "LOCK" if aev >= 8 else ("GOOD" if aev >= 4 else "LEAN")
+                book_n = f" [{abook}]" if abook and not using_estimated_odds else est_note.strip()
+                note_parts = []
+                if sabre_note: note_parts.append(sabre_note)
+                note_parts.append(f"model {a_model*100:.1f}% vs book {(_ml_to_prob(aml) or 0)*100:.1f}%")
+                if book_n: note_parts.append(book_n)
+                add("MLB", game_str, f"{away} ML {aml}", a_model, aml,
+                    grade, note="  ".join(note_parts), extra_signals=extra_sig)
 
     # NHL — moneyline + puck line + O/U (pre-game and live)
     mp_teams = (mp or {}).get("teams",{}) if mp else {}
@@ -2766,6 +2812,23 @@ def main() -> None:
     mlb_best_odds = fetch_best_odds("mlb", mlb_today) if S in ("mlb","all") else {}
     nba_best_odds = fetch_best_odds("nba", nba_today) if S in ("nba","all") else {}
     nhl_best_odds = fetch_best_odds("nhl", nhl_today) if S in ("nhl","all") else {}
+
+    # Backfill real book odds into game objects so the app displays them
+    def _backfill_odds(game_list: list, odds_map: dict) -> None:
+        for g in game_list:
+            key = f"{g.get('home','')}:{g.get('away','')}"
+            bk  = odds_map.get(key, {})
+            if bk.get("homeML") is not None:
+                g["homeML"] = bk["homeML"]
+            if bk.get("awayML") is not None:
+                g["awayML"] = bk["awayML"]
+            if bk.get("ou") is not None:
+                g["ou"] = bk["ou"]
+            if bk.get("book"):
+                g["oddsBook"] = bk["book"]
+    _backfill_odds(mlb_today, mlb_best_odds)
+    _backfill_odds(nba_today, nba_best_odds)
+    _backfill_odds(nhl_today, nhl_best_odds)
 
     best_bets = calculate_best_bets(
         nba_today, mlb_today, nhl_today, weather, mp, nhl_edge,
