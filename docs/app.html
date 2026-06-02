@@ -3032,65 +3032,78 @@ async function triggerNHL(){if(!API_ONLINE()){toast('// NO BACKEND');return;}awa
 
 // ═══ DAILY UPDATE ═══════════════════════════════════════════
 async function doUpdate(){
-  const btn=document.getElementById('sync-btn');if(btn){btn.textContent='↻ SYNCING';btn.style.color='var(--vc)';}
-  const st=document.getElementById('upd-st');if(st){st.textContent='SYNCING…';st.style.color='var(--vc)';}
-  toast('// SYNCING ALL SPORTS…');
-  if(API_ONLINE()){
-    await api('POST','/admin/pipeline');
-    await new Promise(r=>setTimeout(r,2000));
-    await syncPicksFromBackend();
-    await renderNHLEdge('team');renderMoneyPuck();
-    toast('// BACKEND PIPELINE TRIGGERED');
+  const btn=document.getElementById('sync-btn');
+  const st=document.getElementById('upd-st');
+  const setSyncState=(msg,col='var(--vc)')=>{
+    if(btn){btn.textContent='↻ SYNCING…';btn.style.color=col;}
+    if(st){st.textContent=msg;st.style.color=col;}
+  };
+  const clearSyncState=(msg,col='var(--nc)')=>{
+    if(btn){btn.textContent='↻ SYNC';btn.style.color='';}
+    if(st){st.textContent=msg;st.style.color=col;}
+  };
+
+  setSyncState('FETCHING LATEST DATA…');
+  toast('// SYNCING — FETCHING DATA.JSON…');
+
+  // ── Step 1: force-fetch the latest data.json from GitHub Pages ──────────
+  let freshData = null;
+  try {
+    const r = await fetch(`data.json?t=${Date.now()}`, {cache:'no-cache'});
+    if(r.ok) freshData = await r.json();
+  } catch(e) { console.warn('[SYNC] data.json fetch failed:', e); }
+
+  if(freshData) {
+    // Apply all patches
+    window.__CV_DATA = freshData;
+    localStorage.setItem('cv_data_ts', String(Date.now()));
+    LAST_AUTO_UPDATE = freshData.generatedMT || freshData.generated || '';
+    try { if(freshData.nba?.today?.length)    patchNBATonight(freshData.nba.today);   }catch(e){}
+    try { if(freshData.nba?.standings)        patchNBAStandings(freshData.nba.standings); }catch(e){}
+    try { if(freshData.nba?.players?.length)  window._remoteNBAPlayers=freshData.nba.players; }catch(e){}
+    try { if(freshData.mlb?.today?.length)    patchMLBTonight(freshData.mlb.today);   }catch(e){}
+    try { if(freshData.mlb?.standings)        patchMLBStandings(freshData.mlb.standings); }catch(e){}
+    try { if(freshData.nhl?.today?.length)    patchNHLTonight(freshData.nhl.today);   }catch(e){}
+    try { if(freshData.nhl?.standings)        patchNHLStandings(freshData.nhl.standings); }catch(e){}
+    try { if(freshData.mp?.goalies?.length)   patchMoneyPuck(freshData.mp.goalies, freshData.mp.teams||{}); }catch(e){}
+    try { if(freshData.tennis?.atpElo?.length) patchATPElo(freshData.tennis.atpElo); }catch(e){}
+    try { if(freshData.tennis?.wtaElo?.length) patchWTAElo(freshData.tennis.wtaElo); }catch(e){}
+    try { if(freshData.weather)               patchWeather(freshData.weather);         }catch(e){}
+    try { if(freshData.bestBets?.length)      renderBestBetsFromRemote(freshData.bestBets); }catch(e){}
+    try { if(freshData.settled?.length)       applyServerSettlements(freshData.settled); }catch(e){}
+    try { if(freshData.linemate)              patchLinemateProps(freshData.linemate);   }catch(e){}
+
+    // ── Step 2: re-render the currently active sport + tab ──────────────
+    const activeSport = document.querySelector('.spane.act')?.id?.replace('sp-','') || 'home';
+    const activeTab   = document.querySelector('.tab.act')?.id || '';
+    try { _reRenderActive(activeSport, activeTab); } catch(e){ console.warn('[SYNC] re-render:', e); }
+
+    // Always refresh home
+    try { renderHomePage(); } catch(e){}
+
+    const dataAge = freshData.generatedMT || freshData.generated?.slice(0,16) || 'unknown';
+    clearSyncState(`✓ SYNCED · DATA: ${dataAge}`, 'var(--nc)');
+    toast(`// SYNC COMPLETE · ${freshData.mlb?.today?.length||0} MLB · ${freshData.nba?.today?.length||0} NBA · ${freshData.nhl?.today?.length||0} NHL`);
   } else {
-    // MLB
-    await loadGames(todayESPN());
-    try{
-      const[hR,pR]=await Promise.all([
-        fetch('https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=hitting&stats=season&sportId=1',{mode:'cors',cache:'no-cache'}),
-        fetch('https://statsapi.mlb.com/api/v1/teams/stats?season=2026&group=pitching&stats=season&sportId=1',{mode:'cors',cache:'no-cache'})
-      ]);
-      let ok=0;if(hR.ok){applyMLB(await hR.json(),'hit');ok++;}if(pR.ok){applyMLB(await pR.json(),'pit');ok++;}
-      if(ok>0){initELO();buildMLB();renderR();}
-    }catch(e){console.error('MLB stats:',e);}
-    // NBA — auto-settle yesterday's games
-    try{
-      const nbaSbR=await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${todayESPN()}&limit=10`,{mode:'cors',cache:'no-cache'});
-      if(nbaSbR.ok){
-        const nbaD=await nbaSbR.json();
-        const preds=getP();let changed=false;
-        for(const ev of(nbaD.events||[])){
-          const st2=ev.status?.type?.name;
-          if(st2!=='STATUS_FINAL')continue;
-          const comps=ev.competitions?.[0];if(!comps)continue;
-          const home=comps.competitors?.find(c=>c.homeAway==='home');
-          const away=comps.competitors?.find(c=>c.homeAway==='away');
-          if(!home||!away)continue;
-          const hAbbr=home.team?.abbreviation,aAbbr=away.team?.abbreviation;
-          const hSc=parseInt(home.score||0),aSc=parseInt(away.score||0);
-          for(const p of preds){
-            if(p.outcome!=='pending'||p.sport!=='NBA')continue;
-            if(p.hA!==hAbbr&&p.awA!==aAbbr)continue;
-            let outcome=null;
-            if(p.betType==='ML'){if(p.betOn===hAbbr)outcome=hSc>aSc?'win':'loss';else if(p.betOn===aAbbr)outcome=aSc>hSc?'win':'loss';}
-            else if(p.betType==='OU'){const total=hSc+aSc;const ou=parseFloat(p.ou||0);if(ou>0)outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
-            if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`🏀 NBA SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
-          }
-          if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
-        }
-      }
-    }catch(e){console.warn('NBA settle:',e);}
-    // NHL
-    await fetchNHLEdge();await autoSettleNHL();renderMoneyPuck();
-    // Re-render all tabs
-    try{renderNBAGames();renderNBAProps();renderNBAParlayG();renderMLBGames();renderNHLGames();}catch(e){}
-    toast('// OFFLINE SYNC COMPLETE — MLB·NBA·NHL REFRESHED');
+    // ── Fallback: ESPN direct fetch for MLB scoreboard ───────────────────
+    setSyncState('REMOTE UNAVAILABLE · TRYING ESPN…', 'var(--vc)');
+    try { await loadGames(todayESPN()); } catch(e){}
+    try { await autoSettleNHL(); } catch(e){}
+    clearSyncState('SYNCED (ESPN FALLBACK)', 'var(--vc)');
+    toast('// ESPN FALLBACK SYNC COMPLETE');
   }
-  const now=getMSTNow().toLocaleString();S.s('last_upd',now);S.s('last_upd_date',getMSTDate());
-  if(st){st.textContent=`✓ SYNCED ${now.slice(0,16)} MST`;st.style.color='var(--nc)';}
-  if(btn){btn.textContent='↻ SYNC';btn.style.color='';}
-  updateAPIStatus();
-  // Pull latest data.json produced by the update script
-  try{await loadRemoteData(true);}catch(e){console.warn('remote refresh:',e);}
+
+  // ── Step 3: backend pipeline if configured ───────────────────────────
+  if(API_ONLINE()){
+    try {
+      await api('POST','/admin/pipeline');
+      toast('// BACKEND PIPELINE TRIGGERED');
+    } catch(e){}
+  }
+
+  S.s('last_upd', getMSTNow().toLocaleString());
+  S.s('last_upd_date', getMSTDate());
+  try { updateAPIStatus(); } catch(e){}
 }
 async function fetchNHLEdge(){
   const SEASON='20252026',GT='3';const BASE='https://api.nhle.com/stats/rest/en';
@@ -4270,6 +4283,79 @@ function renderHomePage(){
   }
   if(window._homeRefTimer)clearInterval(window._homeRefTimer);
   window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
+}
+
+function _reRenderActive(sport, tabId){
+  // Re-render whichever tab is visible so fresh data appears immediately
+  const safe=(fn,...args)=>{try{if(typeof fn==='function')fn(...args);}catch(e){}};
+  if(sport==='home')                  { safe(renderHomePage); return; }
+  if(sport==='mlb'){
+    if(tabId.includes('picks'))       safe(loadGames,todayESPN());
+    else if(tabId.includes('games'))  safe(renderMLBGames);
+    else if(tabId.includes('ranks'))  safe(renderR);
+    else if(tabId.includes('props'))  safe(renderMLBProps,'all');
+    else if(tabId.includes('nrfi'))   safe(renderNRFI);
+    else if(tabId.includes('history'))safe(renderHistory);
+    else if(tabId.includes('model'))  { safe(renderCal); safe(renderLrn); }
+    else                              safe(loadGames,todayESPN()); // default
+    return;
+  }
+  if(sport==='nba'){
+    if(tabId.includes('cup'))         { safe(renderNBABracket); safe(renderNBATonightGames); safe(renderNBARatings); }
+    else if(tabId.includes('picks'))  safe(renderNBAPicks);
+    else if(tabId.includes('games'))  safe(renderNBAGames);
+    else if(tabId.includes('stats'))  { safe(renderNBAStats); safe(renderNBAPlayers); }
+    else if(tabId.includes('props'))  safe(renderNBAProps);
+    else if(tabId.includes('history'))safe(renderNBAHistory);
+    else                              { safe(renderNBABracket); safe(renderNBATonightGames); }
+    return;
+  }
+  if(sport==='hk'||sport==='nhl'){
+    if(tabId.includes('picks'))       safe(renderNHLPicks);
+    else if(tabId.includes('games'))  safe(renderNHLGames);
+    else if(tabId.includes('stats'))  { safe(renderNHLEdge,'team'); safe(renderMoneyPuck); }
+    else if(tabId.includes('goalies'))safe(renderGoaliesFromBackend);
+    else if(tabId.includes('props'))  safe(renderProps);
+    else if(tabId.includes('history'))safe(renderNHLHistory);
+    else                              { safe(renderNHLPicks); safe(renderNHLGames); }
+    return;
+  }
+  if(sport==='ten'){
+    if(tabId.includes('picks'))       safe(renderTennisPicks);
+    else if(tabId.includes('schedule'))safe(renderTennisScheduleOdds);
+    else if(tabId.includes('today'))  safe(renderTennisToday);
+    else if(tabId.includes('slams'))  safe(renderSlam,'fo');
+    else if(tabId.includes('rankings'))safe(renderTennisRankings,'atp','hard');
+    else if(tabId.includes('futures'))safe(renderFuturesOdds);
+    else if(tabId.includes('live'))   safe(refreshTennisLive);
+    return;
+  }
+  if(sport==='f1'){
+    safe(renderF1Schedule);
+    safe(renderF1Drivers);
+    return;
+  }
+  if(sport==='ovr'){
+    safe(renderOverall);
+    if(tabId.includes('trends'))      safe(renderTrends);
+    else if(tabId.includes('clv'))    safe(renderCLV);
+    else if(tabId.includes('futures'))safe(renderFutures);
+    return;
+  }
+  if(sport==='analytics'){
+    const sub=document.querySelector('#sp-analytics .subp.act')?.id||'';
+    if(sub.includes('nhl'))           safe(renderAnalyticsNHL);
+    else                              safe(renderAnalyticsMLB);
+    return;
+  }
+  if(sport==='social'){
+    const sub=document.querySelector('#sp-social .subp.act')?.id||'';
+    if(sub.includes('ig'))            safe(renderSocialIG);
+    else if(sub.includes('dc'))       safe(renderSocialDC);
+    else                              safe(renderSocialX);
+    return;
+  }
+  if(sport==='live')  { safe(renderGlobalLive); return; }
 }
 
 function SS(s){
