@@ -301,6 +301,7 @@ body{line-height:1.5}
     <button class="nb" onclick="T('mlb','live')">📡 LIVE</button>
     <button class="nb" onclick="T('mlb','ranks')">📊 STATS</button>
     <button class="nb" onclick="T('mlb','history')">📋 HISTORY</button>
+    <button class="nb" onclick="T('mlb','schedule')">📆 SCHEDULE</button>
     <button class="nb" onclick="T('mlb','model')">🧠 MODEL</button>
     <button class="nb" onclick="T('mlb','set')">⚙ CONFIG</button>
   </nav>
@@ -431,6 +432,13 @@ body{line-height:1.5}
       <div class="sh" style="margin-top:12px"><span class="p">📈</span> ADAPTIVE LEARNING</div>
       <div id="lrn"></div>
     </div>
+    <div id="mlb-tab-schedule" class="tab">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="sh" style="margin:0"><span class="vc">📆</span> MLB — 7-DAY SCHEDULE</div>
+        <button class="btn btn-p btn-sm" onclick="renderScheduleTab('mlb','mlb-schedule-list')">↻</button>
+      </div>
+      <div id="mlb-schedule-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
+    </div>
     <div id="mlb-tab-set" class="tab">
       <div class="sh"><span class="p">⚙</span> SYSTEM CONFIG</div>
       <div class="sg">
@@ -516,6 +524,7 @@ body{line-height:1.5}
       <button class="nb" onclick="T('nhl','live')">📡 LIVE</button>
       <button class="nb" onclick="T('nhl','stats')">📊 STATS</button>
       <button class="nb" onclick="T('nhl','history')">📋 HISTORY</button>
+      <button class="nb" onclick="T('nhl','schedule')">📆 SCHEDULE</button>
       <button class="nb" onclick="T('nhl','model')">🧠 MODEL</button>
       <button class="nb" onclick="T('nhl','config')">⚙ CONFIG</button>
     </nav>
@@ -684,6 +693,13 @@ body{line-height:1.5}
         <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,102,0,.3);border-radius:2px;padding:11px 13px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:var(--mc);line-height:1.7">SOURCE: MONEYPUCK.COM/TEAMS.HTM · UPDATED DAILY MIDNIGHT MST</div>
         <div id="nhl-stats-mp-content"><div class="loading"><span class="spi"></span></div></div>
       </div>
+      <div id="nhl-tab-schedule" class="tab">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="sh" style="margin:0"><span class="ic">📆</span> NHL — 7-DAY SCHEDULE</div>
+          <button class="btn btn-o btn-sm" onclick="renderScheduleTab('nhl','nhl-schedule-list')">↻</button>
+        </div>
+        <div id="nhl-schedule-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
+      </div>
       <div id="nhl-tab-config" class="tab">
         <div class="sh"><span class="i">⚙</span> NHL ENGINE CONFIG</div>
         <div style="background:rgba(10,0,24,.8);border:1px solid rgba(204,0,255,.3);border-radius:3px;padding:13px;margin-bottom:12px">
@@ -733,6 +749,7 @@ body{line-height:1.5}
       <button class="nb" onclick="T('nba','live')">📡 LIVE</button>
       <button class="nb" onclick="T('nba','stats')">📊 STATS</button>
       <button class="nb" onclick="T('nba','history')">📋 HISTORY</button>
+      <button class="nb" onclick="T('nba','schedule')">📆 SCHEDULE</button>
       <button class="nb" onclick="T('nba','model')">🧠 MODEL</button>
       <button class="nb" onclick="T('nba','config')">⚙ CONFIG</button>
     </nav>
@@ -827,6 +844,13 @@ body{line-height:1.5}
           <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">REST ADVANTAGE</div><div style="font-family:var(--mono);font-size:8px;color:var(--t2)">Days rest differential between teams. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--ic);border-radius:1px"></div></div></div>
         </div>
         <div id="nba-model-weights"></div>
+      </div>
+      <div id="nba-tab-schedule" class="tab">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="sh" style="margin:0"><span class="pc">📆</span> NBA — 7-DAY SCHEDULE</div>
+          <button class="btn btn-o btn-sm" onclick="renderScheduleTab('nba','nba-schedule-list')">↻</button>
+        </div>
+        <div id="nba-schedule-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
       </div>
       <div id="nba-tab-config" class="tab">
         <div class="sh"><span class="i">⚙</span> NBA ENGINE CONFIG</div>
@@ -4579,9 +4603,9 @@ function T(sport,tabId){
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='picks')renderInjuryNews('mlb','mlb-injury-news');if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set'){updateAPIStatus();setTimeout(initGHTokenUI,50);}if(tabId==='props')renderMLBProps('all');}
-  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');renderModelWeights('nhl','nhl-model-weights');}if(tabId==='config'){}if(tabId==='stats'){try{renderNHLEdge('team');}catch(e){}try{renderGoaliesFromBackend();}catch(e){}try{renderMoneyPuck();}catch(e){}}if(tabId==='parlay'){}}
-  if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks'){renderNBAPicks();renderInjuryNews('nba','nba-injury-news');}if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}
+  if(sport==='mlb'){if(tabId==='picks')renderInjuryNews('mlb','mlb-injury-news');if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='schedule')renderScheduleTab('mlb','mlb-schedule-list');if(tabId==='set'){updateAPIStatus();setTimeout(initGHTokenUI,50);}if(tabId==='props')renderMLBProps('all');}
+  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');renderModelWeights('nhl','nhl-model-weights');}if(tabId==='schedule')renderScheduleTab('nhl','nhl-schedule-list');if(tabId==='config'){}if(tabId==='stats'){try{renderNHLEdge('team');}catch(e){}try{renderGoaliesFromBackend();}catch(e){}try{renderMoneyPuck();}catch(e){}}if(tabId==='parlay'){}}
+  if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks'){renderNBAPicks();renderInjuryNews('nba','nba-injury-news');}if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='schedule')renderScheduleTab('nba','nba-schedule-list');if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();if(tabId==='trends')renderTrends();if(tabId==='clv')renderCLV();if(tabId==='futures')renderFutures();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='futures')renderFuturesOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams')renderSlam('fo');if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live')refreshTennisLive();if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
@@ -6469,21 +6493,41 @@ function renderTennisToday(filterTour='all'){
   const el=document.getElementById('ten-today-list');if(!el)return;
   const dateEl=document.getElementById('ten-today-date');
   if(dateEl){const d=new Date();dateEl.textContent=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}).toUpperCase();}
-  const schedule=(window.__CV_DATA?.tennis?.schedule)||[];
-  const filtered=filterTour==='all'?schedule:schedule.filter(m=>m.tour===filterTour);
+  // Primary: use Odds API matches (real book lines + matchups)
+  const oddsMatches=(window.__CV_DATA?.tennis?.oddsMatches)||[];
+  const espnSchedule=(window.__CV_DATA?.tennis?.schedule)||[];
+  // Merge: prefer Odds API, fall back to ESPN schedule
+  let schedule=[];
+  if(oddsMatches.length){
+    schedule=oddsMatches.map(m=>({
+      tour:m.tour, player1:m.p1, player2:m.p2, state:'pre',
+      p1ml:m.p1ml, p2ml:m.p2ml, book:m.book, surface:m.surface||'clay',
+      tournament:m.tournament||'Roland Garros 2026', score1:'', score2:'', statusText:'',
+    }));
+  } else {
+    schedule=espnSchedule;
+  }
+  const filtered=filterTour==='all'?schedule:schedule.filter(m=>m.tour===filterTour||m.tour?.toUpperCase()===filterTour);
   if(filtered.length){
     el.innerHTML=filtered.map(m=>{
       const live=m.state==='in';const done=m.state==='post';
       const col=live?'var(--hc)':done?'var(--t3)':'var(--nc)';
       const badge=live?'<span style="color:var(--hc);font-size:9px">● LIVE</span>':done?'<span style="color:var(--t3);font-size:9px">FINAL</span>':'<span style="color:var(--t3);font-size:9px">'+m.statusText+'</span>';
+      const hasOdds=m.p1ml!=null||m.p2ml!=null;
       return`<div class="card" style="margin-bottom:8px;border-left:2px solid ${col}">
-        <div style="display:flex;justify-content:space-between;align-items:start">
-          <div>
-            <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${m.tour} · ${m.tournament||''}  ${m.round||''}</div>
-            <div style="font-family:var(--orb);font-size:14px;font-weight:700;color:${live&&m.score1>m.score2?'var(--nc)':'var(--t)'}">${m.player1} ${live||done?'<span style="color:var(--gc)">'+m.score1+'</span>':''}</div>
-            <div style="font-family:var(--orb);font-size:14px;font-weight:700;color:${live&&m.score2>m.score1?'var(--nc)':'var(--t)'}">${m.player2} ${live||done?'<span style="color:var(--gc)">'+m.score2+'</span>':''}</div>
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+          <div style="flex:1">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-bottom:4px">${m.tour} · ${m.tournament||m.surface||''}${m.book?'<span style="margin-left:6px;color:var(--gc)">'+m.book+'</span>':''}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${m.player1||m.p1||''} ${live||done?'<span style="color:var(--gc)">'+(m.score1||'')+'</span>':''}</div>
+              ${m.p1ml!=null?`<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${m.p1ml>0?'var(--vc)':'var(--hc)'}">${m.p1ml>0?'+':''}${m.p1ml}</span>`:''}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${m.player2||m.p2||''} ${live||done?'<span style="color:var(--gc)">'+(m.score2||'')+'</span>':''}</div>
+              ${m.p2ml!=null?`<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${m.p2ml>0?'var(--vc)':'var(--hc)'}">${m.p2ml>0?'+':''}${m.p2ml}</span>`:''}
+            </div>
           </div>
-          <div style="text-align:right">${badge}${m.network?'<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:3px">'+m.network+'</div>':''}</div>
+          <div style="text-align:right;flex-shrink:0">${badge}${m.network?'<div style="font-family:var(--mono);font-size:8px;color:var(--t3);margin-top:3px">'+m.network+'</div>':''}</div>
         </div>
       </div>`;
     }).join('');

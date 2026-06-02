@@ -2597,6 +2597,37 @@ def calculate_best_bets(
             })
 
     # ── BUG 2 FIX: Filter Linemate date-as-game garbage ─────────────────────
+    # ── WNBA moneylines ──────────────────────────────────────────────────────
+    wnba_games = (best_odds or {}).get("_wnba_today", [])
+    for g in wnba_games:
+        if g.get("state") != "pre": continue
+        home, away = g.get("home",""), g.get("away","")
+        game_str   = f"{away} @ {home}"
+        hml, aml   = g.get("homeML"), g.get("awayML")
+        hprob_raw, aprob_raw = _ml_to_prob(hml), _ml_to_prob(aml)
+        if hprob_raw and hprob_raw > 0.60:
+            add("WNBA", game_str, f"{home} ML {hml}", hprob_raw, hml, "GOOD",
+                note=f"WNBA home advantage")
+        if aprob_raw and aprob_raw > 0.60:
+            add("WNBA", game_str, f"{away} ML {aml}", aprob_raw, aml, "GOOD",
+                note=f"WNBA road value")
+
+    # ── NCAA Baseball — top-25 ranked team picks ──────────────────────────────
+    ncaa_games = (best_odds or {}).get("_ncaa_today", [])
+    for g in ncaa_games:
+        if g.get("state") != "pre": continue
+        home, away = g.get("home",""), g.get("away","")
+        game_str   = f"{away} @ {home}"
+        hml, aml   = g.get("homeML"), g.get("awayML")
+        hprob_raw  = _ml_to_prob(hml)
+        aprob_raw  = _ml_to_prob(aml)
+        if hprob_raw and hprob_raw > 0.62:
+            add("NCAAB", game_str, f"{home} ML {hml}", hprob_raw, hml, "GOOD",
+                note="NCAA Baseball — ranked home team")
+        elif aprob_raw and aprob_raw > 0.62:
+            add("NCAAB", game_str, f"{away} ML {aml}", aprob_raw, aml, "GOOD",
+                note="NCAA Baseball — ranked away team")
+
     # Linemate scraper sometimes returns the date string (e.g. "12/11/25") as
     # the "game" field or propPlayer field.  Remove those entries.
     _date_like = re.compile(r"^\d{2}/\d{2}/\d{2,4}$")
@@ -3128,7 +3159,11 @@ def main() -> None:
         nhl_props=lm_props.get("nhl", []),
         nhl_trends=lm_trends.get("nhl", []),
         mlb_sabre=mlb_sabre,
-        best_odds={**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
+        best_odds={
+            **mlb_best_odds, **nba_best_odds, **nhl_best_odds,
+            "_wnba_today":  wnba.get("today", []),
+            "_ncaa_today":  ncaa_baseball.get("today", []),
+        },
         nba_adv=nba_adv,
         mlb_standings=mlb_standings,
     )
