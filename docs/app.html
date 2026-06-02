@@ -4286,76 +4286,84 @@ function renderHomePage(){
 }
 
 function _reRenderActive(sport, tabId){
-  // Re-render whichever tab is visible so fresh data appears immediately
+  // Re-render active tab using ONLY already-loaded in-memory data.
+  // NO external API calls here — data.json was already patched before this runs.
   const safe=(fn,...args)=>{try{if(typeof fn==='function')fn(...args);}catch(e){}};
-  if(sport==='home')                  { safe(renderHomePage); return; }
+  const D=window.__CV_DATA||{};
+
+  if(sport==='home') { safe(renderHomePage); return; }
+
   if(sport==='mlb'){
-    if(tabId.includes('picks'))       safe(loadGames,todayESPN());
-    else if(tabId.includes('games'))  safe(renderMLBGames);
-    else if(tabId.includes('ranks'))  safe(renderR);
-    else if(tabId.includes('props'))  safe(renderMLBProps,'all');
-    else if(tabId.includes('nrfi'))   safe(renderNRFI);
-    else if(tabId.includes('history'))safe(renderHistory);
-    else if(tabId.includes('model'))  { safe(renderCal); safe(renderLrn); }
-    else                              safe(loadGames,todayESPN()); // default
+    // Picks: use bestBets from data.json — no ESPN fetch
+    if(tabId.includes('picks')){
+      if(D.bestBets?.length) safe(renderBestBetsFromRemote,D.bestBets);
+    }
+    safe(renderMLBGames);
+    if(tabId.includes('ranks'))   safe(renderR);
+    if(tabId.includes('props'))   safe(renderMLBProps,'all');
+    if(tabId.includes('nrfi'))    safe(renderNRFI);
+    if(tabId.includes('history')) safe(renderHistory);
+    if(tabId.includes('model'))   { safe(renderCal); safe(renderLrn); }
     return;
   }
+
   if(sport==='nba'){
-    if(tabId.includes('cup'))         { safe(renderNBABracket); safe(renderNBATonightGames); safe(renderNBARatings); }
-    else if(tabId.includes('picks'))  safe(renderNBAPicks);
-    else if(tabId.includes('games'))  safe(renderNBAGames);
-    else if(tabId.includes('stats'))  { safe(renderNBAStats); safe(renderNBAPlayers); }
-    else if(tabId.includes('props'))  safe(renderNBAProps);
-    else if(tabId.includes('history'))safe(renderNBAHistory);
-    else                              { safe(renderNBABracket); safe(renderNBATonightGames); }
+    safe(renderNBAGames);
+    if(tabId.includes('cup'))     { safe(renderNBABracket); safe(renderNBATonightGames); safe(renderNBARatings); }
+    if(tabId.includes('picks'))   safe(renderNBAPicks);
+    if(tabId.includes('stats'))   { safe(renderNBAStats); safe(renderNBAPlayers); }
+    if(tabId.includes('props'))   safe(renderNBAProps);
+    if(tabId.includes('history')) safe(renderNBAHistory);
     return;
   }
+
   if(sport==='hk'||sport==='nhl'){
-    if(tabId.includes('picks'))       safe(renderNHLPicks);
-    else if(tabId.includes('games'))  safe(renderNHLGames);
-    else if(tabId.includes('stats'))  { safe(renderNHLEdge,'team'); safe(renderMoneyPuck); }
-    else if(tabId.includes('goalies'))safe(renderGoaliesFromBackend);
-    else if(tabId.includes('props'))  safe(renderProps);
-    else if(tabId.includes('history'))safe(renderNHLHistory);
-    else                              { safe(renderNHLPicks); safe(renderNHLGames); }
+    safe(renderNHLGames);
+    if(tabId.includes('picks'))   safe(renderNHLPicks);
+    if(tabId.includes('props'))   safe(renderProps);
+    if(tabId.includes('history')) safe(renderNHLHistory);
+    if(tabId.includes('cup'))     { safe(renderBracket); safe(renderNHLTonight); }
+    // stats/goalies: use embedded static data, no API call
+    if(tabId.includes('stats'))   safe(renderMoneyPuck);
+    if(tabId.includes('goalies')) safe(renderGoalies);
     return;
   }
+
   if(sport==='ten'){
-    if(tabId.includes('picks'))       safe(renderTennisPicks);
-    else if(tabId.includes('schedule'))safe(renderTennisScheduleOdds);
-    else if(tabId.includes('today'))  safe(renderTennisToday);
-    else if(tabId.includes('slams'))  safe(renderSlam,'fo');
-    else if(tabId.includes('rankings'))safe(renderTennisRankings,'atp','hard');
-    else if(tabId.includes('futures'))safe(renderFuturesOdds);
-    else if(tabId.includes('live'))   safe(refreshTennisLive);
+    if(tabId.includes('schedule'))  safe(renderTennisScheduleOdds);
+    if(tabId.includes('picks'))     safe(renderTennisPicks);
+    if(tabId.includes('today'))     safe(renderTennisToday);
+    if(tabId.includes('rankings'))  safe(renderTennisRankings,'atp','hard');
+    if(tabId.includes('futures'))   safe(renderFuturesOdds);
+    if(tabId.includes('slams'))     safe(renderSlam,'fo');
     return;
   }
-  if(sport==='f1'){
-    safe(renderF1Schedule);
-    safe(renderF1Drivers);
-    return;
-  }
+
+  if(sport==='f1')    { safe(renderF1Schedule); safe(renderF1Drivers); return; }
+
   if(sport==='ovr'){
     safe(renderOverall);
-    if(tabId.includes('trends'))      safe(renderTrends);
-    else if(tabId.includes('clv'))    safe(renderCLV);
-    else if(tabId.includes('futures'))safe(renderFutures);
+    if(tabId.includes('trends'))    safe(renderTrends);
+    if(tabId.includes('clv'))       safe(renderCLV);
+    if(tabId.includes('future'))    safe(renderFutures);
     return;
   }
+
   if(sport==='analytics'){
     const sub=document.querySelector('#sp-analytics .subp.act')?.id||'';
-    if(sub.includes('nhl'))           safe(renderAnalyticsNHL);
-    else                              safe(renderAnalyticsMLB);
+    safe(sub.includes('nhl')?renderAnalyticsNHL:renderAnalyticsMLB);
     return;
   }
+
   if(sport==='social'){
     const sub=document.querySelector('#sp-social .subp.act')?.id||'';
-    if(sub.includes('ig'))            safe(renderSocialIG);
-    else if(sub.includes('dc'))       safe(renderSocialDC);
-    else                              safe(renderSocialX);
+    if(sub.includes('ig'))          safe(renderSocialIG);
+    else if(sub.includes('dc'))     safe(renderSocialDC);
+    else                            safe(renderSocialX);
     return;
   }
-  if(sport==='live')  { safe(renderGlobalLive); return; }
+
+  if(sport==='live') { safe(renderGlobalLive); return; }
 }
 
 function SS(s){
