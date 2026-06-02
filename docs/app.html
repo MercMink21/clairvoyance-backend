@@ -224,7 +224,28 @@ body{line-height:1.5}
 <header id="hdr">
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
+    <button class="ub" onclick="openTokenModal()" id="token-btn" title="Set GitHub token for full rebuilds" style="font-size:11px;padding:4px 8px">⚙</button>
     <span id="live-dot" title="Live games in progress" style="display:none;width:8px;height:8px;background:var(--hc);border-radius:50%;margin-left:6px;animation:blink 1s infinite;vertical-align:middle"></span>
+  </div>
+
+  <!-- Token Modal -->
+  <div id="token-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99998;align-items:center;justify-content:center;padding:16px">
+    <div style="background:#0a0018;border:1px solid rgba(204,0,255,.5);border-radius:6px;padding:20px;width:min(440px,96vw);box-shadow:0 0 40px rgba(204,0,255,.2)">
+      <div style="font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:var(--pc);margin-bottom:14px">⚙ SYNC SETTINGS</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);line-height:1.8;margin-bottom:14px">
+        ADD A GITHUB TOKEN TO MAKE THE SYNC BUTTON TRIGGER A FULL DATA REBUILD.<br>
+        TOKEN NEEDS: <span style="color:var(--gc)">workflow</span> SCOPE<br>
+        GET ONE AT: <a href="https://github.com/settings/tokens/new?scopes=workflow&description=Clairvoyance+Sync" target="_blank" style="color:var(--pc)">github.com/settings/tokens</a>
+      </div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);margin-bottom:6px">GITHUB PERSONAL ACCESS TOKEN (ghp_...)</div>
+      <input type="password" id="gh-token-modal-input" class="fi" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;margin-bottom:10px;font-size:11px">
+      <div id="gh-token-modal-status" style="font-family:'Share Tech Mono',monospace;font-size:9px;min-height:16px;margin-bottom:12px;color:var(--t3)"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-p" style="flex:1;padding:9px" onclick="saveTokenFromModal()">SAVE TOKEN</button>
+        <button class="btn btn-o" style="padding:9px 14px" onclick="clearTokenFromModal()">CLEAR</button>
+        <button class="btn btn-o" style="padding:9px 14px" onclick="closeTokenModal()">CLOSE</button>
+      </div>
+    </div>
   </div>
   <div class="logo" style="padding:0;display:flex;align-items:center;justify-content:center">
   <svg viewBox="0 0 56 56" width="40" height="40" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -3062,9 +3083,7 @@ function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const
 
 // ═══ SETTINGS + UTILS ════════════════════════════════════════
 function saveSet(){S.s('hfa',+document.getElementById('s-hfa')?.value||4);S.s('elk',+document.getElementById('s-elk')?.value||20);S.s('evt',+document.getElementById('s-evt')?.value||2);toast('// CONFIG SAVED');}
-function saveGHToken(){const t=(document.getElementById('gh-token-input')?.value||'').trim();const el=document.getElementById('gh-token-status');if(!t){if(el)el.textContent='ENTER A TOKEN FIRST';return;}setGHToken(t);if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';if(el)el.innerHTML='<span style="color:var(--nc)">✓ TOKEN SAVED</span>';toast('// GITHUB TOKEN SAVED');}
-function clearGHToken(){localStorage.removeItem('cv_gh_token');if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';const el=document.getElementById('gh-token-status');if(el)el.innerHTML='<span style="color:var(--t3)">TOKEN CLEARED</span>';toast('// TOKEN CLEARED');}
-function initGHTokenUI(){const el=document.getElementById('gh-token-status');if(!el)return;el.innerHTML=getGHToken()?'<span style="color:var(--nc)">✓ TOKEN SET — SYNC TRIGGERS FULL REBUILD</span>':'<span style="color:var(--t3)">NO TOKEN — SYNC FETCHES LATEST CACHED DATA ONLY</span>';}
+// (token functions defined below at initGHTokenUI block — no duplicates)
 function doExp(fmt='csv'){
   const preds=getP();
   if(fmt==='csv'){
@@ -3211,6 +3230,42 @@ function initGHTokenUI(){
     ?'<span style="color:var(--nc)">✓ TOKEN SET — SYNC TRIGGERS FULL GITHUB ACTIONS REBUILD</span>'
     :'<span style="color:var(--t3)">NO TOKEN — SYNC FETCHES LATEST CACHED DATA ONLY</span>';
 }
+function openTokenModal(){
+  const m=document.getElementById('token-modal');if(!m)return;
+  m.style.display='flex';
+  const st=document.getElementById('gh-token-modal-status');
+  if(st)st.innerHTML=getGHToken()
+    ?'<span style="color:var(--nc)">✓ TOKEN IS SET — SYNC WILL TRIGGER FULL REBUILD</span>'
+    :'<span style="color:var(--t3)">NO TOKEN YET — PASTE BELOW AND SAVE</span>';
+  document.getElementById('gh-token-modal-input')?.focus();
+}
+function closeTokenModal(){
+  const m=document.getElementById('token-modal');if(m)m.style.display='none';
+}
+function saveTokenFromModal(){
+  const tok=(document.getElementById('gh-token-modal-input')?.value||'').trim();
+  const st=document.getElementById('gh-token-modal-status');
+  if(!tok){if(st)st.innerHTML='<span style="color:var(--hc)">PASTE YOUR TOKEN FIRST (starts with ghp_)</span>';return;}
+  setGHToken(tok);
+  document.getElementById('gh-token-modal-input').value='';
+  if(st)st.innerHTML='<span style="color:var(--nc)">✓ TOKEN SAVED — SYNC NOW TRIGGERS FULL REBUILD</span>';
+  toast('// GITHUB TOKEN SAVED — SYNC WILL NOW REBUILD DATA');
+  try{initGHTokenUI();}catch(e){}
+  setTimeout(closeTokenModal,1500);
+}
+function clearTokenFromModal(){
+  localStorage.removeItem('cv_gh_token');
+  const inp=document.getElementById('gh-token-modal-input');if(inp)inp.value='';
+  const st=document.getElementById('gh-token-modal-status');
+  if(st)st.innerHTML='<span style="color:var(--t3)">TOKEN CLEARED</span>';
+  try{initGHTokenUI();}catch(e){}
+  toast('// TOKEN CLEARED');
+}
+// Close modal when clicking backdrop
+document.addEventListener('click',e=>{
+  const m=document.getElementById('token-modal');
+  if(m&&e.target===m)closeTokenModal();
+});
 
 const SYNC_SERVER='http://127.0.0.1:47821';
 
