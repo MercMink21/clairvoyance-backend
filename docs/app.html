@@ -450,6 +450,16 @@ body{line-height:1.5}
           <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="if(confirm('RESET ALL DATA?'))doReset()">RESET</button>
         </div>
       </div>
+      <div class="sg">
+        <div class="sgt">// SYNC — GITHUB TOKEN</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--t2);line-height:1.8;margin-bottom:8px">SET A GITHUB PAT WITH <span style="color:var(--gc)">workflow</span> SCOPE TO ENABLE ON-DEMAND FULL REBUILD.<br>GET ONE AT: <a href="https://github.com/settings/tokens/new?scopes=workflow&description=Clairvoyance+Sync" target="_blank" style="color:var(--pc)">github.com/settings/tokens</a></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="password" class="fi" id="gh-token-input" placeholder="ghp_xxxxxxxxxxxx" style="flex:1;min-width:160px;font-size:10px">
+          <button class="btn btn-p btn-sm" onclick="saveGHToken()">SAVE</button>
+          <button class="btn btn-o btn-sm" onclick="clearGHToken()">CLEAR</button>
+        </div>
+        <div id="gh-token-status" style="font-family:var(--mono);font-size:9px;margin-top:6px;color:var(--t3)"></div>
+      </div>
       <div class="sg"><div class="sgt">// ESPN + API STATUS</div><div id="api-status" style="font-family:var(--mono);font-size:9px;color:var(--t2);line-height:2"></div></div>
     </div>
   </div>
@@ -3028,6 +3038,9 @@ function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const
 
 // ═══ SETTINGS + UTILS ════════════════════════════════════════
 function saveSet(){S.s('hfa',+document.getElementById('s-hfa')?.value||4);S.s('elk',+document.getElementById('s-elk')?.value||20);S.s('evt',+document.getElementById('s-evt')?.value||2);toast('// CONFIG SAVED');}
+function saveGHToken(){const t=(document.getElementById('gh-token-input')?.value||'').trim();const el=document.getElementById('gh-token-status');if(!t){if(el)el.textContent='ENTER A TOKEN FIRST';return;}setGHToken(t);if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';if(el)el.innerHTML='<span style="color:var(--nc)">✓ TOKEN SAVED</span>';toast('// GITHUB TOKEN SAVED');}
+function clearGHToken(){localStorage.removeItem('cv_gh_token');if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';const el=document.getElementById('gh-token-status');if(el)el.innerHTML='<span style="color:var(--t3)">TOKEN CLEARED</span>';toast('// TOKEN CLEARED');}
+function initGHTokenUI(){const el=document.getElementById('gh-token-status');if(!el)return;el.innerHTML=getGHToken()?'<span style="color:var(--nc)">✓ TOKEN SET — SYNC TRIGGERS FULL REBUILD</span>':'<span style="color:var(--t3)">NO TOKEN — SYNC FETCHES LATEST CACHED DATA ONLY</span>';}
 function doExp(fmt='csv'){
   const preds=getP();
   if(fmt==='csv'){
@@ -3093,6 +3106,88 @@ async function triggerMLB(){if(!API_ONLINE()){toast('// NO BACKEND');return;}awa
 async function triggerNHL(){if(!API_ONLINE()){toast('// NO BACKEND');return;}await api('POST','/admin/scrape/nhl');toast('// NHL SCRAPE TRIGGERED');}
 
 // ═══ DAILY UPDATE ═══════════════════════════════════════════
+// ── GitHub Actions sync helpers ──────────────────────────────
+const GH_REPO='MercMink21/clairvoyance-backend', GH_WF='manual-sync.yml';
+function getGHToken(){return localStorage.getItem('cv_gh_token')||'';}
+function setGHToken(t){localStorage.setItem('cv_gh_token',t.trim());}
+async function _triggerGHAction(tok){
+  const r=await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${GH_WF}/dispatches`,{
+    method:'POST',
+    headers:{'Authorization':`token ${tok}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+    body:JSON.stringify({ref:'main',inputs:{triggered_by:'sync-button'}})
+  });
+  return r.status===204;
+}
+async function _pollGHRun(tok,setSyncState){
+  await new Promise(r=>setTimeout(r,5000));
+  let runId=null;
+  for(let i=0;i<6;i++){
+    try{
+      const d=await(await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${GH_WF}/runs?per_page=1`,{headers:{'Authorization':`token ${tok}`,'Accept':'application/vnd.github.v3+json'}})).json();
+      runId=d.workflow_runs?.[0]?.id;
+      if(runId)break;
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,3000));
+  }
+  if(!runId)return false;
+  const deadline=Date.now()+10*60*1000;
+  let elapsed=0;
+  while(Date.now()<deadline){
+    await new Promise(r=>setTimeout(r,8000));elapsed+=8;
+    setSyncState(`⚙ REBUILDING… ${elapsed}s (est. 2-4 min)`);
+    try{
+      const run=await(await fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${runId}`,{headers:{'Authorization':`token ${tok}`,'Accept':'application/vnd.github.v3+json'}})).json();
+      if(run.status==='completed')return run.conclusion==='success';
+    }catch(e){}
+  }
+  return false;
+}
+async function _applyFreshData(d){
+  window.__CV_DATA=d;localStorage.setItem('cv_data_ts',String(Date.now()));
+  LAST_AUTO_UPDATE=d.generatedMT||d.generated||'';
+  const safe=(cond,fn)=>{if(cond)try{fn();}catch(e){}};
+  safe(d.nba?.today?.length,  ()=>patchNBATonight(d.nba.today));
+  safe(d.nba?.standings,      ()=>patchNBAStandings(d.nba.standings));
+  safe(d.nba?.players?.length,()=>{window._remoteNBAPlayers=d.nba.players;});
+  safe(d.mlb?.today?.length,  ()=>patchMLBTonight(d.mlb.today));
+  safe(d.mlb?.standings,      ()=>patchMLBStandings(d.mlb.standings));
+  safe(d.nhl?.today?.length,  ()=>patchNHLTonight(d.nhl.today));
+  safe(d.nhl?.standings,      ()=>patchNHLStandings(d.nhl.standings));
+  safe(d.mp?.goalies?.length, ()=>patchMoneyPuck(d.mp.goalies,d.mp.teams||{}));
+  safe(d.tennis?.atpElo?.length,()=>patchATPElo(d.tennis.atpElo));
+  safe(d.tennis?.wtaElo?.length,()=>patchWTAElo(d.tennis.wtaElo));
+  safe(d.weather,             ()=>patchWeather(d.weather));
+  safe(d.bestBets?.length,    ()=>renderBestBetsFromRemote(d.bestBets));
+  safe(d.settled?.length,     ()=>applyServerSettlements(d.settled));
+  safe(d.linemate,            ()=>patchLinemateProps(d.linemate));
+  const sport=document.querySelector('.spane.act')?.id?.replace('sp-','')||'home';
+  const tab=document.querySelector('.tab.act')?.id||'';
+  try{_reRenderActive(sport,tab);}catch(e){}
+  try{renderHomePage();}catch(e){}
+}
+function saveGHToken(){
+  const tok=(document.getElementById('gh-token-input')?.value||'').trim();
+  const el=document.getElementById('gh-token-status');
+  if(!tok){if(el)el.textContent='ENTER A TOKEN FIRST';return;}
+  setGHToken(tok);
+  if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';
+  if(el)el.innerHTML='<span style="color:var(--nc)">✓ TOKEN SAVED — SYNC WILL TRIGGER FULL REBUILD</span>';
+  toast('// GITHUB TOKEN SAVED');
+}
+function clearGHToken(){
+  localStorage.removeItem('cv_gh_token');
+  if(document.getElementById('gh-token-input'))document.getElementById('gh-token-input').value='';
+  const el=document.getElementById('gh-token-status');
+  if(el)el.innerHTML='<span style="color:var(--t3)">TOKEN CLEARED — SYNC FETCHES LATEST DATA ONLY</span>';
+  toast('// TOKEN CLEARED');
+}
+function initGHTokenUI(){
+  const el=document.getElementById('gh-token-status');if(!el)return;
+  el.innerHTML=getGHToken()
+    ?'<span style="color:var(--nc)">✓ TOKEN SET — SYNC TRIGGERS FULL GITHUB ACTIONS REBUILD</span>'
+    :'<span style="color:var(--t3)">NO TOKEN — SYNC FETCHES LATEST CACHED DATA ONLY</span>';
+}
+
 async function doUpdate(){
   const btn=document.getElementById('sync-btn');
   const st=document.getElementById('upd-st');
@@ -3105,67 +3200,46 @@ async function doUpdate(){
     if(st){st.textContent=msg;st.style.color=col;}
   };
 
-  setSyncState('FETCHING LATEST DATA…');
-  toast('// SYNCING — FETCHING DATA.JSON…');
+  setSyncState('CONNECTING…');
+  const token=getGHToken();
 
-  // ── Step 1: force-fetch the latest data.json from GitHub Pages ──────────
-  let freshData = null;
-  try {
-    const r = await fetch(`data.json?t=${Date.now()}`, {cache:'no-cache'});
-    if(r.ok) freshData = await r.json();
-  } catch(e) { console.warn('[SYNC] data.json fetch failed:', e); }
-
-  if(freshData) {
-    // Apply all patches
-    window.__CV_DATA = freshData;
-    localStorage.setItem('cv_data_ts', String(Date.now()));
-    LAST_AUTO_UPDATE = freshData.generatedMT || freshData.generated || '';
-    try { if(freshData.nba?.today?.length)    patchNBATonight(freshData.nba.today);   }catch(e){}
-    try { if(freshData.nba?.standings)        patchNBAStandings(freshData.nba.standings); }catch(e){}
-    try { if(freshData.nba?.players?.length)  window._remoteNBAPlayers=freshData.nba.players; }catch(e){}
-    try { if(freshData.mlb?.today?.length)    patchMLBTonight(freshData.mlb.today);   }catch(e){}
-    try { if(freshData.mlb?.standings)        patchMLBStandings(freshData.mlb.standings); }catch(e){}
-    try { if(freshData.nhl?.today?.length)    patchNHLTonight(freshData.nhl.today);   }catch(e){}
-    try { if(freshData.nhl?.standings)        patchNHLStandings(freshData.nhl.standings); }catch(e){}
-    try { if(freshData.mp?.goalies?.length)   patchMoneyPuck(freshData.mp.goalies, freshData.mp.teams||{}); }catch(e){}
-    try { if(freshData.tennis?.atpElo?.length) patchATPElo(freshData.tennis.atpElo); }catch(e){}
-    try { if(freshData.tennis?.wtaElo?.length) patchWTAElo(freshData.tennis.wtaElo); }catch(e){}
-    try { if(freshData.weather)               patchWeather(freshData.weather);         }catch(e){}
-    try { if(freshData.bestBets?.length)      renderBestBetsFromRemote(freshData.bestBets); }catch(e){}
-    try { if(freshData.settled?.length)       applyServerSettlements(freshData.settled); }catch(e){}
-    try { if(freshData.linemate)              patchLinemateProps(freshData.linemate);   }catch(e){}
-
-    // ── Step 2: re-render the currently active sport + tab ──────────────
-    const activeSport = document.querySelector('.spane.act')?.id?.replace('sp-','') || 'home';
-    const activeTab   = document.querySelector('.tab.act')?.id || '';
-    try { _reRenderActive(activeSport, activeTab); } catch(e){ console.warn('[SYNC] re-render:', e); }
-
-    // Always refresh home
-    try { renderHomePage(); } catch(e){}
-
-    const dataAge = freshData.generatedMT || freshData.generated?.slice(0,16) || 'unknown';
-    clearSyncState(`✓ SYNCED · DATA: ${dataAge}`, 'var(--nc)');
-    toast(`// SYNC COMPLETE · ${freshData.mlb?.today?.length||0} MLB · ${freshData.nba?.today?.length||0} NBA · ${freshData.nhl?.today?.length||0} NHL`);
+  if(token){
+    setSyncState('TRIGGERING FULL REBUILD…');
+    toast('// TRIGGERING GITHUB ACTIONS REBUILD (~2-4 MIN)…');
+    let triggered=false;
+    try{triggered=await _triggerGHAction(token);}catch(e){console.warn('[SYNC] GH dispatch:',e);}
+    if(triggered){
+      setSyncState('REBUILD QUEUED — WAITING FOR COMPLETION…');
+      await _pollGHRun(token,setSyncState);
+      setSyncState('REBUILD DONE — FETCHING FRESH DATA…');
+      await new Promise(r=>setTimeout(r,6000)); // GitHub Pages propagation delay
+    } else {
+      toast('// GH TRIGGER FAILED — CHECK TOKEN SCOPE (needs: workflow)');
+      setSyncState('FETCHING CURRENT DATA…');
+    }
   } else {
-    // ── Fallback: ESPN direct fetch for MLB scoreboard ───────────────────
-    setSyncState('REMOTE UNAVAILABLE · TRYING ESPN…', 'var(--vc)');
-    try { await loadGames(todayESPN()); } catch(e){}
-    try { await autoSettleNHL(); } catch(e){}
-    clearSyncState('SYNCED (ESPN FALLBACK)', 'var(--vc)');
-    toast('// ESPN FALLBACK SYNC COMPLETE');
+    setSyncState('FETCHING LATEST DATA…');
+    toast('// SYNCING — TIP: ADD GITHUB TOKEN IN MLB ⚙ SETTINGS FOR FULL REBUILD');
   }
 
-  // ── Step 3: backend pipeline if configured ───────────────────────────
-  if(API_ONLINE()){
-    try {
-      await api('POST','/admin/pipeline');
-      toast('// BACKEND PIPELINE TRIGGERED');
-    } catch(e){}
+  // Always fetch latest data.json (retry 3x)
+  let freshData=null;
+  for(let i=0;i<3;i++){
+    try{const r=await fetch(`data.json?t=${Date.now()}`,{cache:'no-cache'});if(r.ok){freshData=await r.json();break;}}
+    catch(e){console.warn('[SYNC] fetch attempt',i+1);}
+    if(i<2)await new Promise(r=>setTimeout(r,3000));
   }
-
-  S.s('last_upd', getMSTNow().toLocaleString());
-  S.s('last_upd_date', getMSTDate());
-  try { updateAPIStatus(); } catch(e){}
+  if(freshData){
+    await _applyFreshData(freshData);
+    const age=freshData.generatedMT||freshData.generated?.slice(0,16)||'';
+    clearSyncState(`✓ SYNCED · DATA: ${age}`,'var(--nc)');
+    toast(`// COMPLETE · MLB:${freshData.mlb?.today?.length||0} NBA:${freshData.nba?.today?.length||0} NHL:${freshData.nhl?.today?.length||0} NCAA:${freshData.ncaaBaseball?.today?.length||0} WNBA:${freshData.wnba?.today?.length||0}`);
+  } else {
+    clearSyncState('SYNC FAILED — CHECK CONNECTION','var(--hc)');
+    toast('// SYNC FAILED');
+  }
+  S.s('last_upd',getMSTNow().toLocaleString());S.s('last_upd_date',getMSTDate());
+  try{updateAPIStatus();}catch(e){}
 }
 async function fetchNHLEdge(){
   const SEASON='20252026',GT='3';const BASE='https://api.nhle.com/stats/rest/en';
@@ -4462,7 +4536,7 @@ function T(sport,tabId){
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='picks')renderInjuryNews('mlb','mlb-injury-news');if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');}
+  if(sport==='mlb'){if(tabId==='picks')renderInjuryNews('mlb','mlb-injury-news');if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live')startLive();if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set'){updateAPIStatus();setTimeout(initGHTokenUI,50);}if(tabId==='props')renderMLBProps('all');}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games')renderNHLGames();if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props')renderProps();if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){startNHLLive();renderNHLLiveBets();}if(tabId==='model'){const bl=document.getElementById('nhl-model-bet-log');if(bl)renderHistoryForSport('NHL',null,'nhl-model-bet-log');renderModelWeights('nhl','nhl-model-weights');}if(tabId==='config'){}if(tabId==='stats'){try{renderNHLEdge('team');}catch(e){}try{renderGoaliesFromBackend();}catch(e){}try{renderMoneyPuck();}catch(e){}}if(tabId==='parlay'){}}
   if(sport==='nba'){if(tabId==='cup'){renderNBABracket();renderNBATonightGames();renderNBARatings();}if(tabId==='picks'){renderNBAPicks();renderInjuryNews('nba','nba-injury-news');}if(tabId==='games')renderNBAGames();if(tabId==='stats'){renderNBAStats();renderNBAPlayers();}if(tabId==='props')renderNBAProps();if(tabId==='parlay'){renderNBAParlayG();}if(tabId==='history')renderNBAHistory();if(tabId==='live'){startNBALive();renderNBALiveBets();}if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='ten')renderTennisOverall();if(tabId==='trends')renderTrends();if(tabId==='clv')renderCLV();if(tabId==='futures')renderFutures();}
