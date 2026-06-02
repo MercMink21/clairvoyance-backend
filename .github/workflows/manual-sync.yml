@@ -1,0 +1,45 @@
+$ cat /Users/reeseoliver/clairvoyance-backend/.github/workflows/manual-sync.yml
+
+name: Manual Data Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      triggered_by:
+        description: 'Who triggered this sync'
+        required: false
+        default: 'sync-button'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q requests beautifulsoup4 lxml playwright
+          playwright install chromium --with-deps 2>/dev/null || true
+
+      - name: Run Clairvoyance update
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python scripts/clairvoyance_update.py --no-linemate
+        timeout-minutes: 10
+
+      - name: Commit and push data
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          git add docs/data.json docs/live_data.json docs/card.png docs/social_copy.json docs/index.html data/ frontend/ || true
+          git diff --cached --quiet || git commit -m "sync: on-demand refresh $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
