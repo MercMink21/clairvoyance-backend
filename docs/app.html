@@ -3188,6 +3188,28 @@ function initGHTokenUI(){
     :'<span style="color:var(--t3)">NO TOKEN — SYNC FETCHES LATEST CACHED DATA ONLY</span>';
 }
 
+const SYNC_SERVER='http://127.0.0.1:47821';
+
+async function _localSyncAvailable(){
+  try{const r=await fetch(`${SYNC_SERVER}/ping`,{signal:AbortSignal.timeout(1500)});return r.ok;}
+  catch(e){return false;}
+}
+async function _pollLocalSync(setSyncState){
+  // Poll /status until finished (max 8 min)
+  const deadline=Date.now()+8*60*1000;
+  let elapsed=0;
+  while(Date.now()<deadline){
+    await new Promise(r=>setTimeout(r,4000)); elapsed+=4;
+    setSyncState(`⚙ REBUILDING… ${elapsed}s (stay on page)`,'var(--vc)');
+    try{
+      const r=await fetch(`${SYNC_SERVER}/status`,{signal:AbortSignal.timeout(2000)});
+      const s=await r.json();
+      if(!s.running) return s.status==='success';
+    }catch(e){}
+  }
+  return false;
+}
+
 async function doUpdate(){
   const btn=document.getElementById('sync-btn');
   const st=document.getElementById('upd-st');
@@ -3201,39 +3223,60 @@ async function doUpdate(){
   };
 
   setSyncState('CONNECTING…');
-  const token=getGHToken();
+  let didFullRebuild=false;
 
-  if(token){
+  // ── Path 1: Local sync server (Mac running sync_server.py) ───────────
+  const localOk=await _localSyncAvailable();
+  if(localOk){
     setSyncState('TRIGGERING FULL REBUILD…');
-    toast('// TRIGGERING GITHUB ACTIONS REBUILD (~2-4 MIN)…');
-    let triggered=false;
-    try{triggered=await _triggerGHAction(token);}catch(e){console.warn('[SYNC] GH dispatch:',e);}
-    if(triggered){
-      setSyncState('REBUILD QUEUED — WAITING FOR COMPLETION…');
-      await _pollGHRun(token,setSyncState);
-      setSyncState('REBUILD DONE — FETCHING FRESH DATA…');
-      await new Promise(r=>setTimeout(r,6000)); // GitHub Pages propagation delay
-    } else {
-      toast('// GH TRIGGER FAILED — CHECK TOKEN SCOPE (needs: workflow)');
-      setSyncState('FETCHING CURRENT DATA…');
-    }
-  } else {
-    setSyncState('FETCHING LATEST DATA…');
-    toast('// SYNCING — TIP: ADD GITHUB TOKEN IN MLB ⚙ SETTINGS FOR FULL REBUILD');
+    toast('// RUNNING FULL DATA REBUILD — TAKES ~1-3 MIN…');
+    try{
+      const r=await fetch(`${SYNC_SERVER}/sync`,{method:'POST',signal:AbortSignal.timeout(3000)});
+      if(r.ok){
+        setSyncState('REBUILDING — FETCHING ALL SOURCES…');
+        const ok=await _pollLocalSync(setSyncState);
+        setSyncState(ok?'REBUILD DONE — FETCHING DATA…':'REBUILD FINISHED — FETCHING DATA…');
+        didFullRebuild=true;
+        await new Promise(r=>setTimeout(r,3000)); // wait for git push to settle
+      }
+    }catch(e){console.warn('[SYNC] local server error:',e);}
   }
 
-  // Always fetch latest data.json (retry 3x)
+  // ── Path 2: GitHub Actions (if token set + local not available) ───────
+  if(!didFullRebuild){
+    const token=getGHToken();
+    if(token){
+      setSyncState('TRIGGERING GITHUB ACTIONS REBUILD…');
+      toast('// TRIGGERING GITHUB REBUILD (~2-4 MIN)…');
+      let triggered=false;
+      try{triggered=await _triggerGHAction(token);}catch(e){}
+      if(triggered){
+        setSyncState('WAITING FOR GITHUB REBUILD…');
+        await _pollGHRun(token,setSyncState);
+        setSyncState('DONE — FETCHING DATA…');
+        await new Promise(r=>setTimeout(r,6000));
+        didFullRebuild=true;
+      }
+    }
+  }
+
+  // ── Path 3 (always): fetch latest data.json ───────────────────────────
+  if(!didFullRebuild){
+    setSyncState('FETCHING LATEST DATA…');
+    if(!localOk&&!getGHToken())
+      toast('// TIP: RUN sync_server.py FOR INSTANT FULL REBUILDS');
+  }
   let freshData=null;
   for(let i=0;i<3;i++){
     try{const r=await fetch(`data.json?t=${Date.now()}`,{cache:'no-cache'});if(r.ok){freshData=await r.json();break;}}
-    catch(e){console.warn('[SYNC] fetch attempt',i+1);}
-    if(i<2)await new Promise(r=>setTimeout(r,3000));
+    catch(e){}
+    if(i<2)await new Promise(r=>setTimeout(r,2000));
   }
   if(freshData){
     await _applyFreshData(freshData);
     const age=freshData.generatedMT||freshData.generated?.slice(0,16)||'';
-    clearSyncState(`✓ SYNCED · DATA: ${age}`,'var(--nc)');
-    toast(`// COMPLETE · MLB:${freshData.mlb?.today?.length||0} NBA:${freshData.nba?.today?.length||0} NHL:${freshData.nhl?.today?.length||0} NCAA:${freshData.ncaaBaseball?.today?.length||0} WNBA:${freshData.wnba?.today?.length||0}`);
+    clearSyncState(`✓ ${didFullRebuild?'REBUILT':'SYNCED'} · DATA: ${age}`,'var(--nc)');
+    toast(`// DONE · MLB:${freshData.mlb?.today?.length||0} NBA:${freshData.nba?.today?.length||0} NHL:${freshData.nhl?.today?.length||0} NCAA:${freshData.ncaaBaseball?.today?.length||0} WNBA:${freshData.wnba?.today?.length||0}`);
   } else {
     clearSyncState('SYNC FAILED — CHECK CONNECTION','var(--hc)');
     toast('// SYNC FAILED');
