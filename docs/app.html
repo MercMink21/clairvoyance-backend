@@ -265,8 +265,11 @@ body{line-height:1.5}
     </div>
     <!-- Best bets from remote data.json (written by clairvoyance_update.py) -->
     <div id="home-best-bets" style="margin-bottom:16px"></div>
+    <div id="home-engine-record" style="margin-bottom:14px"></div>
     <div class="sh" style="display:flex;justify-content:space-between;align-items:center"><span><span class="p"></span> TODAY'S TOP PICKS <span id="home-date-display" style="font-family:var(--mono);font-size:14px;color:var(--t3);font-weight:400;margin-left:8px"></span></span><span id="home-sync-status" style="font-family:var(--mono);font-size:12px;letter-spacing:1.5px;display:none"></span></div>
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
+    <div id="home-yesterday-results" style="margin-top:18px"></div>
+    <div id="home-week-wins" style="margin-top:18px"></div>
 
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json">EXPORT JSON</button>
@@ -773,6 +776,7 @@ body{line-height:1.5}
         <div id="nba-players"><div class="loading"><span class="spi"></span></div></div>
       </div>
       <div id="nba-tab-props" class="tab">
+        <div id="nba-finals-props" style="margin-bottom:14px"></div>
         <div class="sh"><span class="g"></span> NBA PLAYER PROPS — TODAY <span id="nba-props-date" style="font-family:var(--mono);font-size:14px;color:var(--t3);font-weight:400"></span></div>
         <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,204,0,.3);border-radius:2px;padding:11px 13px;margin-bottom:12px;font-family:var(--mono);font-size:15px;color:var(--gc);line-height:1.7">SOURCE: ESPN PLAYER STATS · USAGE RATE · MATCHUP DEFENSE RATING<br>BET QUALITY: ELITE ≥70% · GOOD 60-70% · FAIR 52-60% · FADE &lt;52%</div>
         <div id="nba-props"><div class="loading"><span class="spi"></span></div></div>
@@ -3749,17 +3753,17 @@ function nhlRosterScore(abbr){
 }
 
 // ═══ NBA DATA — 2025-26 PLAYOFFS ═════════════════════════════
-// Conference Finals: OKC vs SA (WCF starts 5/18), NY vs CLE (ECF starts 5/19)
+// NBA FINALS: SA vs NYK — SA WON WCF 4-3 vs OKC. Game 1 June 3 2026.
 // Verified via ESPN API — all eliminated teams removed
 const NBA_TEAMS={
-  OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:11,pl:3,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'WCF — SERIES TIED 3-3. G7 TONIGHT @ Paycom Center 8 PM ET NBC. SA WON G6 118-91. OKC home-court advantage. SGA must respond at home. OKC -162 favorite. Winner advances to NBA Finals vs NYK.'},
-  SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:10,pl:3,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'WCF — TIED 3-3. G7 @ OKC 8 PM ET. SA WON G6 118-91. Wemby and Fox must replicate that performance on the road. SA +136 as road dog. Historic upset opportunity.'},
-  NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
-  CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
+  OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:11,pl:7,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'WCF ELIMINATED BY SA 4-3. G7 road loss. Season over.'},
+  SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:11,pl:3,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'NBA FINALS · WON WCF 4-3 vs OKC. Wemby 31pts G7. Finals G1 vs NYK TONIGHT June 3.'},
+  NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'NBA FINALS · Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 and CLE 4-0 in ECF.'},
+  CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:8,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'ECF ELIMINATED BY NYK 0-4. Season over. NYK dominant sweep.'}
 };
-// May 30 2026: WCF G7 — SA @ OKC · 8 PM ET NBC · OKC -162 / SA +136 · OKC -4.5 · O/U 213.5 · Paycom Center OKC
+// June 3 2026: NBA FINALS G1 — NYK @ SA · 8 PM ET ABC · SA -120 / NYK +100 · SA -1.5 · O/U 216.5 · AT&T Center San Antonio
 const NBA_TONIGHT=[
-  {h:'OKC',a:'SA',hML:-162,aML:136,ou:213.5,hL:-4.5,gn:7,time:'8 PM ET',net:'NBC',ctx:'WCF G7 — SERIES TIED 3-3 — WINNER GOES TO NBA FINALS VS NYK'}
+  {h:'SA',a:'NY',hML:-120,aML:100,ou:216.5,hL:-1.5,ctx:'NBA FINALS G1 · June 3 2026 · 8 PM ET ABC · AT&T Center'}
 ];
 // NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
 const NBA_PLAYERS=[
@@ -3820,18 +3824,18 @@ const NBA_BBREF={
   }
 };
 
-// NBA Playoff leaders (per game, Conference Finals eligible)
+// NBA Playoff leaders (per game, NBA Finals eligible teams SA + NYK)
 const NBA_LEADERS={
-  ppg:[{n:'SGA',t:'OKC',v:32.1},{n:'Brunson',t:'NY',v:30.4},{n:'Mitchell',t:'CLE',v:28.6},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'JWilliams',t:'OKC',v:21.4},{n:'Harden',t:'CLE',v:19.6}],
-  rpg:[{n:'Wemby',t:'SA',v:11.2},{n:'KAT',t:'NY',v:11.4},{n:'Holmgren',t:'OKC',v:8.8},{n:'Mobley',t:'CLE',v:9.6},{n:'Fox',t:'SA',v:4.2},{n:'Mitchell',t:'CLE',v:4.8}],
-  apg:[{n:'Fox',t:'SA',v:8.8},{n:'Harden',t:'CLE',v:8.2},{n:'SGA',t:'OKC',v:6.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4},{n:'Mitchell',t:'CLE',v:5.2}],
-  spg:[{n:'Fox',t:'SA',v:2.4},{n:'SGA',t:'OKC',v:2.1},{n:'Mitchell',t:'CLE',v:1.8},{n:'Brunson',t:'NY',v:1.6},{n:'Bridges',t:'NY',v:1.8}],
-  bpg:[{n:'Wemby',t:'SA',v:4.1},{n:'Holmgren',t:'OKC',v:2.8},{n:'Mobley',t:'CLE',v:2.6},{n:'KAT',t:'NY',v:1.4},{n:'Bridges',t:'NY',v:1.1}],
-  fg3pg:[{n:'Brunson',t:'NY',v:2.8},{n:'SGA',t:'OKC',v:2.4},{n:'Harden',t:'CLE',v:2.4},{n:'Bridges',t:'NY',v:2.2},{n:'Castle',t:'SA',v:2.1}]
+  ppg:[{n:'Brunson',t:'NY',v:30.4},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'Bridges',t:'NY',v:18.4},{n:'Castle',t:'SA',v:16.2}],
+  rpg:[{n:'KAT',t:'NY',v:11.4},{n:'Wemby',t:'SA',v:11.2},{n:'Hart',t:'NY',v:8.8},{n:'Fox',t:'SA',v:4.2},{n:'OG',t:'NY',v:5.4}],
+  apg:[{n:'Fox',t:'SA',v:8.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4}],
+  spg:[{n:'Fox',t:'SA',v:2.4},{n:'Brunson',t:'NY',v:1.6},{n:'Bridges',t:'NY',v:1.8},{n:'Castle',t:'SA',v:1.6}],
+  bpg:[{n:'Wemby',t:'SA',v:4.1},{n:'KAT',t:'NY',v:1.4},{n:'Bridges',t:'NY',v:1.1}],
+  fg3pg:[{n:'Brunson',t:'NY',v:2.8},{n:'Bridges',t:'NY',v:2.2},{n:'Castle',t:'SA',v:2.1}]
 };
 
-// NBA ELO ratings (seeded from net rating + playoff performance)
-let NBA_ELO={OKC:1680,SA:1610,NY:1590,CLE:1560};
+// NBA ELO ratings (updated post-WCF — SA won 4-3 over OKC)
+let NBA_ELO={SA:1668,NY:1610,OKC:1635,CLE:1540};
 
 // NBA composite team score 0-100 — uses BBRef data when available
 function nbaTeamScore(abbr){
@@ -3928,11 +3932,11 @@ function renderNBABracket(){
   ${s('NY','CLE',1,0,'Game 2: Thu 5/21 · MSG · Knicks lead series 1-0',true)}
 
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin:14px 0 5px">── WEST ──────────────────────────</div>
-  <div style="font-family:var(--mono);font-size:12px;color:var(--vc);letter-spacing:1px;margin:4px 0 2px">▶ CONFERENCE FINALS — SERIES TIED 3-3</div>
-  ${s('OKC','SA',3,3,'G7: TONIGHT 8 PM ET · Paycom Center OKC · SA WON G6 118-91',true)}
+  <div style="font-family:var(--mono);font-size:12px;color:var(--nc);letter-spacing:1px;margin:4px 0 2px">▶ CONFERENCE FINALS — COMPLETE · SA WON 4-3 — ADVANCES TO NBA FINALS</div>
+  ${s('SA','OKC',4,3,'WCF COMPLETE · SA WON 4-3 · Wemby 31pts G7 road win at Paycom Center',false)}
 
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin:14px 0 5px">── NBA FINALS ────────────────────</div>
-  <div class="card" style="border:1px dashed var(--t3);opacity:.5;padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--t3)">TBD vs TBD · Starts mid-June</div>`;
+  <div class="card" style="border:1px solid var(--gc);padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--gc)">🏆 SA vs NYK · NBA FINALS · GAME 1 TONIGHT JUNE 3 · 8 PM ET ABC · AT&amp;T CENTER</div>`;
 }
 function renderNBATonightGames(){
   const el=document.getElementById('nba-tn');if(!el)return;
@@ -4184,7 +4188,7 @@ function renderNBAFinalsPreview(el){
   const SA_RUN=[
     {rd:'R1',opp:'1st Round Opponent',result:'WON 4-X',note:'Wembanyama dominant from game 1. Castle organized offense. SA defense suffocating.'},
     {rd:'R2',opp:'2nd Round Opponent',result:'WON 4-X',note:'Fox/Castle playmaking kept SA dangerous. Wemby posted 28+ PPG with elite efficiency.'},
-    {rd:'WCF',opp:'Oklahoma City Thunder',result:'WON 4-3',note:'Epic 7-game series. Jalen Williams injured for OKC in G4 — massive blow. SA won G7 on the road at Paycom. Wemby 31pts G7, Castle 8AST G7. SA overcame OKC home-court to reach Finals.'},
+    {rd:'WCF',opp:'Oklahoma City Thunder',result:'WON 4-3',note:'WON 4-3 — SA beat OKC in 7. G7 road win Paycom Center. Wemby 31pts/12reb/4blk. Castle 28pts 8ast G7. SA overcame OKC home-court advantage in historic road G7 victory.'},
   ];
   const match=[
     {lbl:'SUPERSTAR',v:'Wembanyama 28.2 PPG in WCF vs Brunson 34 PPG in ECF',c:'PUSH',a:'Wemby elite scorer/blocker. Brunson playoff mode is different. Best head-to-head of era.',col:'var(--vc)'},
@@ -4234,7 +4238,7 @@ function renderNBAFinalsPreview(el){
       <strong style="color:var(--t)">MODEL LEAN: SA +115 VALUE</strong><br>
       Wembanyama is the best player in this series — no debate. SA came through G7 on the road at OKC which shows mental fortitude. Brunson is elite but Castle/Wemby make SA a nightmare matchup. NYK has homecourt and depth advantage. This series goes 7 games. SA +115 at first glance is genuine value.<br><br>
       <strong style="color:var(--gc)">SERIES PICK: NYK IN 7 · SERIES OVER 5.5</strong><br>
-      <span style="color:var(--t3)">G1 June 3 @ Madison Square Garden, New York · 8:30 PM ET · ABC</span>
+      <span style="color:var(--t3)">G1 June 3 @ AT&amp;T Center, San Antonio · 8 PM ET · ABC · SA -120 / NYK +100</span>
     </div>
   </div>`;
   const propHtml=`<div class="card" style="border-left:3px solid var(--pc);margin-bottom:10px">
@@ -4254,8 +4258,8 @@ function renderNBAFinalsPreview(el){
   el.innerHTML=`
   <div style="background:rgba(10,4,24,.95);border:1px solid rgba(255,204,0,.3);border-radius:3px;padding:10px 12px;margin-bottom:12px">
     <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:var(--gc);letter-spacing:2px;margin-bottom:6px">2026 NBA FINALS</div>
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t2)">NYK <span style="color:var(--gc)">vs</span> SA · Best of 7 · Game 1: June 3 @ MSG</div>
-    <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.6);margin-top:3px">NYK -135 · SA +115 · 8:30 PM ET · ABC</div>
+    <div style="font-family:var(--mono);font-size:14px;color:var(--t2)">SA <span style="color:var(--gc)">vs</span> NYK · Best of 7 · Game 1: June 3 @ AT&amp;T Center</div>
+    <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.6);margin-top:3px">SA -120 · NYK +100 · 8 PM ET · ABC</div>
   </div>
   ${outlookHtml}
   ${propHtml}
@@ -4272,7 +4276,7 @@ function renderNBACFCards(){
     {conf:'EAST FINAL — COMPLETE',away:'NY',home:'CLE',awayW:4,homeW:0,gn:null,gDate:'FINAL',awayML:-142,homeML:120,ou:218.5,note:'NYK WINS ECF 4-0 — Brunson MVP. New York Knicks advance to NBA FINALS. CLE swept. Historic Knicks run continues.',lean:'NYK ADVANCE TO NBA FINALS',leanCol:'var(--nc)'},
     {conf:'WEST FINAL — COMPLETE',away:'SA',home:'OKC',awayW:4,homeW:3,gn:7,gDate:'WON G7 on road',awayML:136,homeML:-162,ou:213.5,note:'SA WON WCF 4-3. Won Game 7 on the road at Paycom Center. Wembanyama 31pts in G7. Castle 8AST G7. SA advance to NBA Finals vs NYK starting June 3.',lean:'SA ADVANCE TO NBA FINALS · NYK vs SA · G1 June 3 @ MSG.',leanCol:'var(--nc)'},
   ];
-  el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:3px;color:var(--ic);margin:0 0 10px;padding-bottom:5px;border-bottom:1px solid rgba(77,121,255,.2)">// 2026 CONFERENCE FINALS — MAY 30 · WCF G7 TONIGHT 8 PM ET NBC</div><div class="g2">`+
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:3px;color:var(--gc);margin:0 0 10px;padding-bottom:5px;border-bottom:1px solid rgba(255,221,0,.2)">// 2026 CONFERENCE FINALS — COMPLETE · SA WON WCF 4-3 · NBA FINALS G1 TONIGHT JUNE 3</div><div class="g2">`+
   series.map(s=>{const seriesLbl=s.awayW>s.homeW?`${s.away} LEADS ${s.awayW}-${s.homeW}`:s.homeW>s.awayW?`${s.home} LEADS ${s.homeW}-${s.awayW}`:`SERIES ${s.awayW}-${s.homeW}`;return`<div class="card" style="border-left:2px solid ${s.leanCol}">
     <div class="ct">${s.conf} — ${s.away} @ ${s.home} · G${s.gn} · ${s.gDate}</div>
     <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--gc);margin-bottom:5px">${seriesLbl}</div>
@@ -4287,6 +4291,7 @@ function renderNBACFCards(){
 }
 function renderNBAPicks(){
   renderNBAFinalsPreview(document.getElementById('nba-finals-preview'));
+  renderNBAFinalsProps('nba-finals-props');
   const el=document.getElementById('nba-picks-list');if(!el)return;
   const picks=NBA_TONIGHT.map(g=>{
     const ht=NBA_TEAMS[g.h]||{},at=NBA_TEAMS[g.a]||{};
@@ -4324,6 +4329,35 @@ const NBA_PROPS_DATA=[
   {player:'Chet Holmgren',t:'OKC',stat:'REB',line:7.5,over:true,ml:'-110',conf:54,hitRate:'7.7/G series avg',basis:'7.7 RPG WCF series (6G) — just 0.2 above line · Holmgren battles Wemby on glass · With J.Williams out Holmgren may get more offensive touches = more REB chances · Slim but positive edge',grade:'FAIR',src:'BBRef/Model'},
   {player:'Victor Wembanyama',t:'SA',stat:'3PM',line:1.5,over:true,ml:'+115',conf:52,hitRate:'37.1% 3PT this series',basis:'Wemby shooting 37.1% from 3 (13/35 in 6G) · 2.2 3PM/G avg · OKC may sag off in G7 · Positive ML value at 52% probability',grade:'FAIR',src:'BBRef/Model'},
 ];
+// ── NBA FINALS G1 PROPS — SA vs NYK — June 3 2026 ──
+const NBA_FINALS_G1_PROPS = [
+  {player:'Victor Wembanyama',team:'SA',prop:'PTS O/U',line:28.5,over:true,conf:0.71,ml:'-125',grade:'ELITE',basis:'Wemby 31.2 PPG WCF G7. NYK allows 108 PPG but weak vs long bigs.'},
+  {player:'Victor Wembanyama',team:'SA',prop:'BLK O/U',line:2.5,over:true,conf:0.67,ml:'-118',grade:'LOCK',basis:'Wemby 3.1 BPG in playoffs. NYK drives heavy — Brunson/OG attack paint.'},
+  {player:'Jalen Brunson',team:'NY',prop:'PTS O/U',line:27.5,over:false,conf:0.62,ml:'-112',grade:'LEAN',basis:'SA Castle+Fox defensive pressure. Brunson 28 PPG but SA D elite vs guards.'},
+  {player:'Karl-Anthony Towns',team:'NY',prop:'REB O/U',line:10.5,over:true,conf:0.65,ml:'-115',grade:'LOCK',basis:'KAT 11.4 RPG in playoffs. SA board-weak without Wemby help.'},
+  {player:"De'Aaron Fox",team:'SA',prop:'AST O/U',line:7.5,over:true,conf:0.63,ml:'-110',grade:'LOCK',basis:'Fox 8.8 APG in WCF. Orchestrates SA half-court. NYK exploitable in transition.'},
+  {player:'Mikal Bridges',team:'NY',prop:'PTS O/U',line:14.5,over:true,conf:0.60,ml:'-108',grade:'LEAN',basis:'Bridges 3PT volume vs switching man D. SA switches everything.'},
+  {player:'Stephon Castle',team:'SA',prop:'PTS+AST O/U',line:24.5,over:true,conf:0.64,ml:'-115',grade:'LOCK',basis:'Castle 28pt/8ast G7. NYK transition D vulnerable. Castle elite push-pace.'},
+];
+function renderNBAFinalsProps(containerId){
+  const el=document.getElementById(containerId||'nba-finals-props');if(!el)return;
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;color:var(--gc);letter-spacing:3px;margin-bottom:10px;padding:8px 12px;background:rgba(255,221,0,.06);border:1px solid rgba(255,221,0,.3);border-radius:3px">🏆 NBA FINALS G1 — JUNE 3 2026 · SA vs NYK</div>`+
+  NBA_FINALS_G1_PROPS.map(pp=>{
+    const gc=pp.grade==='ELITE'?'var(--gc)':pp.grade==='LOCK'?'var(--nc)':'var(--ic)';
+    return`<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t)">${pp.player} <span style="font-size:11px;color:var(--t3)">(${pp.team})</span></span>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-family:var(--mono);font-size:13px;color:var(--nc)">${(pp.conf*100).toFixed(0)}%</span>
+          <span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${pp.grade}</span>
+        </div>
+      </div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--nc)">${pp.prop} · ${pp.over?'OVER':'UNDER'} ${pp.line} · ${pp.ml}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.65);margin-top:1px">${pp.basis}</div>
+      <button onclick="lockPick('SA','NYK','PROP','${pp.player.replace(/'/g,"\\'")} ${pp.prop} ${pp.over?'O':'U'}${pp.line}',${pp.conf},'${pp.ml}',${(parseFloat(pp.ml)<0?100/Math.abs(parseFloat(pp.ml))+1:parseFloat(pp.ml)/100+1).toFixed(3)},'${(new Date()).toISOString().slice(0,10)}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">LOCK</button>
+    </div>`;
+  }).join('');
+}
 function renderNBAProps(){
   const el=document.getElementById('nba-props');if(!el)return;
   const activeNBATeams=NBA_TONIGHT.flatMap(g=>[g.h,g.a]);
@@ -5822,11 +5856,30 @@ function showMidnightBanner(){
 function prepareDayEnd(){const yesterday=new Date(getMSTNow());yesterday.setDate(yesterday.getDate()-1);const yd=yesterday.toISOString().slice(0,10);const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
+function yesterday(){const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);}
 function renderHomePage(){
   const el=document.getElementById('home-picks');
   const gel=document.getElementById('home-games');
   const freeBanner=document.getElementById('free-pick-banner');
   if(!el)return;
+  // Engine Record Banner
+  const recEl=document.getElementById('home-engine-record');
+  if(recEl){
+    const sp=getP().filter(p=>p.outcome!=='pending');
+    const sw=sp.filter(p=>p.outcome==='win').length;
+    const sl=sp.filter(p=>p.outcome==='loss').length;
+    const sacc=sp.length?sw/sp.length:null;
+    const sroi=sp.length?(sp.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds||2-1)*(p.wager||100)+(p.wager||100);if(p.outcome==='push')return s+(p.wager||100);return s;},0)-sp.reduce((s,p)=>s+(p.wager||100),0))/sp.reduce((s,p)=>s+(p.wager||100),0):null;
+    let streak=0,stype='';for(let i=sp.length-1;i>=0;i--){const o=sp[i].outcome;if(!stype){stype=o;streak=1;}else if(o===stype)streak++;else break;}
+    const accColor=sacc===null?'var(--t3)':sacc>=0.56?'var(--nc)':sacc>=0.50?'var(--vc)':'var(--hc)';
+    recEl.innerHTML=`<div style="background:rgba(10,0,24,.9);border:1px solid rgba(0,240,255,.3);border-radius:3px;padding:10px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <span style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3)">ENGINE RECORD</span>
+      <span style="font-family:var(--orb);font-size:16px;font-weight:900;color:var(--t)">${sw}W-${sl}L</span>
+      <span style="font-family:var(--mono);font-size:15px;font-weight:700;color:${accColor}">${sacc!==null?(sacc*100).toFixed(1)+'%':'--'}</span>
+      <span style="font-family:var(--mono);font-size:14px;color:${sroi===null?'var(--t3)':sroi>=0?'var(--nc)':'var(--hc)'}">ROI ${sroi!==null?((sroi*100)>0?'+':''+(sroi*100).toFixed(1)+'%'):'--'}</span>
+      ${streak>0?`<span style="font-family:var(--mono);font-size:13px;padding:2px 8px;border:1px solid ${stype==='win'?'var(--nc)':'var(--hc)'};color:${stype==='win'?'var(--nc)':'var(--hc)'};border-radius:2px">${streak}${stype==='win'?'W':'L'} STREAK</span>`:''}
+    </div>`;
+  }
   const picks=[];
   // NHL picks
   try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
@@ -5857,6 +5910,7 @@ function renderHomePage(){
     }
   }catch(e){}
   picks.sort((a,b)=>b.p-a.p);
+  const topPicks=picks.filter(pk=>pk.p>=0.60).slice(0,5);
   // ── Free Pick of Day banner ─────────────────────────────────────
   if(freeBanner){
     const fp=picks[0];
@@ -5890,21 +5944,51 @@ function renderHomePage(){
     if(lastSync===todayStr){syncEl.innerHTML=`<span style="color:var(--nc)">AUTO-SYNCED TODAY</span>`;syncEl.style.display='';}
     else{syncEl.innerHTML=`<span style="color:var(--t3)">LAST SYNC: ${lastSync||'NEVER'}</span>`;syncEl.style.display='';}
   }
-  if(!picks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
+  if(!topPicks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
   else{
-    el.innerHTML=picks.slice(0,6).map((pk,i)=>{
-      const t=tier(pk.p,pk.ev2);
-      const tCol=t===3?'var(--gc)':t===2?'var(--pc)':'var(--nc)';
-      return`<div class="card" style="border-left:3px solid ${tCol};position:relative">
+    el.innerHTML=topPicks.map((pk,i)=>{
+      const glbl=pk.p>=0.72?'ELITE':pk.p>=0.63?'LOCK':'LEAN';
+      const gcol=glbl==='ELITE'?'var(--gc)':glbl==='LOCK'?'var(--nc)':'var(--ic)';
+      return`<div class="card" style="border-left:3px solid ${gcol};position:relative">
         ${i===0?'<div style="position:absolute;top:6px;right:8px;color:var(--gc);font-size:12px;letter-spacing:2px;font-family:var(--mono)">★ #1</div>':''}
-        <div style="font-family:var(--mono);color:var(--t3);font-size:13px;letter-spacing:2px;margin-bottom:4px">${pk.sport}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-family:var(--mono);color:var(--t3);font-size:13px;letter-spacing:2px">${pk.sport}</span>
+          <span style="font-family:var(--mono);font-size:9px;padding:1px 6px;border:1px solid ${gcol};color:${gcol};border-radius:2px">${glbl}</span>
+        </div>
         <div style="font-size:16px;color:var(--t2);margin-bottom:6px">${pk.mu}</div>
-        <div style="font-family:var(--orb);color:${tCol};font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:4px">${pk.pick}</div>
+        <div style="font-family:var(--orb);color:${gcol};font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:4px">${pk.pick}</div>
         <div><span style="font-size:22px;font-weight:700;color:var(--t);font-family:var(--mono)">${(pk.p*100).toFixed(1)}%</span> <span style="font-size:13px;color:var(--t3)">${pk.det}</span></div>
         ${pk.ctx?`<div style="font-size:13px;color:var(--t3);margin-top:4px;letter-spacing:1px">${pk.ctx}</div>`:''}
-        <div style="font-family:var(--mono);font-size:13px;color:${pk.ev2>=0?'var(--nc)':'var(--hc)'};margin-top:4px">EV ${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}% · ${pk.ml}</div>
+        <div style="font-family:var(--mono);font-size:13px;color:${pk.ev2>=0?'var(--nc)':'var(--hc)'};margin-top:4px">EV ${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}% · ODDS: ${pk.ml}</div>
+        <button onclick="lockPick('${pk.hA}','${pk.awA}','${pk.betType}','${pk.abbr}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}');setTimeout(renderHomePage,500)" style="margin-top:6px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(240,0,255,.06);border:1px solid rgba(240,0,255,.3);color:var(--pc);border-radius:2px;cursor:pointer">LOCK</button>
       </div>`;
     }).join('');
+  }
+  // ── Yesterday's Results ──────────────────────────────────────────
+  const yEl=document.getElementById('home-yesterday-results');
+  if(yEl){
+    const yd=yesterday();
+    const ypicks=getP().filter(p=>p.date===yd&&p.outcome!=='pending');
+    if(ypicks.length){
+      yEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">YESTERDAY'S RESULTS · ${yd}</div>`+
+      ypicks.map(p=>{const c=p.outcome==='win'?'var(--nc)':'var(--hc)';return`<div style="background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-left:2px solid ${c};border-radius:2px;padding:7px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.sport||''}</span> <span style="font-family:var(--mono);font-size:13px;color:var(--t2)">${p.betOn||''}</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${p.ml||''}</span><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${c}">${p.outcome==='win'?'✓ WIN':'✗ LOSS'}</span></div>
+      </div>`;}).join('');
+    }else{yEl.innerHTML='';}
+  }
+  // ── Past Week Wins ────────────────────────────────────────────────
+  const wEl=document.getElementById('home-week-wins');
+  if(wEl){
+    const sevenDaysAgo=new Date();sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
+    const weekWins=getP().filter(p=>p.outcome==='win'&&(p.winProb||0)>=0.60&&p.date&&new Date(p.date+'T12:00:00')>=sevenDaysAgo).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,5);
+    if(weekWins.length){
+      wEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">PAST WEEK WINS</div>`+
+      weekWins.map(p=>`<div style="background:rgba(0,240,255,.03);border:1px solid rgba(0,240,255,.15);border-left:2px solid var(--nc);border-radius:2px;padding:7px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.sport||''} · ${p.date||''}</span><div style="font-family:var(--mono);font-size:13px;color:var(--t)">${p.betOn||''}</div></div>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--nc)">✓ ${p.ml||''}</span>
+      </div>`).join('');
+    }else{wEl.innerHTML='';}
   }
   const tracker=document.getElementById('home-tracker');
   if(tracker){
@@ -10210,13 +10294,13 @@ NBA_TEAMS={
   NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
   CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
 };
-// May 19 2026: ECF Game 1 ONLY — NY vs CLE 8 PM ET. OKC vs SA G2 is May 20 (SA leads WCF 1-0, won G1 122-115 2OT).
+// June 3 2026: NBA FINALS G1 — NYK @ SA · 8 PM ET ABC · SA -120 / NYK +100
 NBA_TONIGHT=[
-  {h:'NY',a:'CLE',time:'8:00 PM ET',net:'ESPN',gn:1,ctx:'ECF — SERIES 0-0',hL:-250,aL:205,ou:217.5}
+  {h:'SA',a:'NY',hML:-120,aML:100,ou:216.5,hL:-1.5,ctx:'NBA FINALS G1 · June 3 2026 · 8 PM ET ABC · AT&T Center'}
 ];
-// NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
+// NBA_PLAYERS: Finals teams only — SA Spurs + NY Knicks
 NBA_PLAYERS=[
-  // NY Knicks (ECF)
+  // NY Knicks (NBA Finals)
   {n:'Jalen Brunson',t:'NY',ppg:30.4,rpg:4.1,apg:7.8,efg:.516,usage:33.8,rating:'ELITE'},
   {n:'Karl-Anthony Towns',t:'NY',ppg:23.8,rpg:11.4,apg:3.2,efg:.558,usage:28.1,rating:'LOCK'},
   {n:'Mikal Bridges',t:'NY',ppg:18.4,rpg:5.2,apg:3.8,efg:.528,usage:24.6,rating:'GOOD'},
@@ -10224,18 +10308,9 @@ NBA_PLAYERS=[
   {n:'Josh Hart',t:'NY',ppg:11.2,rpg:8.8,apg:4.4,efg:.502,usage:18.4,rating:'GOOD'},
   {n:'Sam Merrill',t:'NY',ppg:9.4,rpg:2.1,apg:1.2,efg:.561,usage:14.2,rating:'FAIR'},
   {n:'Mitchell Robinson',t:'NY',ppg:7.8,rpg:9.4,apg:0.8,efg:.648,usage:12.4,rating:'FAIR'},
-  // CLE Cavaliers (ECF)
-  {n:'Donovan Mitchell',t:'CLE',ppg:28.6,rpg:4.8,apg:5.2,efg:.504,usage:32.1,rating:'ELITE'},
-  {n:'James Harden',t:'CLE',ppg:19.6,rpg:5.4,apg:8.2,efg:.498,usage:29.8,rating:'GOOD'},
-  {n:'Evan Mobley',t:'CLE',ppg:17.8,rpg:9.6,apg:3.4,efg:.548,usage:24.2,rating:'LOCK'},
-  {n:'Jarrett Allen',t:'CLE',ppg:14.2,rpg:8.8,apg:1.4,efg:.612,usage:18.6,rating:'GOOD'},
-  {n:'Max Strus',t:'CLE',ppg:9.8,rpg:4.2,apg:1.6,efg:.488,usage:15.4,rating:'FAIR'},
-  // WCF teams (for reference)
-  {n:'Shai Gilgeous-Alexander',t:'OKC',ppg:32.1,rpg:5.4,apg:6.8,efg:.548,usage:34.5,rating:'ELITE'},
+  // SA Spurs (NBA Finals)
   {n:'Victor Wembanyama',t:'SA',ppg:26.8,rpg:11.2,apg:4.1,efg:.542,usage:31.2,rating:'ELITE'},
   {n:"De'Aaron Fox",t:'SA',ppg:22.4,rpg:4.2,apg:8.8,efg:.521,usage:28.6,rating:'LOCK'},
-  {n:'Jalen Williams',t:'OKC',ppg:21.4,rpg:4.8,apg:5.2,efg:.534,usage:27.4,rating:'LOCK'},
-  {n:'Chet Holmgren',t:'OKC',ppg:17.2,rpg:8.8,apg:2.6,efg:.562,usage:23.8,rating:'GOOD'},
   {n:'Stephon Castle',t:'SA',ppg:16.2,rpg:4.8,apg:5.4,efg:.511,usage:22.4,rating:'GOOD'},
 ];
 
@@ -10273,18 +10348,18 @@ NBA_BBREF={
   }
 };
 
-// NBA Playoff leaders (per game, Conference Finals eligible)
+// NBA Playoff leaders (per game, NBA Finals eligible — SA + NYK only)
 NBA_LEADERS={
-  ppg:[{n:'SGA',t:'OKC',v:32.1},{n:'Brunson',t:'NY',v:30.4},{n:'Mitchell',t:'CLE',v:28.6},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'JWilliams',t:'OKC',v:21.4},{n:'Harden',t:'CLE',v:19.6}],
-  rpg:[{n:'Wemby',t:'SA',v:11.2},{n:'KAT',t:'NY',v:11.4},{n:'Holmgren',t:'OKC',v:8.8},{n:'Mobley',t:'CLE',v:9.6},{n:'Fox',t:'SA',v:4.2},{n:'Mitchell',t:'CLE',v:4.8}],
-  apg:[{n:'Fox',t:'SA',v:8.8},{n:'Harden',t:'CLE',v:8.2},{n:'SGA',t:'OKC',v:6.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4},{n:'Mitchell',t:'CLE',v:5.2}],
-  spg:[{n:'Fox',t:'SA',v:2.4},{n:'SGA',t:'OKC',v:2.1},{n:'Mitchell',t:'CLE',v:1.8},{n:'Brunson',t:'NY',v:1.6},{n:'Bridges',t:'NY',v:1.8}],
-  bpg:[{n:'Wemby',t:'SA',v:4.1},{n:'Holmgren',t:'OKC',v:2.8},{n:'Mobley',t:'CLE',v:2.6},{n:'KAT',t:'NY',v:1.4},{n:'Bridges',t:'NY',v:1.1}],
-  fg3pg:[{n:'Brunson',t:'NY',v:2.8},{n:'SGA',t:'OKC',v:2.4},{n:'Harden',t:'CLE',v:2.4},{n:'Bridges',t:'NY',v:2.2},{n:'Castle',t:'SA',v:2.1}]
+  ppg:[{n:'Brunson',t:'NY',v:30.4},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'Bridges',t:'NY',v:18.4},{n:'Castle',t:'SA',v:16.2}],
+  rpg:[{n:'KAT',t:'NY',v:11.4},{n:'Wemby',t:'SA',v:11.2},{n:'Hart',t:'NY',v:8.8},{n:'Fox',t:'SA',v:4.2},{n:'OG',t:'NY',v:5.4}],
+  apg:[{n:'Fox',t:'SA',v:8.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4}],
+  spg:[{n:'Fox',t:'SA',v:2.4},{n:'Bridges',t:'NY',v:1.8},{n:'Brunson',t:'NY',v:1.6},{n:'Castle',t:'SA',v:1.6}],
+  bpg:[{n:'Wemby',t:'SA',v:4.1},{n:'KAT',t:'NY',v:1.4},{n:'Bridges',t:'NY',v:1.1}],
+  fg3pg:[{n:'Brunson',t:'NY',v:2.8},{n:'Bridges',t:'NY',v:2.2},{n:'Castle',t:'SA',v:2.1}]
 };
 
-// NBA ELO ratings (seeded from net rating + playoff performance)
-NBA_ELO={OKC:1680,SA:1610,NY:1590,CLE:1560};
+// NBA ELO ratings (updated post-WCF — SA WON 4-3 vs OKC, NY swept ECF)
+NBA_ELO={SA:1640,NY:1610,OKC:1660,CLE:1540};
 
 // NBA composite team score 0-100 — uses BBRef data when available
 
@@ -10732,7 +10807,7 @@ function renderScheduleTab(sport, containerId){
   else if(sport==='wnba') schedule=D.wnba?.schedule||[];
   else if(sport==='ncaa') schedule=D.ncaaBaseball?.schedule||[];
   else if(sport==='ten') schedule=D.tennis?.oddsMatches||[];
-  if(!schedule.length){el.innerHTML='<div class="empty">NO SCHEDULE DATA — SYNC TO REFRESH</div>';return;}
+  if(!schedule.length){el.innerHTML=`<div class="empty" style="padding:30px;text-align:center"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">SYNCING SCHEDULE — TAP ↻ TO REFRESH</div><button onclick="renderScheduleTab('${sport}','${containerId}')" class="btn btn-p btn-sm">↻ RETRY</button></div>`;return;}
   const byDate={};
   for(const g of schedule){
     const d=g.date||g.commence?.slice(0,10)||'';
