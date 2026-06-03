@@ -1148,6 +1148,8 @@ body{line-height:1.5}
           <button class="btn btn-o btn-sm" onclick="renderTennisScheduleOdds('all')" id="tso-all">ALL</button>
           <button class="btn btn-o btn-sm" onclick="renderTennisScheduleOdds('ATP')" id="tso-atp">ATP</button>
           <button class="btn btn-o btn-sm" onclick="renderTennisScheduleOdds('WTA')" id="tso-wta">WTA</button>
+          <button class="btn btn-o btn-sm" onclick="renderTournamentFilter('roland_garros')">🏆 RG</button>
+          <button class="btn btn-o btn-sm" onclick="renderTournamentFilter('wimbledon')">🌿 WIM</button>
           <button class="btn btn-p btn-sm" onclick="renderTennisScheduleOdds()">↻</button>
         </div>
       </div>
@@ -1190,6 +1192,7 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','form')">FORM</button>
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','serve')">SERVE</button>
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','return')">RETURN</button>
+        <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','ytd')">YTD ELO</button>
       </div>
       <div id="atp-rankings"><div class="loading"><span class="spi"></span></div></div>
     </div>
@@ -1204,6 +1207,7 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('wta','form')">FORM</button>
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('wta','serve')">SERVE</button>
         <button class="btn btn-o btn-sm" onclick="renderTennisRankings('wta','return')">RETURN</button>
+        <button class="btn btn-o btn-sm" onclick="renderTennisRankings('wta','ytd')">YTD ELO</button>
       </div>
       <div id="wta-rankings"><div class="loading"><span class="spi"></span></div></div>
     </div>
@@ -1358,6 +1362,7 @@ body{line-height:1.5}
           <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','form')">FORM</button>
           <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','serve')">SERVE</button>
           <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','return')">RETURN</button>
+          <button class="btn btn-o btn-sm" onclick="renderTennisRankings('atp','ytd')">YTD ELO</button>
         </div>
         <div id="atp-rankings-2"><div class="loading"><span class="spi"></span></div></div>
       </div>
@@ -7145,10 +7150,11 @@ function renderTennisRankings(tour,sortBy,filterStr){
     if(sortBy==='serve')return pb.serveElo-pa.serveElo;
     if(sortBy==='return')return pb.returnElo-pa.returnElo;
     if(sortBy==='rank')return pa[1].rank-pb[1].rank;
+    if(sortBy==='ytd'){const ya=pa.yElo||pa.hardElo;const yb=pb.yElo||pb.hardElo;return yb-ya;}
     return pb.hardElo-pa.hardElo;
   });
-  const surfLabel={hard:'HARD ELO',clay:'CLAY ELO',grass:'GRASS ELO',form:'FORM ELO (90D)',serve:'SERVE ELO',return:'RETURN ELO',rank:'ATP RANK'};
-  const eloFn=(p,s)=>{if(s==='clay')return p.clayElo;if(s==='grass')return p.grassElo;if(s==='form')return p.formElo;if(s==='serve')return p.serveElo;if(s==='return')return p.returnElo;return p.hardElo;};
+  const surfLabel={hard:'HARD ELO',clay:'CLAY ELO',grass:'GRASS ELO',form:'FORM ELO (90D)',serve:'SERVE ELO',return:'RETURN ELO',rank:'ATP RANK',ytd:'YTD ELO'};
+  const eloFn=(p,s)=>{if(s==='clay')return p.clayElo;if(s==='grass')return p.grassElo;if(s==='form')return p.formElo;if(s==='serve')return p.serveElo;if(s==='return')return p.returnElo;if(s==='ytd')return p.yElo||p.hardElo;return p.hardElo;};
   const eloColor=(s)=>s==='clay'?'var(--mc)':s==='grass'?'var(--nc)':s==='form'?'var(--vc)':s==='serve'?'var(--pc)':s==='return'?'var(--hc)':'var(--ic)';
   const searchId=tour==='atp'?'atp-search':'wta-search';
   const existing=document.getElementById(searchId)?.value||filterStr||'';
@@ -7169,9 +7175,9 @@ function renderTennisRankings(tour,sortBy,filterStr){
       <th onclick="renderTennisRankings('${tour}','return','${existing}')" style="cursor:pointer">RET</th>
       <th>HOLD</th><th>BRK</th><th>ACE</th>
     </tr>
-    ${players.map(([name,p],i)=>{const eloV=eloFn(p,sortBy);const ec=eloColor(sortBy);return`<tr>
+    ${players.map(([name,p],i)=>{const eloV=eloFn(p,sortBy);const ec=eloColor(sortBy);const rcDir=p.rankChange>0?'↑':p.rankChange<0?'↓':'';const rcColor=p.rankChange>0?'var(--nc)':p.rankChange<0?'var(--hc)':'var(--t3)';return`<tr>
       <td style="color:var(--t3)">${i+1}</td>
-      <td><div style="font-family:var(--orb);font-size:15px;font-weight:700;white-space:nowrap">${name}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.cty} · R${p.rank}</div></td>
+      <td><div style="font-family:var(--orb);font-size:15px;font-weight:700;white-space:nowrap">${name}${p.rankChange?`<span style="font-family:var(--mono);font-size:10px;color:${rcColor};margin-left:4px">${rcDir}${Math.abs(p.rankChange)}</span>`:''}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.cty} · R${p.rank}</div><div style="display:flex;gap:2px;margin-top:2px"><span style="font-size:8px;padding:0 3px;border:1px solid rgba(102,144,255,.4);color:var(--ic);border-radius:1px">H:${p.hardElo}</span><span style="font-size:8px;padding:0 3px;border:1px solid rgba(255,119,0,.4);color:var(--mc);border-radius:1px">C:${p.clayElo}</span><span style="font-size:8px;padding:0 3px;border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:1px">G:${p.grassElo}</span></div></td>
       <td style="color:${ec};font-weight:700">${eloV}</td>
       <td style="color:var(--ic)">${p.hardElo}</td>
       <td style="color:var(--mc)">${p.clayElo}</td>
@@ -7643,6 +7649,30 @@ function renderSlam(code){
         const evCol=b.ev>=0.08?'var(--gc)':b.ev>=0.04?'var(--nc)':'var(--vc)';
         html+=`<div class="card" style="border-left:3px solid ${evCol}"><div style="font-family:var(--mono);font-size:13px;color:var(--mc);letter-spacing:1px;margin-bottom:4px">TENNIS · CLAY · ${b.tour||'RG'}</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:var(--nc)">${b.pick||b.betOn||'—'}</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-top:3px">${b.game||b.matchup||''}</div><div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center"><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">${b.ml||b.odds||''}</span><span style="font-family:var(--mono);font-size:13px;color:${evCol}">EV +${evPct}%</span>${b.prob?`<span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${(b.prob*100).toFixed(1)}% WIN</span>`:''}</div></div>`;
       });
+      html+=`</div>`;
+    }
+    // ── Match Analysis with clay ELO projections ─────────────────
+    const allMatches=[...(rgLive.atpMatches||[]).map(m=>({...m,_tour:'ATP'})),...(rgLive.wtaMatches||[]).map(m=>({...m,_tour:'WTA'}))].filter(m=>m.state!=='post');
+    if(allMatches.length){
+      html+=`<div class="card" style="border-left:3px solid var(--mc);margin-bottom:12px"><div style="font-family:var(--mono);font-size:13px;color:var(--mc);letter-spacing:2px;margin-bottom:8px">// MATCH ANALYSIS — CLAY ELO PROJECTIONS</div>`;
+      html+=allMatches.map(m=>{
+        const p1Name=m.player1||m.p1||'';const p2Name=m.player2||m.p2||'';
+        const db1=ATP_DB[p1Name]||WTA_DB[p1Name]||{};const db2=ATP_DB[p2Name]||WTA_DB[p2Name]||{};
+        const e1=db1.clayElo||1500;const e2=db2.clayElo||1500;
+        const winP=1/(1+Math.pow(10,(e2-e1)/400));
+        const proj=winP>=0.5?p1Name:p2Name;const projP=Math.max(winP,1-winP);
+        const basis=`Clay ELO: ${p1Name} ${e1} vs ${p2Name} ${e2}. ${(projP*100).toFixed(0)}% win probability via Elo.`;
+        return`<div style="padding:7px 0;border-bottom:1px solid rgba(255,119,0,.1)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${m._tour} · ${m.round||''}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--mc)">${(projP*100).toFixed(0)}% WIN PROB</span>
+          </div>
+          <div style="font-family:var(--orb);font-size:14px;font-weight:700">${p1Name} vs ${p2Name}</div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--nc);margin-top:2px">LEAN: ${proj}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${basis}</div>
+          <button onclick="lockPick('${p1Name.replace(/'/g,"\\'")}','${p2Name.replace(/'/g,"\\'")}','ML','${proj.replace(/'/g,"\\'")}',${projP.toFixed(3)},'auto',${(projP/(1-projP)).toFixed(3)},'${(new Date()).toISOString().slice(0,10)}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,119,0,.06);border:1px solid rgba(255,119,0,.3);color:var(--mc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+        </div>`;
+      }).join('');
       html+=`</div>`;
     }
     html+=`<div style="height:8px"></div>`;
@@ -10867,6 +10897,49 @@ function renderScheduleTab(sport, containerId){
   }).join('');
 }
 
+function renderTournamentFilter(event){
+  const el=document.getElementById('tso-list');if(!el)return;
+  const D=window.__CV_DATA||{};
+  const TODAY='2026-06-03';
+  if(event==='roland_garros'){
+    const rgData=D.tennis?.rolandGarros||{};
+    const matches=[...(rgData.atpMatches||[]).map(m=>({...m,tour:'ATP'})),...(rgData.wtaMatches||[]).map(m=>({...m,tour:'WTA'}))];
+    if(!matches.length){
+      el.innerHTML=`<div class="card" style="border-left:3px solid var(--mc)">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--mc);letter-spacing:2px;margin-bottom:6px">🏆 ROLAND GARROS 2026</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t2)">May 26 – June 8, 2026 · Paris, France · Clay</div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-p btn-sm" onclick="renderSlam('fo');T('ten','slams')">VIEW DRAW &amp; ANALYSIS</button>
+          <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('roland_garros','atp')">DRAW ANALYSIS</button>
+        </div>
+      </div>`;
+    }else{
+      el.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--mc);margin-bottom:8px">🏆 ROLAND GARROS 2026 — LIVE MATCHES</div>`+
+      matches.map(m=>{
+        const live=m.state==='in';const done=m.state==='post';
+        const col=live?'var(--hc)':done?'var(--t3)':'var(--mc)';
+        return`<div class="card" style="border-left:2px solid ${col};margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:4px">${m.tour} · ${m.round||''} ${live?'● LIVE':done?'FINAL':''}</div>
+          <div style="font-family:var(--orb);font-size:15px;font-weight:700">${m.player1||m.p1||''} vs ${m.player2||m.p2||''}</div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="btn btn-p btn-sm" onclick="renderSlam('fo');T('ten','slams')">FULL DRAW</button>
+            <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('roland_garros','${m.tour.toLowerCase()}')">DRAW ANALYSIS</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }else if(event==='wimbledon'){
+    el.innerHTML=`<div class="card" style="border-left:3px solid var(--nc)">
+      <div style="font-family:var(--mono);font-size:13px;color:var(--nc);letter-spacing:2px;margin-bottom:6px">🌿 WIMBLEDON 2026</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t2)">June 29 – July 12, 2026 · London, England · Grass</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:6px">SCHEDULE NOT YET AVAILABLE · Draws released ~June 27</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-o btn-sm" onclick="renderSlam('wim');T('ten','slams')">VIEW PREVIEW</button>
+        <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('wimbledon','atp')">DRAW ANALYSIS</button>
+      </div>
+    </div>`;
+  }
+}
 function renderTennisScheduleOdds(filterTour='all'){
   const el=document.getElementById('tso-list');
   const src=document.getElementById('tso-source');
