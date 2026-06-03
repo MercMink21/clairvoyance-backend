@@ -977,6 +977,9 @@ body{line-height:1.5}
     <button class="mb" onclick="T('ovr','analytics')"><span class="mbi"></span>ANALYTICS</button>
     <button class="mb" onclick="T('ovr','history')"><span class="mbi"></span>BETS</button>
     <button class="mb" onclick="T('ovr','adaptive')"><span class="mbi"></span>ADAPTIVE</button>
+    <button class="mb" onclick="T('ovr','ats')"><span class="mbi"></span>ATS</button>
+    <button class="mb" onclick="T('ovr','teams')"><span class="mbi"></span>TEAMS</button>
+    <button class="mb" onclick="T('ovr','schedule')"><span class="mbi"></span>SCHED</button>
   </nav>
 </div>
 <!-- TENNIS -->
@@ -5978,6 +5981,7 @@ function setSub(sport,sub){
     else if(sub==='bethistory')try{renderAnalyticsBetHistory('ALL');}catch(e){}
     else if(sub==='trends')try{renderBetTrends();}catch(e){}
     else if(sub==='atsanalysis')try{renderATSTracker();}catch(e){}
+    else if(sub==='clvanalytics')try{renderAnalyticsCLV();}catch(e){}
     else if(sub==='ncaa')try{renderNCAAAnalytics();}catch(e){}
   }
   if(sport==='mlb'&&sub==='ncaa'){try{renderNCAABaseballContent();renderNCAABaseballFull();}catch(e){}}
@@ -9422,6 +9426,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{populateComparePickers();}catch(e){}
   try{renderTournamentCalendar('all');}catch(e){}
   try{renderBetAnalyticsLab();}catch(e){}
+  try{renderAnalyticsCLV();}catch(e){}
   try{renderATSTracker();}catch(e){}
   try{renderTeamResults('ALL');}catch(e){}
   try{renderUpcomingSchedule('ALL');}catch(e){}
@@ -11474,6 +11479,26 @@ function renderByTeamAnalytics(){
   if(srcEl&&el)el.innerHTML=srcEl.innerHTML;
 }
 window.renderByTeamAnalytics=renderByTeamAnalytics;
+
+function renderAnalyticsCLV(){
+  const el=document.getElementById('analytics-clv-content');if(!el)return;
+  const clvData=getCLVData?getCLVData():{};const preds=getP();
+  const entries=Object.entries(clvData).map(([id,d])=>{const pred=preds.find(p=>p.id===id);return{...d,id,outcome:pred?.outcome||'pending'};}).sort((a,b)=>b.lockedAt-a.lockedAt);
+  if(!entries.length){el.innerHTML='<div class="empty">NO CLV DATA YET — LOCK PICKS TO START TRACKING</div>';return;}
+  const settled=entries.filter(e=>e.outcome!=='pending'&&e.clv!=null);
+  const avgCLV=settled.length?settled.reduce((a,e)=>a+e.clv,0)/settled.length:null;
+  const posCLV=settled.filter(e=>e.clv>0).length;
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+    <div class="card" style="text-align:center"><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${avgCLV==null?'var(--t3)':avgCLV>=0?'var(--nc)':'var(--hc)'}">${avgCLV==null?'—':(avgCLV>=0?'+':'')+avgCLV.toFixed(1)+'%'}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">AVG CLV</div></div>
+    <div class="card" style="text-align:center"><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:var(--vc)">${settled.length?Math.round(posCLV/settled.length*100):0}%</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">POS CLV%</div></div>
+    <div class="card" style="text-align:center"><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:var(--ic)">${entries.length}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:3px">TRACKED</div></div>
+  </div>
+  <div style="display:grid;gap:4px">${entries.slice(0,30).map(e=>{const col=e.clv==null?'var(--t3)':e.clv>0?'var(--nc)':'var(--hc)';return`<div style="background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.12);border-left:2px solid ${col};border-radius:2px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-family:var(--mono);font-size:10px;color:var(--t)">${e.game||e.id}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${e.locked||''} → ${e.close||''}</div></div>
+    <div style="text-align:right"><div style="font-family:var(--orb);font-size:12px;font-weight:700;color:${col}">${e.clv==null?'PENDING':(e.clv>=0?'+':'')+e.clv.toFixed(1)+'%'}</div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${(e.outcome||'').toUpperCase()}</div></div>
+  </div>`;}).join('')}</div>`;
+}
+window.renderAnalyticsCLV=renderAnalyticsCLV;
 
 function renderBySportAnalytics(){
   const el=document.getElementById('analytics-bysport-content');if(!el)return;
