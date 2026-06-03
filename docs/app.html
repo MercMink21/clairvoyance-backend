@@ -908,6 +908,7 @@ body{line-height:1.5}
     <button class="nb" onclick="T('ovr','adaptive')">ADAPTIVE</button>
     <button class="nb" onclick="T('ovr','trends')">TRENDS</button>
     <button class="nb" onclick="T('ovr','clv')">CLV</button>
+    <button class="nb" onclick="T('ovr','visuals')">VISUALS</button>
     <button class="nb" onclick="T('ovr','futures')">FUTURES</button>
     <button class="nb" onclick="T('ovr','ats')">ATS</button>
     <button class="nb" onclick="T('ovr','teams')">TEAMS</button>
@@ -949,6 +950,10 @@ body{line-height:1.5}
       <div class="sh"><span class="nc"></span> CLOSING LINE VALUE TRACKER</div>
       <div id="ovr-clv"><div class="loading"><span class="spi"></span></div></div>
     </div>
+    <div id="ovr-tab-visuals" class="tab">
+      <div class="sh"><span class="vc"></span> ENGINE VISUALS</div>
+      <div id="ovr-visuals-content"><div class="loading"><span class="spi"></span></div></div>
+    </div>
     <div id="ovr-tab-futures" class="tab">
       <div class="sh"><span class="gc"></span> FUTURES TRACKER</div>
       <div id="ovr-futures"><div class="loading"><span class="spi"></span></div></div>
@@ -989,6 +994,7 @@ body{line-height:1.5}
     <button class="mb" onclick="T('ovr','analytics')"><span class="mbi"></span>ANALYTICS</button>
     <button class="mb" onclick="T('ovr','history')"><span class="mbi"></span>BETS</button>
     <button class="mb" onclick="T('ovr','adaptive')"><span class="mbi"></span>ADAPTIVE</button>
+    <button class="mb" onclick="T('ovr','visuals')"><span class="mbi"></span>VISUALS</button>
     <button class="mb" onclick="T('ovr','ats')"><span class="mbi"></span>ATS</button>
     <button class="mb" onclick="T('ovr','teams')"><span class="mbi"></span>TEAMS</button>
     <button class="mb" onclick="T('ovr','schedule')"><span class="mbi"></span>SCHED</button>
@@ -4786,8 +4792,12 @@ function renderOverall(){
   const lastN=[10,25,50,75,100];
   const lastNData=lastN.map(n=>{const s=settled.slice(-n);const w=s.filter(p=>p.outcome==='win').length;const u=s.reduce((acc,p)=>{if(p.outcome==='win')return acc+(p.decOdds||2)-1;if(p.outcome==='loss')return acc-1;return acc;},0);return{n,w,l:s.length-w,acc:s.length?w/s.length:null,units:u,total:s.length};});
   // By sport
-  const sports=['MLB','NHL','NBA','TEN'];
+  const sports=['MLB','NHL','NBA','TEN','F1','NCAAB','WNBA'];
   const bySport={};sports.forEach(s=>{const sp=settled.filter(p=>p.sport===s);bySport[s]={w:sp.filter(p=>p.outcome==='win').length,l:sp.filter(p=>p.outcome==='loss').length,n:sp.length};});
+  // Engine calibration score: average |expected - actual| across confidence bands (lower = better)
+  const calBandsAll=[{min:.50,max:.60},{min:.60,max:.70},{min:.70,max:.80},{min:.80,max:1}];
+  const calScoreParts=calBandsAll.map(b=>{const bp=settled.filter(p=>p.winProb>=b.min&&p.winProb<b.max);if(bp.length<3)return null;const act=bp.filter(p=>p.outcome==='win').length/bp.length;const exp=(b.min+Math.min(b.max,.99))/2;return Math.abs(act-exp);}).filter(v=>v!==null);
+  const engHealth=calScoreParts.length?1-calScoreParts.reduce((a,v)=>a+v,0)/calScoreParts.length:null;
   // By bet type
   const types=['ML','OU','RL','PL','PARLAY','PROP','NRFI'];
   const byType={};types.forEach(t=>{const tp=settled.filter(p=>p.betType===t);byType[t]={w:tp.filter(p=>p.outcome==='win').length,l:tp.filter(p=>p.outcome==='loss').length,n:tp.length};});
@@ -4813,9 +4823,10 @@ function renderOverall(){
   ${recentFifteen.length?`<div class="card" style="margin-bottom:12px;padding:9px 12px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin-bottom:7px">RECENT FORM (LAST ${recentFifteen.length})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${formDots}</div></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY SPORT</div>
-      ${sports.map(s=>{const d=bySport[s];const a=d.n?d.w/d.n:null;return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-family:var(--orb);font-size:15px;font-weight:700">${s}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:14px;color:${a===null?'var(--t3)':a>=.55?'var(--nc)':'var(--hc)'}">${a===null?'--':(a*100).toFixed(0)+'%'}</span></div>`;}).join('')}
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">PENDING</span><span style="font-family:var(--mono);font-size:14px;color:var(--gc)">${pending.length} ACTIVE</span></div>
+      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY ENGINE</div>
+      ${sports.map(s=>{const d=bySport[s];if(!d.n)return'';const a=d.n?d.w/d.n:null;return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-family:var(--orb);font-size:15px;font-weight:700">${s}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:14px;color:${a===null?'var(--t3)':a>=.55?'var(--nc)':'var(--hc)'}">${a===null?'--':(a*100).toFixed(0)+'%'}</span></div>`;}).join('')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">ENGINE HEALTH</span><span style="font-family:var(--mono);font-size:14px;color:${engHealth===null?'var(--t3)':engHealth>=.90?'var(--nc)':engHealth>=.80?'var(--vc)':'var(--hc)'}">${engHealth===null?'--':(engHealth*100).toFixed(0)+'%'}</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">PENDING</span><span style="font-family:var(--mono);font-size:14px;color:var(--gc)">${pending.length} ACTIVE</span></div>
     </div>
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY BET TYPE</div>
@@ -4866,6 +4877,74 @@ function renderOverall(){
 }
 
 // ─── OVERALL ANALYTICS ───────────────────────────────────────────────────────
+function renderOverallVisuals(){
+  const el=document.getElementById('ovr-visuals-content');if(!el)return;
+  const settled=getP().filter(p=>p.outcome!=='pending');
+  if(settled.length<5){el.innerHTML='<div class="empty">NEED 5+ SETTLED BETS FOR VISUALS</div>';return;}
+  // 1. P&L Equity Curve
+  const W=340,H=100,PAD=20;
+  let equity=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')equity+=(p.decOdds||2)-1;else if(p.outcome==='loss')equity-=1;return equity;})];
+  const minV=Math.min(...pts),maxV=Math.max(...pts),range=maxV-minV||1;
+  const px=(i)=>PAD+i*(W-2*PAD)/(pts.length-1||1);
+  const py=(v)=>PAD+(1-(v-minV)/range)*(H-2*PAD);
+  const path=pts.map((v,i)=>`${i===0?'M':'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  const fillPath=path+` L${px(pts.length-1).toFixed(1)},${H-PAD} L${PAD},${H-PAD} Z`;
+  const zeroY=py(0).toFixed(1);
+  const equitySVG=`<svg width="${W}" height="${H}" style="display:block">
+    <defs><filter id="glow1"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00f0ff" stop-opacity=".25"/><stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/></linearGradient></defs>
+    <path d="${fillPath}" fill="url(#eg)"/>
+    <line x1="${PAD}" y1="${zeroY}" x2="${W-PAD}" y2="${zeroY}" stroke="#ff2090" stroke-width="1" stroke-dasharray="4,3" opacity=".6"/>
+    <path d="${path}" fill="none" stroke="#00f0ff" stroke-width="2" filter="url(#glow1)"/>
+    <circle cx="${px(pts.length-1).toFixed(1)}" cy="${py(pts[pts.length-1]).toFixed(1)}" r="3" fill="${pts[pts.length-1]>=0?'#00f0ff':'#ff2090'}" filter="url(#glow1)"/>
+  </svg>`;
+  // 2. Win Rate by Sport
+  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TEN:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff'};
+  const sData=['MLB','NHL','NBA','TEN','F1','WNBA'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};}).filter(d=>d.n>0);
+  const barW=260,barH=sData.length*22+10;
+  const barSVG=`<svg width="${barW}" height="${barH}">
+    ${sData.map((d,i)=>{const bw=(d.pct||0)*(barW-80);const col=sportColors[d.s]||'var(--nc)';return`<g transform="translate(0,${i*22})">
+      <text x="38" y="15" font-family="Share Tech Mono" font-size="11" fill="rgba(200,180,255,.7)" text-anchor="end">${d.s}</text>
+      <rect x="42" y="4" width="${bw.toFixed(0)}" height="13" fill="${col}" opacity=".7" rx="1"/>
+      <text x="${42+bw+4}" y="15" font-family="Share Tech Mono" font-size="11" fill="${col}">${d.pct!==null?(d.pct*100).toFixed(0)+'%':''}</text>
+    </g>`}).join('')}
+  </svg>`;
+  // 3. Win Rate by Day of Week
+  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const dayData=days.map((d,i)=>{const dp=settled.filter(p=>{if(!p.lockedAt&&!p.date)return false;const dt=p.lockedAt?new Date(p.lockedAt):new Date(p.date+'T12:00:00');return(dt.getDay()+6)%7===i;});const w=dp.filter(p=>p.outcome==='win').length;return{d,n:dp.length,w,pct:dp.length?w/dp.length:null};});
+  const dW=300,dH=80,dBarW=36,dPad=4;
+  const daySVG=`<svg width="${dW}" height="${dH}">
+    ${dayData.map((d,i)=>{const bh=d.pct!==null?d.pct*(dH-30):0;const col=d.pct===null?'#444':d.pct>=.55?'#00f0ff':d.pct>=.50?'#ffdd00':'#ff2090';const x=i*(dBarW+dPad)+4;return`<g>
+      <rect x="${x}" y="${dH-25-bh.toFixed(0)}" width="${dBarW}" height="${bh.toFixed(0)}" fill="${col}" opacity=".75" rx="1"/>
+      <text x="${x+dBarW/2}" y="${dH-10}" font-family="Share Tech Mono" font-size="9" fill="rgba(200,180,255,.6)" text-anchor="middle">${d.d}</text>
+      <text x="${x+dBarW/2}" y="${dH-28-bh}" font-family="Share Tech Mono" font-size="9" fill="${col}" text-anchor="middle">${d.pct!==null?(d.pct*100).toFixed(0)+'%':''}</text>
+    </g>`}).join('')}
+  </svg>`;
+  // 4. Bet Type Donut
+  const typeColors=['#00f0ff','#ff2090','#bbff00','#f000ff','#ffdd00'];
+  const tData=['ML','OU','RL','PROP','PARLAY'].map((t,i)=>{const n=settled.filter(p=>p.betType===t).length;return{t,n,col:typeColors[i]};}).filter(d=>d.n>0);
+  const total=tData.reduce((s,d)=>s+d.n,0)||1;
+  let angle=0;const cx=50,cy=50,r=35,ri=20;
+  const donutArcs=tData.map(d=>{const a=(d.n/total)*2*Math.PI;const x1=cx+r*Math.sin(angle),y1=cy-r*Math.cos(angle),x2=cx+r*Math.sin(angle+a),y2=cy-r*Math.cos(angle+a);const xi1=cx+ri*Math.sin(angle),yi1=cy-ri*Math.cos(angle),xi2=cx+ri*Math.sin(angle+a),yi2=cy-ri*Math.cos(angle+a);const large=a>Math.PI?1:0;const arc=`M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${large},0 ${xi1.toFixed(1)},${yi1.toFixed(1)} Z`;angle+=a;return`<path d="${arc}" fill="${d.col}" opacity=".85"/>`;}).join('');
+  const donutLegend=tData.map((d,i)=>`<text x="108" y="${14+i*14}" font-family="Share Tech Mono" font-size="10" fill="${d.col}">■ ${d.t} (${d.n})</text>`).join('');
+  const donutSVG=`<svg width="220" height="100"><g>${donutArcs}</g>${donutLegend}</svg>`;
+  // 5. Rolling 10-bet win rate
+  const r10=settled.slice(-30);const roll10=[];for(let i=9;i<r10.length;i++){const sl=r10.slice(i-9,i+1);roll10.push(sl.filter(p=>p.outcome==='win').length/10);}
+  const rW=300,rH=80,rPad=10;
+  const rPath=roll10.length?roll10.map((v,i)=>`${i===0?'M':'L'}${(rPad+i*(rW-2*rPad)/(roll10.length-1||1)).toFixed(1)},${(rPad+(1-v)*(rH-2*rPad)).toFixed(1)}`).join(' '):'';
+  const r10SVG=`<svg width="${rW}" height="${rH}">
+    <defs><filter id="glow2"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <line x1="${rPad}" y1="${(rPad+(1-.55)*(rH-2*rPad)).toFixed(1)}" x2="${rW-rPad}" y2="${(rPad+(1-.55)*(rH-2*rPad)).toFixed(1)}" stroke="#ffdd00" stroke-width="1" stroke-dasharray="4,3" opacity=".5"/>
+    ${rPath?`<path d="${rPath}" fill="none" stroke="#bbff00" stroke-width="2" filter="url(#glow2)"/>`:'<text x="50" y="40" font-family="Share Tech Mono" font-size="11" fill="rgba(200,180,255,.5)">NEED 10+ BETS</text>'}
+  </svg>`;
+  const card=(title,col,svg,note='')=>`<div class="card" style="border-left:3px solid ${col};margin-bottom:12px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:${col};margin-bottom:8px">${title}</div><div style="overflow-x:auto;background:rgba(5,0,15,.6);border-radius:2px;padding:8px">${svg}</div>${note?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:6px">${note}</div>`:''}</div>`;
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0">`+
+    card('P&L EQUITY CURVE','var(--nc)',equitySVG,`TOTAL: ${pts[pts.length-1]>=0?'+':''}${pts[pts.length-1].toFixed(1)} UNITS`)+
+    card('WIN RATE BY ENGINE','var(--hc)',barSVG)+
+    card('WIN RATE BY DAY','var(--vc)',daySVG,'GREEN ≥55% · YELLOW 50-55% · RED &lt;50%')+
+    card('BET TYPE BREAKDOWN','var(--pc)',donutSVG)+
+    card('ROLLING 10-BET WIN RATE','var(--gc)',r10SVG,'YELLOW LINE = 55% THRESHOLD')+'</div>';
+}
 function renderOverallAnalytics(filterUpdate){
   const el=document.getElementById('ovr-analytics');if(!el)return;
   if(!window._alyF)window._alyF={sport:'ALL',type:'ALL',range:'ALL',drill:null};
@@ -5559,6 +5638,34 @@ el.innerHTML=reasonHtml+`
     ${bestDay?`<div style="font-family:var(--mono);font-size:12px;color:#00f0ff;margin-bottom:6px">BEST DAY: ${bestDay.d} — ${(bestDay.acc*100).toFixed(0)}% win rate (${bestDay.n} bets)</div>`:''}
     ${worstDay&&worstDay.d!==bestDay?.d?`<div style="font-family:var(--mono);font-size:12px;color:#ff2090">WORST DAY: ${worstDay.d} — ${((worstDay.acc||0)*100).toFixed(0)}% win rate (${worstDay.n} bets)</div>`:''}
   </div>`;
+  // ── D3 Self-Assessment ──────────────────────────────────────────
+  const spAll=['MLB','NHL','NBA','TEN','F1'];
+  const spStats=spAll.map(s=>{const sp=all.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:0};}).filter(d=>d.n>=3);
+  const bestSp=spStats.sort((a,b)=>b.pct-a.pct)[0];
+  const worstSp=[...spStats].sort((a,b)=>a.pct-b.pct)[0];
+  const typeSt=['ML','OU','RL','PROP','PARLAY'].map(t=>{const tp=all.filter(p=>p.betType===t);const w=tp.filter(p=>p.outcome==='win').length;const roi=tp.length?(tp.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0)/tp.length):0;return{t,n:tp.length,w,roi};}).filter(d=>d.n>=3);
+  const bestType=typeSt.sort((a,b)=>b.roi-a.roi)[0];
+  const last5losses=all.filter(p=>p.outcome==='loss').slice(-5).reverse();
+  const lossAnalysis=last5losses.map(p=>{const factors=[];if((p.winProb||0)<0.55)factors.push('low-conf bet');if(p.hA===p.betOn)factors.push('home team');if(p.ml&&parseFloat(p.ml)>0)factors.push('underdog pick');return{p,factors};});
+  el.innerHTML+=`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(0,240,255,.3);border-radius:3px;padding:12px;margin-top:10px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--nc);letter-spacing:2px;margin-bottom:10px">// SELF-ASSESSMENT</div>
+    ${bestSp?`<div style="font-family:var(--mono);font-size:13px;color:var(--nc);margin-bottom:4px">MY STRONGEST ENGINE: <span style="color:var(--gc)">${bestSp.s}</span> — ${(bestSp.pct*100).toFixed(0)}% win rate (${bestSp.n} bets)</div>`:''}
+    ${worstSp&&worstSp.s!==bestSp?.s?`<div style="font-family:var(--mono);font-size:13px;color:var(--hc);margin-bottom:4px">MY WEAKEST ENGINE: <span style="color:var(--hc)">${worstSp.s}</span> — ${(worstSp.pct*100).toFixed(0)}% win rate (${worstSp.n} bets)</div>`:''}
+    ${bestType?`<div style="font-family:var(--mono);font-size:13px;color:var(--vc);margin-bottom:8px">BEST BET TYPE: <span style="color:var(--vc)">${bestType.t}</span> — ROI ${bestType.roi>=0?'+':''}${(bestType.roi*100).toFixed(1)}% per bet</div>`:''}
+  </div>
+  ${lossAnalysis.length?`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(255,32,144,.3);border-radius:3px;padding:12px;margin-top:10px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--hc);letter-spacing:2px;margin-bottom:10px">// LOSS ANALYSIS — LAST 5</div>
+    ${lossAnalysis.map(({p,factors})=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,32,144,.08);font-family:var(--mono);font-size:12px">
+      <span style="color:var(--t3)">${p.sport||''}</span> · <span style="color:var(--t)">${p.betOn||''}</span> · <span style="color:var(--hc)">LOSS</span> · <span style="color:var(--t3)">${p.date||''}</span>
+      <div style="color:rgba(220,190,255,.5);font-size:11px;margin-top:2px">POSSIBLE FACTORS: ${factors.length?factors.join(', '):'none identified'}</div>
+    </div>`).join('')}
+  </div>`:''}
+  <div style="background:rgba(10,4,24,.9);border:1px solid rgba(187,255,0,.3);border-radius:3px;padding:12px;margin-top:10px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--vc);letter-spacing:2px;margin-bottom:10px">// RECOMMENDED ADJUSTMENTS</div>
+    ${bestSp?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">INCREASE allocation to <span style="color:var(--nc)">${bestSp.s}</span> bets — above-average win rate.</div>`:''}
+    ${worstSp&&worstSp.s!==bestSp?.s?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">REDUCE exposure to <span style="color:var(--hc)">${worstSp.s}</span> until calibration improves.</div>`:''}
+    ${bestType?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">PRIORITIZE ${bestType.t} bets — best ROI per unit wagered.</div>`:''}
+  </div>`;
 }
 
 // ═══ INSTANT CALIBRATION TRIGGER ══════════════════════════════════════════
@@ -6076,7 +6183,7 @@ function SS(s){
   if(s==='ten'){_t(renderTennisPicks);_t(renderTennisToday);}
   if(s==='f1'){_t(renderF1Schedule);_t(renderF1Drivers);}
   if(s==='live'){_t(startNHLLive);_t(startNBALive);_t(startTennisLive);}
-  if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);}
+  if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);_t(renderOverallVisuals);}
   if(s==='social'){_t(renderIntelCards);}
   if(s==='analytics'){_t(renderAnalyticsMLB);}
   if(s==='news'){_t(renderNewsAll);}
@@ -6190,7 +6297,7 @@ function T(sport,tabId){
     }
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}if(tabId==='schedule')renderScheduleTab('nba','nba-schedule-list');
-  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')renderOverallAnalytics();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')renderOverallTrends();if(tabId==='clv')renderCLVTab();if(tabId==='futures')renderFuturesTab();if(tabId==='ten')renderTennisOverall();if(tabId==='ats')try{renderATSTracker();}catch(e){};if(tabId==='teams')try{renderTeamResults('ALL');}catch(e){};if(tabId==='schedule')try{renderUpcomingSchedule('ALL');}catch(e){};}
+  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')renderOverallAnalytics();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')renderOverallTrends();if(tabId==='clv')renderCLVTab();if(tabId==='visuals')renderOverallVisuals();if(tabId==='futures')renderFuturesTab();if(tabId==='ten')renderTennisOverall();if(tabId==='ats')try{renderATSTracker();}catch(e){};if(tabId==='teams')try{renderTeamResults('ALL');}catch(e){};if(tabId==='schedule')try{renderUpcomingSchedule('ALL');}catch(e){};}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}
@@ -8865,17 +8972,25 @@ function renderCLVTab(){
         <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6);margin-top:3px">CLV WIN RATE</div>
       </div>
     </div>`:''}
+    <div style="background:rgba(10,0,24,.8);border:1px solid rgba(0,240,255,.2);border-radius:2px;padding:8px 12px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6);line-height:1.8">CLV TRACKING NOTE: Real-time closing line integration coming — currently uses outcome-adjusted simulation<br><span style="color:rgba(220,190,255,.4)">WIN bets: closing line simulated slightly worse (market moved away) · LOSS bets: simulated slightly better (market had info)</span></div>
     <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6);letter-spacing:2px;margin-bottom:8px">// ALL TRACKED BETS</div>
     ${entries.map(e=>{
-      const col=e.clv!=null?(e.clv>0?'#00f0ff':'#ff2090'):'rgba(220,190,255,.4)';
+      // Simulate closing line if not available
+      let simClose=e.closingML;
+      if(simClose==null&&e.openML!=null&&e.outcome!=='pending'){
+        const shift=e.outcome==='win'?-5:5;
+        simClose=parseInt(e.openML)+shift;
+      }
+      const simCLV=e.clv!=null?e.clv:(simClose!=null&&e.openML!=null?(()=>{const dOpen=e.openML<0?1+100/Math.abs(e.openML):1+e.openML/100;const dClose=simClose<0?1+100/Math.abs(simClose):1+simClose/100;return+((dOpen-dClose)/dClose*100).toFixed(1);})():null);
+      const col=simCLV!=null?(simCLV>0?'#00f0ff':'#ff2090'):'rgba(220,190,255,.4)';
       const oc=e.outcome==='win'?'#00f0ff':e.outcome==='loss'?'#ff2090':e.outcome==='push'?'#bbff00':'rgba(220,190,255,.5)';
       return`<div style="background:rgba(10,4,24,.88);border:1px solid rgba(240,0,255,.15);border-left:3px solid ${col};border-radius:2px;padding:10px;margin-bottom:7px">
         <div style="display:flex;justify-content:space-between;align-items:start">
           <div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6)">${e.sport} · ${e.game||''}</div>
           <div style="font-family:'Orbitron',sans-serif;font-size:12px;color:var(--t);margin-top:2px">${e.betOn}</div>
-          <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6);margin-top:2px">OPEN: <span style="color:rgba(220,190,255,.9)">${e.openML||'?'}</span>${e.closingML?` · CLOSE: <span style="color:rgba(220,190,255,.9)">${e.closingML}</span>`:' · CLOSE: pending'}</div></div>
+          <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6);margin-top:2px">OPEN: <span style="color:rgba(220,190,255,.9)">${e.openML||'?'}</span>${simClose!=null?` · CLOSE: <span style="color:rgba(220,190,255,.9)">${simClose}${e.closingML==null?' (sim)':''}</span>`:' · CLOSE: pending'}</div></div>
           <div style="text-align:right;flex-shrink:0;margin-left:10px">
-            ${e.clv!=null?`<div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:${col}">${e.clv>0?'+':''}${e.clv}%</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.5)">CLV</div>`:'<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4)">PENDING</div>'}
+            ${simCLV!=null?`<div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:${col}">${simCLV>0?'+':''}${simCLV}%</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.5)">${e.clv!=null?'CLV':'CLV (SIM)'}</div>`:'<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4)">PENDING</div>'}
             <div style="font-family:var(--mono);font-size:11px;color:${oc};margin-top:4px">${e.outcome?.toUpperCase()||'PENDING'}</div>
           </div>
         </div>
