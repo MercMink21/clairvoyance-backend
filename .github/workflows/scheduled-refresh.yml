@@ -1,18 +1,20 @@
-name: Manual Data Sync
+name: Scheduled Data Refresh
 
 on:
+  schedule:
+    # 09:00 MT = 15:00 UTC (MDT) / 16:00 UTC (MST)
+    - cron: '0 15 * * *'
+    # 15:00 MT = 21:00 UTC (MDT) / 22:00 UTC (MST)
+    - cron: '0 21 * * *'
+    # 23:00 MT = 05:00 UTC next day (MDT) / 06:00 UTC (MST)
+    - cron: '0 5 * * *'
   workflow_dispatch:
-    inputs:
-      triggered_by:
-        description: 'Who triggered this sync'
-        required: false
-        default: 'sync-button'
 
 permissions:
   contents: write
 
 jobs:
-  sync:
+  refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -37,7 +39,7 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           TZ: America/Denver
         run: |
-          python scripts/clairvoyance_update.py --no-linemate --verbose
+          python scripts/clairvoyance_update.py --no-linemate
         timeout-minutes: 15
 
       - name: Commit and push data
@@ -45,5 +47,5 @@ jobs:
           git config user.name  "Clairvoyance Bot"
           git config user.email "bot@clairvoyance"
           git add docs/data.json docs/live_data.json docs/social_copy.json data/ || true
-          git diff --cached --quiet || git commit -m "sync: on-demand refresh $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git diff --cached --quiet || git commit -m "auto-refresh: $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push || echo "Nothing to push"

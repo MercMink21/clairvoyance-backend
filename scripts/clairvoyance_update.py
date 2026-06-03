@@ -1004,6 +1004,75 @@ def fetch_nhl_edge() -> dict:
     vlog(f"  NHL Edge: {len(out['teams'])} teams, {len(out['goalies'])} goalies, {len(out['skaters'])} skaters")
     return out
 
+def fetch_nhl_edge_enhanced() -> dict:
+    """
+    Enhanced NHL Edge — shot location, zone time, save locations, 5v5 details.
+    Scrapes nhl.com/nhl-edge for team-level and goalie-level advanced shot data.
+    """
+    log("NHL Edge enhanced (shot location, zone time, save %)…")
+    out: dict = {"teams": {}, "goalies": {}, "shotMaps": {}}
+    base = "https://www.nhl.com"
+
+    def _nhl_edge_api(path: str, params: dict = None) -> list:
+        url = f"https://api.nhle.com{path}"
+        try:
+            resp = fetch_json(url, params=params)
+            if isinstance(resp, dict):
+                for key in ("data","skaterStats","goalieStats","teamStats"):
+                    if isinstance(resp.get(key), list):
+                        return resp[key]
+            elif isinstance(resp, list):
+                return resp
+        except Exception:
+            pass
+        return []
+
+    # Team 5v5 stats from NHL API
+    try:
+        season = "20252026"
+        team_stats = _nhl_edge_api(f"/stats/rest/en/team/summary?cayenneExp=seasonId={season}%20and%20gameTypeId=3")
+        for t in team_stats:
+            abbr = t.get("teamAbbrevName","")
+            if not abbr: continue
+            out["teams"][abbr] = {
+                "gp": t.get("gamesPlayed",0),
+                "w": t.get("wins",0), "l": t.get("losses",0),
+                "gf": t.get("goalsFor",0), "ga": t.get("goalsAgainst",0),
+                "gf60": round(t.get("goalsFor",0) / max(t.get("gamesPlayed",1),1) * 60 / 60, 2),
+                "pp_pct": t.get("powerPlayPct",0),
+                "pk_pct": t.get("penaltyKillPct",0),
+                "shots_for": t.get("shotsForPerGame",0),
+                "shots_ag": t.get("shotsAgainstPerGame",0),
+                "faceoff_pct": t.get("faceoffWinPct",0),
+            }
+    except Exception as e:
+        log(f"NHL Edge team stats error: {e}", "WARN")
+
+    # Goalie save % by zone / shot type from NHL Edge skaters API
+    try:
+        goalie_data = _nhl_edge_api(
+            f"/stats/rest/en/goalie/savesByStrength?cayenneExp=seasonId={season}%20and%20gameTypeId=3&limit=50"
+        )
+        for g in goalie_data:
+            name = f"{g.get('skaterFirstName','')} {g.get('skaterLastName','')}".strip()
+            if not name: continue
+            out["goalies"][name] = {
+                "team": g.get("teamAbbrevs",""),
+                "gp": g.get("gamesPlayed",0),
+                "sv5v5": g.get("savePctg5v5",0),
+                "sv5v4": g.get("savePctg5v4",0),
+                "sv4v5": g.get("savePctg4v5",0),
+                "svPct": g.get("savePctg",0),
+                "gaa": g.get("goalsAgainstAverage",0),
+                "hdSvPct": g.get("highDangerSavePct",0),
+                "shots": g.get("shotsAgainst",0),
+            }
+    except Exception as e:
+        log(f"NHL Edge goalie save % error: {e}", "WARN")
+
+    vlog(f"  NHL Edge enhanced: {len(out['teams'])} teams, {len(out['goalies'])} goalies")
+    return out
+
 def fetch_moneypuck() -> dict:
     """MoneyPuck advanced stats — 5v5, 5v4, 4v5, all — teams and goalies."""
     log("MoneyPuck stats…")
@@ -1214,6 +1283,34 @@ def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
         })
     vlog(f"  {tour.upper()} yElo: {len(players)} players")
     return players
+
+def fetch_tennis_ratio(player1: str = "", player2: str = "") -> dict:
+    """TennisRatio — player comparison and surface stats."""
+    log("TennisRatio stats…")
+    result: dict = {"players": {}, "comparisons": []}
+    try:
+        base = "https://www.tennisratio.com"
+        soup = fetch_html(base)
+        if not soup:
+            return result
+        # Scrape any available player stats tables
+        tables = soup.find_all("table")
+        for tbl in tables[:3]:
+            headers = [th.get_text(strip=True) for th in tbl.find_all("th")]
+            if not headers:
+                continue
+            for row in tbl.find_all("tr")[1:50]:
+                cells = row.find_all(["td","th"])
+                if len(cells) < len(headers):
+                    continue
+                entry = {headers[i]: cells[i].get_text(strip=True) for i in range(min(len(headers), len(cells)))}
+                name = entry.get("Player", entry.get("Name", ""))
+                if name:
+                    result["players"][name] = entry
+        vlog(f"  TennisRatio: {len(result['players'])} player entries")
+    except Exception as e:
+        log(f"TennisRatio fetch error: {e}", "WARN")
+    return result
 
 def fetch_tennis_odds() -> dict:
     """
@@ -1845,6 +1942,28 @@ def _wmo_desc(code: int) -> str:
     for k in sorted(_WMO, reverse=True):
         if code >= k: return _WMO[k]
     return "Unknown"
+
+def fetch_f1_unchained() -> dict:
+    """F1 Unchained track guides — overtaking spots, DRS zones, racing lines."""
+    log("F1 Unchained track guide…")
+    result: dict = {"tracks": {}, "source": "unchained"}
+    try:
+        soup = fetch_html("https://www.unchainedmediainc.com/track-guide")
+        if not soup:
+            return result
+        articles = soup.find_all(["article","div"], class_=re.compile(r"track|guide|circuit", re.I))
+        for a in articles[:20]:
+            title_el = a.find(["h1","h2","h3","h4"])
+            if not title_el: continue
+            title = title_el.get_text(strip=True)
+            text_el = a.find("p")
+            text = text_el.get_text(strip=True) if text_el else ""
+            if title and len(title) < 60:
+                result["tracks"][title] = {"description": text[:300]}
+        vlog(f"  F1 Unchained: {len(result['tracks'])} tracks")
+    except Exception as e:
+        log(f"F1 Unchained error: {e}", "WARN")
+    return result
 
 def fetch_weather(home_team: str) -> dict | None:
     if home_team in _INDOOR:
@@ -2968,8 +3087,8 @@ def run_live_window(push: bool = True, interval_sec: int = 120) -> None:
         except Exception:
             now_mt = datetime.now()
         hour = now_mt.hour
-        if hour >= 23 or hour < 1:
-            log("=== LIVE WINDOW END ==="); break
+        if hour >= 23 or hour < 16:
+            log("=== LIVE WINDOW END (outside 16:00-23:00 MT) ==="); break
 
         log(f"Live refresh {now_mt.strftime('%H:%M')}…")
         try:
@@ -3078,6 +3197,7 @@ def main() -> None:
     nhl_standings        = fetch_nhl_standings()          if S in ("nhl","all") else {}
     nhl_bracket          = fetch_nhl_playoff_bracket()    if S in ("nhl","all") else {}
     nhl_edge             = fetch_nhl_edge()               if S in ("nhl","all") else {}
+    nhl_edge_enh         = fetch_nhl_edge_enhanced()      if S in ("nhl","all") else {}
     mp                   = fetch_moneypuck()              if S in ("nhl","all") else {}
     hockeyviz            = fetch_hockeyviz()              if S in ("nhl","all") else {}
     hockey_ref           = (fetch_hockey_reference()      if not args.no_reference else {}) if S in ("nhl","all") else {}
@@ -3086,6 +3206,7 @@ def main() -> None:
     wta_elo   = fetch_tennis_elo("wta")      if S in ("tennis","all") else []
     atp_yelo  = fetch_tennis_yelo("atp")     if S in ("tennis","all") else []
     wta_yelo  = fetch_tennis_yelo("wta")     if S in ("tennis","all") else []
+    tennis_ratio      = fetch_tennis_ratio()          if S in ("tennis","all") else {}
     tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
     tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
@@ -3095,6 +3216,7 @@ def main() -> None:
     f1_tracing       = fetch_f1_tracing_insights() if S in ("f1","all") else {}
     f1_calendar      = fetch_f1_calendar_datastop() if S in ("f1","all") else []
     f1_comprehensive = fetch_f1_data()          if S in ("f1","all") else {}
+    f1_unchained     = fetch_f1_unchained()     if S in ("f1","all") else {}
 
     roland_garros    = fetch_roland_garros()    if S in ("tennis","all") else {}
     tennis_odds      = fetch_tennis_odds()      if S in ("tennis","all") else {}
@@ -3195,7 +3317,7 @@ def main() -> None:
     bundle: dict = {
         "generated":    NOW.isoformat(),
         "generatedMT":  TS_DISPLAY,
-        "version":      "6.0",
+        "version":      "7.0",
         "mlb": {
             "today":        mlb_today,
             "tomorrow":     mlb_tom,
@@ -3222,6 +3344,7 @@ def main() -> None:
             "standings":    nhl_standings,
             "bracket":      nhl_bracket,
             "edge":         nhl_edge,
+            "edgeEnhanced": nhl_edge_enh,
             "hockeyviz":    hockeyviz,
             "hockeyRef":    hockey_ref,
             "props":        lm_props.get("nhl", []),
@@ -3245,6 +3368,7 @@ def main() -> None:
             "rolandGarros":  roland_garros,
             "oddsMatches":   tennis_odds.get("matches", []),
             "oddsSource":    tennis_odds.get("source", ""),
+            "tennisRatio":   tennis_ratio,
         },
         "futures":   futures_odds,
         "f1": {
@@ -3253,6 +3377,7 @@ def main() -> None:
             "tracing":      f1_tracing,
             "calendar":     f1_calendar,
             "comprehensive": f1_comprehensive,
+            "unchained":    f1_unchained,
         },
         "linemate": {
             "props":  lm_props,

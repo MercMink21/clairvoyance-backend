@@ -58,7 +58,7 @@ fi
 # ── run ───────────────────────────────────────────────────────────────────────
 echo ""                                                              | tee -a "$LOG_FILE"
 echo "════════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"
-echo "[$(date +%H:%M:%S)] Clairvoyance v5.0  args: $*"            | tee -a "$LOG_FILE"
+echo "[$(date +%H:%M:%S)] Clairvoyance v7.0  args: $*"            | tee -a "$LOG_FILE"
 echo "════════════════════════════════════════════════════════════" | tee -a "$LOG_FILE"
 
 cd "$REPO_DIR"
