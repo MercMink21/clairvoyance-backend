@@ -447,7 +447,11 @@ body{line-height:1.5}
       <div class="sg">
         <div class="sgt">// SYNC — GITHUB TOKEN</div>
         <div id="gh-token-status" style="font-family:var(--mono);font-size:9px;margin-bottom:8px;color:var(--t3)"></div>
-        <button class="btn btn-p btn-sm" onclick="openTokenModal()">CONFIGURE GITHUB TOKEN</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button class="btn btn-p btn-sm" onclick="openTokenModal()">⚙ SET TOKEN</button>
+          <button class="btn btn-n btn-sm" onclick="triggerFullRebuild()" id="rebuild-btn">↻ TRIGGER FULL REBUILD</button>
+        </div>
+        <div id="rebuild-status" style="font-family:var(--mono);font-size:9px;color:var(--t3);min-height:14px"></div>
       </div>
       <div class="sg"><div class="sgt">// ESPN + API STATUS</div><div id="api-status" style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:2"></div></div>
     </div>
@@ -3469,6 +3473,11 @@ async function doUpdate(){
     await syncPicksFromBackend();
     await renderNHLEdge('team');renderMoneyPuck();
     toast('// BACKEND PIPELINE TRIGGERED');
+  } else if(getGHToken()){
+    toast('// TOKEN FOUND — FETCHING LATEST DATA + REBUILD AVAILABLE IN CONFIG');
+    try{await loadRemoteData(true);}catch(e){}
+    try{renderHomePage();updHdr();}catch(e){}
+    toast('// DATA REFRESHED — USE CONFIG → TRIGGER FULL REBUILD FOR NEW PICKS');
   } else {
     // MLB
     await loadGames(todayESPN());
@@ -9892,6 +9901,40 @@ document.addEventListener('click',e=>{
   const m=document.getElementById('token-modal');
   if(m&&e.target===m)closeTokenModal();
 });
+
+async function triggerFullRebuild(){
+  const tok=getGHToken();
+  const statusEl=document.getElementById('rebuild-status');
+  const btn=document.getElementById('rebuild-btn');
+  const setSt=(msg,col='var(--vc)')=>{if(statusEl){statusEl.textContent=msg;statusEl.style.color=col;}};
+  if(!tok){
+    setSt('NO TOKEN SET — click ⚙ SET TOKEN first','var(--hc)');
+    toast('// SET A GITHUB TOKEN FIRST (⚙ SET TOKEN in CONFIG)');
+    return;
+  }
+  if(btn){btn.disabled=true;btn.textContent='↻ TRIGGERING…';}
+  setSt('TRIGGERING GITHUB ACTIONS REBUILD…');
+  toast('// TRIGGERING FULL DATA REBUILD…');
+  try{
+    const ok=await _triggerGHAction(tok);
+    if(!ok){setSt('TRIGGER FAILED — check token permissions (needs workflow scope)','var(--hc)');if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD';}return;}
+    setSt('✓ REBUILD TRIGGERED — polling status (this takes 2-4 min)…');
+    toast('// GITHUB ACTIONS REBUILD STARTED — POLLING…');
+    const success=await _pollGHRun(tok,setSt);
+    if(success){
+      setSt('✓ REBUILD COMPLETE — loading fresh data…','var(--nc)');
+      toast('// REBUILD DONE — LOADING FRESH DATA');
+      try{await loadRemoteData(true);}catch(e){}
+      try{renderHomePage();updHdr();renderOverall();}catch(e){}
+      setSt('✓ FRESH DATA LOADED','var(--nc)');
+    } else {
+      setSt('REBUILD TIMED OUT OR FAILED — check GitHub Actions tab','var(--hc)');
+    }
+  }catch(e){
+    setSt('ERROR: '+e.message,'var(--hc)');
+  }
+  if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD';}
+}
 
 const SYNC_SERVER='http://127.0.0.1:47821';
 
