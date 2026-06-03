@@ -2301,6 +2301,41 @@ def fetch_wnba() -> dict:
     return result
 
 
+def fetch_pwhl() -> dict:
+    """Fetch PWHL scoreboard and standings from ESPN."""
+    log("PWHL data…")
+    result = {"today": [], "standings": {}, "schedule": []}
+    try:
+        data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/hockey/pwhl/scoreboard?dates={TODAY_ET}&limit=10")
+        for ev in (data or {}).get("events", []):
+            g = _espn_game(ev, "PWHL")
+            if g: result["today"].append(g)
+    except Exception as e: log(f"PWHL scoreboard: {e}", "WARN")
+    try:
+        sdata = fetch_json("https://site.api.espn.com/apis/site/v2/sports/hockey/pwhl/standings")
+        for conf in ((sdata or {}).get("children") or []):
+            for entry in (conf.get("standings",{}).get("entries") or []):
+                t = entry.get("team",{})
+                stats = {s["name"]:s.get("displayValue","") for s in entry.get("stats",[])}
+                result["standings"][t.get("abbreviation","")] = {
+                    "name": t.get("displayName",""),
+                    "w": stats.get("wins","0"), "l": stats.get("losses","0"),
+                    "otl": stats.get("otLosses","0"), "pts": stats.get("points","0"),
+                }
+    except Exception as e: log(f"PWHL standings: {e}", "WARN")
+    try:
+        from datetime import datetime, timedelta
+        for i in range(7):
+            d = (datetime.now() + timedelta(days=i)).strftime("%Y%m%d")
+            sdata = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/hockey/pwhl/scoreboard?dates={d}&limit=5")
+            for ev in (sdata or {}).get("events",[])[:3]:
+                comp=(ev.get("competitions") or [{}])[0]; comps=comp.get("competitors") or []
+                h=next((c for c in comps if c.get("homeAway")=="home"),{}); a=next((c for c in comps if c.get("homeAway")=="away"),{})
+                result["schedule"].append({"date":d,"home":(h.get("team") or {}).get("abbreviation",""),"away":(a.get("team") or {}).get("abbreviation",""),"homeName":(h.get("team") or {}).get("displayName",""),"awayName":(a.get("team") or {}).get("displayName",""),"state":ev.get("status",{}).get("type",{}).get("state","pre")})
+            time.sleep(0.2)
+    except Exception as e: log(f"PWHL schedule: {e}", "WARN")
+    return result
+
 def fetch_week_schedule(sport_path: str, sport_key: str, limit_per_day: int = 8) -> list[dict]:
     """Fetch 7-day schedule for any ESPN sport."""
     from datetime import datetime, timedelta
@@ -3378,9 +3413,10 @@ def main() -> None:
                 lm_trends[sport] = fetch_linemate_trends(sport);    time.sleep(1)
                 lm_form[sport]   = fetch_linemate_cheatsheet(sport); time.sleep(1)
 
-    # NCAA Baseball + WNBA
+    # NCAA Baseball + WNBA + PWHL
     ncaa_baseball = fetch_ncaa_baseball() if S in ("mlb","all") else {}
     wnba          = fetch_wnba()          if S in ("nba","all") else {}
+    pwhl          = fetch_pwhl()          if S in ("nhl","all") else {}
 
     # Week schedules
     mlb_week_schedule = fetch_week_schedule("baseball/mlb","mlb",10)      if S in ("mlb","all") else []
@@ -3488,6 +3524,7 @@ def main() -> None:
         },
         "ncaaBaseball": ncaa_baseball,
         "wnba":         wnba,
+        "pwhl":         pwhl,
         "mp":      mp,
         "weather": weather,
         "tennis": {
