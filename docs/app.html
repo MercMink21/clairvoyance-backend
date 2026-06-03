@@ -236,6 +236,7 @@ body{line-height:1.5}
   <div class="hdr-r">
     <div class="hs"><div class="hs-v" id="h-acc">--</div><div class="hs-l">ACCURACY</div></div>
     <div class="hs"><div class="hs-v np" id="h-pk">0</div><div class="hs-l">PICKS</div></div>
+    <div id="h-status-bar" style="font-family:var(--mono);font-size:10px;color:rgba(200,180,255,.6);letter-spacing:1px;text-align:right;display:none"></div>
     <div class="ld"></div>
   </div>
 </header>
@@ -249,6 +250,7 @@ body{line-height:1.5}
   <button class="sp" onclick="SS('f1')">F1</button>
   <button class="sp" onclick="SS('live')">LIVE</button>
   <button class="sp" onclick="SS('ovr')">OVERALL</button>
+  <button class="sp" onclick="SS('fut')">FUTURES</button>
   <button class="sp" onclick="SS('analytics')">ANALYTICS</button>
   <button class="sp" onclick="SS('social')">SOCIAL</button>
   <button class="sp" onclick="SS('news')">NEWS</button>
@@ -270,6 +272,7 @@ body{line-height:1.5}
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
     <div id="home-yesterday-results" style="margin-top:18px"></div>
     <div id="home-week-wins" style="margin-top:18px"></div>
+    <div id="home-track-record" style="margin-top:18px"></div>
 
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json">EXPORT JSON</button>
@@ -918,6 +921,12 @@ body{line-height:1.5}
     <div id="ovr-tab-dash" class="tab act">
       <div class="sh"><span class="p"></span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>SPORTS: MLB · NHL · NBA · TENNIS · PARLAY | TYPES: ML · RL/PL · OU · PARLAY · PROP</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-n btn-sm" onclick="showSyncKeyModal()">⇄ SYNC KEY</button>
+        <button class="btn btn-o btn-sm" onclick="exportBetsClipboard()">EXPORT</button>
+        <button class="btn btn-o btn-sm" onclick="showImportModal()">IMPORT</button>
+        <button class="btn btn-o btn-sm" onclick="showPickCard()">📤 SHARE PICKS</button>
+      </div>
       <div id="ovr-dashboard"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-analytics" class="tab">
@@ -1002,6 +1011,33 @@ body{line-height:1.5}
 </div>
 <!-- TENNIS -->
 <!-- SOCIAL -->
+<!-- FUTURES -->
+<div id="sp-fut" class="spane">
+  <nav class="inav" id="fut-in">
+    <button class="nb act" onclick="T('fut','nba')">NBA FUTURES</button>
+    <button class="nb" onclick="T('fut','mlb')">MLB FUTURES</button>
+    <button class="nb" onclick="T('fut','nhl')">NHL FUTURES</button>
+    <button class="nb" onclick="T('fut','tennis')">TENNIS FUTURES</button>
+  </nav>
+  <div class="sa" id="fut-sa">
+    <div id="fut-tab-nba" class="tab act">
+      <div class="sh"><span class="gc">🏆 NBA FUTURES 2026</span></div>
+      <div id="fut-nba-content"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+    <div id="fut-tab-mlb" class="tab">
+      <div class="sh"><span class="hc">⚾ MLB FUTURES 2026</span></div>
+      <div id="fut-mlb-content"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+    <div id="fut-tab-nhl" class="tab">
+      <div class="sh"><span class="nc">🏒 NHL FUTURES 2026</span></div>
+      <div id="fut-nhl-content"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+    <div id="fut-tab-tennis" class="tab">
+      <div class="sh"><span class="mc">🎾 TENNIS FUTURES 2026</span></div>
+      <div id="fut-tennis-content"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+  </div>
+</div>
 <!-- NEWS -->
 <div id="sp-news" class="spane">
   <nav class="inav" id="news-in">
@@ -1550,6 +1586,17 @@ body{line-height:1.5}
 
 
 <div id="toast"></div>
+<!-- Pick Card Share Modal -->
+<div id="card-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:20px">
+  <div style="background:#010006;border:1px solid #f000ff;border-radius:4px;padding:20px;max-width:420px;width:100%">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+      <span style="font-family:var(--mono);color:#f000ff;letter-spacing:2px">PICK CARD</span>
+      <button onclick="document.getElementById('card-modal').style.display='none'" style="background:none;border:none;color:#f000ff;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <canvas id="pick-canvas" width="400" height="500" style="width:100%;border-radius:3px"></canvas>
+    <button onclick="downloadPickCard()" class="btn btn-p btn-fw" style="margin-top:12px;width:100%">⬇ DOWNLOAD IMAGE</button>
+  </div>
+</div>
 </div>
 <script>
 'use strict';
@@ -2387,7 +2434,19 @@ function recRFromLog(date,recId,outcome){
   const pred=preds.find(p=>p.date===date&&p.outcome==='pending');
   if(pred){recR(pred.id,outcome);}else{saveP(preds);updHdr();toast(`// RECORDED: ${outcome.toUpperCase()}`);renderHistory();}
 }
-function updHdr(){const p=getP().filter(x=>x.outcome!=='pending');const w=p.filter(x=>x.outcome==='win').length;const a=p.length?w/p.length:null;const h=document.getElementById('h-acc');if(h)h.textContent=a?`${(a*100).toFixed(1)}%`:'--';}
+function updHdr(){
+  const p=getP().filter(x=>x.outcome!=='pending');const w=p.filter(x=>x.outcome==='win').length;const a=p.length?w/p.length:null;
+  const h=document.getElementById('h-acc');if(h)h.textContent=a?`${(a*100).toFixed(1)}%`:'--';
+  const sb=document.getElementById('h-status-bar');
+  if(sb){
+    const winPct=a?`${(a*100).toFixed(1)}%`:'--';
+    const now=new Date();const dateStr=now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const syncTs=S.g('last_sync_time')||(window.__CV_DATA?.fetchedAt);
+    const syncStr=syncTs?new Date(syncTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'--';
+    sb.innerHTML=`${winPct} · ${dateStr} · SYNCED ${syncStr}`;
+    sb.style.display='block';
+  }
+}
 function selfAssess(){
   const log=getDailyLog();const preds=getP().filter(x=>x.outcome!=='pending');
   const insights=[],warns=[];const byType={ML:{w:0,l:0},RL:{w:0,l:0},OU:{w:0,l:0}};
@@ -3739,7 +3798,7 @@ async function doUpdate(){
     try{renderNBAGames();renderNBAProps();renderNBAParlayG();renderMLBGames();renderNHLGames();}catch(e){}
     toast('// OFFLINE SYNC COMPLETE — MLB·NBA·NHL REFRESHED');
   }
-  const now=getMSTNow().toLocaleString();S.s('last_upd',now);S.s('last_upd_date',getMSTDate());
+  const now=getMSTNow().toLocaleString();S.s('last_upd',now);S.s('last_upd_date',getMSTDate());S.s('last_sync_time',Date.now());
   if(st){st.textContent=`✓ SYNCED ${now.slice(0,16)} MST`;st.style.color='var(--nc)';}
   if(btn){btn.textContent='↻ SYNC';btn.style.color='';}
   updateAPIStatus();
@@ -6070,6 +6129,7 @@ function renderHomePage(){
           <span style="font-family:var(--mono);font-size:15px;color:${fp.ev2>=0?'var(--nc)':'var(--hc)'}">EV ${fp.ev2>=0?'+':''}${(fp.ev2*100).toFixed(1)}%</span>
           <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ODDS: ${fp.ml}</span>
           ${fpLocked?`<span style="font-family:var(--mono);font-size:13px;padding:2px 7px;border:1px solid var(--nc);color:var(--nc);border-radius:2px">LOCKED ✓</span>`:`<button class="btn btn-p" style="padding:4px 12px;font-size:13px;margin-left:auto" onclick="lockPick('${fp.hA}','${fp.awA}','${fp.betType}','${fp.abbr}',${fp.p.toFixed(3)},'${fp.ml}',${fp.d2.toFixed(3)},'${today()}');setTimeout(renderHomePage,500)">LOCK FREE PICK</button>`}
+          <button class="btn btn-o" style="padding:4px 12px;font-size:13px" onclick="showPickCard()">📤 SHARE</button>
         </div>
       </div>`;
     }else{
@@ -6152,10 +6212,94 @@ function renderHomePage(){
       }).join('');
     }
   }
+  try{renderTrackRecord('home-track-record');}catch(e){}
   if(window._homeRefTimer)clearInterval(window._homeRefTimer);
   window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
 }
 
+function renderFuturesPanes(tab){
+  const NBA_FUT=[
+    {market:'NBA FINALS WINNER',pick:'San Antonio Spurs',ml:-140,note:'SA -120 G1 tonight. Wemby dominant. Finals favorite.'},
+    {market:'NBA FINALS WINNER',pick:'New York Knicks',ml:120,note:'NYK +100 G1. Brunson in Finals mode. Home court in G3/G4/G5 MSG.'},
+    {market:'NBA MVP 2026',pick:'Victor Wembanyama',ml:-200,note:'Wemby leads SA to Finals. 28+ PPG in playoffs. Runaway favorite.'},
+    {market:'NBA MVP 2026',pick:'Jalen Brunson',ml:450,note:'Brunson 34 PPG in ECF sweep. Dark horse if NYK wins series.'},
+    {market:'NBA FINALS SERIES LENGTH',pick:'Over 5.5',ml:-130,note:'SA +115 in series. Expect competitive 6-7 game series.'},
+  ];
+  const MLB_FUT=[
+    {market:'WORLD SERIES WINNER',pick:'Los Angeles Dodgers',ml:450,note:'Ohtani + Yamamoto leading. NL West front-runners.'},
+    {market:'WORLD SERIES WINNER',pick:'New York Yankees',ml:500,note:'Judge anchoring lineup. AL East powerhouse.'},
+    {market:'WORLD SERIES WINNER',pick:'Atlanta Braves',ml:600,note:'Acuña Jr. return. Deep rotation. NL contenders.'},
+    {market:'WORLD SERIES WINNER',pick:'Houston Astros',ml:700,note:'System still producing. AL West competitive.'},
+    {market:'WORLD SERIES WINNER',pick:'Philadelphia Phillies',ml:650,note:'Harper + Wheeler. Deep NL Wild Card threat.'},
+    {market:'WORLD SERIES WINNER',pick:'Baltimore Orioles',ml:750,note:'Young core maturing. AL East dark horse.'},
+    {market:'AL CY YOUNG',pick:'Gerrit Cole (NYY)',ml:300,note:'Elite strikeouts, low ERA in AL.'},
+    {market:'NL CY YOUNG',pick:'Yoshinobu Yamamoto (LAD)',ml:280,note:'Dominant first full MLB season.'},
+  ];
+  const NHL_FUT=[
+    {market:'STANLEY CUP WINNER',pick:'Vegas Golden Knights',ml:500,note:'VGK consistent contender. Pacific Division strength.'},
+    {market:'STANLEY CUP WINNER',pick:'Carolina Hurricanes',ml:550,note:'CAR deep roster. Metropolitan Division power.'},
+    {market:'STANLEY CUP WINNER',pick:'Colorado Avalanche',ml:600,note:'MacKinnon elite. Central Division threat.'},
+    {market:'STANLEY CUP WINNER',pick:'Florida Panthers',ml:650,note:'Back-to-back finalist experience.'},
+    {market:'CONN SMYTHE',pick:'Nathan MacKinnon (COL)',ml:400,note:'Best player if COL goes deep.'},
+  ];
+  const TEN_FUT=[
+    {market:'FRENCH OPEN WINNER (ATP)',pick:'Jannik Sinner',ml:-180,note:'World #1. Clay form elite. RG favorite.'},
+    {market:'FRENCH OPEN WINNER (ATP)',pick:'Carlos Alcaraz',ml:220,note:'Won RG 2024. Clay pedigree.'},
+    {market:'FRENCH OPEN WINNER (WTA)',pick:'Iga Swiatek',ml:-250,note:'4x RG champion. Clay GOAT potential.'},
+    {market:'WIMBLEDON 2026 (ATP)',pick:'Carlos Alcaraz',ml:250,note:'Won Wimbledon 2023 & 2024. Grass specialist.'},
+    {market:'WIMBLEDON 2026 (WTA)',pick:'Aryna Sabalenka',ml:300,note:'Grass game improving. Top 2 ranking.'},
+  ];
+  const futData={nba:NBA_FUT,mlb:MLB_FUT,nhl:NHL_FUT,tennis:TEN_FUT};
+  const fut=futData[tab||'nba']||NBA_FUT;
+  const elId=`fut-${tab||'nba'}-content`;
+  const el=document.getElementById(elId);if(!el)return;
+  const byMarket={};fut.forEach(f=>{if(!byMarket[f.market])byMarket[f.market]=[];byMarket[f.market].push(f);});
+  el.innerHTML=Object.entries(byMarket).map(([mkt,picks])=>`<div class="card" style="margin-bottom:12px">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--gc);margin-bottom:8px">${mkt}</div>
+    ${picks.map(p=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${p.pick}</span>
+        <span style="font-family:var(--mono);font-size:14px;color:${p.ml<0?'var(--hc)':'var(--nc)'}">${p.ml>0?'+':''}${p.ml}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:4px">${p.note}</div>
+      <button onclick="lockFuture('${tab||'NBA'}','${mkt.replace(/'/g,"\\'")}','${p.pick.replace(/'/g,"\\'")}',${p.ml},'${p.note.replace(/'/g,"\\'")}');setTimeout(()=>renderFuturesPanes('${tab||'nba'}'),300)" style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,221,0,.06);border:1px solid rgba(255,221,0,.3);color:var(--gc);border-radius:2px;cursor:pointer">LOCK FUTURE</button>
+    </div>`).join('')}
+  </div>`).join('');
+  // Show locked futures at bottom
+  const locked=getFutures().filter(f=>f.sport&&f.sport.toLowerCase()===tab||false);
+  if(locked.length){
+    el.innerHTML+=`<div class="sh" style="margin-top:14px"><span class="gc">MY LOCKED FUTURES</span></div>`+
+    locked.map(f=>`<div class="card" style="border-left:2px solid var(--gc);margin-bottom:8px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${f.market}</div><div style="font-family:var(--orb);font-size:14px;font-weight:700">${f.pick}</div><div style="font-family:var(--mono);font-size:13px;color:${f.lockedML<0?'var(--hc)':'var(--nc)'}">${f.lockedML>0?'+':''}${f.lockedML}</div></div>`).join('');
+  }
+}
+function renderTrackRecord(containerId){
+  const el=document.getElementById(containerId);if(!el)return;
+  const all=getP().filter(p=>p.outcome!=='pending');
+  if(!all.length){el.innerHTML='';return;}
+  const calcPerf=(bets)=>{const w=bets.filter(p=>p.outcome==='win').length;const l=bets.filter(p=>p.outcome==='loss').length;const roi=bets.length?(bets.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0)/bets.length*100):0;return{w,l,n:bets.length,pct:bets.length?w/bets.length:null,roi};};
+  const now=new Date();const wkAgo=new Date(Date.now()-7*86400000);const moAgo=new Date(Date.now()-30*86400000);
+  const wkBets=all.filter(p=>p.lockedAt&&new Date(p.lockedAt)>=wkAgo);
+  const moBets=all.filter(p=>p.lockedAt&&new Date(p.lockedAt)>=moAgo);
+  const wkP=calcPerf(wkBets),moP=calcPerf(moBets),allP=calcPerf(all);
+  const sports=['MLB','NHL','NBA','TEN'];
+  const spRows=sports.map(s=>{const sp=all.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;const r=sp.length?(sp.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0)/sp.length*100):0;return{s,w,l:sp.length-w,n:sp.length,pct:sp.length?w/sp.length:null,roi:r};}).filter(d=>d.n>0);
+  const row=(lbl,p)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${lbl}</span><div style="display:flex;gap:12px"><span style="font-family:var(--mono);font-size:12px;color:var(--t)">${p.w}W-${p.l}L</span><span style="font-family:var(--mono);font-size:12px;color:${p.pct===null?'var(--t3)':p.pct>=.55?'var(--nc)':'var(--hc)'}">${p.pct!==null?(p.pct*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:12px;color:${p.roi>=0?'var(--nc)':'var(--hc)'}">${p.roi>=0?'+':''}${p.roi.toFixed(1)}%</span></div></div>`;
+  el.innerHTML=`<div class="card"><div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin-bottom:10px">TRACK RECORD</div>
+    ${row('PAST WEEK',wkP)}${row('PAST MONTH',moP)}${row('ALL TIME',allP)}
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin:10px 0 6px">BY ENGINE</div>
+    ${spRows.map(d=>row(d.s,d)).join('')}
+    <button onclick="showTrackRecordCard()" class="btn btn-o btn-sm" style="margin-top:10px;width:100%">📤 EXPORT TRACK RECORD</button>
+  </div>`;
+}
+function showTrackRecordCard(){
+  const all=getP().filter(p=>p.outcome!=='pending');
+  const w=all.filter(p=>p.outcome==='win').length;
+  const l=all.filter(p=>p.outcome==='loss').length;
+  const pct=all.length?w/all.length:0;
+  const picks=[{sport:'ALL TIME',mu:'CLAIRVOYANCE ENGINE',pick:`${w}W-${l}L`,abbr:`${w}W-${l}L`,p:pct,grade:pct>=0.60?'ELITE':'LOCK'}];
+  const modal=document.getElementById('card-modal');modal.style.display='flex';
+  setTimeout(()=>generatePickCard(picks,'TRACK RECORD — CLAIRVOYANCE ENGINE'),50);
+}
 function SS(s){
   document.querySelectorAll('.spane').forEach(p=>p.classList.remove('act'));
   document.querySelectorAll('.sp').forEach(b=>b.classList.remove('act'));
@@ -6186,6 +6330,8 @@ function SS(s){
   if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);_t(renderOverallVisuals);}
   if(s==='social'){_t(renderIntelCards);}
   if(s==='analytics'){_t(renderAnalyticsMLB);}
+  if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
+  const mn_fut=document.getElementById('mn_fut');if(mn_fut)mn_fut.style.display=s==='fut'?'flex':'none';
   if(s==='news'){_t(renderNewsAll);}
 }
 function setSub(sport,sub){
@@ -6212,8 +6358,8 @@ function setSub(sport,sub){
   if(sport==='hk'&&sub==='pwhl'){try{renderPWHL();}catch(e){}}
 }
 function T(sport,tabId){
-  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa'};
-  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in'};
+  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa'};
+  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in'};
   const saId=saMap[sport]||'mlb-sa';
   const navId=navMap[sport]||'mlb-in';
   const mnId=sport==='nhl'?'mn2':sport==='nba'?'mn3':sport==='ovr'?'mn4':sport==='ten'?'mn5':sport==='f1'?'mn6':sport==='live'?'mn7':'mn';
@@ -6297,6 +6443,7 @@ function T(sport,tabId){
     }
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}if(tabId==='schedule')renderScheduleTab('nba','nba-schedule-list');
+  if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')renderOverallAnalytics();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')renderOverallTrends();if(tabId==='clv')renderCLVTab();if(tabId==='visuals')renderOverallVisuals();if(tabId==='futures')renderFuturesTab();if(tabId==='ten')renderTennisOverall();if(tabId==='ats')try{renderATSTracker();}catch(e){};if(tabId==='teams')try{renderTeamResults('ALL');}catch(e){};if(tabId==='schedule')try{renderUpcomingSchedule('ALL');}catch(e){};}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
@@ -8034,6 +8181,111 @@ async function idbRecoverPicks(){
   const local=getP();const ids=new Set(local.map(p=>p.id));
   let added=0;for(const p of idbPicks){if(!ids.has(p.id)){local.push(p);added++;}}
   if(added){S.s('preds',local);updHdr();toast(`// IDB RECOVERED ${added} PICKS`);}
+}
+// ══════════════════════════════════════════════════════════════
+// ═══ SYNC KEY API ═════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+function generateSyncKey(){
+  const data={picks:getP(),v:2,ts:Date.now()};
+  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+function importSyncKey(key){
+  try{
+    const data=JSON.parse(decodeURIComponent(escape(atob(key))));
+    if(data.picks&&Array.isArray(data.picks)){
+      localStorage.setItem('cvPicks',JSON.stringify(data.picks));
+      return data.picks.length;
+    }
+  }catch(e){return -1;}
+  return 0;
+}
+function showSyncKeyModal(){
+  const key=generateSyncKey();
+  const existing=document.getElementById('sync-key-modal');if(existing)existing.remove();
+  const div=document.createElement('div');div.id='sync-key-modal';
+  div.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px';
+  div.innerHTML=`<div style="background:#010006;border:1px solid #00f0ff;border-radius:4px;padding:20px;max-width:420px;width:100%">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+      <span style="font-family:var(--mono);color:#00f0ff;letter-spacing:2px">SYNC KEY</span>
+      <button onclick="document.getElementById('sync-key-modal').remove()" style="background:none;border:none;color:#00f0ff;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;color:rgba(200,180,255,.6);margin-bottom:8px">EXPORT KEY — copy to import on another device</div>
+    <textarea id="sync-key-export-ta" style="width:100%;height:80px;background:rgba(10,0,24,.8);border:1px solid rgba(0,240,255,.3);color:var(--t);font-family:var(--mono);font-size:11px;padding:8px;border-radius:2px;resize:none;box-sizing:border-box" readonly>${key}</textarea>
+    <button onclick="navigator.clipboard?.writeText(document.getElementById('sync-key-export-ta').value).then(()=>alert('Copied!')).catch(()=>{})" style="margin-top:6px;width:100%;font-family:var(--mono);font-size:12px;padding:6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.3);color:#00f0ff;border-radius:2px;cursor:pointer">COPY KEY</button>
+    <div style="font-family:var(--mono);font-size:11px;color:rgba(200,180,255,.6);margin:12px 0 6px">IMPORT KEY — paste from another device</div>
+    <textarea id="sync-key-import-ta" style="width:100%;height:60px;background:rgba(10,0,24,.8);border:1px solid rgba(0,240,255,.3);color:var(--t);font-family:var(--mono);font-size:11px;padding:8px;border-radius:2px;resize:none;box-sizing:border-box" placeholder="Paste key here..."></textarea>
+    <button onclick="const n=importSyncKey(document.getElementById('sync-key-import-ta').value.trim());if(n>0){toast('// IMPORTED '+n+' PICKS');updHdr();document.getElementById('sync-key-modal').remove();}else{alert('Invalid key');}" style="margin-top:6px;width:100%;font-family:var(--mono);font-size:12px;padding:6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.3);color:#00f0ff;border-radius:2px;cursor:pointer">APPLY IMPORT</button>
+  </div>`;
+  document.body.appendChild(div);
+}
+// ══════════════════════════════════════════════════════════════
+// ═══ PICK CARD CANVAS SHARE ═══════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+function generatePickCard(picks,title){
+  const canvas=document.getElementById('pick-canvas');if(!canvas)return;
+  const ctx=canvas.getContext('2d');const W=400,H=500;
+  ctx.clearRect(0,0,W,H);
+  // Background
+  ctx.fillStyle='#010006';ctx.fillRect(0,0,W,H);
+  // Grid lines
+  ctx.strokeStyle='rgba(240,0,255,0.04)';ctx.lineWidth=1;
+  for(let y=20;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Header bar
+  const grad=ctx.createLinearGradient(0,0,W,0);grad.addColorStop(0,'rgba(0,240,255,0.15)');grad.addColorStop(1,'rgba(240,0,255,0.15)');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,W,54);
+  // Header text
+  ctx.shadowColor='#00f0ff';ctx.shadowBlur=10;
+  ctx.fillStyle='#00f0ff';ctx.font='bold 14px Orbitron,monospace';ctx.textAlign='left';ctx.fillText('CLAIRVOYANCE ENGINE',14,22);
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(200,180,255,.7)';ctx.font='10px "Share Tech Mono",monospace';ctx.fillText(title||new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase(),14,40);
+  // Social handle top-right
+  ctx.fillStyle='rgba(240,0,255,.8)';ctx.textAlign='right';ctx.font='9px "Share Tech Mono",monospace';ctx.fillText('@ClairvoyanceAI',W-12,22);
+  ctx.textAlign='left';
+  // Picks
+  const maxPicks=Math.min(picks.length,5);let y=70;
+  for(let i=0;i<maxPicks;i++){
+    const pk=picks[i];
+    const gradeColor=pk.grade==='ELITE'?'#ffdd00':pk.grade==='LOCK'?'#00f0ff':'#6690ff';
+    // Card bg
+    ctx.fillStyle='rgba(10,0,24,.9)';ctx.fillRect(12,y,W-24,68);
+    ctx.strokeStyle=gradeColor+'44';ctx.lineWidth=1;ctx.strokeRect(12,y,W-24,68);
+    ctx.strokeStyle=gradeColor;ctx.lineWidth=2;ctx.fillRect(12,y,3,68);ctx.fillStyle=gradeColor;ctx.fillRect(12,y,3,68);
+    // Sport
+    ctx.fillStyle='rgba(200,180,255,.5)';ctx.font='9px "Share Tech Mono",monospace';ctx.fillText((pk.sport||'').toUpperCase(),20,y+15);
+    // Grade badge
+    ctx.fillStyle=gradeColor;ctx.font='bold 9px Orbitron,monospace';ctx.textAlign='right';ctx.fillText(pk.grade||'',W-16,y+15);
+    ctx.textAlign='left';
+    // Pick
+    ctx.shadowColor=gradeColor;ctx.shadowBlur=6;
+    ctx.fillStyle=gradeColor;ctx.font='bold 16px Orbitron,monospace';ctx.fillText((pk.pick||pk.abbr||'').slice(0,20),20,y+36);
+    ctx.shadowBlur=0;
+    // Matchup
+    ctx.fillStyle='rgba(200,180,255,.7)';ctx.font='11px "Share Tech Mono",monospace';ctx.fillText((pk.mu||'').slice(0,30),20,y+52);
+    // Win%
+    ctx.fillStyle='#ffffff';ctx.font='bold 13px "Share Tech Mono",monospace';ctx.textAlign='right';ctx.fillText(`${pk.p?((pk.p*100).toFixed(1)):'--'}%`,W-16,y+52);
+    ctx.textAlign='left';
+    y+=76;
+  }
+  // Footer line
+  ctx.strokeStyle='#00f0ff';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(12,H-30);ctx.lineTo(W-12,H-30);ctx.stroke();
+  ctx.fillStyle='rgba(0,240,255,.6)';ctx.font='9px "Share Tech Mono",monospace';ctx.textAlign='center';ctx.fillText('X: @ClairvoyanceAI · IG: @ClairvoyanceAI',W/2,H-14);
+  ctx.textAlign='left';
+}
+function downloadPickCard(){
+  const canvas=document.getElementById('pick-canvas');if(!canvas)return;
+  const link=document.createElement('a');link.download=`clairvoyance_picks_${new Date().toISOString().slice(0,10)}.png`;link.href=canvas.toDataURL('image/png');link.click();
+}
+function showPickCard(){
+  const picks=[];
+  try{
+    const all=[];const D=window.__CV_DATA||{};
+    for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);if(p>=0.60)all.push({sport:'NBA',mu:`${g.a}@${g.h}`,pick:fav,abbr:fav,p,grade:p>=0.72?'ELITE':p>=0.63?'LOCK':'LEAN'});}
+    for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const p=Math.max(r.p,1-r.p);const fav=r.p>=.5?g.h:g.a;if(p>=0.60)all.push({sport:'NHL',mu:`${g.a}@${g.h}`,pick:fav,abbr:fav,p,grade:p>=0.72?'ELITE':p>=0.63?'LOCK':'LEAN'});}
+    picks.push(...all.sort((a,b)=>b.p-a.p).slice(0,5));
+  }catch(e){}
+  const modal=document.getElementById('card-modal');
+  modal.style.display='flex';
+  setTimeout(()=>generatePickCard(picks,`TOP PICKS · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase()}`),50);
 }
 // ══════════════════════════════════════════════════════════════
 // ═══ CROSS-DEVICE SYNC CODE ═══════════════════════════════════
