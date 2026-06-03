@@ -229,7 +229,7 @@ body{line-height:1.5}
 <header id="hdr">
   <div class="hdr-l">
     <button class="ub" onclick="doUpdate()" id="sync-btn">↻ SYNC</button>
-    <button class="ub" onclick="showMobileSyncPanel()" id="msync-btn" title="Mobile/Cross-Device Sync" style="background:linear-gradient(135deg,rgba(0,240,255,.12),rgba(77,121,255,.12));border-color:rgba(0,240,255,.4);color:#00f0ff">⇄ SYNC</button>
+    <button class="ub" onclick="openTokenModal()" id="gh-hdr-btn" title="GitHub Sync Settings" style="background:linear-gradient(135deg,rgba(240,0,255,.12),rgba(77,121,255,.12));border-color:rgba(240,0,255,.4);color:var(--pc)">⚙ GH</button>
     <span id="live-dot" title="Live games in progress" style="display:none;width:8px;height:8px;background:var(--hc);border-radius:50%;margin-left:6px;animation:blink 1s infinite;vertical-align:middle"></span>
   </div>
   <div class="logo">CLAIRVOYANCE</div>
@@ -1335,19 +1335,22 @@ body{line-height:1.5}
 
 <div id="token-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99998;align-items:center;justify-content:center;padding:16px">
   <div style="background:#0a0018;border:1px solid rgba(204,0,255,.5);border-radius:6px;padding:22px;width:min(440px,96vw);box-shadow:0 0 40px rgba(204,0,255,.25)">
-    <div style="font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:var(--pc);margin-bottom:14px">⚙ SYNC SETTINGS</div>
+    <div style="font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:var(--pc);margin-bottom:14px">⚙ GITHUB SYNC</div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);line-height:1.8;margin-bottom:14px">
-      ADD A GITHUB TOKEN TO MAKE THE SYNC BUTTON TRIGGER A FULL DATA REBUILD.<br>
-      TOKEN NEEDS: <span style="color:var(--gc)">workflow</span> SCOPE<br>
-      GET ONE AT: <a href="https://github.com/settings/tokens/new?scopes=workflow&description=Clairvoyance+Sync" target="_blank" style="color:var(--pc)">github.com/settings/tokens</a>
+      TOKEN TRIGGERS FULL DATA REBUILD (new picks, scores, props).<br>
+      TOKEN NEEDS: <span style="color:var(--gc)">workflow</span> SCOPE · Takes 2-4 min
     </div>
     <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);margin-bottom:6px">GITHUB PERSONAL ACCESS TOKEN (ghp_...)</div>
     <input type="password" id="gh-token-modal-input" class="fi" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="width:100%;margin-bottom:10px;font-size:11px">
-    <div id="gh-token-modal-status" style="font-family:'Share Tech Mono',monospace;font-size:9px;min-height:16px;margin-bottom:12px;color:var(--t3)"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div id="gh-token-modal-status" style="font-family:'Share Tech Mono',monospace;font-size:9px;min-height:16px;margin-bottom:10px;color:var(--t3)"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button class="btn btn-p" style="flex:1;padding:9px" onclick="saveTokenFromModal()">SAVE TOKEN</button>
       <button class="btn btn-o" style="padding:9px 14px" onclick="clearTokenFromModal()">CLEAR</button>
       <button class="btn btn-o" style="padding:9px 14px" onclick="closeTokenModal()">CLOSE</button>
+    </div>
+    <div style="border-top:1px solid rgba(240,0,255,.2);padding-top:12px">
+      <button class="btn btn-n" style="width:100%;padding:11px;font-size:13px;letter-spacing:2px" id="modal-rebuild-btn" onclick="triggerFullRebuild(true)">↻ TRIGGER FULL REBUILD NOW</button>
+      <div id="modal-rebuild-status" style="font-family:'Share Tech Mono',monospace;font-size:9px;min-height:14px;margin-top:8px;color:var(--t3);text-align:center"></div>
     </div>
   </div>
 </div>
@@ -3474,10 +3477,9 @@ async function doUpdate(){
     await renderNHLEdge('team');renderMoneyPuck();
     toast('// BACKEND PIPELINE TRIGGERED');
   } else if(getGHToken()){
-    toast('// TOKEN FOUND — FETCHING LATEST DATA + REBUILD AVAILABLE IN CONFIG');
-    try{await loadRemoteData(true);}catch(e){}
-    try{renderHomePage();updHdr();}catch(e){}
-    toast('// DATA REFRESHED — USE CONFIG → TRIGGER FULL REBUILD FOR NEW PICKS');
+    if(btn){btn.textContent='↻ REBUILDING…';}
+    toast('// TOKEN FOUND — TRIGGERING FULL REBUILD');
+    try{await triggerFullRebuild(false);}catch(e){console.error('rebuild:',e);}
   } else {
     // MLB
     await loadGames(todayESPN());
@@ -9902,38 +9904,47 @@ document.addEventListener('click',e=>{
   if(m&&e.target===m)closeTokenModal();
 });
 
-async function triggerFullRebuild(){
+async function triggerFullRebuild(fromModal=false){
   const tok=getGHToken();
-  const statusEl=document.getElementById('rebuild-status');
-  const btn=document.getElementById('rebuild-btn');
-  const setSt=(msg,col='var(--vc)')=>{if(statusEl){statusEl.textContent=msg;statusEl.style.color=col;}};
+  const statusEl=document.getElementById(fromModal?'modal-rebuild-status':'rebuild-status');
+  const btn=document.getElementById(fromModal?'modal-rebuild-btn':'rebuild-btn');
+  const setSt=(msg,col='var(--vc)')=>{
+    if(statusEl){statusEl.textContent=msg;statusEl.style.color=col;}
+    const modalSt=document.getElementById('modal-rebuild-status');
+    if(modalSt&&!fromModal){modalSt.textContent=msg;modalSt.style.color=col;}
+  };
   if(!tok){
-    setSt('NO TOKEN SET — click ⚙ SET TOKEN first','var(--hc)');
-    toast('// SET A GITHUB TOKEN FIRST (⚙ SET TOKEN in CONFIG)');
+    setSt('NO TOKEN SAVED — paste your ghp_ token above and click SAVE TOKEN first','var(--hc)');
+    toast('// PASTE YOUR GITHUB TOKEN AND CLICK SAVE TOKEN FIRST');
     return;
   }
   if(btn){btn.disabled=true;btn.textContent='↻ TRIGGERING…';}
-  setSt('TRIGGERING GITHUB ACTIONS REBUILD…');
+  setSt('TRIGGERING GITHUB ACTIONS…');
   toast('// TRIGGERING FULL DATA REBUILD…');
   try{
     const ok=await _triggerGHAction(tok);
-    if(!ok){setSt('TRIGGER FAILED — check token permissions (needs workflow scope)','var(--hc)');if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD';}return;}
-    setSt('✓ REBUILD TRIGGERED — polling status (this takes 2-4 min)…');
-    toast('// GITHUB ACTIONS REBUILD STARTED — POLLING…');
-    const success=await _pollGHRun(tok,setSt);
+    if(!ok){
+      setSt('TRIGGER FAILED — token may need "workflow" scope. Get a new token with workflow scope.','var(--hc)');
+      if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD NOW';}
+      return;
+    }
+    setSt('✓ TRIGGERED — rebuilding data (2-4 min, stay on page)…');
+    toast('// REBUILD STARTED — TAKES 2-4 MIN');
+    const success=await _pollGHRun(tok,msg=>setSt(msg));
     if(success){
-      setSt('✓ REBUILD COMPLETE — loading fresh data…','var(--nc)');
-      toast('// REBUILD DONE — LOADING FRESH DATA');
+      setSt('✓ REBUILD COMPLETE — loading fresh picks…','var(--nc)');
+      toast('// REBUILD COMPLETE — LOADING FRESH DATA');
       try{await loadRemoteData(true);}catch(e){}
       try{renderHomePage();updHdr();renderOverall();}catch(e){}
-      setSt('✓ FRESH DATA LOADED','var(--nc)');
+      setSt('✓ FRESH DATA LOADED — PICKS UPDATED','var(--nc)');
     } else {
-      setSt('REBUILD TIMED OUT OR FAILED — check GitHub Actions tab','var(--hc)');
+      setSt('REBUILD TIMED OUT — check GitHub Actions at github.com/MercMink21/clairvoyance-backend/actions','var(--hc)');
     }
   }catch(e){
     setSt('ERROR: '+e.message,'var(--hc)');
+    console.error('triggerFullRebuild:',e);
   }
-  if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD';}
+  if(btn){btn.disabled=false;btn.textContent='↻ TRIGGER FULL REBUILD NOW';}
 }
 
 const SYNC_SERVER='http://127.0.0.1:47821';
