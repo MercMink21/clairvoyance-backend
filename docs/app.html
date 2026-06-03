@@ -9170,6 +9170,7 @@ function checkInjuryImpactOnBets(){
   }
 }
 
+document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   startSplash();
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
   try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
@@ -9178,6 +9179,7 @@ function checkInjuryImpactOnBets(){
   try{initELO();}catch(e){console.error('initELO',e);}
   try{updHdr();}catch(e){console.error('updHdr',e);}
   try{for(const[k,v]of Object.entries(NHL)){v.abbr=k;if(MP_DATA[k])v.mp=MP_DATA[k];}}catch(e){console.error('NHL init',e);}
+  try{await loadRemoteData(true);}catch(e){console.error('loadRemoteData',e);}
   try{await loadLiveNHLSnapshot();}catch(e){console.error('liveSnapshot',e);}
   try{renderBracket();}catch(e){console.error('renderBracket',e);}
   try{renderHVPanels();}catch(e){console.error('renderHVPanels',e);}
@@ -9223,6 +9225,7 @@ function checkInjuryImpactOnBets(){
   try{renderTennisModel();}catch(e){console.error('tennisModel',e);}
   try{startTennisLive();}catch(e){console.error('tennisLive',e);}
   try{checkMidMST();setInterval(checkMidMST,60000);}catch(e){console.error('scheduler',e);}
+})();});
 
 // ═════════════════════════���═════════════════════���═══════════════════════
 // MOBILE SYNC ENGINE — real-time cross-device bet synchronisation
@@ -9916,7 +9919,7 @@ async function _pollLocalSync(setSyncState){
 
 // ═══ STATMUSE NHL PLAYOFF LEADERS ════════════════════════════
 // All stats verified via NHL API (gameTypeId=3, seasonId=20252026)
-const STATMUSE_NHL={
+STATMUSE_NHL={
   goals:[{n:'Pavel Dorofeyev',t:'VGK',v:9},{n:'Brett Howden',t:'VGK',v:8},{n:'Logan Stankoven',t:'CAR',v:7},{n:'Mitch Marner',t:'VGK',v:7},{n:'Nathan MacKinnon',t:'COL',v:7},{n:'Alex Newhook',t:'MTL',v:6}],
   assists:[{n:'Jack Eichel',t:'VGK',v:14},{n:'Mitch Marner',t:'VGK',v:11},{n:'Lane Hutson',t:'MTL',v:11},{n:'Martin Necas',t:'COL',v:10},{n:'Taylor Hall',t:'CAR',v:9},{n:'Nathan MacKinnon',t:'COL',v:6}],
   points:[{n:'Mitch Marner',t:'VGK',v:18},{n:'Jack Eichel',t:'VGK',v:15},{n:'Nathan MacKinnon',t:'COL',v:13},{n:'Lane Hutson',t:'MTL',v:13},{n:'Taylor Hall',t:'CAR',v:12},{n:'Martin Necas',t:'COL',v:11}],
@@ -9934,18 +9937,18 @@ const STATMUSE_NHL={
 // ═══ NBA DATA — 2025-26 PLAYOFFS ═════════════════════════════
 // Conference Finals: OKC vs SA (WCF starts 5/18), NY vs CLE (ECF starts 5/19)
 // Verified via ESPN API — all eliminated teams removed
-const NBA_TEAMS={
+NBA_TEAMS={
   OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:8,pl:1,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'WCF — SA LEADS 1-0. Lost G1 115-122 2OT. SGA/JWill still elite — bounce-back game expected May 20.'},
   SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:8,pl:4,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'WCF — SA LEADS 1-0. Won G1 122-115 in 2OT (May 18). Wemby 41 pts+24 reb. Fox elite late. G2 May 20.'},
   NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
   CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
 };
 // May 19 2026: ECF Game 1 ONLY — NY vs CLE 8 PM ET. OKC vs SA G2 is May 20 (SA leads WCF 1-0, won G1 122-115 2OT).
-const NBA_TONIGHT=[
+NBA_TONIGHT=[
   {h:'NY',a:'CLE',time:'8:00 PM ET',net:'ESPN',gn:1,ctx:'ECF — SERIES 0-0',hL:-250,aL:205,ou:217.5}
 ];
 // NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
-const NBA_PLAYERS=[
+NBA_PLAYERS=[
   // NY Knicks (ECF)
   {n:'Jalen Brunson',t:'NY',ppg:30.4,rpg:4.1,apg:7.8,efg:.516,usage:33.8,rating:'ELITE'},
   {n:'Karl-Anthony Towns',t:'NY',ppg:23.8,rpg:11.4,apg:3.2,efg:.558,usage:28.1,rating:'LOCK'},
@@ -9972,7 +9975,7 @@ const NBA_PLAYERS=[
 // ═══ NBA BBREF 2025-26 PLAYOFFS — Per Game, Per 100 Poss, Totals, Advanced ═══
 // Source: basketball-reference.com/playoffs/NBA_2026.html (CF teams only)
 // Embedded 2026-05-18 — covers all rounds to Conference Finals
-const NBA_BBREF={
+NBA_BBREF={
   OKC:{
     pg:{pts:121.2,reb:44.8,ast:28.4,stl:8.6,blk:5.8,tov:14.2,fg_pct:.481,fg3_pct:.378,ft_pct:.812,orb:10.2,drb:34.6,pf:19.8},
     opp_pg:{pts:104.6,reb:41.2,ast:22.4,stl:6.8,blk:4.2,tov:16.8,fg_pct:.429,fg3_pct:.318,ft_pct:.774},
@@ -10004,7 +10007,7 @@ const NBA_BBREF={
 };
 
 // NBA Playoff leaders (per game, Conference Finals eligible)
-const NBA_LEADERS={
+NBA_LEADERS={
   ppg:[{n:'SGA',t:'OKC',v:32.1},{n:'Brunson',t:'NY',v:30.4},{n:'Mitchell',t:'CLE',v:28.6},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'JWilliams',t:'OKC',v:21.4},{n:'Harden',t:'CLE',v:19.6}],
   rpg:[{n:'Wemby',t:'SA',v:11.2},{n:'KAT',t:'NY',v:11.4},{n:'Holmgren',t:'OKC',v:8.8},{n:'Mobley',t:'CLE',v:9.6},{n:'Fox',t:'SA',v:4.2},{n:'Mitchell',t:'CLE',v:4.8}],
   apg:[{n:'Fox',t:'SA',v:8.8},{n:'Harden',t:'CLE',v:8.2},{n:'SGA',t:'OKC',v:6.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4},{n:'Mitchell',t:'CLE',v:5.2}],
@@ -10014,7 +10017,7 @@ const NBA_LEADERS={
 };
 
 // NBA ELO ratings (seeded from net rating + playoff performance)
-let NBA_ELO={OKC:1680,SA:1610,NY:1590,CLE:1560};
+NBA_ELO={OKC:1680,SA:1610,NY:1590,CLE:1560};
 
 // NBA composite team score 0-100 — uses BBRef data when available
 
@@ -10022,7 +10025,7 @@ let NBA_ELO={OKC:1680,SA:1610,NY:1590,CLE:1560};
 
 // ═══ NBA RENDER FUNCTIONS ════════════════════════════════════
 // ── NBA PROPS: Real lines from Linemate/Covers/SBDime (May 19 2026, CLE@NY ECF G1) ──
-const NBA_PROPS_DATA=[
+NBA_PROPS_DATA=[
   // ⭐ ELITE tier — highest confidence, positive EV
   {player:'Jalen Brunson',t:'NY',stat:'PTS',line:27.5,over:true,ml:'-105',conf:74,hitRate:'80%',basis:'31.4 PPG at MSG in playoffs · 80% hit rate at home this postseason · CLE allows 28.6 to PG spot',grade:'ELITE',src:'Covers/SBDime'},
   {player:'Karl-Anthony Towns',t:'NY',stat:'3PM',line:1.5,over:true,ml:'+145',conf:70,hitRate:'73%',basis:'Hit 3PM O1.5 in 4 of 5 home playoff games · 48.3% from 3 this postseason · +145 is great value',grade:'ELITE',src:'Covers'},
@@ -10053,7 +10056,7 @@ const NBA_PROPS_DATA=[
 ];
 
 // ═══ MLB PROPS DATA (May 19 2026) — Sources: Linemate/Rotowire/Covers/BetMGM/DraftKings ═══
-const MLB_PROPS_DATA=[
+MLB_PROPS_DATA=[
   // ⭐ PITCHER STRIKEOUT PROPS
   {player:'Parker Messick',t:'CLE',opp:'DET',pos:'SP',stat:'K',line:5.5,over:true,ml:'-135',conf:72,hitRate:'100%',basis:'58 K in 53.2 IP this season · 2.35 ERA · 6+ K in each of last 4 starts · DET struggling offense',grade:'ELITE',src:'Rotowire/BetMGM'},
   {player:'Chase Burns',t:'CIN',opp:'PHI',pos:'SP',stat:'Hits Allowed',line:4.5,over:false,ml:'+120',conf:68,hitRate:'75%',basis:'Under 4.5 hits allowed in 3 straight starts · PHI struggles vs RHP · Burns elite command + stuff',grade:'LOCK',src:'TheLines/BetMGM'},
@@ -10084,7 +10087,7 @@ const MLB_PROPS_DATA=[
   {player:'Jesus Sanchez',t:'TOR',opp:'NYY',pos:'LF',stat:'Runs',line:0.5,over:false,ml:'',basis:'Runs UNDER in 14 of 15 away games (+44% ROI) · NYY starters dominant at home',hitRate:'93%',conf:68,grade:'LOCK',src:'BetMGM'},
 ];
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
-let NBA_PAR=[];
+NBA_PAR=[];
 
 // ═══ NRFI (NO RUN FIRST INNING) ══════════════════════════════
 // Calculates probability that NEITHER team scores in the 1st inning
@@ -10099,7 +10102,7 @@ let NBA_PAR=[];
 // NBA auto-settlement from ESPN
 
 // ═══ MIDNIGHT MST SCHEDULER ══════════════════════════════════
-let lastMidDate=null,lastTenDate=null;
+lastMidDate=null,lastTenDate=null;
 // ═══ NAVIGATION ══════════════════════════════════════════════
 
 function _reRenderActive(sport, tabId){
@@ -10630,3 +10633,5 @@ function renderFuturesOdds(){
   el.innerHTML=html;
 }
 </script>
+</body>
+</html>
