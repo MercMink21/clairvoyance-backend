@@ -2032,20 +2032,22 @@ function renderMLBPickCards(el, picks){
     const evVal=p.ev||0;
     const note=p.note||'';
     return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${col};padding:10px">
-      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">
-        <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0">
           <div style="font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid ${col};color:${col};border-radius:2px;display:inline-block;margin-bottom:4px">${lbl}</div>
           <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--t)">${p.pick||p.lb||''}</div>
           <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.75);margin-top:2px">${p.game||((p.ha||'')+(p.awa?' vs '+p.awa:''))}</div>
           ${note?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.55);margin-top:3px;line-height:1.6">${note}</div>`:''}
         </div>
-        <div style="text-align:right;flex-shrink:0;margin-left:8px">
-          <div style="font-family:'Orbitron',sans-serif;font-size:19px;font-weight:700;color:${col}">${prob.toFixed(0)}%</div>
-          <div style="font-family:var(--mono);font-size:12px;color:${evVal>=0?'var(--nc)':'var(--hc)'}">${evVal>=0?'+':''}${evVal.toFixed(1)}% EV</div>
-          <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6);margin-top:2px">${p.ml||''}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+          <div style="text-align:right">
+            <div style="font-family:'Orbitron',sans-serif;font-size:19px;font-weight:700;color:${col}">${prob.toFixed(0)}%</div>
+            <div style="font-family:var(--mono);font-size:12px;color:${evVal>=0?'var(--nc)':'var(--hc)'}">${evVal>=0?'+':''}${evVal.toFixed(1)}% EV</div>
+            <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6)">${p.ml||''}</div>
+          </div>
+          <button class="btn btn-o btn-sm" onclick="lockBet('MLB','${(p.game||'').replace(/'/g,'')}','${(p.pick||p.lb||'').replace(/'/g,'')}',${prob/100},'${p.ml||'-110'}')">🔒 LOCK</button>
         </div>
       </div>
-      <button class="btn btn-o btn-sm" style="width:100%;margin-top:4px" onclick="lockBet('MLB','${(p.game||'').replace(/'/g,'')}','${(p.pick||p.lb||'').replace(/'/g,'')}',${prob/100},'${p.ml||'-110'}')">LOCK</button>
     </div>`;
   };
   let html='';
@@ -6829,7 +6831,6 @@ function renderTennisPicks(){
     </div>`;
   }).join('');
   el.innerHTML=html;
-  const el2=document.getElementById(elId+'-2');if(el2)el2.innerHTML=html;
 }
 // ── Render: Rankings table ────────────────────────────────────
 function renderTennisRankings(tour,sortBy,filterStr){
@@ -9789,6 +9790,21 @@ function renderGlobalLiveBets(){
   try{startLivePolling();}catch(e){console.warn('livePolling',e);}
   // v5.1 — start enhanced live refresh
   try{startLiveRefresh();}catch(e){console.warn('startLiveRefresh',e);}
+  // Expose all render/utility functions defined inside INIT to global scope
+  const _exp=[getStoredLines,saveStoredLines,storeOpeningLines,checkLineMovements,renderLineMovements,
+    showBetJournalModal,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,
+    notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,
+    renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
+    simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,renderPickCard,sharePickCard,
+    downloadPickCard,renderTrackRecord,generatePickReasoning,getImpliedProb,getUmpireImpact,
+    getRefImpact,fetchESPNNews,fetchESPNInjuries,fetchESPNTransactions,newsCard,injuryCard,
+    transactionCard,newsSection,newsLoadingState,newsErrorState,renderNewsAll,renderNewsInjuries,
+    renderNewsTrades,renderNewsSport,checkInjuryImpactOnBets,getPendingUploads,addPendingUpload,
+    clearPendingUpload,flushPendingUploads,fullMobileSync,updateSyncStatusUI,broadcastBetLock,
+    broadcastBetRemove,broadcastFullSync,generateMobileSyncURL,showMobileSyncPanel,
+    renderTennisToday,renderF1Schedule,renderF1Drivers,renderF1Constructors,lockF1Bet,
+    renderF1Analysis,renderGlobalLive,renderGlobalLiveBets];
+  _exp.forEach(fn=>{if(typeof fn==='function')window[fn.name]=fn;});
 })();
 
 
