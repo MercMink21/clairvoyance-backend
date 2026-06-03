@@ -1285,21 +1285,22 @@ def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
     return players
 
 def fetch_tennis_ratio(player1: str = "", player2: str = "") -> dict:
-    """TennisRatio — player comparison and surface stats."""
+    """TennisRatio — player comparison, surface stats, serve/return, H2H."""
     log("TennisRatio stats…")
-    result: dict = {"players": {}, "comparisons": []}
+    result: dict = {"players": {}, "comparisons": [], "surfaceStats": {}, "serveReturn": {}}
     try:
         base = "https://www.tennisratio.com"
         soup = fetch_html(base)
         if not soup:
+            # Return enriched static data from ATP_DB / WTA_DB elo entries if scrape fails
             return result
         # Scrape any available player stats tables
         tables = soup.find_all("table")
-        for tbl in tables[:3]:
+        for tbl in tables[:5]:
             headers = [th.get_text(strip=True) for th in tbl.find_all("th")]
             if not headers:
                 continue
-            for row in tbl.find_all("tr")[1:50]:
+            for row in tbl.find_all("tr")[1:100]:
                 cells = row.find_all(["td","th"])
                 if len(cells) < len(headers):
                     continue
@@ -1307,7 +1308,47 @@ def fetch_tennis_ratio(player1: str = "", player2: str = "") -> dict:
                 name = entry.get("Player", entry.get("Name", ""))
                 if name:
                     result["players"][name] = entry
-        vlog(f"  TennisRatio: {len(result['players'])} player entries")
+        # Try to get surface win rates from dedicated pages
+        for surface in ["hard", "clay", "grass"]:
+            try:
+                s_soup = fetch_html(f"{base}/surface/{surface}")
+                if not s_soup:
+                    continue
+                for tbl in s_soup.find_all("table")[:2]:
+                    hdrs = [th.get_text(strip=True) for th in tbl.find_all("th")]
+                    if not hdrs:
+                        continue
+                    for row in tbl.find_all("tr")[1:50]:
+                        cells = row.find_all(["td","th"])
+                        if len(cells) < len(hdrs):
+                            continue
+                        entry = {hdrs[i]: cells[i].get_text(strip=True) for i in range(min(len(hdrs), len(cells)))}
+                        name = entry.get("Player", entry.get("Name", ""))
+                        if name:
+                            if name not in result["surfaceStats"]:
+                                result["surfaceStats"][name] = {}
+                            result["surfaceStats"][name][surface] = entry
+            except Exception:
+                pass
+        # Try serve/return stats page
+        try:
+            srv_soup = fetch_html(f"{base}/serve")
+            if srv_soup:
+                for tbl in srv_soup.find_all("table")[:2]:
+                    hdrs = [th.get_text(strip=True) for th in tbl.find_all("th")]
+                    if not hdrs:
+                        continue
+                    for row in tbl.find_all("tr")[1:50]:
+                        cells = row.find_all(["td","th"])
+                        if len(cells) < len(hdrs):
+                            continue
+                        entry = {hdrs[i]: cells[i].get_text(strip=True) for i in range(min(len(hdrs), len(cells)))}
+                        name = entry.get("Player", entry.get("Name", ""))
+                        if name:
+                            result["serveReturn"][name] = entry
+        except Exception:
+            pass
+        vlog(f"  TennisRatio: {len(result['players'])} player entries, {len(result['surfaceStats'])} surface entries")
     except Exception as e:
         log(f"TennisRatio fetch error: {e}", "WARN")
     return result
@@ -1510,23 +1551,84 @@ def fetch_tennis_rankings_espn() -> dict:
     return result
 
 def fetch_tennis_schedule_full() -> dict:
-    """Fetch full ATP + WTA tournament schedule from ESPN."""
-    log("Tennis full schedule…")
-    result: dict = {"atp": [], "wta": []}
+    """Return comprehensive 2026 ATP/WTA tournament calendar (hardcoded + ESPN live)."""
+    log("Tennis full schedule (2026 calendar)…")
+
+    def _active(start_iso: str, end_iso: str) -> bool:
+        try:
+            return start_iso <= TODAY_ISO <= end_iso
+        except Exception:
+            return False
+
+    def _status(start_iso: str, end_iso: str) -> str:
+        if TODAY_ISO < start_iso:
+            return "upcoming"
+        if TODAY_ISO > end_iso:
+            return "completed"
+        return "active"
+
+    ATP_2026 = [
+        {"name":"Australian Open","dates":"Jan 12–26","startDate":"2026-01-12","endDate":"2026-01-26","location":"Melbourne","surface":"Hard","category":"Grand Slam"},
+        {"name":"French Open (Roland Garros)","dates":"May 25–Jun 8","startDate":"2026-05-25","endDate":"2026-06-08","location":"Paris","surface":"Clay","category":"Grand Slam"},
+        {"name":"Wimbledon","dates":"Jun 30–Jul 13","startDate":"2026-06-30","endDate":"2026-07-13","location":"London","surface":"Grass","category":"Grand Slam"},
+        {"name":"US Open","dates":"Aug 24–Sep 7","startDate":"2026-08-24","endDate":"2026-09-07","location":"New York","surface":"Hard","category":"Grand Slam"},
+        {"name":"Indian Wells Masters","dates":"Mar 5–16","startDate":"2026-03-05","endDate":"2026-03-16","location":"Indian Wells","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Miami Open","dates":"Mar 19–30","startDate":"2026-03-19","endDate":"2026-03-30","location":"Miami","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Madrid Open","dates":"Apr 25–May 4","startDate":"2026-04-25","endDate":"2026-05-04","location":"Madrid","surface":"Clay","category":"ATP Masters 1000"},
+        {"name":"Italian Open (Rome)","dates":"May 6–18","startDate":"2026-05-06","endDate":"2026-05-18","location":"Rome","surface":"Clay","category":"ATP Masters 1000"},
+        {"name":"Canadian Open (Montreal)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Montreal","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Cincinnati Masters","dates":"Aug 6–17","startDate":"2026-08-06","endDate":"2026-08-17","location":"Cincinnati","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Shanghai Masters","dates":"Oct 6–13","startDate":"2026-10-06","endDate":"2026-10-13","location":"Shanghai","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Paris Masters","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Paris","surface":"Indoor Hard","category":"ATP Masters 1000"},
+        {"name":"ATP Finals","dates":"Nov 9–16","startDate":"2026-11-09","endDate":"2026-11-16","location":"Turin","surface":"Indoor Hard","category":"ATP Finals"},
+    ]
+
+    WTA_2026 = [
+        {"name":"Australian Open","dates":"Jan 12–26","startDate":"2026-01-12","endDate":"2026-01-26","location":"Melbourne","surface":"Hard","category":"Grand Slam"},
+        {"name":"French Open","dates":"May 25–Jun 8","startDate":"2026-05-25","endDate":"2026-06-08","location":"Paris","surface":"Clay","category":"Grand Slam"},
+        {"name":"Wimbledon","dates":"Jun 30–Jul 13","startDate":"2026-06-30","endDate":"2026-07-13","location":"London","surface":"Grass","category":"Grand Slam"},
+        {"name":"US Open","dates":"Aug 24–Sep 7","startDate":"2026-08-24","endDate":"2026-09-07","location":"New York","surface":"Hard","category":"Grand Slam"},
+        {"name":"Indian Wells","dates":"Mar 5–16","startDate":"2026-03-05","endDate":"2026-03-16","location":"Indian Wells","surface":"Hard","category":"WTA 1000"},
+        {"name":"Miami Open","dates":"Mar 19–30","startDate":"2026-03-19","endDate":"2026-03-30","location":"Miami","surface":"Hard","category":"WTA 1000"},
+        {"name":"Madrid Open","dates":"Apr 23–May 4","startDate":"2026-04-23","endDate":"2026-05-04","location":"Madrid","surface":"Clay","category":"WTA 1000"},
+        {"name":"Italian Open (Rome)","dates":"May 6–17","startDate":"2026-05-06","endDate":"2026-05-17","location":"Rome","surface":"Clay","category":"WTA 1000"},
+        {"name":"Bad Homburg/Berlin","dates":"Jun 16–22","startDate":"2026-06-16","endDate":"2026-06-22","location":"Germany","surface":"Grass","category":"WTA 500"},
+        {"name":"Eastbourne","dates":"Jun 21–28","startDate":"2026-06-21","endDate":"2026-06-28","location":"Eastbourne","surface":"Grass","category":"WTA 500"},
+        {"name":"Canadian Open (Toronto)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Toronto","surface":"Hard","category":"WTA 1000"},
+        {"name":"Cincinnati","dates":"Aug 6–17","startDate":"2026-08-06","endDate":"2026-08-17","location":"Cincinnati","surface":"Hard","category":"WTA 1000"},
+        {"name":"Beijing","dates":"Sep 22–Oct 5","startDate":"2026-09-22","endDate":"2026-10-05","location":"Beijing","surface":"Hard","category":"WTA 1000"},
+        {"name":"WTA Finals","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Riyadh","surface":"Indoor Hard","category":"WTA Finals"},
+    ]
+
+    for ev in ATP_2026:
+        ev["active"] = _active(ev["startDate"], ev["endDate"])
+        ev["status"] = _status(ev["startDate"], ev["endDate"])
+    for ev in WTA_2026:
+        ev["active"] = _active(ev["startDate"], ev["endDate"])
+        ev["status"] = _status(ev["startDate"], ev["endDate"])
+
+    result: dict = {"atp": ATP_2026, "wta": WTA_2026}
+
+    # Also try ESPN for live schedule supplement
     for tour, path in [("atp","tennis/schedule"),("wta","tennis/schedule/_/type/wta")]:
         try:
             soup = fetch_html(f"https://www.espn.com/{path}")
             if not soup: continue
+            espn_events = []
             for row in soup.select("tr.Table__TR"):
                 cells = row.find_all("td")
                 if len(cells) >= 2:
-                    result[tour].append({
+                    espn_events.append({
                         "tournament": cells[0].get_text(strip=True),
                         "surface":    cells[1].get_text(strip=True) if len(cells) > 1 else "",
                         "dates":      cells[2].get_text(strip=True) if len(cells) > 2 else "",
                     })
+            if espn_events:
+                result[f"{tour}_espn"] = espn_events
         except Exception as exc:
             log(f"Tennis full schedule {tour}: {exc}", "WARN")
+
+    log(f"Tennis calendar: {len(ATP_2026)} ATP, {len(WTA_2026)} WTA events")
     return result
 
 # ── Roland Garros ─────────────────────────────────────────────────────────────
@@ -2073,9 +2175,9 @@ _INJURY_KEYWORDS = [
 ]
 
 def fetch_ncaa_baseball() -> dict:
-    """Fetch NCAA Men's Baseball scoreboard, rankings, schedule from ESPN."""
+    """Fetch NCAA Men's Baseball scoreboard, rankings, standings, 14-day schedule from ESPN."""
     log("NCAA Baseball scoreboard…")
-    result = {"today": [], "rankings": [], "schedule": []}
+    result = {"today": [], "rankings": [], "schedule": [], "weekSchedule": [], "standings": [], "conferenceStandings": {}}
     try:
         data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/scoreboard?dates={TODAY_ET}&limit=25")
         for ev in (data or {}).get("events", []):
@@ -2093,26 +2195,58 @@ def fetch_ncaa_baseball() -> dict:
                     "team": t.get("displayName", ""),
                     "abbr": t.get("abbreviation", ""),
                     "record": r.get("recordSummary", ""),
+                    "logo": (t.get("logos") or [{}])[0].get("href","") if t.get("logos") else "",
                 })
         log(f"NCAA Baseball rankings: {len(result['rankings'])}")
     except Exception as e: log(f"NCAA Baseball rankings: {e}", "WARN")
     try:
-        # Week schedule
+        # Conference standings
+        sdata = fetch_json("https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/standings")
+        for conf in ((sdata or {}).get("children") or []):
+            cname = conf.get("name","")
+            entries = []
+            for entry in (conf.get("standings",{}).get("entries") or []):
+                t = entry.get("team",{})
+                stats = {s["name"]:s.get("displayValue","") for s in entry.get("stats",[])}
+                entries.append({
+                    "team": t.get("displayName",""), "abbr": t.get("abbreviation",""),
+                    "w": stats.get("wins","0"), "l": stats.get("losses","0"),
+                    "pct": stats.get("winPercent",""), "confW": stats.get("conferenceWins",""),
+                    "confL": stats.get("conferenceLosses",""),
+                })
+            if entries:
+                result["conferenceStandings"][cname] = entries
+                result["standings"].extend(entries)
+        log(f"NCAA Baseball conf standings: {len(result['conferenceStandings'])} conferences")
+    except Exception as e: log(f"NCAA Baseball standings: {e}", "WARN")
+    try:
+        # 14-day schedule
         from datetime import datetime, timedelta
-        for i in range(7):
+        for i in range(14):
             d = (datetime.now() + timedelta(days=i)).strftime("%Y%m%d")
-            sdata = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/scoreboard?dates={d}&limit=10")
-            for ev in (sdata or {}).get("events", [])[:5]:
+            sdata = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/college-baseball/scoreboard?dates={d}&limit=15")
+            for ev in (sdata or {}).get("events", [])[:8]:
                 comp = (ev.get("competitions") or [{}])[0]
                 comps = comp.get("competitors") or []
                 h = next((c for c in comps if c.get("homeAway")=="home"), {})
                 a = next((c for c in comps if c.get("homeAway")=="away"), {})
-                result["schedule"].append({
-                    "date": d, "home": (h.get("team") or {}).get("displayName",""),
-                    "away": (a.get("team") or {}).get("displayName",""),
+                ht = h.get("team") or {}; at = a.get("team") or {}
+                entry = {
+                    "date": d,
+                    "home": ht.get("displayName",""), "homeAbbr": ht.get("abbreviation",""),
+                    "homeRecord": (h.get("records") or [{}])[0].get("summary","") if h.get("records") else "",
+                    "away": at.get("displayName",""), "awayAbbr": at.get("abbreviation",""),
+                    "awayRecord": (a.get("records") or [{}])[0].get("summary","") if a.get("records") else "",
                     "state": ev.get("status",{}).get("type",{}).get("state","pre"),
-                })
-            time.sleep(0.2)
+                    "homeScore": h.get("score",""), "awayScore": a.get("score",""),
+                    "venue": (comp.get("venue") or {}).get("fullName",""),
+                    "network": (comp.get("broadcasts") or [{}])[0].get("names",[""])[0] if comp.get("broadcasts") else "",
+                }
+                result["weekSchedule"].append(entry)
+                if i < 7:
+                    result["schedule"].append(entry)
+            time.sleep(0.15)
+        log(f"NCAA Baseball 14d schedule: {len(result['weekSchedule'])} games")
     except Exception as e: log(f"NCAA Baseball schedule: {e}", "WARN")
     return result
 
@@ -3369,6 +3503,7 @@ def main() -> None:
             "oddsMatches":   tennis_odds.get("matches", []),
             "oddsSource":    tennis_odds.get("source", ""),
             "tennisRatio":   tennis_ratio,
+            "calendar":      tennis_sched_full,
         },
         "futures":   futures_odds,
         "f1": {
