@@ -10086,6 +10086,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
   try{await idbRecoverPicks();}catch(e){console.error('idbRecover',e);}
+  try{await loadPicksFromGitHub();}catch(e){console.warn('ghPicks',e);}  // load from GitHub permanent storage
   try{await idbRecoverDailyLog();}catch(e){console.error('idbRecoverLog',e);}
   try{await syncPicksFromBackend();}catch(e){console.error('syncPicks',e);}
   try{loadGames(todayESPN());}catch(e){console.error('loadGames',e);}
@@ -10684,6 +10685,97 @@ function renderGlobalLiveBets(){
 
 // ═══ NEW FEATURES — GITHUB SYNC + ANALYTICS ═══════════════════
 const GH_REPO='MercMink21/clairvoyance-backend', GH_WF='manual-sync.yml';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PERMANENT PICK STORAGE — GitHub-backed, survives all browser clears
+// Picks are saved to docs/picks.json in the repo via GitHub Contents API
+// On load: merges GitHub picks + localStorage picks (union by ID)
+// On lock/settle: auto-syncs to GitHub
+// ═══════════════════════════════════════════════════════════════════════════
+const PICKS_FILE = 'docs/picks.json';
+const PICKS_API  = `https://api.github.com/repos/${GH_REPO}/contents/${PICKS_FILE}`;
+
+// Load picks from GitHub and merge with localStorage
+async function loadPicksFromGitHub() {
+  const tok = getGHToken(); if(!tok) return;
+  try {
+    const r = await fetch(PICKS_API + '?t=' + Date.now(), {
+      headers: {'Authorization': `token ${tok}`, 'Accept': 'application/vnd.github.v3+json'}
+    });
+    if(!r.ok) return;
+    const meta = await r.json();
+    const content = JSON.parse(atob(meta.content.replace(/\n/g,'')));
+    if(!Array.isArray(content) || !content.length) return;
+    // Merge: GitHub is authoritative, local picks that aren't in GitHub get added
+    const local = getP();
+    const ghIds = new Set(content.map(p=>p.id));
+    const localOnly = local.filter(p=>!ghIds.has(p.id));
+    const merged = [...content, ...localOnly];
+    // Save merged back to localStorage
+    S.s('preds', merged);
+    // If local had extras, push them to GitHub too
+    if(localOnly.length) savePicksToGitHub(merged, meta.sha);
+    else window._gh_picks_sha = meta.sha;
+    try{renderOverallHistory();}catch(e){}
+    try{updHdr();}catch(e){}
+    console.log('[CV] GitHub picks loaded:', content.length, '| merged total:', merged.length);
+  } catch(e) { console.warn('[CV] loadPicksFromGitHub:', e.message); }
+}
+
+// Save current picks to GitHub
+async function savePicksToGitHub(picks, sha) {
+  const tok = getGHToken(); if(!tok) return;
+  try {
+    const body = {
+      message: 'picks: auto-sync ' + new Date().toISOString().slice(0,16) + ' UTC',
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(picks, null, 2)))),
+      branch: 'main'
+    };
+    if(sha || window._gh_picks_sha) body.sha = sha || window._gh_picks_sha;
+    const r = await fetch(PICKS_API, {
+      method: 'PUT',
+      headers: {'Authorization': `token ${tok}`, 'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(r.ok) {
+      const d = await r.json();
+      window._gh_picks_sha = d.content?.sha;
+      console.log('[CV] Picks saved to GitHub:', picks.length, 'bets');
+    }
+  } catch(e) { console.warn('[CV] savePicksToGitHub:', e.message); }
+}
+
+// Get current SHA of picks file (needed for updates)
+async function getPicksFileSHA() {
+  const tok = getGHToken(); if(!tok) return null;
+  try {
+    const r = await fetch(PICKS_API, {
+      headers: {'Authorization': `token ${tok}`, 'Accept': 'application/vnd.github.v3+json'}
+    });
+    if(!r.ok) return null;
+    const d = await r.json();
+    window._gh_picks_sha = d.sha;
+    return d.sha;
+  } catch(e) { return null; }
+}
+
+// Call this after any pick is locked or outcome recorded
+function syncPicksToGitHub() {
+  const tok = getGHToken(); if(!tok) return;
+  const picks = getP();
+  if(!picks.length) return;
+  // Debounce: don't fire more than once per 5s
+  clearTimeout(window._gh_sync_timer);
+  window._gh_sync_timer = setTimeout(() => savePicksToGitHub(picks), 5000);
+}
+
+// Patch saveP to auto-sync to GitHub on every pick save
+const _origSaveP = saveP;
+window.saveP = function(a) {
+  _origSaveP(a);
+  syncPicksToGitHub();
+};
+
 function getGHToken(){return localStorage.getItem('cv_gh_token')||'';}
 function setGHToken(t){localStorage.setItem('cv_gh_token',t.trim());}
 async function _triggerGHAction(tok){
