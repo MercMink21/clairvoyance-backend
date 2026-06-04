@@ -1758,20 +1758,7 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
   }catch(e){}
   // version stamp — bump this any time outcomes change to force re-seed on old sessions
   localStorage.setItem('seed_v','5');
-  // Schedule a saveP() call after app functions are defined (so IDB also gets updated)
-  window._pendingSeedData=(window._pendingSeedData||[]).concat(hist.map(h=>h.id));
 })();
-// Called from init() after saveP is available — flushes seeded picks into IDB
-function flushSeedToIDB(){
-  try{
-    const ids=new Set(window._pendingSeedData||[]);
-    if(!ids.size)return;
-    const all=JSON.parse(localStorage.getItem('preds')||'[]');
-    // saveP is defined later — call it now that we're post-init
-    if(typeof saveP==='function')saveP(all);
-    window._pendingSeedData=[];
-  }catch(e){}
-}
 // ── Seed Roland Garros R1 tennis bet history (6W-0L settled + 2 live) ──────
 (function seedTennisBets(){
   const tb=[
@@ -8224,8 +8211,20 @@ async function idbLoadPicks(){
 async function idbRecoverPicks(){
   const idbPicks=await idbLoadPicks();if(!idbPicks.length)return;
   const local=getP();const ids=new Set(local.map(p=>p.id));
-  let added=0;for(const p of idbPicks){if(!ids.has(p.id)){local.push(p);added++;}}
-  if(added){S.s('preds',local);updHdr();toast(`// IDB RECOVERED ${added} PICKS`);}
+  // Only add IDB entries that aren't already in localStorage
+  // Never downgrade a settled (win/loss) entry back to pending
+  let added=0;
+  for(const p of idbPicks){
+    if(!ids.has(p.id)){local.push(p);added++;}
+    // If IDB has a settled version of something still pending locally, upgrade it
+    else{
+      const li=local.findIndex(x=>x.id===p.id);
+      if(li>=0&&local[li].outcome==='pending'&&p.outcome!=='pending'){
+        local[li]=p;added++;
+      }
+    }
+  }
+  if(added){S.s('preds',local);updHdr();}
 }
 // ══════════════════════════════════════════════════════════════
 // ═══ SYNC KEY API ═════════════════════════════════════════════
@@ -9956,7 +9955,6 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
-  try{flushSeedToIDB();}catch(e){}// flush seeded props into IDB now that saveP is live
   try{await idbRecoverPicks();}catch(e){console.error('idbRecover',e);}
   try{await idbRecoverDailyLog();}catch(e){console.error('idbRecoverLog',e);}
   try{await syncPicksFromBackend();}catch(e){console.error('syncPicks',e);}
