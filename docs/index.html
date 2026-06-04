@@ -12,6 +12,19 @@
 <title>CLAIRVOYANCE ENGINE v8.0</title>
 <link rel="canonical" href="https://mercmink21.github.io/clairvoyance-backend/app.html">
 <script src="config.js"></script>
+<script>
+// ── Self-healing: unregister stale service workers immediately ──
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(r=>{
+      // Keep only the current SW; kill anything from an old cache version
+      if(r.active&&r.active.scriptURL&&!r.active.scriptURL.includes('sw.js')){r.unregister();}
+    });
+  });
+  // Register fresh SW
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
 
@@ -9213,7 +9226,7 @@ function renderFloatingLivePanel(bets){
 }
 
 // ═══ INIT ════════════════════════════════════════════════════
-if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+// SW registration handled in <head> self-healing block above
 (async function INIT(){
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -9644,46 +9657,6 @@ function sharePickCard(i,text){
   if(navigator.share){navigator.share({title:'CLAIRVOYANCE PICK',text:'🔒 '+text+' | Clairvoyance Engine',url:location.href}).catch(()=>{});}
   else{navigator.clipboard?.writeText('🔒 '+text+' | Clairvoyance Engine · '+location.href).then(()=>toast('// COPIED TO CLIPBOARD — PASTE TO SHARE'));}}
 
-function downloadPickCard(i){
-  const card=document.getElementById('pick-card-'+i);if(!card)return;
-  toast('// IMAGE SAVE: Use long-press / screenshot on the card to save');
-  card.style.boxShadow='0 0 30px rgba(240,0,255,.4)';setTimeout(()=>card.style.boxShadow='',2000);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TRACK RECORD PUBLIC VIEW
-// ═══════════════════════════════════════════════════════════════════════════
-function renderTrackRecord(){
-  const el=document.getElementById('social-record-content');if(!el)return;
-  const all=getP().filter(p=>p.outcome!=='pending');
-  const W=all.filter(p=>p.outcome==='win').length,L=all.filter(p=>p.outcome==='loss').length;
-  const N=all.length;const acc=N?W/N:null;
-  const totalU=all.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
-  // Best wins
-  const bestWins=all.filter(p=>p.outcome==='win').sort((a,b)=>(b.decOdds||2)-(a.decOdds||2)).slice(0,5);
-  const shareUrl=location.origin+location.pathname;
-  el.innerHTML=`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:14px;line-height:1.8">Your public track record. Share this link to show your verified betting record.<br><a href="${shareUrl}" style="color:#00f0ff">${shareUrl}</a></div>
-  <div style="background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:2px solid rgba(240,0,255,.35);border-radius:4px;padding:16px;margin-bottom:14px;box-shadow:0 0 30px rgba(240,0,255,.1)">
-    <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:3px;margin-bottom:12px;text-shadow:0 0 8px #f000ff">CLAIRVOYANCE · TRACK RECORD</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-      <div style="text-align:center;padding:10px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.2);border-radius:2px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:${acc>=.55?'#00f0ff':'#ff2090'}">${acc!=null?(acc*100).toFixed(1)+'%':'—'}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">WIN RATE</div>
-      </div>
-      <div style="text-align:center;padding:10px;background:rgba(240,0,255,.06);border:1px solid rgba(240,0,255,.2);border-radius:2px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:#f000ff">${W}-${L}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">RECORD</div>
-      </div>
-      <div style="text-align:center;padding:10px;background:rgba(${totalU>=0?'0,240,255':'255,32,144'},.06);border:1px solid rgba(${totalU>=0?'0,240,255':'255,32,144'},.2);border-radius:2px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:${totalU>=0?'#00f0ff':'#ff2090'}">${totalU>=0?'+':''}${totalU.toFixed(1)}u</div>
-        <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">NET UNITS</div>
-      </div>
-    </div>
-    ${bestWins.length?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:8px">BEST WINS</div>`+
-    bestWins.map(b=>`<div style="font-family:var(--mono);font-size:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(220,190,255,.8)">${b.sport} · ${b.betOn} · <span style="color:#00f0ff">${b.ml}</span> · ${b.date||''}</div>`).join(''):''}
-  </div>
-  <button onclick="navigator.share&&navigator.share({title:'My Betting Record — Clairvoyance',text:'${W}W-${L}L ${acc!=null?(acc*100).toFixed(1)+'%':''}  · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · Verified by Clairvoyance Engine',url:'${shareUrl}'}).catch(()=>{});!navigator.share&&navigator.clipboard?.writeText('${W}W-${L}L · ${acc!=null?(acc*100).toFixed(1)+'%':''} · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · ${shareUrl}').then(()=>toast('// COPIED RECORD TO CLIPBOARD'))" style="width:100%;padding:12px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.45);color:#f000ff;font-family:var(--mono);font-size:13px;border-radius:2px;cursor:pointer">SHARE MY RECORD</button>`;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI PICK REASONING — TEMPLATE-BASED NATURAL LANGUAGE
