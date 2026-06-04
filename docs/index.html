@@ -224,6 +224,37 @@ body{line-height:1.5}
 </head>
 <body>
 
+<script>
+// Force fresh load if old service worker is still running stale cache
+(function(){
+  try {
+    // If we have a SW controller, it might be serving stale content — kill it
+    if(navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){ r.unregister(); });
+        // After killing SW, force a true network reload
+        if(regs.length > 0) {
+          window.location.reload(true);
+        }
+      });
+    }
+  } catch(e) {}
+  // Safety net: if app not visible after 5s, hard reload
+  setTimeout(function(){
+    var app = document.getElementById('app');
+    if(app && getComputedStyle(app).opacity < 0.5) {
+      // Clear any SW caches then reload
+      if(window.caches) {
+        caches.keys().then(function(keys){
+          return Promise.all(keys.map(function(k){ return caches.delete(k); }));
+        }).then(function(){ window.location.reload(true); });
+      } else {
+        window.location.reload(true);
+      }
+    }
+  }, 5000);
+})();
+</script>
 <div id="splash">
   <div class="si">
     <div id="splash-wordmark" style="opacity:0;transform:scale(.88);transition:opacity .9s ease,transform .9s cubic-bezier(.34,1.56,.64,1);font-family:'Orbitron',sans-serif;font-size:clamp(30px,9vw,62px);font-weight:900;letter-spacing:6px;color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 32px rgba(240,0,255,.8),0 0 72px rgba(240,0,255,.45),0 0 130px rgba(240,0,255,.2);text-align:center;line-height:1">CLAIRVOYANCE</div>
