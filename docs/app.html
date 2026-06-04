@@ -1045,20 +1045,24 @@ body{line-height:1.5}
 </div>
 <div id="sp-analytics" class="spane">
   <nav class="snav">
-    <button class="sb2 act" onclick="setSub('analytics','betanalytics')">BET ANALYTICS</button>
-    <button class="sb2" onclick="setSub('analytics','mlb')">⚾ MLB RADAR</button>
-    <button class="sb2" onclick="setSub('analytics','nhl')">🏒 NHL RADAR</button>
-    <button class="sb2" onclick="setSub('analytics','nba')">🏀 NBA RADAR</button>
-    <button class="sb2" onclick="setSub('analytics','fb')">🏈 FB RADAR</button>
-    <button class="sb2" onclick="setSub('analytics','ncaa')">⚾ NCAA RADAR</button>
-    <button class="sb2" onclick="setSub('analytics','bysport')">BY SPORT</button>
-    <button class="sb2" onclick="setSub('analytics','byteam')">BY TEAM</button>
-    <button class="sb2" onclick="setSub('analytics','bethistory')">BET HISTORY</button>
-    <button class="sb2" onclick="setSub('analytics','trends');renderBetTrends()">TRENDS</button>
-    <button class="sb2" onclick="setSub('analytics','clvanalytics')">CLV</button>
-    <button class="sb2" onclick="setSub('analytics','atsanalysis');renderATSTracker()">ATS ANALYSIS</button>
+    <button class="sb2 act" onclick="setSub('analytics','visuals');renderOverallVisuals2()">VISUALS</button>
+    <button class="sb2" onclick="setSub('analytics','atsanalysis');renderATSTracker()">ATS</button>
+    <button class="sb2" onclick="setSub('analytics','byteam');renderAnalyticsTeams('ALL')">TEAMS</button>
+    <button class="sb2" onclick="setSub('analytics','mlb');renderAnalyticsMLB()">MLB RADAR</button>
+    <button class="sb2" onclick="setSub('analytics','nhl');renderAnalyticsNHL()">NHL RADAR</button>
+    <button class="sb2" onclick="setSub('analytics','nba');renderAnalyticsNBA()">NBA RADAR</button>
+    <!-- legacy kept hidden -->
+    <button class="sb2" style="display:none" onclick="setSub('analytics','betanalytics')">BET ANALYTICS</button>
+    <button class="sb2" style="display:none" onclick="setSub('analytics','bysport')">BY SPORT</button>
+    <button class="sb2" style="display:none" onclick="setSub('analytics','bethistory')">BET HISTORY</button>
+    <button class="sb2" style="display:none" onclick="setSub('analytics','trends');renderBetTrends()">TRENDS</button>
+    <button class="sb2" style="display:none" onclick="setSub('analytics','clvanalytics')">CLV</button>
   </nav>
-  <div id="analytics-betanalytics" class="subp act"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
+  <div id="analytics-visuals" class="subp act"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
+    <div class="sh"><span class="vc"></span> ENGINE VISUALS</div>
+    <div id="analytics-visuals-content"><div class="loading"><span class="spi"></span></div></div>
+  </div></div></div>
+  <div id="analytics-betanalytics" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
     <div class="sh"><span class="p"></span> BET ANALYTICS LAB</div>
     <div id="analytics-betanalytics-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
@@ -1073,7 +1077,7 @@ body{line-height:1.5}
     <div id="analytics-nhl-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
   <div id="analytics-nba" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
-    <div class="sh"><span class="p">🏀</span> NBA ANALYTICS</div>
+    <div class="sh"><span class="p"></span> NBA RADAR</div>
     <div id="analytics-nba-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
   <div id="analytics-fb" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
@@ -1089,7 +1093,14 @@ body{line-height:1.5}
     <div id="analytics-bysport-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
   <div id="analytics-byteam" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
-    <div class="sh"><span class="mc"></span> PERFORMANCE BY TEAM</div>
+    <div class="sh"><span class="mc"></span> TEAMS EXPLORER</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-o btn-sm" onclick="renderAnalyticsTeams('ALL')">ALL</button>
+      <button class="btn btn-o btn-sm" onclick="renderAnalyticsTeams('MLB')">MLB</button>
+      <button class="btn btn-o btn-sm" onclick="renderAnalyticsTeams('NBA')">NBA</button>
+      <button class="btn btn-o btn-sm" onclick="renderAnalyticsTeams('NHL')">NHL</button>
+      <button class="btn btn-o btn-sm" onclick="renderAnalyticsTeams('TEN')">TENNIS</button>
+    </div>
     <div id="analytics-byteam-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
   <div id="analytics-bethistory" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
@@ -6410,7 +6421,7 @@ function SS(s){
   if(s==='live'){_t(startNHLLive);_t(startNBALive);_t(startTennisLive);}
   if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);_t(renderOverallVisuals);}
   if(s==='social'){_t(renderIntelCards);}
-  if(s==='analytics'){_t(renderAnalyticsMLB);}
+  if(s==='analytics'){_t(renderOverallVisuals2);}
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   const mn_fut=document.getElementById('mn_fut');if(mn_fut)mn_fut.style.display=s==='fut'?'flex':'none';
   if(s==='news'){_t(renderNewsAll);}
@@ -6426,9 +6437,11 @@ function setSub(sport,sub){
   if(sport==='analytics'){
     if(sub==='mlb')renderAnalyticsMLB();
     else if(sub==='nhl')renderAnalyticsNHL();
+    else if(sub==='nba')try{renderAnalyticsNBA();}catch(e){}
+    else if(sub==='visuals')try{renderOverallVisuals2();}catch(e){}
+    else if(sub==='byteam')try{renderAnalyticsTeams('ALL');}catch(e){}
     else if(sub==='betanalytics')try{renderBetAnalyticsLab();}catch(e){}
     else if(sub==='bysport')try{renderBySportAnalytics();}catch(e){}
-    else if(sub==='byteam')try{renderByTeamAnalytics();}catch(e){}
     else if(sub==='bethistory')try{renderAnalyticsBetHistory('ALL');}catch(e){}
     else if(sub==='trends')try{renderBetTrends();}catch(e){}
     else if(sub==='atsanalysis')try{renderATSTracker();}catch(e){}
@@ -11138,6 +11151,77 @@ function renderAnalyticsNHL(){
     </div>`).join('');
 }
 
+function renderOverallVisuals2(){
+  // Render visuals into the analytics-visuals-content element
+  const el2=document.getElementById('analytics-visuals-content');if(!el2)return;
+  // Reuse renderOverallVisuals logic but target a different element
+  const settled=getP().filter(p=>p.outcome!=='pending');
+  if(settled.length<5){el2.innerHTML='<div class="empty">NEED 5+ SETTLED BETS FOR VISUALS</div>';return;}
+  // Borrow the visuals render from renderOverallVisuals by temporarily swapping target
+  const origEl=document.getElementById('ovr-visuals-content');
+  const fakeEl=document.createElement('div');fakeEl.id='ovr-visuals-content';
+  if(origEl)origEl.parentNode?.insertBefore(fakeEl,origEl);
+  try{renderOverallVisuals();el2.innerHTML=fakeEl.innerHTML;}catch(e){el2.innerHTML='<div class="empty">VISUALS UNAVAILABLE</div>';}
+  if(origEl)fakeEl.parentNode?.replaceChild(origEl,fakeEl);else fakeEl.remove();
+}
+function renderAnalyticsTeams(leagueFilter){
+  const el=document.getElementById('analytics-byteam-content');if(!el)return;
+  const settled=getP().filter(p=>p.outcome!=='pending');
+  let bets=settled;
+  if(leagueFilter&&leagueFilter!=='ALL')bets=settled.filter(p=>p.sport===leagueFilter||(leagueFilter==='TEN'&&(p.sport==='TENNIS'||p.sport==='TEN')));
+  // Group by team
+  const teamMap={};
+  for(const p of bets){
+    const teams=[p.hA,p.awA].filter(Boolean);
+    for(const t of teams){
+      if(!t||t==='PARLAY'||t==='NBA-PARLAY'||t.length>8)continue;
+      if(!teamMap[t])teamMap[t]={team:t,sport:p.sport,w:0,l:0,units:0,types:{}};
+      const rec=teamMap[t];
+      if(p.outcome==='win'){rec.w++;rec.units+=(p.decOdds||2)-1;}
+      else if(p.outcome==='loss'){rec.l++;rec.units-=1;}
+      const bt=(p.betType||'ML').toUpperCase();if(!rec.types[bt])rec.types[bt]={w:0,l:0};
+      if(p.outcome==='win')rec.types[bt].w++;else if(p.outcome==='loss')rec.types[bt].l++;
+    }
+  }
+  const rows=Object.values(teamMap).filter(t=>t.w+t.l>=2).sort((a,b)=>b.units-a.units);
+  if(!rows.length){el.innerHTML='<div class="empty">NO TEAM DATA YET</div>';return;}
+  const roiColor=(r)=>r>5?'var(--nc)':r>=0?'var(--vc)':'var(--hc)';
+  const rowBg=(r)=>r>5?'rgba(0,240,255,.06)':r>=0?'rgba(187,255,0,.04)':'rgba(255,32,144,.04)';
+  el.innerHTML=`<table class="dt" style="font-size:13px"><thead><tr><th>TEAM</th><th>SPORT</th><th>W-L</th><th>WIN%</th><th>UNITS</th><th>BEST TYPE</th></tr></thead><tbody>`+
+  rows.map(t=>{
+    const n=t.w+t.l;const pct=n?t.w/n:0;const roi=n?t.units/n*100:0;
+    const bestType=Object.entries(t.types).sort((a,b)=>(b[1].w/(b[1].w+b[1].l||1))-(a[1].w/(a[1].w+a[1].l||1)))[0];
+    const btLbl=bestType?`${bestType[0]} (${bestType[1].w}W-${bestType[1].l}L)`:'--';
+    return`<tr style="background:${rowBg(roi)}"><td style="color:var(--t);font-weight:700">${t.team}</td><td style="color:var(--t3)">${t.sport||'--'}</td><td>${t.w}W-${t.l}L</td><td style="color:${pct>=.55?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)'}">${(pct*100).toFixed(0)}%</td><td style="color:${roiColor(roi)}">${roi>=0?'+':''}${roi.toFixed(1)}%</td><td style="color:var(--t3)">${btLbl}</td></tr>`;
+  }).join('')+`</tbody></table>`;
+}
+function renderAnalyticsNBA(){
+  const el=document.getElementById('analytics-nba-content');if(!el)return;
+  const settled=getP().filter(p=>p.outcome!=='pending'&&p.sport==='NBA');
+  if(!settled.length){el.innerHTML='<div class="empty">NO NBA BET HISTORY YET</div>';return;}
+  // Team performance
+  const teamMap={};
+  for(const p of settled){
+    const teams=[p.hA,p.awA].filter(Boolean);
+    for(const t of teams){
+      if(!t||t==='PARLAY'||t==='NBA-PARLAY')continue;
+      if(!teamMap[t])teamMap[t]={team:t,w:0,l:0,units:0};
+      const rec=teamMap[t];
+      if(p.outcome==='win'){rec.w++;rec.units+=(p.decOdds||2)-1;}
+      else if(p.outcome==='loss'){rec.l++;rec.units-=1;}
+    }
+  }
+  const rows=Object.values(teamMap).filter(t=>t.w+t.l>=2).sort((a,b)=>b.units-a.units);
+  // Bet type breakdown
+  const btMap={};['ML','SPREAD','OU','PROP'].forEach(t=>{const tp=settled.filter(p=>(p.betType||'').toUpperCase()===t);btMap[t]={w:tp.filter(p=>p.outcome==='win').length,l:tp.filter(p=>p.outcome==='loss').length};});
+  const btHtml=Object.entries(btMap).filter(([,d])=>d.w+d.l>0).map(([t,d])=>{const n=d.w+d.l;const pct=n?d.w/n:0;return`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${t}</span><span style="font-family:var(--mono);font-size:12px">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:13px;color:${pct>=.55?'var(--nc)':'var(--hc)'}">${(pct*100).toFixed(0)}%</span></div>`;}).join('');
+  el.innerHTML=`<div class="sh" style="margin-top:0"><span class="gc"></span> NBA BET TYPE WIN RATES</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">${btHtml||'<div style="color:var(--t3);font-family:var(--mono);font-size:12px">No data</div>'}</div>
+  <div class="sh"><span class="p"></span> NBA TEAM PERFORMANCE</div>
+  <table class="dt" style="font-size:13px"><thead><tr><th>TEAM</th><th>W-L</th><th>WIN%</th><th>UNITS</th></tr></thead><tbody>
+  ${rows.map(t=>{const n=t.w+t.l;const pct=n?t.w/n:0;return`<tr><td style="color:var(--t)">${t.team}</td><td>${t.w}W-${t.l}L</td><td style="color:${pct>=.55?'var(--nc)':'var(--hc)'}">${(pct*100).toFixed(0)}%</td><td style="color:${t.units>=0?'var(--nc)':'var(--hc)'}">${t.units>=0?'+':''}${t.units.toFixed(1)}u</td></tr>`;}).join('')}
+  </tbody></table>`;
+}
 // ═══ OVERALL TAB — TRENDS ════════════════════════════════════
 function renderTrends(){
   const el=document.getElementById('ovr-trends-content');if(!el)return;
