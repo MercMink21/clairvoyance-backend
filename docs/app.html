@@ -924,33 +924,43 @@ body{line-height:1.5}
 <div id="sp-ovr" class="spane">
   <nav class="inav" id="ovr-in">
     <button class="nb act" onclick="T('ovr','dash')">DASHBOARD</button>
-    <button class="nb" onclick="T('ovr','analytics')">ANALYTICS</button>
     <button class="nb" onclick="T('ovr','history')">ALL BETS</button>
     <button class="nb" onclick="T('ovr','adaptive')">ADAPTIVE</button>
     <button class="nb" onclick="T('ovr','trends')">TRENDS</button>
     <button class="nb" onclick="T('ovr','clv')">CLV</button>
-    <button class="nb" onclick="T('ovr','visuals')">VISUALS</button>
-    <button class="nb" onclick="T('ovr','futures')">FUTURES</button>
-    <button class="nb" onclick="T('ovr','ats')">ATS</button>
-    <button class="nb" onclick="T('ovr','teams')">TEAMS</button>
-    <button class="nb" onclick="T('ovr','schedule')">SCHEDULE</button>
+    <button class="nb" onclick="T('ovr','analytics')">ANALYTICS</button>
   </nav>
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
       <div class="sh"><span class="p"></span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>SPORTS: MLB · NHL · NBA · TENNIS · PARLAY | TYPES: ML · RL/PL · OU · PARLAY · PROP</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>TYPES: ML · SPREAD · O/U · PARLAY · PROP · FUTURE</div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-n btn-sm" onclick="showSyncKeyModal()">⇄ SYNC KEY</button>
         <button class="btn btn-o btn-sm" onclick="exportBetsClipboard()">EXPORT</button>
         <button class="btn btn-o btn-sm" onclick="showImportModal()">IMPORT</button>
-        <button class="btn btn-o btn-sm" onclick="showPickCard()">📤 SHARE PICKS</button>
+        <button class="btn btn-o btn-sm" onclick="showPickCard()">SHARE PICKS</button>
       </div>
       <div id="ovr-dashboard"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-analytics" class="tab">
-      <div class="sh"><span class="p"></span> CLAIRVOYANCE — ANALYTICS LAB</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">VISUAL PERFORMANCE ANALYTICS · TRENDS · CALIBRATION · TIER BREAKDOWN<br>BASED ON ALL SETTLED LOCKED PICKS</div>
-      <div id="ovr-analytics"><div class="loading"><span class="spi"></span></div></div>
+      <div class="sh"><span class="p"></span> ANALYTICS</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="analytics-filters">
+        <button class="btn btn-o btn-sm act" onclick="renderOvrAnalytics('all')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('visuals')">VISUALS</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('ats')">ATS</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('teams')">TEAMS</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('sport')">BY SPORT</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('bettype')">BY BET TYPE</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('trends')">TRENDS</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('calibration')">CALIBRATION</button>
+        <button class="btn btn-o btn-sm" onclick="renderOvrAnalytics('streaks')">STREAKS</button>
+      </div>
+      <div id="ovr-analytics-content"><div class="loading"><span class="spi"></span></div></div>
+      <!-- Stubs for functions that still write to these IDs -->
+      <div id="ovr-analytics" style="display:none"></div>
+      <div id="ovr-visuals-content" style="display:none"></div>
+      <div id="ovr-ats-content" style="display:none"></div>
+      <div id="ovr-teams-content" style="display:none"></div>
     </div>
     <div id="ovr-tab-history" class="tab">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
@@ -977,20 +987,16 @@ body{line-height:1.5}
       <div class="sh"><span class="nc"></span> CLOSING LINE VALUE TRACKER</div>
       <div id="ovr-clv"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="ovr-tab-visuals" class="tab">
       <div class="sh"><span class="vc"></span> ENGINE VISUALS</div>
-      <div id="ovr-visuals-content"><div class="loading"><span class="spi"></span></div></div>
+      <div id="ovr-visuals-content-legacy"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="ovr-tab-futures" class="tab">
       <div class="sh"><span class="gc"></span> FUTURES TRACKER</div>
       <div id="ovr-futures"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="ovr-tab-ats" class="tab">
       <div class="sh"><span class="vc"></span> AGAINST THE SPREAD TRACKER</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(187,255,0,.25);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.8">ATS / RL / PL BET RECORDS · COVER % BY SPORT · HOME VS AWAY · FAV VS DOG</div>
-      <div id="ovr-ats-content"><div class="loading"><span class="spi"></span></div></div>
+      <div id="ovr-ats-content-legacy"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="ovr-tab-teams" class="tab">
       <div class="sh"><span class="mc"></span> RESULTS BY TEAM</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,119,0,.25);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.8">TEAM PERFORMANCE ACROSS ALL BET TYPES · ROI BY TEAM · TOP &amp; BOTTOM PERFORMERS</div>
       <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap" id="teams-sport-filters">
@@ -1000,9 +1006,8 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderTeamResults('NBA')">NBA</button>
         <button class="btn btn-o btn-sm" onclick="renderTeamResults('TEN')">TENNIS</button>
       </div>
-      <div id="ovr-teams-content"><div class="loading"><span class="spi"></span></div></div>
+      <div id="ovr-teams-content-legacy"><div class="loading"><span class="spi"></span></div></div>
     </div>
-    <div id="ovr-tab-schedule" class="tab">
       <div class="sh"><span class="ic"></span> 7-WEEK UPCOMING SCHEDULE</div>
       <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-o btn-sm" onclick="renderUpcomingSchedule('ALL')">ALL</button>
@@ -1018,13 +1023,11 @@ body{line-height:1.5}
   </div>
   <nav id="mn4" style="display:none">
     <button class="mb act" onclick="T('ovr','dash')"><span class="mbi"></span>DASH</button>
-    <button class="mb" onclick="T('ovr','analytics')"><span class="mbi"></span>ANALYTICS</button>
     <button class="mb" onclick="T('ovr','history')"><span class="mbi"></span>BETS</button>
     <button class="mb" onclick="T('ovr','adaptive')"><span class="mbi"></span>ADAPTIVE</button>
-    <button class="mb" onclick="T('ovr','visuals')"><span class="mbi"></span>VISUALS</button>
-    <button class="mb" onclick="T('ovr','ats')"><span class="mbi"></span>ATS</button>
-    <button class="mb" onclick="T('ovr','teams')"><span class="mbi"></span>TEAMS</button>
-    <button class="mb" onclick="T('ovr','schedule')"><span class="mbi"></span>SCHED</button>
+    <button class="mb" onclick="T('ovr','trends')"><span class="mbi"></span>TRENDS</button>
+    <button class="mb" onclick="T('ovr','clv')"><span class="mbi"></span>CLV</button>
+    <button class="mb" onclick="T('ovr','analytics')"><span class="mbi"></span>ANALYTICS</button>
   </nav>
 </div>
 <!-- TENNIS -->
@@ -5010,111 +5013,278 @@ function renderOverall(){
   const el=document.getElementById('ovr-dashboard');if(!el)return;
   const all=getP();const settled=all.filter(p=>p.outcome!=='pending');
   const pending=all.filter(p=>p.outcome==='pending');
+  if(!settled.length){el.innerHTML='<div class="empty">NO SETTLED BETS YET — LOCK AND SETTLE PICKS TO SEE DASHBOARD</div>';return;}
   const wins=settled.filter(p=>p.outcome==='win').length;
   const losses=settled.filter(p=>p.outcome==='loss').length;
   const pushes=settled.filter(p=>p.outcome==='push').length;
   const acc=settled.length?wins/settled.length:null;
-  // ROI
+  const atUnits=settled.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
   const totalWagered=settled.reduce((s,p)=>s+(p.wager||100),0);
-  const totalReturned=settled.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds||2-1)*(p.wager||100)+(p.wager||100);if(p.outcome==='push')return s+(p.wager||100);return s;},0);
+  const totalReturned=settled.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds||2)*(p.wager||100);if(p.outcome==='push')return s+(p.wager||100);return s;},0);
   const roi=totalWagered?((totalReturned-totalWagered)/totalWagered):null;
+
   // Streak
-  let streak=0,streakType='';
-  for(let i=settled.length-1;i>=0;i--){const o=settled[i].outcome;if(!streakType){streakType=o;streak=1;}else if(o===streakType)streak++;else break;}
-  // This Week / This Month helpers
-  const now=new Date();
-  const wkStart=new Date(now);wkStart.setDate(now.getDate()-now.getDay());wkStart.setHours(0,0,0,0);
-  const mthStart=new Date(now.getFullYear(),now.getMonth(),1);
-  const calcPerf=(bets)=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const ps=s.filter(p=>p.outcome==='push').length;const a=s.length?w/s.length:null;const u=s.reduce((acc,p)=>{if(p.outcome==='win')return acc+(p.decOdds||2)-1;if(p.outcome==='loss')return acc-1;return acc;},0);return{w,l,ps,n:s.length,acc:a,units:u};};
-  const weekBets=settled.filter(p=>p.lockedAt&&new Date(p.lockedAt)>=wkStart);
-  const monthBets=settled.filter(p=>p.lockedAt&&new Date(p.lockedAt)>=mthStart);
-  const wkPerf=calcPerf(weekBets);const mthPerf=calcPerf(monthBets);
-  // Last N accuracy
+  let curStreak=0,curStreakType='';
+  for(let i=settled.length-1;i>=0;i--){const o=settled[i].outcome;if(!curStreakType){curStreakType=o;curStreak=1;}else if(o===curStreakType)curStreak++;else break;}
+
+  // Longest streaks + drawdown
+  let maxWin=0,maxLoss=0,curW=0,curL=0;
+  let maxDD=0,curDD=0,peak=0,equity=0;
+  settled.forEach(p=>{
+    if(p.outcome==='win'){equity+=(p.decOdds||2)-1;if(equity>peak)peak=equity;curDD=peak-equity;if(curDD>maxDD)maxDD=curDD;curW++;if(curW>maxWin)maxWin=curW;curL=0;}
+    else if(p.outcome==='loss'){equity-=1;curDD=peak-equity;if(curDD>maxDD)maxDD=curDD;curL++;if(curL>maxLoss)maxLoss=curL;curW=0;}
+  });
+
+  // Period helpers
+  const now=Date.now();
+  const ydStart=now-86400000; const wk7=now-7*86400000;
+  const d=new Date();const firstOfMonth=new Date(d.getFullYear(),d.getMonth(),1);
+  const firstOfLastMonth=new Date(d.getFullYear(),d.getMonth()-1,1);
+  const calcPerf=(bets)=>{
+    const s=bets.filter(p=>p.outcome!=='pending');
+    const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;
+    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};
+  };
+  const ydPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=ydStart));
+  const wk7Perf  = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
+  const moPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
+  const lastMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
+  const moLbl    = firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
+
+  // By sport — full names, no emojis
+  const sportMap=[
+    {lbl:'BASEBALL', codes:['MLB','NCAB','NCAAB']},
+    {lbl:'BASKETBALL',codes:['NBA','WNBA']},
+    {lbl:'F1',        codes:['F1']},
+    {lbl:'FOOTBALL',  codes:['NFL','FB']},
+    {lbl:'HOCKEY',    codes:['NHL','PWHL']},
+    {lbl:'TENNIS',    codes:['TEN','tennis']},
+  ];
+  const bySport=sportMap.map(sm=>{
+    const sp=settled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+    return{lbl:sm.lbl,...calcPerf(sp)};
+  });
+
+  // By bet type — clean labels
+  const typeMap=[
+    {lbl:'ML',     codes:['ML']},
+    {lbl:'SPREAD', codes:['RL','PL','SPREAD','ATS']},
+    {lbl:'O/U',    codes:['OU','OU','TOTAL']},
+    {lbl:'PARLAY', codes:['PARLAY','PL']},
+    {lbl:'PROP',   codes:['PROP','NRFI','PLAYER']},
+    {lbl:'FUTURE', codes:['FUTURE','FUT']},
+  ];
+  const byType=typeMap.map(tm=>{
+    const tp=settled.filter(p=>tm.codes.some(c=>p.betType&&p.betType.toUpperCase()===c.toUpperCase()));
+    return{lbl:tm.lbl,...calcPerf(tp)};
+  });
+
+  // Last N
   const lastN=[10,25,50,75,100];
-  const lastNData=lastN.map(n=>{const s=settled.slice(-n);const w=s.filter(p=>p.outcome==='win').length;const u=s.reduce((acc,p)=>{if(p.outcome==='win')return acc+(p.decOdds||2)-1;if(p.outcome==='loss')return acc-1;return acc;},0);return{n,w,l:s.length-w,acc:s.length?w/s.length:null,units:u,total:s.length};});
-  // By sport
-  const sports=['MLB','NHL','NBA','TEN','F1','NCAAB','WNBA'];
-  const bySport={};sports.forEach(s=>{const sp=settled.filter(p=>p.sport===s);bySport[s]={w:sp.filter(p=>p.outcome==='win').length,l:sp.filter(p=>p.outcome==='loss').length,n:sp.length};});
-  // Engine calibration score: average |expected - actual| across confidence bands (lower = better)
-  const calBandsAll=[{min:.50,max:.60},{min:.60,max:.70},{min:.70,max:.80},{min:.80,max:1}];
-  const calScoreParts=calBandsAll.map(b=>{const bp=settled.filter(p=>p.winProb>=b.min&&p.winProb<b.max);if(bp.length<3)return null;const act=bp.filter(p=>p.outcome==='win').length/bp.length;const exp=(b.min+Math.min(b.max,.99))/2;return Math.abs(act-exp);}).filter(v=>v!==null);
-  const engHealth=calScoreParts.length?1-calScoreParts.reduce((a,v)=>a+v,0)/calScoreParts.length:null;
-  // By bet type
-  const types=['ML','OU','RL','PL','PARLAY','PROP','NRFI'];
-  const byType={};types.forEach(t=>{const tp=settled.filter(p=>p.betType===t);byType[t]={w:tp.filter(p=>p.outcome==='win').length,l:tp.filter(p=>p.outcome==='loss').length,n:tp.length};});
-  // Calibration bands
-  const bands=[{min:.55,max:.65,lbl:'55-65%'},{min:.65,max:.75,lbl:'65-75%'},{min:.75,max:1,lbl:'75%+'}];
-  const cal=bands.map(b=>{const bp=settled.filter(p=>p.winProb>=b.min&&p.winProb<b.max);const bw=bp.filter(p=>p.outcome==='win').length;return{lbl:b.lbl,n:bp.length,act:bp.length?bw/bp.length:null,exp:(b.min+Math.min(b.max,.99))/2};});
-  const accColor=acc===null?'var(--t3)':acc>=.56?'var(--nc)':acc>=.50?'var(--vc)':'var(--hc)';
-  // Recent form dots (last 15 settled)
-  const recentFifteen=settled.slice(-15);
-  const scorePart=(p)=>p.hScore!=null?` ${p.hScore}-${p.aScore}`:'';
-  const formDots=recentFifteen.map(p=>{
+  const lastNData=lastN.map(n=>{
+    const s=settled.slice(-n);const w=s.filter(p=>p.outcome==='win').length;
+    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    return{n,w,l:s.length-w,acc:s.length?w/s.length:null,units:u,total:s.length};
+  });
+
+  // Model calibration — expanded bands
+  const calBands=[
+    {min:.50,max:.55,lbl:'50-55%'},{min:.55,max:.60,lbl:'55-60%'},
+    {min:.60,max:.65,lbl:'60-65%'},{min:.65,max:.70,lbl:'65-70%'},
+    {min:.70,max:.75,lbl:'70-75%'},{min:.75,max:1.0, lbl:'75%+'},
+  ];
+  const cal=calBands.map(b=>{
+    const bp=settled.filter(p=>p.winProb>=b.min&&p.winProb<b.max);
+    const bw=bp.filter(p=>p.outcome==='win').length;
+    const act=bp.length?bw/bp.length:null;
+    const exp=(b.min+Math.min(b.max,.98))/2;
+    const off=act!==null?Math.abs(act-exp):null;
+    return{lbl:b.lbl,n:bp.length,act,exp,off};
+  }).filter(b=>b.n>0);
+
+  // Engine agreement index — how often model consensus matches outcome
+  const withProb=settled.filter(p=>p.winProb!=null);
+  const highConf=withProb.filter(p=>p.winProb>=0.65);
+  const midConf =withProb.filter(p=>p.winProb>=0.55&&p.winProb<0.65);
+  const lowConf =withProb.filter(p=>p.winProb<0.55);
+  const agreeAcc=(bets)=>bets.length?bets.filter(p=>p.outcome==='win').length/bets.length:null;
+
+  // Recent form dots (last 20)
+  const recentForm=settled.slice(-20);
+  const formDots=recentForm.map(p=>{
     const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
-    const tip=`${p.sport||''} ${p.date||''} | ${p.betOn||''} ${p.ml||''} | ${p.outcome?.toUpperCase()||''}${scorePart(p)}`;
-    return`<span class="form-dot" data-tip="${tip.replace(/"/g,"'")}" style="display:inline-block;width:13px;height:13px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}88;flex-shrink:0;cursor:pointer;position:relative;transition:transform .15s" onmouseenter="showDotTip(this)" onmouseleave="hideDotTip()" ontouchstart="showDotTip(this)" ontouchend="setTimeout(hideDotTip,2000)"></span>`;
+    const tip=`${p.sport||''} ${p.date||''} | ${p.betOn||''} ${p.ml||''} | ${p.outcome?.toUpperCase()||''}`;
+    return`<span class="form-dot" data-tip="${tip.replace(/"/g,"'")}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}88;flex-shrink:0;cursor:pointer" onmouseenter="showDotTip(this)" onmouseleave="hideDotTip()" ontouchstart="showDotTip(this)" ontouchend="setTimeout(hideDotTip,2000)"></span>`;
   }).join('');
-  let html=`
-  <div class="g4" style="gap:8px;margin-bottom:12px">
-    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${accColor}">${acc===null?'--':(acc*100).toFixed(1)+'%'}</div><div style="font-size:13px;color:var(--t3);font-family:var(--mono)">OVERALL WIN %</div></div>
-    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:var(--t)">${wins}W-${losses}L${pushes?'-'+pushes+'P':''}</div><div style="font-size:13px;color:var(--t3);font-family:var(--mono)">RECORD</div></div>
-    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${roi===null?'var(--t3)':roi>=0?'var(--nc)':'var(--hc)'}">${roi===null?'--':((roi*100).toFixed(1)+'%')}</div><div style="font-size:13px;color:var(--t3);font-family:var(--mono)">ROI</div></div>
-    <div class="card cp" style="text-align:center;padding:10px"><div class="mono" style="font-size:26px;font-weight:700;color:${streakType==='win'?'var(--nc)':'var(--hc)'}">${streak>0?`${streak}${streakType==='win'?'W':'L'}`:'--'}</div><div style="font-size:13px;color:var(--t3);font-family:var(--mono)">STREAK</div></div>
-  </div>
-  ${recentFifteen.length?`<div class="card" style="margin-bottom:12px;padding:9px 12px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin-bottom:7px">RECENT FORM (LAST ${recentFifteen.length})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${formDots}</div></div>`:''}
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+
+  // Auto insights
+  const insights=[];
+  if(acc!==null){
+    if(acc>=0.60)insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is well above the ${(0.55*100).toFixed(0)}% profitable threshold.`);
+    else if(acc>=0.55)insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is tracking above the ${(0.55*100).toFixed(0)}% profitable threshold.`);
+    else insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is below the ${(0.55*100).toFixed(0)}% profitable threshold — review model calibration.`);
+  }
+  const bestSport=bySport.filter(s=>s.n>=3).sort((a,b)=>(b.acc||0)-(a.acc||0))[0];
+  const bestType =byType.filter(t=>t.n>=3).sort((a,b)=>(b.acc||0)-(a.acc||0))[0];
+  if(bestSport)insights.push(`${bestSport.lbl} is the top-performing sport at ${bestSport.acc!==null?(bestSport.acc*100).toFixed(0)+'%':'--'} (${bestSport.w}W-${bestSport.l}L, ${bestSport.units>=0?'+':''}${bestSport.units.toFixed(1)}u).`);
+  if(bestType) insights.push(`${bestType.lbl} bets are the most accurate type at ${bestType.acc!==null?(bestType.acc*100).toFixed(0)+'%':'--'} over ${bestType.n} picks.`);
+  if(wk7Perf.n>=3){
+    if(wk7Perf.acc!==null&&wk7Perf.acc>=0.60)insights.push(`Strong last-7-day stretch: ${wk7Perf.w}W-${wk7Perf.l}L (${(wk7Perf.acc*100).toFixed(0)}%) with ${wk7Perf.units>=0?'+':''}${wk7Perf.units.toFixed(1)} units.`);
+    else if(wk7Perf.acc!==null&&wk7Perf.acc<0.45)insights.push(`Difficult last-7-day stretch: ${wk7Perf.w}W-${wk7Perf.l}L. Monitor model inputs for drift.`);
+  }
+  if(cal.length>0){
+    const calDeviation=cal.map(b=>b.off).filter(v=>v!==null);
+    const avgDev=calDeviation.length?calDeviation.reduce((a,v)=>a+v,0)/calDeviation.length:null;
+    if(avgDev!==null)insights.push(`Model calibration deviation: ${(avgDev*100).toFixed(1)}% average across confidence bands. ${avgDev<0.05?'Excellent calibration.':avgDev<0.10?'Slight drift — monitor.':'Recalibration recommended.'}`);
+  }
+  if(curStreak>=3&&curStreakType==='win')insights.push(`Active ${curStreak}-bet winning streak. Maintain discipline — avoid overextending stake sizes.`);
+  if(maxLoss>=5)insights.push(`Longest losing streak: ${maxLoss}. Maximum drawdown: ${maxDD.toFixed(1)} units. Factor into bankroll management.`);
+
+  // ── HELPER RENDERERS ──────────────────────────────────────────────────────
+  const accColor=a=>a===null?'var(--t3)':a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
+  const unitColor=u=>u>=0?'var(--nc)':'var(--hc)';
+
+  const periodCard=(lbl,perf,col)=>`
+    <div class="card" style="padding:10px;border-top:2px solid ${col}">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:${col};margin-bottom:7px">${lbl}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div style="text-align:center;min-width:44px">
+          <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${accColor(perf.acc)}">${perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">WIN%</div>
+        </div>
+        <div style="text-align:center;min-width:60px">
+          <div style="font-family:var(--orb);font-size:16px;font-weight:700">${perf.w}W-${perf.l}L</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">RECORD</div>
+        </div>
+        <div style="text-align:center;min-width:44px">
+          <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${unitColor(perf.units)}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">UNITS</div>
+        </div>
+      </div>
+    </div>`;
+
+  const sportRow=(d)=>{
+    if(d.n===0)return`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${d.lbl}</span><span style="font-family:var(--mono);font-size:11px;color:rgba(150,130,180,.35)">NO BETS YET</span></div>`;
+    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:12px;color:var(--t)">${d.lbl}</span><div style="display:flex;gap:8px"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${accColor(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${unitColor(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
+  };
+
+  const calRow=(b)=>{
+    const col=b.off<0.04?'var(--nc)':b.off<0.08?'var(--vc)':'var(--hc)';
+    const bar=Math.min(b.act||0,1)*100;
+    const expBar=b.exp*100;
+    return`<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:3px">
+        <span style="color:var(--t3)">CONF ${b.lbl}</span>
+        <span style="color:${col}">ACTUAL ${b.act!==null?(b.act*100).toFixed(0)+'%':'--'} vs EXP ${(b.exp*100).toFixed(0)}% <span style="color:var(--t3)">(N=${b.n})</span></span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,.07);border-radius:3px;position:relative;overflow:visible">
+        <div style="position:absolute;top:0;left:0;height:100%;width:${bar.toFixed(1)}%;background:${col};border-radius:3px;opacity:.8"></div>
+        <div style="position:absolute;top:-3px;height:12px;width:2px;background:rgba(255,255,255,.5);border-radius:1px;left:${expBar.toFixed(1)}%" title="Expected"></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:${col};margin-top:2px">${b.off<0.04?'CALIBRATED':b.off<0.08?'SLIGHT DRIFT':'NEEDS RECALIBRATION'}</div>
+    </div>`;
+  };
+
+  const agreeRow=(lbl,bets,col)=>{
+    const a=agreeAcc(bets);
+    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${lbl}</span>
+      <div style="display:flex;gap:8px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${bets.length} BETS</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${a!==null?accColor(a):'var(--t3)'}">${a!==null?(a*100).toFixed(0)+'%':'--'}</span>
+      </div>
+    </div>`;
+  };
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  let h=`
+  <div class="g4" style="gap:8px;margin-bottom:14px">
+    <div class="card cp" style="text-align:center;padding:10px"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${accColor(acc)}">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">WIN %</div></div>
+    <div class="card cp" style="text-align:center;padding:10px"><div style="font-family:var(--orb);font-size:20px;font-weight:700">${wins}W-${losses}L${pushes?'-'+pushes+'P':''}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">RECORD</div></div>
+    <div class="card cp" style="text-align:center;padding:10px"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${unitColor(atUnits)}">${atUnits>=0?'+':''}${atUnits.toFixed(1)}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">UNITS</div></div>
+    <div class="card cp" style="text-align:center;padding:10px"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${curStreakType==='win'?'var(--nc)':'var(--hc)'}">${curStreak>0?curStreak+(curStreakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">STREAK</div></div>
+  </div>`;
+
+  // Recent Form
+  if(recentForm.length){h+=`<div class="card" style="margin-bottom:12px;padding:10px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3);margin-bottom:7px">RECENT FORM (LAST ${recentForm.length})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${formDots}</div></div>`;}
+
+  // Period Performance
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:12px 0 6px">PERIOD PERFORMANCE</div>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
+    ${periodCard('YESTERDAY',ydPerf,'var(--ic)')}
+    ${periodCard('ROLLING 7 DAYS',wk7Perf,'var(--nc)')}
+    ${periodCard('THIS MONTH',moPerf,'var(--pc)')}
+    ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
+  </div>`;
+
+  // By Sport + By Bet Type side by side
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY SPORT</div>
-      ${sports.map(s=>{const d=bySport[s];if(!d.n)return'';const a=d.n?d.w/d.n:null;return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-family:var(--orb);font-size:15px;font-weight:700">${s}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:14px;color:${a===null?'var(--t3)':a>=.55?'var(--nc)':'var(--hc)'}">${a===null?'--':(a*100).toFixed(0)+'%'}</span></div>`;}).join('')}
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">ENGINE HEALTH</span><span style="font-family:var(--mono);font-size:14px;color:${engHealth===null?'var(--t3)':engHealth>=.90?'var(--nc)':engHealth>=.80?'var(--vc)':'var(--hc)'}">${engHealth===null?'--':(engHealth*100).toFixed(0)+'%'}</span></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">PENDING</span><span style="font-family:var(--mono);font-size:14px;color:var(--gc)">${pending.length} ACTIVE</span></div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
+      ${bySport.map(sportRow).join('')}
     </div>
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">BY BET TYPE</div>
-      ${types.map(t=>{const d=byType[t];if(!d.n)return'';const a=d.n?d.w/d.n:null;return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-family:var(--mono);font-size:13px;color:var(--t2)">${t}</span><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:14px;color:${a===null?'var(--t3)':a>=.55?'var(--nc)':'var(--hc)'}">${a===null?'--':(a*100).toFixed(0)+'%'}</span></div>`;}).join('')}
-    </div>
-  </div>
-  <div class="sh"><span class="i">MODEL CALIBRATION</span></div>
-  <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:8px">// HOW OFTEN DOES CLAIRVOYANCE'S CONFIDENCE MATCH REALITY?</div>
-  <div class="g3" style="gap:8px;margin-bottom:14px">
-    ${cal.map(b=>{const off=b.act===null?null:Math.abs(b.act-b.exp);const color=off===null?'var(--t3)':off<.05?'var(--nc)':off<.10?'var(--vc)':'var(--hc)';return`<div class="card cp" style="text-align:center;padding:9px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:4px">CONF ${b.lbl}</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${color}">${b.act===null?'--':(b.act*100).toFixed(0)+'%'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:2px">EXP: ${(b.exp*100).toFixed(0)}% · N=${b.n}</div>${off!==null?`<div style="font-family:var(--mono);font-size:12px;color:${color};margin-top:2px">${off<.05?'✓ CALIBRATED':off<.10?'△ SLIGHT DRIFT':'// RECALIBRATE'}</div>`:''}
-    </div>`;}).join('')}
-  </div>`;
-  // THIS WEEK / THIS MONTH blocks
-  const perfCard=(label,perf,col)=>`<div class="card" style="padding:12px;border-top:2px solid ${col}">
-    <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:${col};margin-bottom:8px">${label}</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${perf.acc===null?'var(--t3)':perf.acc>=.55?'var(--nc)':'var(--hc)'}">${perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">WIN%</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700">${perf.w}W-${perf.l}L${perf.ps?'-'+perf.ps+'P':''}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">RECORD</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${perf.units>=0?'var(--nc)':'var(--hc)'}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">UNITS</div></div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">BET TYPE</div>
+      ${byType.map(sportRow).join('')}
     </div>
   </div>`;
-  html+=`<div class="sh" style="margin-top:4px"><span class="n"></span> PERIOD PERFORMANCE</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-    ${perfCard('THIS WEEK',wkPerf,'var(--nc)')}
-    ${perfCard('THIS MONTH',mthPerf,'var(--pc)')}
-  </div>`;
-  // LAST N table
-  html+=`<div class="sh"><span class="p"></span> LAST N PERFORMANCE</div>
-  <div class="card" style="margin-bottom:14px;overflow-x:auto"><table class="dt" style="font-size:13px"><thead><tr><th>LAST N</th><th>W</th><th>L</th><th>WIN%</th><th>UNITS</th></tr></thead><tbody>
-  ${lastNData.map(d=>{const ac=d.acc;const uc=d.units>=0?'var(--nc)':'var(--hc)';const acC=ac===null?'var(--t3)':ac>=.55?'var(--nc)':ac>=.50?'var(--vc)':'var(--hc)';return`<tr><td style="color:var(--t3)">LAST ${d.n}</td><td style="color:var(--nc)">${d.w}</td><td style="color:var(--hc)">${d.l}</td><td style="color:${acC};font-weight:700">${ac!==null?(ac*100).toFixed(0)+'%':'--'}</td><td style="color:${uc}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</td></tr>`;}).join('')}
+
+  // Last N
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:12px 0 6px">LAST N PERFORMANCE</div>
+  <div class="card" style="margin-bottom:14px;overflow-x:auto"><table class="dt" style="font-size:12px"><thead><tr><th>WINDOW</th><th>WIN%</th><th>RECORD</th><th>UNITS</th></tr></thead><tbody>
+  ${lastNData.map(d=>{const ac=d.acc;return`<tr><td style="color:var(--t3)">LAST ${d.n}</td><td style="color:${accColor(ac)};font-weight:700">${ac!==null?(ac*100).toFixed(0)+'%':'--'}</td><td>${d.w}W-${d.l}L</td><td style="color:${unitColor(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</td></tr>`;}).join('')}
   </tbody></table></div>`;
-  // ALL TIME
-  const atUnits=settled.reduce((acc,p)=>{if(p.outcome==='win')return acc+(p.decOdds||2)-1;if(p.outcome==='loss')return acc-1;return acc;},0);
-  html+=`<div class="sh"><span class="g"></span> ALL-TIME PERFORMANCE TRACKER</div>
-  <div class="card" style="margin-bottom:12px;padding:12px">
-    <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:12px">
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${accColor}">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">ALL-TIME WIN%</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700">${wins}W-${losses}L</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">RECORD</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${atUnits>=0?'var(--nc)':'var(--hc)'}">${atUnits>=0?'+':''}${atUnits.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">TOTAL UNITS</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${streakType==='win'?'var(--nc)':'var(--hc)'}">${streak>0?streak+(streakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">STREAK</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--t)">${settled.length}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">TOTAL BETS</div></div>
+
+  // All Time
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--gc);margin:12px 0 6px">ALL-TIME PERFORMANCE TRACKER</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:10px;text-align:center">
+      <div><div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${accColor(acc)}">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">WIN%</div></div>
+      <div><div style="font-family:var(--orb);font-size:20px;font-weight:700">${wins}W-${losses}L</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">RECORD</div></div>
+      <div><div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${unitColor(atUnits)}">${atUnits>=0?'+':''}${atUnits.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">UNITS</div></div>
+      <div><div style="font-family:var(--orb);font-size:20px;font-weight:700">${settled.length}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">BETS</div></div>
+      <div><div style="font-family:var(--orb);font-size:20px;font-weight:700">${pending.length}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">PENDING</div></div>
     </div>
-  </div>
-  <div style="text-align:center;margin-top:8px">
-    <button class="btn btn-p btn-sm" onclick="T('ovr','analytics')" style="letter-spacing:2px">OPEN ANALYTICS LAB →</button>
   </div>`;
-  el.innerHTML=html;
+
+  // Engine Consistency
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--mc);margin:12px 0 6px">ENGINE CONSISTENCY</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${curStreakType==='win'?'var(--nc)':'var(--hc)'}">${curStreak>0?curStreak+(curStreakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">CURRENT STREAK</div></div>
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--nc)">${maxWin}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">LONGEST WIN STREAK</div></div>
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--hc)">${maxLoss}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">LONGEST LOSS STREAK</div></div>
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--hc)">${curDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">CURRENT DRAWDOWN</div></div>
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--hc)">${maxDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">MAX DRAWDOWN</div></div>
+      <div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--vc)">${roi!==null?(roi*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">ALL-TIME ROI</div></div>
+    </div>
+  </div>`;
+
+  // Model Calibration (expanded)
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin:12px 0 6px">MODEL CALIBRATION</div>
+  <div class="card" style="margin-bottom:14px;padding:12px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:10px">HOW CLOSELY DOES MODEL CONFIDENCE MATCH ACTUAL WIN RATES</div>
+    ${cal.length?cal.map(calRow).join(''):'<div class="empty" style="padding:10px">NEED 3+ BETS PER CONFIDENCE BAND</div>'}
+  </div>`;
+
+  // Engine Agreement Index
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--vc);margin:12px 0 6px">ENGINE AGREEMENT INDEX</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px">ACCURACY BY MODEL CONFIDENCE TIER</div>
+    ${agreeRow('HIGH CONFIDENCE (65%+)',highConf,'var(--nc)')}
+    ${agreeRow('MID CONFIDENCE (55-65%)',midConf,'var(--vc)')}
+    ${agreeRow('LOW CONFIDENCE (&lt;55%)',lowConf,'var(--hc)')}
+    <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:8px;line-height:1.6">TOTAL WITH CONFIDENCE SCORE: ${withProb.length} PICKS · ${withProb.length<settled.length?`${settled.length-withProb.length} WITHOUT SCORE (legacy)`:'ALL SCORED'}</div>
+  </div>`;
+
+  // Insights
+  h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--rc);margin:12px 0 6px">ENGINE INSIGHTS</div>
+  <div class="card" style="margin-bottom:14px;padding:12px">
+    ${insights.length?insights.map(i=>`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);line-height:1.5">${i}</div>`).join(''):'<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">LOCK AND SETTLE MORE PICKS TO GENERATE INSIGHTS</div>'}
+  </div>`;
+
+  el.innerHTML=h;
 }
 
 // ─── OVERALL ANALYTICS ───────────────────────────────────────────────────────
@@ -6475,7 +6645,7 @@ function SS(s){
   if(s==='ten'){_t(renderTennisPicks);_t(renderTennisToday);}
   if(s==='f1'){_t(renderF1Schedule);_t(renderF1Drivers);}
   if(s==='live'){_t(startNHLLive);_t(startNBALive);_t(startTennisLive);}
-  if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);_t(renderOverallVisuals);}
+  if(s==='ovr'){_t(renderOverall);_t(renderOverallHistory);_t(renderAdaptiveLearning);}
   if(s==='social'){_t(renderIntelCards);}
   if(s==='analytics'){_t(renderAnalyticsMLB);}
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
@@ -6595,7 +6765,7 @@ function T(sport,tabId){
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')renderOverallAnalytics();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')renderOverallTrends();if(tabId==='clv')renderCLVTab();if(tabId==='visuals')renderOverallVisuals();if(tabId==='futures')renderFuturesTab();if(tabId==='ten')renderTennisOverall();if(tabId==='ats')try{renderATSTracker();}catch(e){};if(tabId==='teams')try{renderTeamResults('ALL');}catch(e){};if(tabId==='schedule')try{renderUpcomingSchedule('ALL');}catch(e){};}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
-  if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}
+  if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}if(sport==='ovr'&&tabId==='analytics'){try{renderOvrAnalytics('all');}catch(e){}}
   if(sport==='news'){if(tabId==='all')renderNewsAll();if(tabId==='injuries')renderNewsInjuries();if(tabId==='trades')renderNewsTrades();if(tabId==='mlb')renderNewsSport('mlb');if(tabId==='nhl')renderNewsSport('nhl');if(tabId==='nba')renderNewsSport('nba');}
   if(sport==='live'){if(tabId==='games')renderGlobalLive();if(tabId==='bets')renderGlobalLiveBets();}
   document.getElementById(saId)?.scrollTo(0,0);
@@ -12353,6 +12523,185 @@ function clrNHLP(){
   const res=document.getElementById('nhl-p-res');if(res)res.innerHTML='';
   const lc=document.getElementById('nhl-lc');if(lc)lc.textContent='(0)';
 }
+
+// ── Combined Analytics Tab ──────────────────────────────────────────────────
+function renderOvrAnalytics(filter){
+  // Update active filter button
+  document.querySelectorAll('#analytics-filters button').forEach(b=>{
+    b.classList.toggle('act', b.getAttribute('onclick')===`renderOvrAnalytics('${filter}')`);
+  });
+  const el=document.getElementById('ovr-analytics-content');if(!el)return;
+  const settled=getP().filter(p=>p.outcome!=='pending');
+  if(settled.length<3){el.innerHTML='<div class="empty">NEED 3+ SETTLED BETS FOR ANALYTICS</div>';return;}
+
+  // Sport filter options for teams/sport views
+  const leagues=['ALL','MLB','NHL','NBA','TEN','NFL','F1'];
+
+  // Helper
+  const accC=(a)=>a===null?'var(--t3)':a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
+  const uC=(u)=>u>=0?'var(--nc)':'var(--hc)';
+  const calcP=(bets)=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};};
+
+  let out='';
+
+  // VISUALS section
+  if(filter==='all'||filter==='visuals'){
+    const W=320,H=90,PAD=18;
+    let eq=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')eq+=(p.decOdds||2)-1;else if(p.outcome==='loss')eq-=1;return eq;})];
+    const minV=Math.min(...pts),maxV=Math.max(...pts),range=maxV-minV||1;
+    const px=(i)=>PAD+i*(W-2*PAD)/(pts.length-1||1);
+    const py=(v)=>PAD+(1-(v-minV)/range)*(H-2*PAD);
+    const path=pts.map((v,i)=>`${i===0?'M':'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+    const fill=path+` L${px(pts.length-1).toFixed(1)},${H-PAD} L${PAD},${H-PAD} Z`;
+    const z0=py(0).toFixed(1);
+    const equitySVG=`<svg width="${W}" height="${H}" style="display:block"><defs><linearGradient id="eg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00f0ff" stop-opacity=".3"/><stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/></linearGradient></defs><path d="${fill}" fill="url(#eg2)"/><line x1="${PAD}" y1="${z0}" x2="${W-PAD}" y2="${z0}" stroke="#ff2090" stroke-width="1" stroke-dasharray="4,3" opacity=".6"/><path d="${path}" fill="none" stroke="#00f0ff" stroke-width="2"/><circle cx="${px(pts.length-1).toFixed(1)}" cy="${py(pts[pts.length-1]).toFixed(1)}" r="3" fill="${pts[pts.length-1]>=0?'#00f0ff':'#ff2090'}"/></svg>`;
+    // Win rate by sport bar chart
+    const sMap=[{s:'Baseball',c:['MLB']},{s:'Basketball',c:['NBA']},{s:'Hockey',c:['NHL']},{s:'Tennis',c:['TEN']},{s:'Football',c:['NFL','FB']},{s:'F1',c:['F1']}];
+    const sData=sMap.map(m=>{const sp=settled.filter(p=>m.c.some(c=>p.sport?.toUpperCase()===c));const w=sp.filter(p=>p.outcome==='win').length;return{s:m.s,n:sp.length,pct:sp.length?w/sp.length:null};});
+    const bW=280,bH=sData.length*20+8;
+    const barSVG=`<svg width="${bW}" height="${bH}">${sData.map((d,i)=>{const bw=(d.pct||0)*(bW-90);const col=d.pct===null?'rgba(255,255,255,.1)':d.pct>=.56?'#00f0ff':d.pct>=.50?'#ffdd00':'#ff2090';return`<g transform="translate(0,${i*20})"><text x="72" y="14" font-family="Share Tech Mono" font-size="10" fill="rgba(200,180,255,.6)" text-anchor="end">${d.s}</text><rect x="76" y="3" width="${bw.toFixed(0)}" height="13" fill="${col}" opacity=".75" rx="1"/><text x="${76+bw+4}" y="14" font-family="Share Tech Mono" font-size="10" fill="${col}">${d.pct!==null?(d.pct*100).toFixed(0)+'%':'--'}</text></g>`;}).join('')}</svg>`;
+    // Bet type breakdown
+    const tData=[['ML','#00f0ff'],['Spread','#ff2090'],['O/U','#bbff00'],['Parlay','#f000ff'],['Prop','#ffdd00'],['Future','#ff7700']];
+    const tCodes=[['ML'],['RL','PL','SPREAD'],['OU','TOTAL'],['PARLAY'],['PROP','NRFI'],['FUTURE','FUT']];
+    const td=tData.map(([lbl,col],i)=>{const sp=settled.filter(p=>tCodes[i].some(c=>p.betType?.toUpperCase()===c));const w=sp.filter(p=>p.outcome==='win').length;return{lbl,col,n:sp.length,pct:sp.length?w/sp.length:null};});
+    const tdH=td.length*20+8;
+    const tdSVG=`<svg width="${bW}" height="${tdH}">${td.map((d,i)=>{const bw=(d.pct||0)*(bW-90);return`<g transform="translate(0,${i*20})"><text x="56" y="14" font-family="Share Tech Mono" font-size="10" fill="rgba(200,180,255,.6)" text-anchor="end">${d.lbl}</text><rect x="60" y="3" width="${bw.toFixed(0)}" height="13" fill="${d.col}" opacity=".75" rx="1"/><text x="${60+bw+4}" y="14" font-family="Share Tech Mono" font-size="10" fill="${d.col}">${d.pct!==null?(d.pct*100).toFixed(0)+'%':'--'}</text></g>`;}).join('')}</svg>`;
+    // Rolling 10 win rate
+    const r10=[];for(let i=9;i<settled.length;i++){const sl=settled.slice(i-9,i+1);r10.push(sl.filter(p=>p.outcome==='win').length/10);}
+    const rW=300,rH=70,rP=10;
+    const rPath=r10.length?r10.map((v,i)=>`${i===0?'M':'L'}${(rP+i*(rW-2*rP)/(r10.length-1||1)).toFixed(1)},${(rP+(1-v)*(rH-2*rP)).toFixed(1)}`).join(' '):'';
+    const r10SVG=`<svg width="${rW}" height="${rH}"><line x1="${rP}" y1="${(rP+(1-.55)*(rH-2*rP)).toFixed(1)}" x2="${rW-rP}" y2="${(rP+(1-.55)*(rH-2*rP)).toFixed(1)}" stroke="#ffdd00" stroke-width="1" stroke-dasharray="3,3" opacity=".5"/>${rPath?`<path d="${rPath}" fill="none" stroke="#bbff00" stroke-width="2"/>`:'<text x="40" y="35" font-family="Share Tech Mono" font-size="11" fill="rgba(200,180,255,.4)">NEED 10+ BETS</text>'}</svg>`;
+    const vcrd=(title,col,svg,note='')=>`<div class="card" style="border-left:2px solid ${col};margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:${col};margin-bottom:8px">${title}</div><div style="overflow-x:auto;background:rgba(5,0,15,.5);border-radius:2px;padding:8px">${svg}</div>${note?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:5px">${note}</div>`:''}</div>`;
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:0 0 10px">VISUALS</div>`;
+    out+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0">`;
+    out+=vcrd('P&L EQUITY CURVE','var(--nc)',equitySVG,`NET: ${pts[pts.length-1]>=0?'+':''}${pts[pts.length-1].toFixed(1)} UNITS`);
+    out+=vcrd('WIN RATE BY SPORT','var(--hc)',barSVG);
+    out+=vcrd('WIN RATE BY BET TYPE','var(--pc)',tdSVG);
+    out+=vcrd('ROLLING 10-BET WIN RATE','var(--vc)',r10SVG,'YELLOW = 55% THRESHOLD');
+    out+=`</div>`;
+  }
+
+  // ATS section
+  if(filter==='all'||filter==='ats'){
+    const atsBets=settled.filter(p=>['RL','PL','SPREAD','ATS'].includes(p.betType?.toUpperCase()));
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--vc);margin:14px 0 8px">AGAINST THE SPREAD</div>`;
+    if(atsBets.length<1){out+='<div class="empty">NO ATS/SPREAD BETS LOGGED</div>';}
+    else{
+      const atsSports=['MLB','NHL','NBA','NFL'];
+      out+=`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:8px">SPREAD PERFORMANCE BY SPORT</div>`;
+      atsSports.forEach(s=>{const sp=atsBets.filter(p=>p.sport===s);if(!sp.length)return;const w=sp.filter(p=>p.outcome==='win').length;const a=w/sp.length;out+=`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${s}</span><span style="font-family:var(--mono);font-size:12px;color:${accC(a)}">${w}W-${sp.length-w}L (${(a*100).toFixed(0)}%)</span></div>`;});
+      out+=`</div>`;
+    }
+  }
+
+  // TEAMS section
+  if(filter==='all'||filter==='teams'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--mc);margin:14px 0 8px">TEAMS ANALYSIS</div>`;
+    out+=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">`;
+    leagues.forEach(l=>{out+=`<button class="btn btn-o btn-sm" onclick="renderOvrTeamsFilter('${l}')">${l}</button>`;});
+    out+=`</div><div id="ovr-teams-filter-content"><div class="loading"><span class="spi"></span></div></div>`;
+    // Auto-render ALL
+    setTimeout(()=>renderOvrTeamsFilter('ALL'),50);
+  }
+
+  // BY SPORT breakdown
+  if(filter==='sport'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin:0 0 10px">PERFORMANCE BY SPORT</div>`;
+    const sMap=[{lbl:'BASEBALL',codes:['MLB','NCAB']},{lbl:'BASKETBALL',codes:['NBA','WNBA']},{lbl:'F1',codes:['F1']},{lbl:'FOOTBALL',codes:['NFL','FB']},{lbl:'HOCKEY',codes:['NHL','PWHL']},{lbl:'TENNIS',codes:['TEN','tennis']}];
+    sMap.forEach(sm=>{
+      const sp=settled.filter(p=>sm.codes.some(c=>p.sport?.toUpperCase()===c.toUpperCase()));
+      const d=calcP(sp);
+      out+=`<div class="card" style="margin-bottom:8px;padding:10px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:14px;font-weight:700;margin-bottom:6px">${sm.lbl}</div>`;
+      if(!d.n){out+=`<div style="font-family:var(--mono);font-size:11px;color:rgba(150,130,180,.4)">NO BETS YET</div>`;}
+      else{out+=`<div style="display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:12px"><span style="color:${accC(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span>${d.w}W-${d.l}L</span><span style="color:${uC(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span><span style="color:var(--t3)">${d.n} BETS</span></div>`;}
+      out+=`</div>`;
+    });
+  }
+
+  // BY BET TYPE breakdown
+  if(filter==='bettype'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin:0 0 10px">PERFORMANCE BY BET TYPE</div>`;
+    const tMap=[{lbl:'ML',codes:['ML']},{lbl:'SPREAD',codes:['RL','PL','SPREAD']},{lbl:'O/U',codes:['OU','TOTAL']},{lbl:'PARLAY',codes:['PARLAY']},{lbl:'PROP',codes:['PROP','NRFI']},{lbl:'FUTURE',codes:['FUTURE','FUT']}];
+    tMap.forEach(tm=>{
+      const sp=settled.filter(p=>tm.codes.some(c=>p.betType?.toUpperCase()===c.toUpperCase()));
+      const d=calcP(sp);
+      out+=`<div class="card" style="margin-bottom:8px;padding:10px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:14px;font-weight:700;margin-bottom:6px">${tm.lbl}</div>`;
+      if(!d.n){out+=`<div style="font-family:var(--mono);font-size:11px;color:rgba(150,130,180,.4)">NO BETS YET</div>`;}
+      else{out+=`<div style="display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:12px"><span style="color:${accC(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span>${d.w}W-${d.l}L</span><span style="color:${uC(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span><span style="color:var(--t3)">${d.n} BETS</span></div>`;}
+      out+=`</div>`;
+    });
+  }
+
+  // TRENDS
+  if(filter==='all'||filter==='trends'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:14px 0 8px">TRENDS</div>`;
+    const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const dayData=days.map((d,i)=>{const dp=settled.filter(p=>{if(!p.lockedAt&&!p.date)return false;const dt=p.lockedAt?new Date(p.lockedAt):new Date(p.date+'T12:00:00');return(dt.getDay()+6)%7===i;});const w=dp.filter(p=>p.outcome==='win').length;return{d,n:dp.length,pct:dp.length?w/dp.length:null};});
+    out+=`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:6px">WIN RATE BY DAY OF WEEK</div><div style="display:flex;gap:4px;align-items:flex-end;height:50px">`;
+    dayData.forEach(d=>{const h=(d.pct||0)*40;const col=d.pct===null?'rgba(255,255,255,.1)':d.pct>=.56?'#00f0ff':d.pct>=.50?'#ffdd00':'#ff2090';out+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:8px;color:${col}">${d.pct!==null?(d.pct*100).toFixed(0)+'%':''}</div><div style="width:100%;background:${col};height:${h.toFixed(0)}px;border-radius:1px 1px 0 0;opacity:.8"></div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${d.d}</div></div>`;});
+    out+=`</div></div>`;
+    // Monthly trend
+    const months={};settled.forEach(p=>{if(!p.lockedAt)return;const dt=new Date(p.lockedAt);const k=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;if(!months[k])months[k]={w:0,l:0};if(p.outcome==='win')months[k].w++;else months[k].l++;});
+    const mKeys=Object.keys(months).sort().slice(-6);
+    if(mKeys.length>0){
+      out+=`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:6px">MONTHLY WIN RATE (LAST 6)</div>`;
+      mKeys.forEach(k=>{const m=months[k];const a=m.w+m.l?m.w/(m.w+m.l):null;out+=`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${k}</span><span style="font-family:var(--mono);font-size:11px;color:${accC(a)}">${m.w}W-${m.l}L ${a!==null?'('+((a*100).toFixed(0))+'%)':''}</span></div>`;});
+      out+=`</div>`;
+    }
+  }
+
+  // CALIBRATION detail
+  if(filter==='calibration'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin:0 0 10px">CALIBRATION ANALYSIS</div>`;
+    const bands=[.50,.55,.60,.65,.70,.75,.80,.85,.90];
+    bands.forEach((min,i)=>{
+      if(i===bands.length-1)return;
+      const max=bands[i+1];
+      const bp=settled.filter(p=>p.winProb>=min&&p.winProb<max);
+      if(bp.length<2)return;
+      const w=bp.filter(p=>p.outcome==='win').length;
+      const act=w/bp.length;const exp=(min+max)/2;const off=Math.abs(act-exp);
+      const col=off<0.04?'var(--nc)':off<0.08?'var(--vc)':'var(--hc)';
+      out+=`<div class="card" style="margin-bottom:6px;padding:8px;border-left:2px solid ${col}"><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px"><span style="color:var(--t3)">${(min*100).toFixed(0)}-${(max*100).toFixed(0)}% CONF</span><span style="color:${col}">ACTUAL ${(act*100).toFixed(0)}% vs EXP ${(exp*100).toFixed(0)}% (N=${bp.length})</span></div><div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:5px;position:relative"><div style="height:100%;width:${(act*100).toFixed(1)}%;background:${col};border-radius:2px"></div><div style="position:absolute;top:-3px;height:10px;width:2px;background:rgba(255,255,255,.4);left:${(exp*100).toFixed(1)}%"></div></div></div>`;
+    });
+  }
+
+  // STREAKS detail
+  if(filter==='streaks'){
+    out+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--mc);margin:0 0 10px">STREAK ANALYSIS</div>`;
+    let runW=0,runL=0,allStreaks=[];
+    settled.forEach((p,i)=>{if(p.outcome==='win'){if(runL>0){allStreaks.push({type:'L',len:runL,end:i});runL=0;}runW++;}else if(p.outcome==='loss'){if(runW>0){allStreaks.push({type:'W',len:runW,end:i});runW=0;}runL++;}});
+    if(runW>0)allStreaks.push({type:'W',len:runW,end:settled.length});
+    if(runL>0)allStreaks.push({type:'L',len:runL,end:settled.length});
+    const topW=allStreaks.filter(s=>s.type==='W').sort((a,b)=>b.len-a.len).slice(0,5);
+    const topL=allStreaks.filter(s=>s.type==='L').sort((a,b)=>b.len-a.len).slice(0,5);
+    out+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--nc);margin-bottom:6px">LONGEST WIN STREAKS</div>${topW.map(s=>`<div style="font-family:var(--mono);font-size:13px;color:var(--nc);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">${s.len}W</div>`).join('')||'<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">NO DATA</div>'}</div><div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--hc);margin-bottom:6px">LONGEST LOSS STREAKS</div>${topL.map(s=>`<div style="font-family:var(--mono);font-size:13px;color:var(--hc);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">${s.len}L</div>`).join('')||'<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">NO DATA</div>'}</div></div>`;
+  }
+
+  el.innerHTML=out||'<div class="empty">SELECT A FILTER ABOVE</div>';
+}
+
+function renderOvrTeamsFilter(league){
+  const el=document.getElementById('ovr-teams-filter-content');if(!el)return;
+  const settled=getP().filter(p=>p.outcome!=='pending');
+  let bets=league==='ALL'?settled:settled.filter(p=>p.sport?.toUpperCase()===league.toUpperCase()||p.hA?.toUpperCase()===league.toUpperCase());
+  // Build team map
+  const teams={};
+  bets.forEach(p=>{
+    const team=p.betOn||p.hA||'';if(!team||team.length<2)return;
+    if(!teams[team])teams[team]={w:0,l:0,n:0,sport:p.sport||''};
+    if(p.outcome==='win')teams[team].w++;
+    else if(p.outcome==='loss')teams[team].l++;
+    teams[team].n++;
+  });
+  const rows=Object.entries(teams).filter(([,d])=>d.n>=1).sort((a,b)=>(b[1].w/b[1].n)-(a[1].w/a[1].n));
+  if(!rows.length){el.innerHTML='<div class="empty">NO TEAM DATA FOR THIS FILTER</div>';return;}
+  const good=rows.filter(([,d])=>d.n>=2&&d.w/d.n>=0.60);
+  const bad =rows.filter(([,d])=>d.n>=2&&d.w/d.n<0.45);
+  const mid =rows.filter(([,d])=>!(d.n>=2&&d.w/d.n>=0.60)&&!(d.n>=2&&d.w/d.n<0.45));
+  const section=(title,col,list)=>list.length?`<div style="font-family:var(--mono);font-size:10px;color:${col};letter-spacing:2px;margin:10px 0 5px">${title}</div>`+list.slice(0,10).map(([name,d])=>{const a=d.w/d.n;return`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:12px;color:var(--t)">${name}</span><div style="display:flex;gap:8px;font-family:var(--mono);font-size:11px"><span style="color:var(--t3)">${d.sport}</span><span>${d.w}W-${d.l}L</span><span style="color:${a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)'};font-weight:700">${(a*100).toFixed(0)}%</span></div></div>`;}).join(''):'';
+  el.innerHTML=`<div class="card" style="padding:10px">`+section('PERFORMING WELL (60%+)','var(--nc)',good)+section('MID-RANGE (45-60%)','var(--vc)',mid)+section('UNDERPERFORMING (&lt;45%)','var(--hc)',bad)+`</div>`;
+}
 </script>
 </div><!-- /app -->
 
@@ -12364,8 +12713,7 @@ function clrNHLP(){
   <button onclick="SS('ovr');T('ovr','trends');hideAllND()">Trends</button>
   <button onclick="SS('ovr');T('ovr','clv');hideAllND()">CLV</button>
   <button onclick="SS('ovr');T('ovr','adaptive');hideAllND()">Adaptive</button>
-  <button onclick="SS('ovr');T('ovr','visuals');hideAllND()">Visuals</button>
-  <button onclick="SS('ovr');T('ovr','futures');hideAllND()">Futures</button>
+  <button onclick="SS('ovr');T('ovr','analytics');hideAllND()">Analytics</button>
 </div>
 <div id="navd-mlb" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <div class="ndl"><button onclick="SS('mlb');hideAllND()">MLB</button>
