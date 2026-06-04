@@ -3256,7 +3256,7 @@ def git_push(summary: str = "") -> bool:
                               capture_output=True)
         if diff.returncode == 0:
             log("git: nothing to commit"); return True
-        msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}"
+        msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}\n\nhttps://mercmink21.github.io/clairvoyance-backend/app.html"
         subprocess.run(["git","-C",str(ROOT),"commit","-m",msg], check=True, capture_output=True)
         subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
         note("git push → main ✓")
