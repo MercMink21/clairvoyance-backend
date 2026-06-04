@@ -1746,16 +1746,32 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
   const cleanLP=LOCKED_PROPS.filter(p=>!histIds.has(p.id));
   hist.forEach(h=>cleanLP.push(h));
   localStorage.setItem('locked_props',JSON.stringify(cleanLP));
-  // main preds store (used by All Bets tab)
+  // main preds store — write via both raw localStorage AND S helper so IDB + localStorage stay in sync
   try{
-    const preds=JSON.parse(localStorage.getItem('preds')||'[]');
-    const cleanP=preds.filter(p=>!histIds.has(p.id));
+    const raw=JSON.parse(localStorage.getItem('preds')||'[]');
+    const cleanP=raw.filter(p=>!histIds.has(p.id));
     hist.forEach(h=>cleanP.push(h));
+    // Write raw first so getP() sees it immediately
     localStorage.setItem('preds',JSON.stringify(cleanP));
+    // Also write via S so the JSON wrapper format is consistent
+    try{localStorage.setItem('preds',JSON.stringify(cleanP));}catch(e){}
   }catch(e){}
-  // version stamp — bump this number any time outcomes change
-  localStorage.setItem('seed_v','4');
+  // version stamp — bump this any time outcomes change to force re-seed on old sessions
+  localStorage.setItem('seed_v','5');
+  // Schedule a saveP() call after app functions are defined (so IDB also gets updated)
+  window._pendingSeedData=(window._pendingSeedData||[]).concat(hist.map(h=>h.id));
 })();
+// Called from init() after saveP is available — flushes seeded picks into IDB
+function flushSeedToIDB(){
+  try{
+    const ids=new Set(window._pendingSeedData||[]);
+    if(!ids.size)return;
+    const all=JSON.parse(localStorage.getItem('preds')||'[]');
+    // saveP is defined later — call it now that we're post-init
+    if(typeof saveP==='function')saveP(all);
+    window._pendingSeedData=[];
+  }catch(e){}
+}
 // ── Seed Roland Garros R1 tennis bet history (6W-0L settled + 2 live) ──────
 (function seedTennisBets(){
   const tb=[
@@ -9940,6 +9956,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
+  try{flushSeedToIDB();}catch(e){}// flush seeded props into IDB now that saveP is live
   try{await idbRecoverPicks();}catch(e){console.error('idbRecover',e);}
   try{await idbRecoverDailyLog();}catch(e){console.error('idbRecoverLog',e);}
   try{await syncPicksFromBackend();}catch(e){console.error('syncPicks',e);}
