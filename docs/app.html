@@ -5870,7 +5870,7 @@ function renderAdaptiveLearning(){
   try{S.s('adaptive_prev_state',JSON.stringify({weights:state.weights,overallAcc:state.overallAcc,recentAcc:state.recentAcc,totalBets:state.totalBets,evThreshold:state.evThreshold,ts:Date.now()}));}catch(e){}
   const ts=state.lastRun?new Date(state.lastRun).toLocaleString():'Never';
   let html=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:2px;margin-bottom:12px">// ADAPTIVE LEARNING ENGINE · LAST CYCLE: ${ts}</div>`;
-  if(state.status==='INSUFFICIENT_DATA'){html+=`<div class="empty">${state.msg}</div>`+renderMorningReport()+`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;el.innerHTML=html;return;}
+  if(state.status==='INSUFFICIENT_DATA'){html+=`<div class="empty">${state.msg}</div>`;el.innerHTML=html;return;}
   // ── WHAT CHANGED THIS CYCLE ──
   if(prevState&&prevState.weights){
     const changes=[];
@@ -6046,10 +6046,35 @@ function renderAdaptiveLearning(){
       </div>`;
     }).join('');
   }
-  // ── Morning report + controls ──
-  html+=renderMorningReport();
+  // ── Adaptive Log ──
+  const adaptLog=S.g('adaptive_log')||[];
+  if(adaptLog.length){
+    html+=`<div class="sh"><span class="p"></span> ADAPTIVE LOG</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:8px">LAST ${Math.min(adaptLog.length,20)} CYCLES</div>`;
+    html+=adaptLog.slice(0,10).map(e=>{const impCol=e.impact==='POSITIVE'?'var(--nc)':e.impact==='NEGATIVE'?'var(--hc)':'var(--t3)';return`<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${new Date(e.ts).toLocaleDateString()}</span><span style="font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid ${impCol};color:${impCol};border-radius:2px">${e.impact||'NEUTRAL'}</span></div><div style="font-family:var(--mono);font-size:12px;color:var(--t2);margin-top:2px">${e.sport||''} — ${e.change||''}</div>${e.unitsBefore!=null?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">Units: ${e.unitsBefore?.toFixed(1)} → ${e.unitsAfter?.toFixed(1)}</div>`:''}
+    </div>`;}).join('');
+  }
+  // ── What Clairvoyance has learned ──
+  const allSettled2=getP().filter(p=>p.outcome!=='pending');
+  const learnedInsights=[];
+  // Road underdog patterns
+  const roadUnderdogs=allSettled2.filter(p=>p.sport==='NBA'&&p.betOn===p.awA&&parseFloat(p.ml||0)>0);
+  if(roadUnderdogs.length>=5){const ruw=roadUnderdogs.filter(p=>p.outcome==='win').length;learnedInsights.push(`NBA road underdogs: ${(ruw/roadUnderdogs.length*100).toFixed(0)}% win rate on ${roadUnderdogs.length} bets`);}
+  // ML vs Spread
+  const mlBets=allSettled2.filter(p=>(p.betType||'')===  'ML');const spBets=allSettled2.filter(p=>(p.betType||'').toUpperCase()==='SPREAD'||(p.betType||'')==='RL');
+  const mlWR=mlBets.length?mlBets.filter(p=>p.outcome==='win').length/mlBets.length:null;
+  const spWR=spBets.length?spBets.filter(p=>p.outcome==='win').length/spBets.length:null;
+  if(mlWR!==null)learnedInsights.push(`ML bets: ${(mlWR*100).toFixed(0)}% win rate on ${mlBets.length} bets`);
+  if(spWR!==null)learnedInsights.push(`Spread bets: ${(spWR*100).toFixed(0)}% win rate on ${spBets.length} bets`);
+  if(learnedInsights.length)html+=`<div class="sh"><span class="n"></span> WHAT CLAIRVOYANCE HAS LEARNED</div>
+  <div class="card" style="margin-bottom:14px;padding:10px">${learnedInsights.map(s=>`<div style="font-family:var(--mono);font-size:13px;color:var(--t2);padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">→ ${s}</div>`).join('')}</div>`;
+  // ── Where model is falling short ──
+  const fallingShort=[];
+  const btCheck=['ML','SPREAD','OU','PROP'];
+  for(const bt of btCheck){const tp=allSettled2.filter(p=>(p.betType||'').toUpperCase()===bt);if(tp.length<5)continue;const wr=tp.filter(p=>p.outcome==='win').length/tp.length;const roi=tp.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='loss'?-1:0),0)/tp.length*100;if(wr<0.50||roi<-5)fallingShort.push({area:bt,wr,roi,n:tp.length});}
+  if(fallingShort.length)html+=`<div class="sh"><span class="h"></span> WHERE THE MODEL IS FALLING SHORT</div>`+fallingShort.map(f=>`<div class="card" style="margin-bottom:7px;border-left:3px solid var(--hc);padding:10px"><div style="font-family:var(--mono);font-size:13px;color:var(--hc)">${f.area}: ${(f.wr*100).toFixed(0)}% win rate (${f.n} bets) · ROI ${f.roi>=0?'+':''}${f.roi.toFixed(1)}%</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:4px">Recommended action: review model calibration for ${f.area} bet type</div></div>`).join('');
+  // ── Controls ──
   html+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-p" style="flex:1;padding:11px" onclick="adaptiveTick();renderAdaptiveLearning();toast('// LEARNING CYCLE COMPLETE — WEIGHTS UPDATED')">[ RUN LEARNING CYCLE ]</button><button id="calib-btn" class="btn btn-n" style="flex:1;padding:11px;font-size:12px" onclick="triggerInstantCalibration()">CALIBRATE NOW</button></div>`;
-  html+=`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;
   el.innerHTML=html;
 }
 
@@ -8291,6 +8316,8 @@ async function idbRecoverPicks(){
 // ══════════════════════════════════════════════════════════════
 // ═══ SYNC KEY API ═════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════
+function getAdaptiveLog(){return S.g('adaptive_log',[])||[];}
+function addAdaptiveLogEntry(entry){const log=getAdaptiveLog();log.unshift({...entry,ts:Date.now()});S.s('adaptive_log',log.slice(0,20));}
 function generateSyncKey(){
   const data={picks:getP(),v:2,ts:Date.now()};
   return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
