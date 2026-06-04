@@ -5725,10 +5725,21 @@ function renderTennisOverall(){
 }
 
 // ═══ OVERALL TRENDS ═══════════════════════════════════════════════════════
-function renderOverallTrends(){
+function renderOverallTrends(sportFlt,btFlt){
   const el=document.getElementById('ovr-trends');if(!el)return;
-  const all=getP().filter(p=>p.outcome!=='pending');
-  if(all.length<5){el.innerHTML='<div class="empty">NOT ENOUGH DATA — SETTLE MORE PICKS TO SEE TRENDS</div>';return;}
+  if(sportFlt!==undefined)window._trendSport=sportFlt;if(btFlt!==undefined)window._trendBT=btFlt;
+  const curSF=window._trendSport||'ALL';const curBT=window._trendBT||'ALL';
+  let allBase=getP().filter(p=>p.outcome!=='pending');
+  const filterControls=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+    ${['ALL','BASEBALL','BASKETBALL','HOCKEY','TENNIS','F1','FOOTBALL'].map(s=>`<button class="btn btn-o btn-sm" style="${curSF===s?'border-color:var(--pc);color:var(--pc)':''}" onclick="renderOverallTrends('${s}',null)">${s}</button>`).join('')}
+  </div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px">
+    ${['ALL','ML','SPREAD','OU','PROP','PARLAY'].map(t=>`<button class="btn btn-o btn-sm" style="${curBT===t?'border-color:var(--nc);color:var(--nc)':''}" onclick="renderOverallTrends(null,'${t}')">${t}</button>`).join('')}
+  </div>`;
+  if(curSF&&curSF!=='ALL'){const sgFn={BASEBALL:p=>['MLB','NCAAB','NCAA'].includes(p.sport),BASKETBALL:p=>['NBA','WNBA'].includes(p.sport),HOCKEY:p=>['NHL','PWHL'].includes(p.sport),FOOTBALL:p=>['NFL','FB','CFB'].includes(p.sport),TENNIS:p=>['TEN','TENNIS'].includes(p.sport),F1:p=>p.sport==='F1'};if(sgFn[curSF])allBase=allBase.filter(sgFn[curSF]);}
+  if(curBT&&curBT!=='ALL')allBase=allBase.filter(p=>(p.betType||'').toUpperCase()===curBT);
+  const all=allBase;
+  if(all.length<5){el.innerHTML=filterControls+'<div class="empty">NOT ENOUGH DATA FOR SELECTED FILTERS</div>';return;}
   const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
   // ── Hot performers (sport × bet type) ──
   const combos={};
@@ -5769,7 +5780,7 @@ function renderOverallTrends(){
     <div style="font-family:var(--mono);font-size:12px;color:rgba(255,144,0,.9);letter-spacing:2px;margin-bottom:10px">// BET JOURNAL — REASON PERFORMANCE</div>
     ${reasonAnalysis.map(([r,d])=>{const acc=d.w/d.n;const uc=d.u>=0?'#00f0ff':'#ff2090';return`<div style="padding:7px 0;border-bottom:1px solid rgba(255,144,0,.08)"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.85)">${r}</span><div style="display:flex;gap:12px"><span style="font-family:var(--mono);font-size:12px;color:${acc>=.55?'#00f0ff':'#ff2090'};font-weight:700">${(acc*100).toFixed(0)}%</span><span style="font-family:var(--mono);font-size:12px;color:${uc}">${d.u>=0?'+':''}${d.u.toFixed(1)}u</span><span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5)">${d.n} bets</span></div></div></div>`;}).join('')}
   </div>`:'';
-el.innerHTML=reasonHtml+`
+el.innerHTML=filterControls+reasonHtml+`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     <div style="background:rgba(10,4,24,.9);border:1px solid rgba(0,240,255,.3);border-radius:3px;padding:12px">
       <div style="font-family:var(--mono);font-size:12px;color:#00f0ff;letter-spacing:2px;margin-bottom:10px">// HOT SPOTS</div>
@@ -5827,8 +5838,16 @@ el.innerHTML=reasonHtml+`
       <div style="color:rgba(220,190,255,.5);font-size:11px;margin-top:2px">POSSIBLE FACTORS: ${factors.length?factors.join(', '):'none identified'}</div>
     </div>`).join('')}
   </div>`:''}
+  ${(()=>{const last5wins=all.filter(p=>p.outcome==='win').slice(-5).reverse();if(!last5wins.length)return'';const winAnalysis=last5wins.map(p=>{const factors=[];if((p.winProb||0)>=0.65)factors.push('high confidence');if(p.betOn===p.hA)factors.push('home team');if(p.ml&&parseFloat(p.ml)<0)factors.push('favorite');if((p.decOdds||2)>2.5)factors.push('value odds');return{p,factors};});return`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(0,240,255,.3);border-radius:3px;padding:12px;margin-top:10px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--nc);letter-spacing:2px;margin-bottom:10px">// WIN ANALYSIS — LAST 5</div>
+    ${winAnalysis.map(({p,factors})=>`<div style="padding:6px 0;border-bottom:1px solid rgba(0,240,255,.08);font-family:var(--mono);font-size:12px">
+      <span style="color:var(--t3)">${p.sport||''}</span> · <span style="color:var(--t)">${p.betOn||''}</span> · <span style="color:var(--nc)">WIN</span> · <span style="color:var(--t3)">${p.date||''}</span>
+      <div style="color:rgba(220,190,255,.5);font-size:11px;margin-top:2px">FACTORS: ${factors.length?factors.join(', '):'none identified'}</div>
+    </div>`).join('')}
+  </div>`;})()}
   <div style="background:rgba(10,4,24,.9);border:1px solid rgba(187,255,0,.3);border-radius:3px;padding:12px;margin-top:10px">
-    <div style="font-family:var(--mono);font-size:12px;color:var(--vc);letter-spacing:2px;margin-bottom:10px">// RECOMMENDED ADJUSTMENTS</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--vc);letter-spacing:2px;margin-bottom:10px">// SELF-ASSESSMENT</div>
+    ${bestSp?`<div style="font-family:var(--mono);font-size:12px;color:var(--nc);margin-bottom:4px">EDGE IS STRONGEST IN: <span style="color:var(--nc)">${bestSp.s}</span> ON <span style="color:var(--gc)">${bestType?.t||'ML'}</span></div>`:''}
     ${bestSp?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">INCREASE allocation to <span style="color:var(--nc)">${bestSp.s}</span> bets — above-average win rate.</div>`:''}
     ${worstSp&&worstSp.s!==bestSp?.s?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">REDUCE exposure to <span style="color:var(--hc)">${worstSp.s}</span> until calibration improves.</div>`:''}
     ${bestType?`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.8">PRIORITIZE ${bestType.t} bets — best ROI per unit wagered.</div>`:''}
@@ -9394,6 +9413,17 @@ function renderCLVTab(){
       </div>
     </div>`:''}
     <div style="background:rgba(10,0,24,.8);border:1px solid rgba(0,240,255,.2);border-radius:2px;padding:8px 12px;margin-bottom:12px;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6);line-height:1.8">CLV TRACKING NOTE: Real-time closing line integration coming — currently uses outcome-adjusted simulation<br><span style="color:rgba(220,190,255,.4)">WIN bets: closing line simulated slightly worse (market moved away) · LOSS bets: simulated slightly better (market had info)</span></div>
+    ${(()=>{if(!settled.length)return'';
+    // CLV by bet type
+    const btCLV={};for(const e of settled){const bt=(getP().find(p=>p.id===e.id)?.betType||'ML').toUpperCase();if(!btCLV[bt])btCLV[bt]={sum:0,n:0};btCLV[bt].sum+=e.clv||0;btCLV[bt].n++;}
+    const btRows=Object.entries(btCLV).map(([bt,d])=>`<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;padding:3px 0"><span style="color:var(--t3)">${bt}</span><span style="color:${d.sum/d.n>=0?'var(--nc)':'var(--hc)'}">${d.sum/d.n>=0?'+':''}${(d.sum/d.n).toFixed(1)}% avg CLV (${d.n} bets)</span></div>`).join('');
+    // CLV leaderboard top 5
+    const topCLV=[...settled].filter(e=>e.clv!=null).sort((a,b)=>b.clv-a.clv).slice(0,5);
+    const lbRows=topCLV.map((e,i)=>`<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:var(--t3)">#${i+1} ${e.betOn||e.sport}</span><span style="color:var(--nc)">+${e.clv.toFixed(1)}% CLV</span></div>`).join('');
+    return`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:12px;color:var(--gc);letter-spacing:2px;margin-bottom:8px">CLV LEADERBOARD</div>${lbRows}</div>
+    <div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:12px;color:var(--ic);letter-spacing:2px;margin-bottom:8px">AVG CLV BY BET TYPE</div>${btRows}</div>
+    </div>`;})()}
     <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6);letter-spacing:2px;margin-bottom:8px">// ALL TRACKED BETS</div>
     ${entries.map(e=>{
       // Simulate closing line if not available
