@@ -131,9 +131,6 @@ required_ids = [
     ('home-engine-record',   'Home engine record'),
     ('home-performance',     'Home performance section'),
     ('home-yesterday-results','Home yesterday results'),
-    ('home-hero-ts',         'Home hero timestamp'),
-    ('home-hero-acc',        'Home hero accuracy'),
-    ('home-hero-rec',        'Home hero record'),
     ('home-data-ts',         'Home data-as-of timestamp'),
     ('navd-ovr',             'Overall nav dropdown'),
     ('navd-mlb',             'Baseball nav dropdown'),
@@ -407,9 +404,6 @@ render_targets = [
     ('home-engine-record',   'renderHomePage: engine record strip'),
     ('home-performance',     'renderHomePage: performance section'),
     ('home-yesterday-results','renderHomePage: yesterday results'),
-    ('home-hero-acc',        'renderHomePage: hero accuracy stat'),
-    ('home-hero-rec',        'renderHomePage: hero record stat'),
-    ('home-hero-ts',         'renderHomePage: hero timestamp'),
 ]
 for eid, desc in render_targets:
     if f'id="{eid}"' in html_without_js:
