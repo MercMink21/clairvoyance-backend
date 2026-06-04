@@ -1740,18 +1740,21 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
     {id:'finals_g1_wemby_3pm',team:'SA',player:'Victor Wembanyama',line:'3PM O/U 1.5',over:true,conf:.72,ml:'-170',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'Victor Wembanyama OVER 3PM 1.5',winProb:.72,hA:'SA',awA:'NY',decOdds:1.588,wager:1,note:'NBA Finals G1 ✓ WIN. Wemby hit 2+ threes as projected.'},
     {id:'finals_g1_og_pts',team:'NY',player:'OG Anunoby',line:'PTS O/U 12.5',over:true,conf:.62,ml:'-112',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'OG Anunoby OVER PTS 12.5',winProb:.62,hA:'SA',awA:'NY',decOdds:1.893,wager:1,note:'NBA Finals G1 ✓ WIN. OG Anunoby cleared 12.5 pts.'},
   ];
-  hist.forEach(h=>{
-    // Always overwrite so outcome updates (win/loss) take effect
-    const idx=LOCKED_PROPS.findIndex(p=>p.id===h.id);
-    if(idx>=0)LOCKED_PROPS[idx]=h;else LOCKED_PROPS.push(h);
-  });
-  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
-  // also seed into main preds store so history tab shows them
+  // ── Force-replace: strip old versions of these IDs, then insert fresh ──
+  const histIds=new Set(hist.map(h=>h.id));
+  // locked_props store
+  const cleanLP=LOCKED_PROPS.filter(p=>!histIds.has(p.id));
+  hist.forEach(h=>cleanLP.push(h));
+  localStorage.setItem('locked_props',JSON.stringify(cleanLP));
+  // main preds store (used by All Bets tab)
   try{
     const preds=JSON.parse(localStorage.getItem('preds')||'[]');
-    hist.forEach(h=>{const i=preds.findIndex(p=>p.id===h.id);if(i>=0)preds[i]=h;else preds.push(h);});
-    localStorage.setItem('preds',JSON.stringify(preds));
+    const cleanP=preds.filter(p=>!histIds.has(p.id));
+    hist.forEach(h=>cleanP.push(h));
+    localStorage.setItem('preds',JSON.stringify(cleanP));
   }catch(e){}
+  // version stamp — bump this number any time outcomes change
+  localStorage.setItem('seed_v','4');
 })();
 // ── Seed Roland Garros R1 tennis bet history (6W-0L settled + 2 live) ──────
 (function seedTennisBets(){

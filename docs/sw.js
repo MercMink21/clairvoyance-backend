@@ -1,5 +1,5 @@
-// CLAIRVOYANCE ENGINE — Service Worker v2.3
-const CACHE = 'cv-engine-v7';
+// CLAIRVOYANCE ENGINE — Service Worker v2.4
+const CACHE = 'cv-engine-v8';
 const CORE = [
   './',
   './index.html',
