@@ -62,7 +62,7 @@ except ImportError:
 
 # ── paths & config ────────────────────────────────────────────────────────────
 ROOT     = Path(__file__).parent.parent
-FE       = ROOT / "docs" / "index.html"       # Engine SPA — served at github.io/clairvoyance-backend/
+FE       = ROOT / "docs" / "app.html"          # Engine SPA — source of truth (index.html is a copy)
 FE_DATA  = ROOT / "docs" / "data.json"        # Engine data pushed to docs/ → github.io
 DATA     = ROOT / "data"
 LOGS     = ROOT / "logs"
@@ -3214,7 +3214,8 @@ def write_data_json(bundle: dict) -> None:
     note(f"data.json written ({len(payload)//1024} KB) → docs/ (github.io) + frontend/ (local)")
 
 def patch_html_timestamp() -> None:
-    # Patch the engine SPA in docs/ — served at mercmink21.github.io/clairvoyance-backend/
+    # FE is now docs/app.html — source of truth.
+    # index.html is kept as an identical copy (GitHub Pages serves index.html at root).
     if not FE.exists(): return
     html   = FE.read_text(encoding="utf-8")
     ts_pat = r"(LAST_AUTO_UPDATE\s*=\s*['\"])([^'\"]*?)(['\"])"
@@ -3224,9 +3225,9 @@ def patch_html_timestamp() -> None:
         html = html.replace("<script>",
             f'<script>\nconst LAST_AUTO_UPDATE = "{TS_DISPLAY}";\n', 1)
     FE.write_text(html, encoding="utf-8")
-    # Keep app.html in sync with index.html
-    app_html = FE.parent / "app.html"
-    app_html.write_text(html, encoding="utf-8")
+    # Mirror to index.html (GitHub Pages root) — same content
+    index_html = FE.parent / "index.html"
+    index_html.write_text(html, encoding="utf-8")
     vlog(f"HTML timestamp patched → {TS_DISPLAY}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
