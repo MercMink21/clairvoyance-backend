@@ -1,15 +1,13 @@
-// CLAIRVOYANCE ENGINE — Service Worker v2.4
-const CACHE = 'cv-engine-v8';
+// CLAIRVOYANCE ENGINE — Service Worker v2.5
+const CACHE = 'cv-engine-v9';
 const CORE = [
-  './',
-  './index.html',
   './config.js',
   './manifest.json',
   './clairvoyance-logo.svg',
   './icon-1080.png'
 ];
-// Data files: always try network first so picks/live data stays fresh
-const DATA_PATHS = ['data.json', 'live_data.json', 'social_copy.json'];
+// Always fetch fresh from network (never cache HTML or data)
+const NETWORK_FIRST = ['app.html', 'index.html', 'data.json', 'live_data.json', 'social_copy.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -29,18 +27,16 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  const isData = DATA_PATHS.some(p => url.pathname.endsWith(p));
+  const isNetworkFirst = NETWORK_FIRST.some(p => url.pathname.endsWith(p)) || url.pathname === '/clairvoyance-backend/' || url.pathname === '/clairvoyance-backend';
   const isExternal = url.origin !== location.origin;
 
-  // External requests (APIs, fonts, ESPN): network-only, silent fail
-  if (isExternal || isData) {
+  // External (fonts, APIs) + HTML + data: network-first, cache fallback
+  if (isExternal || isNetworkFirst) {
     e.respondWith(
       fetch(e.request)
         .then(r => {
-          // Cache successful data responses for offline fallback
-          if (r.ok && isData) {
-            const clone = r.clone();
-            caches.open(CACHE).then(c => c.put(e.request, clone));
+          if (r.ok && !isExternal) {
+            caches.open(CACHE).then(c => c.put(e.request, r.clone()));
           }
           return r;
         })
@@ -49,17 +45,14 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App shell: cache-first, background revalidate
+  // Static assets (JS helpers, icons): cache-first, background revalidate
   e.respondWith(
     caches.match(e.request).then(cached => {
-      const networkFetch = fetch(e.request).then(r => {
-        if (r.ok) {
-          const clone = r.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
+      const fresh = fetch(e.request).then(r => {
+        if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone()));
         return r;
       }).catch(() => cached);
-      return cached || networkFetch;
+      return cached || fresh;
     })
   );
 });
