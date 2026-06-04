@@ -292,7 +292,6 @@ body{line-height:1.5}
       <div style="position:absolute;bottom:5px;left:5px;width:11px;height:11px;border-bottom:2px solid rgba(0,240,255,.55);border-left:2px solid rgba(0,240,255,.55)"></div>
       <div style="position:absolute;bottom:5px;right:5px;width:11px;height:11px;border-bottom:2px solid rgba(240,0,255,.55);border-right:2px solid rgba(240,0,255,.55)"></div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div class="home-radar"><div style="width:7px;height:7px;border-radius:50%;background:var(--nc);box-shadow:0 0 6px var(--nc),0 0 14px rgba(0,240,255,.5);animation:blink 1.4s infinite"></div></div>
         <div style="flex:1;min-width:140px">
           <div style="font-family:var(--orb);font-size:clamp(13px,4vw,20px);font-weight:900;letter-spacing:4px;color:var(--nc);text-shadow:0 0 14px rgba(0,240,255,.5)">CLAIRVOYANCE</div>
           <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:rgba(190,170,255,.5);margin-top:3px">ADVANCED SPORTS INTELLIGENCE SYSTEM</div>
@@ -5211,7 +5210,7 @@ function renderOverallVisuals(){
   </svg>`;
   // 4. Bet Type Donut
   const typeColors=['#00f0ff','#ff2090','#bbff00','#f000ff','#ffdd00'];
-  const tData=['ML','OU','RL','PROP','PARLAY'].map((t,i)=>{const n=settled.filter(p=>p.betType===t).length;return{t,n,col:typeColors[i]};}).filter(d=>d.n>0);
+  const tData=['ML','OU','RL','PROP','PARLAY'].map((t,i)=>{const n=settled.filter(p=>p.betType===t).length;return{t,n,col:typeColors[i]};});
   const total=tData.reduce((s,d)=>s+d.n,0)||1;
   let angle=0;const cx=50,cy=50,r=35,ri=20;
   const donutArcs=tData.map(d=>{const a=(d.n/total)*2*Math.PI;const x1=cx+r*Math.sin(angle),y1=cy-r*Math.cos(angle),x2=cx+r*Math.sin(angle+a),y2=cy-r*Math.cos(angle+a);const xi1=cx+ri*Math.sin(angle),yi1=cy-ri*Math.cos(angle),xi2=cx+ri*Math.sin(angle+a),yi2=cy-ri*Math.cos(angle+a);const large=a>Math.PI?1:0;const arc=`M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${large},0 ${xi1.toFixed(1)},${yi1.toFixed(1)} Z`;angle+=a;return`<path d="${arc}" fill="${d.col}" opacity=".85"/>`;}).join('');
@@ -6329,9 +6328,9 @@ function renderHomePage(){
   }
   const picks=[];
   // NHL picks
-  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏒 NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
   // NBA picks
-  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'🏀 NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
   // Tennis picks
   try{
     const allTenMat=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
@@ -6343,7 +6342,7 @@ function renderHomePage(){
       const pEV=Math.max(ev1||0,ev2||0);if(pEV<0.03||pWin<0.55)continue;
       const ml=pML>0?`+${pML}`:String(pML);const d2=pML>0?pML/100+1:100/Math.abs(pML)+1;
       const opp=pick===m.p1?m.p2:m.p1;
-      picks.push({sport:'🎾 TEN',mu:`${pick} vs ${opp}`,pick,abbr:pick,p:pWin,det:'5-ELO+MC Clay',col:'var(--mc)',ctx:m.tournament,ml,ev2:pEV,betType:'ML',hA:pick,awA:opp,d2});
+      picks.push({sport:'TEN',mu:`${pick} vs ${opp}`,pick,abbr:pick,p:pWin,det:'5-ELO+MC Clay',col:'var(--mc)',ctx:m.tournament,ml,ev2:pEV,betType:'ML',hA:pick,awA:opp,d2});
     }
   }catch(e){}
   // MLB picks (from ESPN games)
@@ -6353,29 +6352,34 @@ function renderHomePage(){
       const ens=mlbEns(g.hA,g.awA,g);const p=ens.p;
       if(p<0.55&&(1-p)<0.55)continue;
       const fav=p>=.5?g.hA:g.awA;const fp=Math.max(p,1-p);const ml=p2ml(fp);const d2=ml2d(ml);
-      picks.push({sport:'⚾ MLB',mu:`${g.awA} @ ${g.hA}`,pick:fav,abbr:fav,p:fp,det:'Poisson+MC+ELO',col:'var(--hc)',ctx:'',ml,ev2:ev(fp,d2),betType:'ML',hA:g.hA,awA:g.awA,d2});
+      picks.push({sport:'MLB',mu:`${g.awA} @ ${g.hA}`,pick:fav,abbr:fav,p:fp,det:'Poisson+MC+ELO',col:'var(--hc)',ctx:'',ml,ev2:ev(fp,d2),betType:'ML',hA:g.hA,awA:g.awA,d2});
     }
   }catch(e){}
   picks.sort((a,b)=>b.p-a.p);
-  // Daily Signals: winProb >= 0.58, max 8
-  const topPicks=picks.filter(pk=>pk.p>=0.58).slice(0,8);
-  if(!topPicks.length){el.innerHTML='<div class="empty">LOADING PICKS — SPORT DATA INITIALIZING</div>';}
+  // Daily Signals: highest-probability picks across all sports, no sport bias
+  const topPicks=picks.filter(pk=>pk.p>=0.55).slice(0,10);
+  if(!topPicks.length){el.innerHTML='<div class="empty">LOADING PICKS — SYNC DATA OR CHECK BACK SOON</div>';}
   else{
     el.innerHTML=topPicks.map((pk,i)=>{
       const glbl=pk.p>=0.70?'ELITE':pk.p>=0.63?'LOCK':'LEAN';
       const gcol=glbl==='ELITE'?'var(--gc)':glbl==='LOCK'?'var(--nc)':'var(--ic)';
-      return`<div class="card" style="border-left:3px solid ${gcol};position:relative;transition:transform .15s,box-shadow .15s;cursor:default" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 16px rgba(0,240,255,.15)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-        ${i===0?'<div style="position:absolute;top:6px;right:8px;color:var(--gc);font-size:12px;letter-spacing:2px;font-family:var(--mono)">★ #1</div>':''}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span style="font-family:var(--mono);color:var(--t3);font-size:13px;letter-spacing:2px">${pk.sport}</span>
-          <span style="font-family:var(--mono);font-size:9px;padding:1px 6px;border:1px solid ${gcol};color:${gcol};border-radius:2px">${glbl}</span>
+      const sportLbl={'NHL':'HOCKEY','NBA':'BASKETBALL','MLB':'BASEBALL','TEN':'TENNIS','NFL':'FOOTBALL','FB':'FOOTBALL','F1':'F1'}[pk.sport]||pk.sport;
+      return`<div class="card" style="border-left:3px solid ${gcol};position:relative;padding-bottom:40px;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,240,255,.12)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px">${sportLbl}</span>
+          <span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border:1px solid ${gcol};color:${gcol};border-radius:2px;letter-spacing:1px">${glbl}</span>
         </div>
-        <div style="font-size:16px;color:var(--t2);margin-bottom:6px">${pk.mu}</div>
-        <div style="font-family:var(--orb);color:${gcol};font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:4px">${pk.pick}</div>
-        <div><span style="font-size:22px;font-weight:700;color:var(--t);font-family:var(--mono)">${(pk.p*100).toFixed(1)}%</span> <span style="font-size:13px;color:var(--t3)">${pk.det}</span></div>
-        ${pk.ctx?`<div style="font-size:13px;color:var(--t3);margin-top:4px;letter-spacing:1px">${pk.ctx}</div>`:''}
-        <div style="font-family:var(--mono);font-size:13px;color:${pk.ev2>=0?'var(--nc)':'var(--hc)'};margin-top:4px">EV ${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}% · ODDS: ${pk.ml}</div>
-        <button onclick="lockPick('${pk.hA}','${pk.awA}','${pk.betType}','${pk.abbr}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}');setTimeout(renderHomePage,500)" style="margin-top:6px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">⚡ LOCK</button>
+        <div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:5px;line-height:1.4">${pk.mu}</div>
+        <div style="font-family:var(--orb);color:${gcol};font-size:17px;font-weight:700;letter-spacing:1px;margin-bottom:4px">${pk.pick}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+          <span style="font-size:20px;font-weight:700;color:var(--t);font-family:var(--mono)">${(pk.p*100).toFixed(1)}%</span>
+          <span style="font-size:12px;color:var(--t3);font-family:var(--mono)">${pk.det}</span>
+        </div>
+        ${pk.ctx?`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:3px">${pk.ctx}</div>`:''}
+        <div style="font-family:var(--mono);font-size:12px;color:${pk.ev2>=0?'var(--nc)':'var(--hc)'};margin-top:3px">EV ${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}%  ODDS ${pk.ml}</div>
+        <div style="position:absolute;bottom:10px;right:10px">
+          <button onclick="lockPick('${pk.hA}','${pk.awA}','${pk.betType}','${pk.abbr}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}');setTimeout(renderHomePage,500)" style="font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 12px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer;letter-spacing:1px">LOCK</button>
+        </div>
       </div>`;
     }).join('');
   }
@@ -6483,8 +6487,8 @@ function renderPerformanceSection(containerId){
   const row=(lbl,p)=>{const pctCol=p.pct===null?'var(--t3)':p.pct>=.55?'var(--nc)':p.pct>=.50?'var(--vc)':'var(--hc)';return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${lbl}</span><div style="display:flex;gap:10px"><span style="font-family:var(--mono);font-size:12px;color:var(--t)">${p.w}W-${p.l}L</span><span style="font-family:var(--mono);font-size:12px;color:${pctCol}">${p.pct!==null?(p.pct*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:12px;color:${p.roi>=0?'var(--nc)':'var(--hc)'}">${p.roi>=0?'+':''}${p.roi.toFixed(1)}%</span><span style="font-family:var(--mono);font-size:11px;color:${p.units>=0?'var(--nc)':'var(--hc)'}">NET ${p.units>=0?'+':''}${p.units.toFixed(1)}u</span></div></div>`;};
   el.innerHTML=`<div class="card"><div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:10px">ENGINE PERFORMANCE</div>
     ${row('PAST WEEK',wkP)}${row('PAST MONTH ('+moLbl+')',moP)}${row('ALL TIME',allP)}
-    <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin:10px 0 6px">BY ENGINE</div>
-    ${spRows.map(d=>d.n>0?row(d.s,d):'').join('')}
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--ic);margin:10px 0 6px">BY SPORT</div>
+    ${spRows.map(d=>row(d.s,d)).join('')}
     <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:12px;color:rgba(155,140,190,.35)">FUTURE SPORTS</span><span style="font-family:var(--mono);font-size:11px;color:rgba(155,140,190,.25);letter-spacing:2px">COMING SOON</span></div>
     <button onclick="showTrackRecordCard()" class="btn btn-o btn-sm" style="margin-top:10px;width:100%">EXPORT PERFORMANCE</button>
   </div>`;
@@ -8792,7 +8796,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-03 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-04 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
