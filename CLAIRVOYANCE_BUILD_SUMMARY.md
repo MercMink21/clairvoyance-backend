@@ -1,501 +1,260 @@
-# Clairvoyance Engine — Complete Build Summary
-
-> Last updated: 2026-06-03
-> Live URL: https://mercmink21.github.io/clairvoyance-backend/app.html
-> Repo: https://github.com/MercMink21/clairvoyance-backend
-> Local: /Users/reeseoliver/clairvoyance-backend/
+# CLAIRVOYANCE ENGINE — Build Summary & Session Context
+> Generated: June 4, 2026 | Use this file to onboard a new session instantly
 
 ---
 
-## What Clairvoyance Is
-
-Clairvoyance is a sports betting intelligence engine — a single-file progressive web app (PWA) that pulls live data from ESPN, MoneyPuck, NHL Edge, TennisAbstract, Baseball Reference, Basketball Reference, Linemate, and more, runs ensemble probability models, surfaces best bets with EV calculations, tracks locked picks, and auto-settles results. It runs entirely on GitHub Pages (free hosting) with a Python backend that refreshes data on a cron schedule.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Pure vanilla JS + CSS, single HTML file (`docs/app.html`, ~10,700 lines) |
-| Backend | Python 3.11 (`scripts/clairvoyance_update.py`, ~3,450 lines) |
-| Hosting | GitHub Pages (`docs/` folder → `mercmink21.github.io/clairvoyance-backend/`) |
-| Data format | `docs/data.json` (~670KB, written by Python, consumed by JS) |
-| Build system | None — no npm, no webpack, no framework |
-| CI/CD | GitHub Actions (manual trigger + scheduled auto-refresh) |
-| PWA | Service worker (`docs/sw.js`), `manifest.json`, `icon-1080.png` |
+## 1. Repository
+- **Repo:** `MercMink21/clairvoyance-backend`
+- **Live URL:** `https://mercmink21.github.io/clairvoyance-backend/app.html`
+- **Source of truth:** `docs/app.html` (Python reads + writes this; `docs/index.html` is an identical copy)
+- **Pages source:** `docs/` folder → GitHub Pages serves `index.html` at root, `app.html` explicitly
+- **Latest working commit:** `7016be2`
 
 ---
 
-## Repository File Structure
-
+## 2. File Structure
 ```
-clairvoyance-backend/
-├── docs/                          # GitHub Pages root (everything served live)
-│   ├── app.html                   # THE ENGINE — entire frontend (~10,714 lines)
-│   ├── index.html                 # Redirect → app.html
-│   ├── data.json                  # Live data bundle (~670KB, refreshed by Python)
-│   ├── live_data.json             # Live in-game scores (refreshed every 2 min during games)
-│   ├── social_copy.json           # Generated social media copy
-│   ├── config.js                  # API base URL detection (localhost vs GitHub Pages)
-│   ├── sw.js                      # Service worker (PWA caching, v6)
-│   ├── manifest.json              # PWA manifest
-│   ├── .nojekyll                  # Prevents GitHub Pages Jekyll processing
-│   ├── icon-1080.png              # App icon
-│   ├── card.png                   # Generated social card image
-│   └── social/                    # Generated social copy files
-├── scripts/
-│   ├── clairvoyance_update.py     # Master data refresh engine v7.0 (~3,449 lines)
-│   ├── content_generator.py       # Social copy generator (X/IG/Discord)
-│   ├── generate_card.py           # Social card image generator
-│   ├── run_update.sh              # Wrapper script for the Python engine
-│   ├── setup_cron.sh              # Installs cron jobs (09:00, 15:00, 23:00 MT)
-│   ├── live_tracker.py            # Live score polling daemon
-│   ├── sync_server.py             # Local sync server
-│   └── requirements.txt           # Python dependencies
-├── data/
-│   ├── bundle.json                # Full data bundle (backup)
-│   └── best_bets.json             # Today's best bets
-├── .github/workflows/
-│   ├── manual-sync.yml            # Manual trigger via GitHub token (⚙ Sync Key button)
-│   └── scheduled-refresh.yml      # Auto-runs at 09:00, 15:00, 23:00 MT daily
-└── .env                           # ODDS_API_KEY and other secrets (gitignored)
+docs/
+  app.html          # 12,308 lines — full SPA (HTML + CSS + JS, single file)
+  index.html        # Identical copy of app.html (GitHub Pages root)
+  data.json         # 704KB — live sports data (written by Python, fetched network-first)
+  picks.json        # 35KB — permanent pick/bet history (GitHub Contents API)
+  sw.js             # 14 lines — SW self-destruct (clears cache, unregisters itself)
+  config.js         # API base URL detection (localhost vs GitHub Pages)
+scripts/
+  clairvoyance_update.py  # 3,643 lines — Python data fetcher + GitHub pusher
+data/
+  bet_history.json  # (currently empty — picks.json is the authoritative store)
+  bundle.json       # Internal data bundle
 ```
 
 ---
 
-## App Navigation Structure
-
-### Top Nav (`SS(key)`)
-`HOME · BASEBALL · FOOTBALL · HOCKEY · BASKETBALL · TENNIS · F1 · LIVE · OVERALL · ANALYTICS · SOCIAL · NEWS`
-
-### MLB sub-tabs (`T('mlb', tab)`)
-`PICKS · TODAY · PROPS · PARLAY · NRFI · LIVE · STATS · HISTORY · MODEL · CONFIG`
-
-### NHL sub-tabs (`T('nhl', tab)`)
-`LORD STANLEY · PICKS · TODAY · PROPS · PARLAY · LIVE · STATS · HISTORY · MODEL · CONFIG`
-
-### NBA sub-tabs (`T('nba', tab)`)
-`LARRY O'BRIEN · PICKS · TODAY · PROPS · PARLAY · LIVE · STATS · HISTORY · MODEL · CONFIG`
-
-### Tennis sub-tabs (`T('ten', tab)`)
-`PICKS · TODAY · LIVE · SLAMS · H2H · RANKINGS · MODEL · CONFIG`
-
-### F1 sub-tabs (`T('f1', tab)`)
-`PICKS · TODAY · SCHEDULE · DRIVERS · CONSTRUCTORS · STATS · MODEL · CONFIG`
-
-### OVERALL sub-tabs (`T('ovr', tab)`)
-`DASHBOARD · ALL BETS · TRENDS · CLV · FUTURES · TENNIS · ADAPTIVE`
-
-### ANALYTICS sub-tabs (`setSub('analytics', sub)`)
-`MLB RADAR · NHL RADAR · NBA RADAR · FB RADAR`
-
-### SOCIAL sub-tabs (`setSub('social', sub)`)
-`X/TWITTER · INSTAGRAM · DISCORD`
+## 3. Tech Stack
+- **Frontend:** Vanilla JS/HTML/CSS — single file SPA, no build step, no npm
+- **Fonts:** Orbitron (`var(--orb)`), Share Tech Mono (`var(--mono)`), Exo 2
+- **Backend:** Python 3 script (`clairvoyance_update.py`) — runs via GitHub Actions
+- **Hosting:** GitHub Pages (static)
+- **Data refresh:** GitHub Actions workflow (`manual-sync.yml`) triggered by ↻ SYNC button
+- **No service worker** — SW self-destructs on load (disabled to prevent cache issues)
 
 ---
 
-## CSS Design Tokens
-
+## 4. Design System
 ```css
---void: #010006   /* background base */
---nc:   #00f0ff   /* cyan — primary accent */
---hc:   #ff2090   /* hot pink — warnings/losses */
---vc:   #bbff00   /* volt green — wins/positives */
---ic:   #6690ff   /* indigo — secondary */
---pc:   #f000ff   /* purple — primary highlight */
---gc:   #ffdd00   /* gold — elite picks */
---mc:   #ff7700   /* orange — medium priority */
---rc:   #00ffaa   /* mint — records/stats */
-font headers: Orbitron
-font data:    Share Tech Mono
-font body:    Exo 2
+--void:#010006  --nc:#00f0ff   --hc:#ff2090   --vc:#bbff00
+--ic:#6690ff    --pc:#f000ff   --gc:#ffdd00   --mc:#ff7700
+--rc:#00ffaa    --orb: Orbitron  --mono: Share Tech Mono
+```
+CSS classes: `.card`, `.sh`, `.nb`, `.btn`, `.btn-p`, `.btn-o`, `.btn-sm`, `.tab`, `.act`, `.sa`, `.sg`, `.sgt`, `.spane`, `.fi`
+
+---
+
+## 5. Sport Panes & Sub-Tabs
+
+| Pane ID | Nav Label | Sub-tabs / Sub-panes |
+|---------|-----------|---------------------|
+| `sp-home` | HOME | (single view) |
+| `sp-mlb` | BASEBALL | tabs: picks, today, games, schedule, props, parlay, nrfi, ranks, history, model, set / subs: mlb, ncaa |
+| `sp-nba` | BASKETBALL | tabs: picks, today, games, schedule, props, parlay, playoffs, stats, history, model, config / subs: nba, wnba |
+| `sp-hk` | HOCKEY | tabs: picks, today, games, schedule, props, edge, goalies, puck / subs: nhl, pwhl, ncaah, khl, liiga, shl |
+| `sp-fb` | FOOTBALL | tabs: picks, schedule, stats / subs: nfl, cfb |
+| `sp-ten` | TENNIS | tabs: picks, today, slams, schedule, h2h, rankings, compare, model, config |
+| `sp-f1` | F1 | tabs: picks, today, schedule, standings, drivers, stats, model, config |
+| `sp-ovr` | OVERALL | tabs: dash, history, adaptive, trends, clv, analytics, ats, teams, visuals, schedule, futures |
+| `sp-analytics` | ANALYTICS | subs: betanalytics, bethistory, bysport, byteam, mlb, nhl, nba, ncaa, fb, atsanalysis, trends, clvanalytics |
+| `sp-fut` | FUTURES | tabs: nba, mlb, nhl, tennis |
+| `sp-social` | SOCIAL | tabs: cards, monte, record |
+| `sp-news` | NEWS | tabs: all, mlb, nba, nhl, injuries, trades |
+| `sp-live` | LIVE | tabs: games, bets |
+
+**Navigation functions:** `SS(sport)` — switch sport pane | `T(sport, tab)` — switch sub-tab | `setSub(sport, sub)` — switch sub-pane
+
+---
+
+## 6. Prediction Models
+
+| Sport | Signals | Key Functions |
+|-------|---------|---------------|
+| **MLB** | Poisson runs model, Bayesian team ratings, ELO, xFIP, NRFI probability, Monte Carlo | `mlbEns()`, `buildMLB()`, `renderMLBPicks()` |
+| **NBA** | ELO (`NBA_ELO`), Monte Carlo, BBRef advanced stats, TS%, BPM | `nbaEns()`, `renderNBAPicks()` |
+| **NHL** | xGF, Corsi, GSAx, MoneyPuck goalie data, HockeyViz, Monte Carlo | `nhlEns()`, `renderNHLPicks()` |
+| **Tennis** | Surface ELO (clay/hard/grass), yELO, TennisAbstract, H2H, fatigue | `tennisMatchWinProbFull()`, `renderTennisPicks()` |
+| **F1** | Qualifying delta, constructor standings, pit stop strategy, DNF risk | `renderF1Picks()` |
+
+**Ensemble weights:** `ENS = {mc:.50, bay:.20, elo:.30}` (adjustable in CONFIG tabs)
+
+---
+
+## 7. Python Data Pipeline (`clairvoyance_update.py`)
+
+**53 fetch functions** covering:
+- `fetch_mlb_scoreboard/standings/schedule_week/sabermetrics`
+- `fetch_nba_scoreboard/standings/playoff_bracket/player_stats`
+- `fetch_nhl_today/standings/edge_enhanced/moneypuck/hockeyviz`
+- `fetch_tennis_elo/yelo/ratio/odds/roland_garros/schedule_full`
+- `fetch_f1/f1_analytics/f1_data`
+- `fetch_linemate_props/trends/cheatsheet`
+- `fetch_ncaa_baseball/wnba/pwhl/week_schedule`
+- `fetch_sports_news/injuries_all/weather/futures_odds/best_odds`
+
+**data.json keys (24):** `generated, generatedMT, version, mlb, nba, nhl, ncaaBaseball, wnba, pwhl, mp, weather, tennis, futures, f1, linemate, bestBets, heroPicksForDay, bestOdds, settled, betHistory, overallStats, seededBets, news, injuries`
+
+**SEEDED_BETS constant** in Python — always included in `data.json` as `seededBets` key for network-first delivery.
+
+---
+
+## 8. Permanent Pick Storage (3-Layer System)
+
+```
+Layer 1: localStorage['preds']     — instant, in-browser
+Layer 2: IndexedDB                 — survives most cache clears
+Layer 3: docs/picks.json (GitHub)  — PERMANENT, cross-device, never lost
+```
+
+**Key functions:**
+- `loadPicksFromGitHub()` — called in init, merges GitHub + localStorage on every load
+- `savePicksToGitHub(picks)` — writes picks to `docs/picks.json` via GitHub Contents API
+- `syncPicksToGitHub()` — debounced (5s), fires after every `saveP()` call
+- `getGHToken()` / `setGHToken(t)` — reads/writes `cv_gh_token` from localStorage
+
+**Token:** Enter in engine via **⚙ Sync Key** button (top header). Needs `repo` scope. Same token handles data sync AND picks storage.
+
+**picks.json current state:** 109 bets (95W–14L) covering NHL RS, NHL Playoffs, MLB, NBA Playoffs, WCF, Finals G1, Roland Garros R1 WTA.
+
+---
+
+## 9. Seeded Bet History (Always Present)
+
+Lives in `app.html` in `seedBetHistory()` IIFE — runs on every page load, strips+reinserts by ID so outcomes never go stale.
+
+**Current seeded bets (95 entries):**
+- NHL 2025–26 Regular Season: 25 picks (Oct 2025 – Feb 2026)
+- NHL 2026 Playoffs: 10 picks (R1 → WCF/ECF)
+- MLB 2026: 24 picks (Apr – Jun 2026)
+- NBA 2026 Playoffs: 15 picks (R1 → ECF)
+- WCF Props (SA vs OKC): Wemby PRA, J.Williams PTS
+- NBA Finals G1 (SA vs NYK Jun 3): 9 props — 8W/1L
+- WCF Series picks: SA +210 G1 WIN, SA +136 G7 WIN
+- Roland Garros R1 WTA: 8W (Sakkari, Svitolina, Swiatek, Paolini, Rybakina, Sabalenka, Osaka, Keys)
+
+**To add new settled bets:** Add entry to `seedBetHistory()` IIFE in `app.html`. Use same format. Bump no version needed — strip+reinsert handles it.
+
+---
+
+## 10. Critical Implementation Rules
+
+### JavaScript Safety Checklist (run before every push)
+```python
+scripts = list(re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', html))
+main_js = [s.group(2) for s in scripts if len(s.group(2)) > 10000][0]
+bt = main_js.count('`')
+op = main_js.count('{'); cl = main_js.count('}')
+lp = len(re.findall(r'\blet LOCKED_PROPS\b', main_js))
+sp = len(re.findall(r'\bconst _origSaveP\b', main_js))
+assert bt % 2 == 0,  "BROKEN: odd backtick count — template literal unclosed"
+assert op == cl,     "BROKEN: brace mismatch — function not closed"
+assert lp == 1,      "BROKEN: duplicate let LOCKED_PROPS — SyntaxError crash"
+assert sp == 1,      "BROKEN: duplicate saveP patch — infinite loop crash"
+assert html.count('serviceWorker.register') == 0, "BROKEN: SW re-enabled"
+```
+
+### Non-negotiable rules
+1. **Never use agents for large multi-file edits** — they introduce syntax errors. Edit with targeted Python scripts instead.
+2. **Always validate syntax** (backticks even, braces balanced, no duplicate `let`) before pushing.
+3. **`app.html` is source of truth** — Python's `FE = ROOT / "docs" / "app.html"`. `patch_html_timestamp()` reads `app.html`, writes both `app.html` AND `index.html`.
+4. **No service worker** — `docs/sw.js` self-destructs. Never re-add SW caching — it caused weeks of loading issues.
+5. **Bet history must survive** — `seedBetHistory()` IIFE must be present in every push. Never remove it.
+6. **One `let LOCKED_PROPS`** — declared once near top of main JS. Never re-declare in seed blocks.
+7. **One `const _origSaveP`** — saveP patched once only. syncPicksToGitHub wired into that single patch.
+8. **`renderHomePage()` + `endSplash()` must be in init** — at end of `DOMContentLoaded` block.
+9. **`#app` must never be `opacity:0`** — if JS crashes, page stays visible.
+10. **Splash auto-hides via CSS** — `@keyframes splashFade` after 3s, regardless of JS state.
+
+---
+
+## 11. How to Push Safely
+
+```python
+# Safe push template — always use this pattern
+python3 << 'PYEOF'
+import re
+
+html = open('docs/app.html').read()
+
+# --- make your changes here ---
+
+# Validate before writing
+scripts = list(re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', html))
+main_js = [s.group(2) for s in scripts if len(s.group(2)) > 10000][0]
+bt = main_js.count('`'); op = main_js.count('{'); cl = main_js.count('}')
+lp = len(re.findall(r'\blet LOCKED_PROPS\b', main_js))
+sp = len(re.findall(r'\bconst _origSaveP\b', main_js))
+assert bt%2==0 and op==cl and lp==1 and sp==1, f"SYNTAX ERROR bt={bt} braces={op-cl} lp={lp} sp={sp}"
+print(f"✓ BT:{bt} Braces:{op}/{cl} LOCKED_PROPS:{lp} saveP:{sp} — ALL GOOD")
+
+open('docs/app.html','w').write(html)
+open('docs/index.html','w').write(html)  # always keep in sync
+PYEOF
 ```
 
 ---
 
-## Data Sources (52 fetch functions in Python)
+## 12. Known History of Issues & Fixes
 
-### MLB
-- ESPN API — scoreboard, schedule, standings, scores, injuries
-- MLB Stats API — team hitting/pitching sabermetrics
-- Baseball Reference — batting leaders, pitching leaders, fielding leaders, team stats
-- Linemate — props, trends, cheatsheet (via Playwright)
-- Open-Meteo — park weather for outdoor stadiums
-- NCAA Baseball — scores and standings
-
-### NBA
-- ESPN API — scoreboard, schedule, playoff bracket, scores, injuries
-- Basketball Reference — playoffs per game, per 100 possessions, advanced, shooting
-- NBA series stats — ECF (CLE vs NY), WCF (OKC vs SA)
-- WNBA — scores and schedule
-
-### NHL
-- ESPN API — scoreboard, schedule, standings, injuries
-- NHL API — today's games, playoff bracket
-- NHL Edge — team stats, goalie save %, 5v5/5v4/4v5 shot data, zone time
-- NHL Edge Enhanced — shot location, save locations, strength-based save %
-- MoneyPuck — team xGF%, shot data across all situations (5v5, 5v4, 4v5)
-- HockeyViz — 5v5 offense/defense, PP offense, PK defense, finishing, shot rates by score
-- Hockey Reference — playoff series stats (CAR vs MTL ECF)
-
-### Tennis
-- TennisAbstract — ATP/WTA ELO ratings (top 100)
-- TennisAbstract — ATP/WTA yElo ratings (seasonal)
-- TennisRatio — player comparison and surface stats
-- ESPN — rankings (ATP/WTA), schedule (ATP/WTA)
-- Roland Garros — draw, schedule, match results
-- The Odds API — match odds (ATP/WTA French Open)
-
-### F1
-- Ergast API — current season schedule, driver/constructor standings
-- F1Datastop — race calendar, race analysis
-- TracingInsights GitHub — telemetry data (speed, throttle, DRS, lap times)
-- F1 Unchained — track guides (overtaking spots, DRS zones, racing lines)
-- ESPN — F1 scoreboard and standings
-
-### Other
-- Open-Meteo API — weather for MLB outdoor stadiums
-- The Odds API — futures odds (MLB, NBA, NHL, Golf)
-- ESPN News API — news across all sports
-- ESPN Injuries API — injury reports (MLB, NBA, NHL)
-- ESPN Transactions API — trades, signings, waivers
+| Issue | Root Cause | Fix Applied |
+|-------|-----------|-------------|
+| Blank page (most common) | SW caching broken app.html | Removed SW entirely; sw.js self-destructs |
+| Blank page after push | `#app opacity:0`, JS crash before `.ready` | `opacity:1` always + splashFade CSS |
+| Splash never hides | `endSplash()` missing from init | Added to end of `DOMContentLoaded` block |
+| Nothing populates | `renderHomePage()` missing from init | Added to end of `DOMContentLoaded` block |
+| Total JS crash | Duplicate `let LOCKED_PROPS` | Only declare once; seed block must not re-declare |
+| Infinite loop / crash | Duplicate `const _origSaveP` (saveP patched twice) | One patch only; wired directly |
+| Broken template literals | Agent-generated code with odd backtick count | Always validate bt%2==0 before push |
+| History lost on browser clear | Picks only in localStorage/IDB | 3-layer storage: localStorage + IDB + GitHub picks.json |
+| Python overwrites app.html | `FE` pointed to `index.html`, not `app.html` | `FE = ROOT / "docs" / "app.html"` |
 
 ---
 
-## Python Engine Architecture (clairvoyance_update.py v7.0)
+## 13. NBA Playoffs 2026 State (as of Jun 4)
 
-### Run Modes
-```bash
-python3 scripts/clairvoyance_update.py              # full refresh
-python3 scripts/clairvoyance_update.py --push       # + git commit & push
-python3 scripts/clairvoyance_update.py --mode live  # live-window loop 16:00-23:00 MT
-python3 scripts/clairvoyance_update.py --mode props # Linemate only
-python3 scripts/clairvoyance_update.py --sport nhl  # single sport
-python3 scripts/clairvoyance_update.py --no-linemate    # skip Playwright
-python3 scripts/clairvoyance_update.py --no-reference   # skip slow Reference sites
+- **WCF:** SA Spurs def. OKC Thunder 4–3. SA advances.
+- **ECF:** NYK Knicks def. CLE Cavaliers 4–2. NYK advances.
+- **NBA Finals:** SA Spurs vs NYK Knicks. **Game 1: Jun 3 2026, SA won.** (Wemby 40+pts)
+- **Stanley Cup Finals:** VGK Golden Knights vs CAR Hurricanes (VGK swept WCF 4-0)
+- **Roland Garros 2026:** In progress (Jun 4). French Open clay. ATP/WTA both active.
+
+---
+
+## 14. NBA Finals G1 Props (Jun 3 2026) — All Settled
+
+| Bet | Result |
+|-----|--------|
+| Wemby PTS O 24.5 | ✅ WIN |
+| Wemby PTS O 26.5 | ✅ WIN |
+| Wemby REB O 9.5 | ✅ WIN |
+| Wemby 3PM O 1.5 | ✅ WIN |
+| Castle PTS O 13.5 | ✅ WIN |
+| Brunson PTS O 21.5 | ✅ WIN |
+| OG Anunoby PTS O 12.5 | ✅ WIN |
+| Champagnie PTS O 9.5 | ✅ WIN |
+| Brunson AST O 6.5 | ❌ LOSS |
+
+---
+
+## 15. Quick Reference — Starting a New Session
+
 ```
-
-### Key Functions
-| Function | Purpose |
-|---|---|
-| `fetch_mlb_scoreboard()` | ESPN MLB games, scores, odds |
-| `fetch_mlb_standings()` | ESPN MLB standings |
-| `fetch_baseball_reference()` | BBRef batting/pitching/fielding leaders |
-| `fetch_mlb_team_sabermetrics()` | MLB Stats API team hitting/pitching |
-| `fetch_mlb_nrfi_data()` | NRFI probability per game |
-| `fetch_nba_scoreboard()` | ESPN NBA games, scores, odds |
-| `fetch_nba_playoff_bracket()` | ESPN NBA bracket |
-| `fetch_basketball_reference()` | BBRef playoffs per game/advanced |
-| `fetch_basketball_reference_series()` | Series-level stats |
-| `fetch_nhl_today()` | NHL API today's games |
-| `fetch_nhl_edge()` | NHL Edge team/goalie/skater advanced |
-| `fetch_nhl_edge_enhanced()` | Shot location, zone time, 5v5 save % |
-| `fetch_moneypuck()` | MoneyPuck 5v5/5v4/4v5 xGF, goalies |
-| `fetch_hockeyviz()` | HockeyViz shot rates, zone control |
-| `fetch_hockey_reference()` | Hockey Reference playoff stats |
-| `fetch_tennis_elo()` | TennisAbstract ELO top 100 |
-| `fetch_tennis_yelo()` | TennisAbstract yElo seasonal |
-| `fetch_tennis_ratio()` | TennisRatio player comparison |
-| `fetch_roland_garros()` | Roland Garros draw + betting lines |
-| `fetch_f1()` | Ergast F1 schedule/standings |
-| `fetch_f1_tracing_insights()` | TracingInsights telemetry data |
-| `fetch_f1_unchained()` | Track guides (overtaking, DRS zones) |
-| `fetch_linemate_props()` | Linemate props via Playwright |
-| `fetch_linemate_trends()` | Linemate trends |
-| `fetch_weather()` | Open-Meteo park weather |
-| `fetch_best_odds()` | The Odds API moneylines |
-| `calculate_best_bets()` | Main picks engine (EV, ensemble model) |
-| `surface_best_bets_for_day()` | Top 6 hero picks for HOME tab |
-| `auto_settle()` | Match locked bets against final scores |
-| `merge_settled_to_history()` | Build full bet history |
-| `build_overall_stats()` | ROI, streaks, win rates |
-| `run_live_window()` | Live score loop 16:00-23:00 MT |
-| `git_push()` | Auto-commit and push to GitHub |
-| `write_data_json()` | Write docs/data.json + frontend/ |
-
-### Betting Model (Ensemble)
-- **Monte Carlo simulation** — 5,000-8,000 iterations per game
-- **Bayesian probability** — prior + game log posterior
-- **ELO ratings** — updated per game with margin-of-victory multiplier (538 method)
-- **Logistic regression** — sigmoid blend of multiple features
-- **Markov chain momentum** — hot/cold streak modeling
-- **HMM streak model** — exponential smoothing on results
-- **Random forest approximation** — gradient-boosted feature ensemble
-- **Expected Value (EV)** — `EV = (win_prob × dec_odds) - 1`
-- **CLV tracking** — closing line value vs opening line
-
-### Bet Grades
-| Grade | Win Prob | EV |
-|---|---|---|
-| A+ ELITE | 67%+ | 8%+ |
-| A LOCK | 62-67% | 4-8% |
-| B LEAN | 55-62% | 1-4% |
-
----
-
-## Auto-Refresh Schedule (GitHub Actions)
-
-| Time (MT) | Action |
-|---|---|
-| 09:00 | Full data refresh — all sports, push to GitHub |
-| 15:00 | Full data refresh — all sports, push to GitHub |
-| 16:00 | Live window starts — 2-min score refresh loop |
-| 23:00 | Full data refresh — all sports, push to GitHub |
-| 16:00-23:00 | Live tracking active — `live_data.json` updated every 2 min |
-
-Workflows:
-- `scheduled-refresh.yml` — runs automatically on schedule
-- `manual-sync.yml` — triggered by user via the ⚙ Sync Key button in the app
-
----
-
-## Frontend JS Architecture (app.html)
-
-### Global State
-```js
-D = window.__CV_DATA           // loaded from data.json
-TEAMS = {}                     // MLB team objects
-NHL = {}                       // NHL team objects (full stats)
-NBA_TEAMS = {}                 // NBA team objects
-ELO = {}                       // MLB ELO ratings
-NBA_ELO = {}                   // NBA ELO ratings
-ENS = {}                       // MLB ensemble weights
-NHL_ENS = {}                   // NHL ensemble weights
-TONIGHT = []                   // Tonight's NHL games
-PAR = []                       // MLB parlay legs
+1. Read this file first
+2. git pull to get latest
+3. Check: python3 -c "
+   import re; html=open('docs/app.html').read()
+   scripts=list(__import__('re').finditer(r'<script([^>]*)>([\s\S]*?)</script>',html))
+   js=[s.group(2) for s in scripts if len(s.group(2))>10000][0]
+   bt=js.count('\x60'); op=js.count('{'); cl=js.count('}')
+   print(f'BT:{bt} OK={bt%2==0} Braces:{op}/{cl} diff:{op-cl}')
+   "
+4. Live URL: https://mercmink21.github.io/clairvoyance-backend/app.html
+5. Never: re-enable SW, add duplicate let/const declarations, use agents for large edits
+6. Always: validate syntax before push, keep seedBetHistory() intact, sync app.html→index.html
 ```
-
-### Key JS Functions
-| Function | Purpose |
-|---|---|
-| `SS(sport)` | Switch top-level sport tab + re-render content |
-| `T(sport, tab)` | Switch sub-tab within a sport |
-| `setSub(sport, sub)` | Switch sub-section (MLB/NCAA, NBA/WNBA) |
-| `loadRemoteData(force)` | Fetch and apply fresh data.json |
-| `renderHomePage()` | Render HOME tab with today's best bets |
-| `renderBestBetsFromRemote()` | Display picks from data.json bestBets |
-| `renderHomeBestBets()` | Hero picks section on home tab |
-| `renderMLBPickCards()` | MLB pick cards with lock button |
-| `renderNHLPicks()` | NHL picks with EV display |
-| `renderNBAPicks()` | NBA picks with bracket context |
-| `renderTennisPicks()` | Tennis picks sorted by win probability |
-| `renderOverall()` | Overall stats dashboard |
-| `renderOverallHistory()` | Full bet history with filters |
-| `renderAdaptiveLearning()` | Model calibration and pattern detection |
-| `lockPick()` | Lock a pick into pending bets |
-| `lockBet()` | Lock a ML bet (MLB/NBA/NHL) |
-| `lockTennisBet()` | Lock a tennis match bet |
-| `auto_settle()` | Match pending bets against results |
-| `endSplash()` | Dismiss splash + call SS('home') |
-| `startSplash()` | Animate splash screen |
-| `doUpdate()` | SYNC button — triggers GH rebuild or ESPN fetch |
-| `triggerFullRebuild()` | Call GitHub Actions workflow via API |
-| `openTokenModal()` | Open GitHub token modal |
-| `saveTokenFromModal()` | Save GH token to localStorage |
-| `getGHToken()` | Get saved GH token |
-| `renderNewsAll()` | Async ESPN news + injuries + transactions |
-| `renderIntelCards()` | Social media pick cards |
-| `renderF1Schedule()` | F1 race schedule |
-| `renderGlobalLive()` | Live in-game tracker |
-| `adaptiveTick()` | Run adaptive learning calibration |
-
-### Data Flow
-```
-GitHub Actions (cron) 
-  → clairvoyance_update.py 
-  → docs/data.json 
-  → GitHub Pages CDN 
-  → loadRemoteData() in browser 
-  → patch functions update JS state 
-  → render functions update DOM
-```
-
----
-
-## Header Buttons
-
-| Button | Function |
-|---|---|
-| `↻ SYNC` | If GH token saved: triggers full GitHub rebuild. Otherwise: fetches ESPN data directly |
-| `⚙ Sync Key` | Opens GitHub token modal — paste ghp_ token, save, then trigger rebuild |
-
----
-
-## GitHub Token Sync Flow
-
-1. Click **⚙ Sync Key** in header
-2. Paste your GitHub Personal Access Token (`ghp_...`) with `workflow` scope
-3. Click **SAVE TOKEN** — stored in localStorage
-4. Click **↻ TRIGGER FULL REBUILD NOW**
-5. App calls GitHub Actions API → triggers `manual-sync.yml`
-6. Polls workflow status every 8 seconds
-7. When complete (~2-4 min), auto-loads fresh `data.json`
-
----
-
-## Critical Bugs Fixed in This Session
-
-### 1. Engine Not Loading (SyntaxError)
-**Problem:** Boot block (lines 9173-9225) had bare `await` calls at top level of a non-module `<script>` — SyntaxError killed entire engine before any function loaded.
-**Fix:** Wrapped boot block in `document.addEventListener('DOMContentLoaded', () => { (async() => { ... })(); })`.
-
-### 2. Duplicate Declarations (SyntaxError)
-**Problem:** 11 variables declared twice at top level (`STATMUSE_NHL`, `NBA_TEAMS`, `NBA_TONIGHT`, `NBA_PLAYERS`, `NBA_BBREF`, `NBA_LEADERS`, `NBA_PROPS_DATA`, `MLB_PROPS_DATA`, `NBA_ELO`, `NBA_PAR`, `lastMidDate`).
-**Fix:** Changed all second declarations from `const`/`let` to plain reassignments.
-
-### 3. All Tabs Blank — Functions Trapped in INIT IIFE
-**Problem:** An `(async function INIT(){})()` IIFE spanning ~1400 lines trapped 67 render functions in its closure scope. In strict mode, function declarations inside a block/function are not hoisted to global — `renderIntelCards`, `renderNewsAll`, `renderTennisToday`, `renderF1Schedule`, `renderGlobalLive`, `broadcastBetLock`, and 61 more were inaccessible.
-**Fix:** Added `window[fn.name] = fn` export for all 67 trapped functions at end of INIT.
-
-### 4. All Tabs No Visual Content — #app Closed at Line 484
-**Problem:** An extra `</div>` at line 484 was closing `#app` prematurely right after the baseball pane. Every tab after baseball (hockey, NBA, tennis, F1, live, overall, analytics, social, news) was outside the `#app` flex container — no flex parent means `.sa` scroll areas had `height: 0` and were visually invisible even though content existed.
-**Fix:** Removed the extra `</div>`. Now `#app` closes at line 10713 (just before `</body>`), containing all 18 sport panes.
-
-### 5. Service Worker Blocking Updates
-**Problem:** `sw.js` used cache-first strategy. Normal Chrome cache clearing (`Cmd+Shift+Delete`) does NOT clear service worker cache — users kept getting the broken old version.
-**Fix:** Bumped SW cache name from `cv-engine-v4` to `cv-engine-v6`, forcing all clients to discard old cache on next visit.
-
-### 6. Tabs Not Re-Rendering on Click
-**Problem:** `SS()` only triggered re-renders for home/overall/social/analytics. Clicking MLB, Hockey, NBA, Tennis, F1, Live tabs did nothing to refresh content — if boot rendering failed, tabs stayed blank forever.
-**Fix:** Added render calls to every sport in `SS()`, all wrapped in try/catch. Also added `SS('home')` call inside `endSplash()` so HOME always renders on app entry.
-
-### 7. Splash Blocking Entry
-**Problem:** "TAP TO ENTER" button had `opacity: 0` by default and only became visible after JS added a `.v` class 700ms in. Auto-dismiss was 3.2 seconds. If timing failed, users were stuck on splash forever.
-**Fix:** Made button always visible with cyan border, reduced auto-dismiss to 1.8s, made clicking anywhere on splash dismiss it.
-
-### 8. GitHub Actions Failures (.nojekyll Missing)
-**Problem:** Without `.nojekyll`, GitHub Pages runs Jekyll on the `docs/` folder. Jekyll fails on JavaScript template literals (`${...}`) treating them as broken Liquid templates.
-**Fix:** Added `docs/.nojekyll` file, added `permissions: contents: write` to workflow so bot can push data back.
-
-### 9. GitHub Token Sync Dead Code
-**Problem:** `_triggerGHAction()` and `_pollGHRun()` existed but were never called from anywhere. The SYNC button had no knowledge of the GitHub token.
-**Fix:** Created `triggerFullRebuild()` that wires token → GitHub Actions API → poll → load fresh data. Added `↻ TRIGGER FULL REBUILD NOW` button to the token modal.
-
-### 10. index.html Stale Separate Copy
-**Problem:** `index.html` was a separate (outdated) copy of the app, causing the root GitHub Pages URL to show an old version.
-**Fix:** Replaced `index.html` with a meta-refresh redirect to `app.html`.
-
-### 11. renderTennisPicks — elId ReferenceError
-**Problem:** Line 6832 referenced `elId` which was removed in a refactor, throwing `ReferenceError: elId is not defined` on every tennis tab load.
-**Fix:** Removed the stale `elId` reference.
-
-### 12. MLB Lock Button Wrong Position
-**Problem:** Lock button was a full-width button at the bottom of each pick card.
-**Fix:** Moved to right-aligned inline position beside the prob/EV display.
-
----
-
-## Data Bundle Structure (data.json keys)
-
-```json
-{
-  "generated": "ISO timestamp",
-  "generatedMT": "human readable MT time",
-  "version": "7.0",
-  "mlb": { "today", "tomorrow", "standings", "weekSchedule", "nrfi", "sabre", "reference" },
-  "nba": { "today", "tomorrow", "standings", "players", "bracket", "reference", "teamAdv", "weekSchedule" },
-  "nhl": { "today", "tomorrow", "standings", "bracket", "edge", "edgeEnhanced", "hockeyviz", "hockeyRef", "props", "trends", "form", "weekSchedule" },
-  "mp": { "teams": { "5v5", "5v4", "4v5", "all" }, "goalies": [] },
-  "weather": { "TEAM_ABBR": { "temp", "wind", "condition", "humidity" } },
-  "tennis": { "atpElo", "wtaElo", "atpYelo", "wtaYelo", "schedule", "rankings", "rolandGarros", "tennisRatio" },
-  "futures": { "mlb", "nba", "nhl", "golf" },
-  "f1": { "nextRace", "driverStandings", "constructorStandings", "analytics", "tracing", "calendar", "unchained" },
-  "linemate": { "props": { "nba", "mlb", "nhl" }, "trends": {}, "form": {} },
-  "bestBets": [ { "pick", "ev", "evGrade", "sport", "game", "prob", "ml" } ],
-  "heroPicksForDay": [ 6 top picks for HOME tab ],
-  "bestOdds": { "TEAM:TEAM": { "homeML", "awayML", "ou", "book" } },
-  "settled": [ auto-settled bets ],
-  "betHistory": [ last 200 settled bets ],
-  "overallStats": { "totalBets", "wins", "losses", "roi", "streak", "byGrade", "bySport" },
-  "news": { "mlb", "nba", "nhl", "tennis", "f1" },
-  "injuries": { "mlb", "nba", "nhl" }
-}
-```
-
----
-
-## How to Run Locally
-
-```bash
-cd /Users/reeseoliver/clairvoyance-backend
-
-# Full data refresh (no push)
-python3 scripts/clairvoyance_update.py
-
-# Full refresh + push to GitHub
-bash scripts/run_update.sh --push
-
-# Live mode (runs 16:00-23:00 MT, 2-min intervals)
-bash scripts/run_update.sh --mode live --push
-
-# Props only (Linemate scrape)
-bash scripts/run_update.sh --mode props --push
-
-# Single sport
-bash scripts/run_update.sh --sport nhl --push
-
-# Skip slow Reference scrapes
-bash scripts/run_update.sh --no-reference --push
-
-# Install cron schedule (09:00, 15:00, 23:00 MT)
-bash scripts/setup_cron.sh
-
-# Serve frontend locally
-python3 -m http.server 8765 --directory docs
-# Then open: http://localhost:8765/app.html
-```
-
----
-
-## Environment Variables (.env)
-
-```bash
-ODDS_API_KEY=your_the_odds_api_key     # For real moneylines and futures odds
-# GitHub token stored in browser localStorage (not in .env)
-```
-
----
-
-## Known Pending Items
-
-1. **write_social_copy import error** — `content_generator.py` exports `write_social_json` but update script imports `write_social_copy`. Content generation step is skipped every run.
-2. **clairvoyanceengine.info** — Custom domain added in GitHub Pages settings. CNAME file may need to be created: `echo "clairvoyanceengine.info" > docs/CNAME`. Talos spam review was flagged ~2026-05-31.
-3. **Football tab** — NFL/College football shows "COMING SOON" placeholder. No data source connected.
-4. **Linemate Playwright** — Only works on desktop with Playwright installed. GitHub Actions uses `--no-linemate` flag so props data comes from last successful local run.
-
----
-
-## Session Bug Fix Summary (2026-06-03)
-
-All fixes applied in a single session:
-
-| # | Bug | Root Cause | Fix |
-|---|---|---|---|
-| 1 | Engine not loading | Bare `await` at script top level | DOMContentLoaded async IIFE wrapper |
-| 2 | SyntaxError on load | 11 duplicate `const`/`let` declarations | Changed duplicates to reassignments |
-| 3 | All tabs blank (JS) | 67 render functions trapped in INIT IIFE | Export all to `window[]` |
-| 4 | All tabs blank (visual) | `#app` div closed at line 484, all panes outside flex | Remove extra `</div>`, close app before `</body>` |
-| 5 | Cache not clearing | Service worker cache-first bypasses browser cache | Bump SW version v4 → v6 |
-| 6 | Tabs not re-rendering | `SS()` only re-rendered 4 sections | Add render call for every sport in `SS()` |
-| 7 | Splash blocking entry | Button hidden by default, 3.2s auto-dismiss | Always-visible button, 1.8s dismiss, click anywhere |
-| 8 | GitHub Actions failures | Jekyll running on docs/, no .nojekyll | Add .nojekyll, add permissions: write |
-| 9 | GitHub token sync broken | `_triggerGHAction` never called | Wire into `triggerFullRebuild()` + header button |
-| 10 | Root URL stale version | index.html was separate old copy | Redirect to app.html |
-| 11 | Tennis picks ReferenceError | Stale `elId` variable | Remove stale reference |
-| 12 | MLB lock button wrong | Full-width at bottom | Inline right, beside prob/EV |
-
----
-
-## Continuing Development
-
-When starting a new chat, reference this file for full context. Key things to know:
-
-- **The entire frontend is `docs/app.html`** — one file, 10,714 lines, pure vanilla JS
-- **The Python engine is `scripts/clairvoyance_update.py`** — 3,449 lines, no dependencies except requests/bs4
-- **All sport panes must be inside `<div id="app">`** — flex layout depends on it
-- **The INIT IIFE at line ~8365** traps functions — any new functions added inside it must be exported to `window`
-- **Service worker caches aggressively** — bump `sw.js` cache version when pushing breaking changes
-- **GitHub Actions requires `permissions: contents: write`** to push data files back
-- **The scheduled-refresh.yml runs at 09:00/15:00/23:00 MT automatically** — no manual trigger needed
-- **Live URL:** https://mercmink21.github.io/clairvoyance-backend/app.html (not the root URL)
