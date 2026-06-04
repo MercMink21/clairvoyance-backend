@@ -13,17 +13,25 @@
 <link rel="canonical" href="https://mercmink21.github.io/clairvoyance-backend/app.html">
 <script src="config.js"></script>
 <script>
-// ── Self-healing: unregister stale service workers immediately ──
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(regs=>{
-    regs.forEach(r=>{
-      // Keep only the current SW; kill anything from an old cache version
-      if(r.active&&r.active.scriptURL&&!r.active.scriptURL.includes('sw.js')){r.unregister();}
-    });
-  });
-  // Register fresh SW
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
-}
+// ── SW bootstrap: unregister ALL stale workers, then register fresh one ──
+(function(){
+  if(!('serviceWorker' in navigator)) return;
+  // Unregister everything first, then register clean
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    var kills = regs.map(function(r){ return r.unregister(); });
+    return Promise.all(kills);
+  }).then(function(){
+    return navigator.serviceWorker.register('./sw.js?v=10');
+  }).catch(function(){});
+  // If a SW is controlling this page and serving stale content, force reload once
+  if(navigator.serviceWorker.controller){
+    var reloadKey = 'cv_sw_reload_v10';
+    if(!sessionStorage.getItem(reloadKey)){
+      sessionStorage.setItem(reloadKey,'1');
+      navigator.serviceWorker.controller.postMessage({type:'SKIP_WAITING'});
+    }
+  }
+})();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
