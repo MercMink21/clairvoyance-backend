@@ -345,8 +345,14 @@ body{line-height:1.5}
     <div class="sh" style="display:flex;justify-content:space-between;align-items:center"><span style="display:flex;align-items:center;gap:8px"><span class="p"></span> DAILY SIGNALS <span id="home-pulse" style="width:8px;height:8px;border-radius:50%;background:var(--nc);display:inline-block;animation:blink 1.2s infinite"></span></span></div>
     <div id="home-picks" style="margin-top:12px;display:grid;gap:10px"></div>
     <div id="home-yesterday-results" style="margin-top:18px"></div>
-    <div id="home-data-ts" style="text-align:center;margin:10px 0 4px"></div>
+    <!-- Today's games summary (populated by renderHomeBestBets) -->
+    <div id="home-games" style="margin-top:14px"></div>
+    <!-- Date display -->
+    <div id="home-date-display" style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--t3);text-align:center;margin:8px 0 4px"></div>
+    <div id="home-data-ts" style="text-align:center;margin:4px 0 8px"></div>
     <div id="home-performance" style="margin-top:14px"></div>
+    <!-- Locked bets tracker (populated by renderHomeLockedBets) -->
+    <div id="home-locked" style="margin-top:14px"></div>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-o btn-sm" onclick="exportLockedProps()" title="Download locked_props.json">EXPORT JSON</button>
       <button class="btn btn-p btn-sm" onclick="exportBetsClipboard()" title="Copy bets to clipboard">SYNC EXPORT</button>
@@ -724,8 +730,8 @@ body{line-height:1.5}
             <div id="nhl-p-legs" style="min-height:46px;background:rgba(6,0,15,.9);border:1px dashed rgba(240,0,255,.3);border-radius:2px;padding:8px;margin-bottom:8px"><div class="empty" style="padding:8px">NO LEGS ADDED</div></div>
             <div id="nhl-p-res"></div>
             <input type="number" class="fi" id="nhl-p-w" value="100" placeholder="WAGER $" style="margin-bottom:7px">
-            <button class="btn btn-p btn-fw" onclick="">CALCULATE</button>
-            <button class="btn btn-o btn-fw" style="margin-top:5px" onclick="">CLEAR</button>
+            <button class="btn btn-p btn-fw" onclick="calcNHLP()">CALCULATE</button>
+            <button class="btn btn-o btn-fw" style="margin-top:5px" onclick="clrNHLP()">CLEAR</button>
           </div>
         </div>
       </div>
@@ -1528,7 +1534,7 @@ body{line-height:1.5}
 </div>
 <!-- F1 -->
 <div id="sp-f1" class="spane">
-  <nav class="snav"><button class="sb2 act" onclick="">FORMULA 1</button><button class="btn btn-sm btn-p" onclick="doUpdate()" style="float:right;margin:3px 6px">↻ SYNC</button></nav>
+  <nav class="snav"><button class="sb2 act" onclick="SS('f1')">FORMULA 1</button><button class="btn btn-sm btn-p" onclick="doUpdate()" style="float:right;margin:3px 6px">↻ SYNC</button></nav>
   <nav class="inav" id="f1-in">
     <button class="nb act" onclick="T('f1','picks')">PICKS</button>
     <button class="nb" onclick="T('f1','today')">TODAY</button>
@@ -1608,7 +1614,7 @@ body{line-height:1.5}
 
 <!-- GLOBAL LIVE -->
 <div id="sp-live" class="spane">
-  <nav class="snav"><button class="sb2 act" onclick="">LIVE NOW</button></nav>
+  <nav class="snav"><button class="sb2 act" onclick="SS('live')">LIVE NOW</button></nav>
   <nav class="inav" id="live-in">
     <button class="nb act" onclick="T('live','games')">LIVE GAMES</button>
     <button class="nb" onclick="T('live','bets')">LOCKED BETS</button>
@@ -3486,6 +3492,33 @@ function addLeg(name,ml,prob,matchup){if(PAR.length>=8){toast('// MAX 8 LEGS');r
 function addLeg2(hA,awA){T('mlb','parlay');toast(`// SELECT BET FOR ${hA} vs ${awA}`);}
 function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
 function clrP(){PAR=[];renderLegs();document.getElementById('p-res').innerHTML='';document.getElementById('lc').textContent='(0)';}
+function calcNHLP(){
+  if(!PAR||PAR.length<2){const r=document.getElementById('nhl-p-res');if(r)r.innerHTML='';return;}
+  const wEl=document.getElementById('nhl-p-w');
+  const w=parseFloat(wEl?.value||100)||100;
+  const cP=PAR.reduce((p,l)=>p*l.prob,1);
+  const cD=PAR.reduce((p,l)=>p*l.dec,1);
+  const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);
+  const cs=chipC(cP,e2);
+  const r=document.getElementById('nhl-p-res');
+  if(r)r.innerHTML=`<div class="card cp" style="text-align:center;padding:12px">
+    <span class="pill ${cs.pl}">${cs.lb}</span>
+    <div class="mono" style="font-size:28px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div>
+    <div class="mono" style="color:var(--nc);font-size:16px">$${w} → $${pay.toLocaleString()}</div>
+    <div class="mono" style="font-size:14px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div>
+    <button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">LOCK PARLAY</button>
+  </div>`;
+}
+function clrNHLP(){
+  PAR=[];
+  const legs=document.getElementById('nhl-p-legs');
+  if(legs)legs.innerHTML='<div class="empty" style="padding:8px">NO LEGS ADDED</div>';
+  const res=document.getElementById('nhl-p-res');
+  if(res)res.innerHTML='';
+  const lc=document.getElementById('nhl-lc');
+  if(lc)lc.textContent='(0)';
+}
+
 function renderLegs(){const el=document.getElementById('p-legs');if(!el)return;document.getElementById('lc').textContent=`(${PAR.length})`;if(!PAR.length){el.innerHTML='<div class="empty" style="padding:8px">NO LEGS</div>';return;}el.innerHTML=PAR.map((l,i)=>`<div class="pleg"><div><div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--pc)">${l.name}</div><div class="mono" style="font-size:13px;color:var(--t3)">${l.matchup} · ${(l.prob*100).toFixed(1)}% · ${l.ml}</div></div><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:20px;height:20px;cursor:pointer;font-weight:700" onclick="removeLeg(${i})">×</button></div>`).join('');}
 function calcP(){if(PAR.length<2){document.getElementById('p-res').innerHTML='';return;}const w=parseFloat(document.getElementById('p-w')?.value||100)||100;const cP=PAR.reduce((p,l)=>p*l.prob,1);const cD=PAR.reduce((p,l)=>p*l.dec,1);const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);const cs=chipC(cP,e2);document.getElementById('p-res').innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:28px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:16px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:14px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">// LOCK PARLAY</button></div>`;}
 function lockParlay(w,p,ml,d){const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:'MLB',betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');}
@@ -11349,7 +11382,7 @@ function addFuture(){
   const decOdds=odds.startsWith('+')?raw/100+1:odds.startsWith('-')?1+100/Math.abs(raw):parseFloat(odds)||2;
   futures.push({id:`fut_${Date.now()}`,desc,odds,decOdds,stake,status,addedAt:today(),payout:+(stake*decOdds).toFixed(2)});
   saveFutures(futures);
-  document.getElementById('fut-desc').value='';document.getElementById('fut-odds').value='';
+  const _fd=document.getElementById('fut-desc');if(_fd)_fd.value='';const _fo=document.getElementById('fut-odds');if(_fo)_fo.value='';
   renderFutures();toast('// FUTURE ADDED');
 }
 function updateFutureStatus(id,status){const futures=getFutures();const i=futures.findIndex(f=>f.id===id);if(i>=0){futures[i].status=status;saveFutures(futures);renderFutures();toast(`// ${status.toUpperCase()}`);}}
@@ -11392,7 +11425,7 @@ function renderSocialX(){
   const picks=_filterTier(_socialPicks(sport),tierF);
   const el=document.getElementById('x-card-content');if(!el)return;
   const dt=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  if(!picks.length){el.innerHTML=`<div style="text-align:center;padding:20px;color:#505880;font-size:11px">NO ${tierF.toUpperCase()} PICKS — SYNC DATA FIRST</div>`;document.getElementById('x-copy-text').textContent='';return;}
+  if(!picks.length){el.innerHTML=`<div style="text-align:center;padding:20px;color:#505880;font-size:11px">NO ${tierF.toUpperCase()} PICKS — SYNC DATA FIRST</div>`;const _xct=document.getElementById('x-copy-text');if(_xct)_xct.textContent='';return;}
   el.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#cc00ff,#4d79ff,#00e5ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">CLAIRVOYANCE</div><div style="font-size:10px;color:#505880;letter-spacing:1px">${dt}</div></div>
   <div style="font-size:9px;letter-spacing:3px;color:#505880;margin-bottom:12px">${sport.toUpperCase()} · EDGE PRO PICKS</div>
   ${picks.slice(0,6).map(p=>`<div style="border-left:2px solid ${_tierCol(p.t)};padding:7px 10px;margin-bottom:7px;background:rgba(255,255,255,.03);border-radius:0 3px 3px 0"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px"><div><span style="font-size:10px;color:#90a8cc;margin-right:6px">${p.matchup}</span><span style="font-size:12px;font-weight:700;color:#d8e8ff">${p.lb}</span></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:700;color:#aaff00">${p.ml}</span><span style="font-size:9px;padding:1px 5px;border-radius:2px;border:1px solid ${_tierCol(p.t)};color:${_tierCol(p.t)}">${_tierLbl(p.t)}</span></div></div><div style="font-size:9px;color:#505880;margin-top:3px">WIN ${(p.p*100).toFixed(1)}% · EV ${p.e2>=0?'+':''}${(p.e2*100).toFixed(1)}%</div></div>`).join('')}

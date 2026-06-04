@@ -304,6 +304,120 @@ for text, label in perf_checks:
         warn(f'Label missing: {label}')
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 13. EMPTY onclick HANDLERS — silent functional dead-ends
+# ─────────────────────────────────────────────────────────────────────────────
+empty_onclick = list(re.finditer(r'onclick=""', html_without_js))
+if empty_onclick:
+    for m in empty_onclick:
+        ctx = html_without_js[max(0,m.start()-60):m.start()+40]
+        err(f'Empty onclick="" at ~char {m.start()} — button does nothing: ...{ctx.strip()[:80]}...')
+else:
+    ok('No empty onclick="" handlers in HTML')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 14. JS getElementById CRASH DETECTION
+#     Scans for getElementById calls that dereference the result WITHOUT a
+#     null-guard — these WILL throw TypeError if the element is missing.
+#     Pattern: getElementById('x').property  (no if/?.  protection)
+#     Safely-guarded patterns are skipped:
+#       const el=getElementById('x'); if(!el)return;
+#       getElementById('x')?.value
+#       const el=getElementById('x'); if(el)...
+# ─────────────────────────────────────────────────────────────────────────────
+# Find all unguarded direct property accesses on getElementById result
+# e.g. getElementById('foo').textContent = ...  (will crash if null)
+unguarded_deref = re.findall(
+    r"getElementById\(['\"]([^'\"]+)['\"]\)\.(?!textContent\s*\?\?|closest)",
+    main_js
+)
+# Filter out patterns that are actually safe (?.  or followed by a guard variable)
+truly_unguarded = []
+for match in re.finditer(
+    r"getElementById\(['\"]([^'\"]+)['\"]\)\.",
+    main_js
+):
+    eid = match.group(1)
+    # Get surrounding context (100 chars before and after)
+    start = max(0, match.start() - 80)
+    ctx = main_js[start : match.end() + 60]
+    # Skip if it's inside a conditional (if(el)..., const el=...; if(!el))
+    # Skip if result is assigned to a variable first: const el = getElementById(...)
+    if re.search(r'const\s+\w+\s*=\s*document\.getElementById', ctx):
+        continue
+    # Skip if followed by optional chaining
+    if main_js[match.end()] == '?':
+        continue
+    # Skip known-safe patterns in context
+    if any(p in ctx for p in ['if(!el)', 'if(el)', 'if (el)', '?.', 'if(!'+eid]):
+        continue
+    truly_unguarded.append((eid, ctx.strip()[:100]))
+
+# Only flag if the element is ALSO absent from the HTML (otherwise it's fine)
+html_ids_all = set(re.findall(r'\bid="([^"]+)"', html))  # includes JS-generated strings
+truly_dangerous = [
+    (eid, ctx) for eid, ctx in truly_unguarded
+    if eid not in html_ids_all
+    and f'id="{eid}"' not in main_js   # not dynamically created
+    and f"id='{eid}'" not in main_js
+]
+if truly_dangerous:
+    for eid, ctx in truly_dangerous[:8]:
+        err(f'CRASH RISK: getElementById("{eid}").property with no null guard and element not in HTML: {ctx[:70]}')
+    if len(truly_dangerous) > 8:
+        err(f'...and {len(truly_dangerous)-8} more crash-risk getElementById calls')
+else:
+    ok(f'No unguarded getElementById crash risks found ({len(truly_unguarded)} checked, all elements present)')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 15. HTML INJECTED INTO JS STRINGS (the navd-in-template-literal bug class)
+#     Checks that no block-level HTML tags appear inside JS template literals
+#     in a way that would corrupt the JS string context.
+# ─────────────────────────────────────────────────────────────────────────────
+# Find all template literal contents in main_js and check for injected block HTML
+# A navd-* div or other structural element inside a template literal is the bug
+suspicious_in_js = re.findall(
+    r'`[^`]*<div\s+id="navd-[^`]*`',
+    main_js
+)
+if suspicious_in_js:
+    err(f'NAV DROPDOWN DIVS FOUND INSIDE JS TEMPLATE LITERAL — HTML was injected into JS string ({len(suspicious_in_js)} occurrences)')
+else:
+    ok('No nav dropdown divs inside JS template literals')
+
+# Also check that nav dropdowns appear AFTER the closing </script> tag
+navd_in_html = html.find('id="navd-ovr"')
+script_close  = html.rindex('</script>')
+if navd_in_html > 0:
+    if navd_in_html > script_close:
+        ok('Nav dropdowns correctly placed after </script>')
+    else:
+        err(f'Nav dropdowns appear INSIDE script block (pos {navd_in_html} vs </script> at {script_close})')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 16. CRITICAL RENDER-TARGET IDs PRESENT
+#     Checks that all IDs render functions write to actually exist.
+# ─────────────────────────────────────────────────────────────────────────────
+render_targets = [
+    ('home-games',           'renderHomeBestBets: today\'s games grid'),
+    ('home-locked',          'renderHomeLockedBets: locked picks tracker'),
+    ('home-date-display',    'renderHomeBestBets: date display'),
+    ('home-data-ts',         'loadRemoteData: data-as-of timestamp'),
+    ('home-picks',           'renderHomePage: Daily Signals picks'),
+    ('home-best-bets',       'renderHomeBestBets: remote picks'),
+    ('home-engine-record',   'renderHomePage: engine record strip'),
+    ('home-performance',     'renderHomePage: performance section'),
+    ('home-yesterday-results','renderHomePage: yesterday results'),
+    ('home-hero-acc',        'renderHomePage: hero accuracy stat'),
+    ('home-hero-rec',        'renderHomePage: hero record stat'),
+    ('home-hero-ts',         'renderHomePage: hero timestamp'),
+]
+for eid, desc in render_targets:
+    if f'id="{eid}"' in html_without_js:
+        ok(f'Render target present: #{eid}')
+    else:
+        err(f'MISSING RENDER TARGET: #{eid} ({desc})')
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
