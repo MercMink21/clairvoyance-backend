@@ -8658,6 +8658,8 @@ async function loadRemoteData(force=false){
     if(d.overallStats)        try{renderOverallDashboard();}catch(e){}
     if(d.settled?.length)     applyServerSettlements(d.settled);
     if(d.linemate)            patchLinemateProps(d.linemate);
+    // ── Merge seeded bets from data.json (network-first, always fresh) ──────
+    if(d.seededBets?.length)  mergeSeededBets(d.seededBets);
     const tsEl=document.getElementById('remote-data-ts');
     if(tsEl)tsEl.textContent=LAST_AUTO_UPDATE?`DATA AS OF ${LAST_AUTO_UPDATE}`:'';
     console.log('[CV] Remote data:',LAST_AUTO_UPDATE,'NBA:',
@@ -8666,6 +8668,22 @@ async function loadRemoteData(force=false){
   }catch(e){console.warn('[CV] data.json offline:',e.message);}
 }
 
+function mergeSeededBets(seeded){
+  // Called every time data.json loads (network-first — always fresh).
+  // Strips any existing entries with matching IDs then inserts the fresh seeded versions.
+  // This guarantees win/loss outcomes update regardless of SW cache or localStorage state.
+  try{
+    const ids=new Set(seeded.map(h=>h.id));
+    const existing=JSON.parse(localStorage.getItem('preds')||'[]');
+    const clean=existing.filter(p=>!ids.has(p.id));
+    seeded.forEach(h=>clean.push(h));
+    localStorage.setItem('preds',JSON.stringify(clean));
+    try{S.s('preds',clean);}catch(e){}
+    // Re-render history tabs if visible
+    try{renderOverallHistory();}catch(e){}
+    try{renderNBAHistory();}catch(e){}
+  }catch(e){console.warn('[CV] mergeSeededBets:',e);}
+}
 function patchNBATonight(games){
   window._remoteNBAGames=games;
   const live=games.filter(g=>g.state==='in');
