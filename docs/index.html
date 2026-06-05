@@ -1940,6 +1940,8 @@ const NHL={
 };
 // May 28: NO NHL GAMES — ECF G5 MTL @ CAR is TOMORROW May 29 @ Raleigh 8 PM ET TNT
 const TONIGHT=[];
+const WCF_NEXT=null; // VGK advances to SCF — opponent TBD (CAR or MTL winner)
+const ECF_DATES=['2026-05-21','2026-05-23','2026-05-25','2026-05-27','2026-05-29','2026-05-31','2026-06-02'];
 // ═══ MONEYPUCK EMBEDDED DATA (updates daily at midnight) ════
 const MP_DATA={
   MTL:{xgf_pct:49.0,hdcf_pct:47.2,fenwick:47.0,adj_gsax:8.08,pp_xg:1.54,pk_xga:1.12,goals_for:3.08,goals_against:2.33,sog:25.4,opp_sog:27.2},
@@ -3116,7 +3118,7 @@ function renderNHLPicks(){
   renderInjuryNews('nhl','nhl-injury-news');
   try{
     if(!TONIGHT.length){
-      el.innerHTML=`<div class="empty">STANLEY CUP FINALS — VGK vs CAR<br><span style="font-size:14px;color:var(--nc);display:block;margin-top:6px">VGK leads series 1-0 after G1 (5-4 WIN) · CAR won G2 4-3 — Series tied 1-1</span><span style="font-size:13px;color:var(--t3);display:block;margin-top:3px">Stanley Cup Finals in progress — G3 upcoming</span></div>`;
+      el.innerHTML=`<div class="empty">STANLEY CUP FINALS — VGK vs CAR<br><span style="font-size:14px;color:var(--nc);display:block;margin-top:6px">VGK vs CAR · SCF in progress · Series 1-1</span><span style="font-size:13px;color:var(--t3);display:block;margin-top:3px">VGK won G1 5-4 · CAR won G2 4-3 · G3 upcoming</span></div>`;
       return;
     }
     let html='';
@@ -3199,7 +3201,14 @@ function renderNHLGamesOffline(){
   const el=document.getElementById('nhl-games');if(!el)return;
   if(!TONIGHT.length){
     // Show next game info when no games tonight
-    el.innerHTML='<div class="empty">NO NHL GAMES TONIGHT</div>';
+    const nextHtml=WCF_NEXT?`<div class="card" style="margin-top:10px;border-left:2px solid var(--ic)">
+      <div style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:2px;margin-bottom:6px">NEXT GAME</div>
+      <div style="font-family:var(--orb);font-size:18px;font-weight:700">${WCF_NEXT.h} vs ${WCF_NEXT.a}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t2)">${WCF_NEXT.ctx} · Game ${WCF_NEXT.gn}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${WCF_NEXT.date} · ${WCF_NEXT.time} ${WCF_NEXT.net}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:3px">O/U ${WCF_NEXT.ou} · ${WCF_NEXT.h} ${WCF_NEXT.hL>0?'+':''}${WCF_NEXT.hL}</div>
+    </div>`:'';
+    el.innerHTML=`<div class="empty">NO NHL GAMES MAY 19-20<br><span style="font-size:14px;color:var(--t3)">Next: ${WCF_NEXT?`COL vs VGK — WCF G1 — ${WCF_NEXT.date}`:'TBD'}</span></div>${nextHtml}`;
     return;
   }
   let html='';
@@ -4011,7 +4020,7 @@ const NBA_TEAMS={
 };
 // June 3 2026: NBA FINALS G1 — NYK @ SA · 8:30 PM ET ABC · SA -185 / NYK +150 · SA -4.5 · O/U 217.5 · Frost Bank Center San Antonio
 const NBA_TONIGHT=[
-  {h:'SA',a:'NY',hML:-218,aML:180,ou:214.5,hL:-6.5,ctx:'NBA FINALS G2 · June 5 2026 · 8:30 PM ET ABC · Frost Bank Center'}
+  {h:'SA',a:'NY',hML:-218,aML:180,ou:214.5,hL:-6.5,ctx:'NBA FINALS G2 · June 5 2026 · 8:30 PM ET ABC'}
 ];
 // NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
 const NBA_PLAYERS=[
@@ -4184,7 +4193,7 @@ function renderNBABracket(){
   ${s('SA','OKC',4,3,'WCF COMPLETE · SA WON 4-3 · Wemby 31pts G7 road win at Paycom Center',false)}
 
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin:14px 0 5px">── NBA FINALS ────────────────────</div>
-  <div class="card" style="border:1px solid var(--gc);padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--gc)">🏆 SA vs NYK · NBA FINALS IN PROGRESS · SA vs NYK · G1 SA WON · G2 JUNE 5</div>`;
+  <div class="card" style="border:1px solid var(--gc);padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--gc)">🏆 SA vs NYK · NBA FINALS · GAME 1 TONIGHT JUNE 3 · 8 PM ET ABC · AT&amp;T CENTER</div>`;
 }
 function renderNBATonightGames(){
   const el=document.getElementById('nba-tn');if(!el)return;
@@ -6693,8 +6702,8 @@ function setSub(sport,sub){
   if(sport==='hk'&&sub==='pwhl'){try{renderPWHL();}catch(e){}}
 }
 function T(sport,tabId){const D=window.__CV_DATA||{};
-  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa'};
-  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in'};
+  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa'};
+  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in',hk:'nhl-in',fb:'mlb-in'};
   const saId=saMap[sport]||'mlb-sa';
   const navId=navMap[sport]||'mlb-in';
   const mnId=sport==='nhl'?'mn2':sport==='nba'?'mn3':sport==='ovr'?'mn4':sport==='ten'?'mn5':sport==='f1'?'mn6':sport==='live'?'mn7':'mn';
@@ -7340,7 +7349,7 @@ function nrfiRec(prob){
 // ATP_DB: Rankings updated May 26 2026.
 const ATP_DB={
  'J.Sinner':            {rank:1,  hardElo:2273,clayElo:2242,grassElo:2098,formElo:2280,serveElo:2050,returnElo:2180,fs:.64,fsw:.76,ssw:.55,ace:3.8,df:1.9,hold:.85,brk:.45,retw:.42,hw:.83,cw:.80,gw:.75,age:24,cty:'ITA',fat:1},
- 'C.Alcaraz':           {rank:2,  hardElo:2198,clayElo:2212,grassElo:2139,formElo:2190,serveElo:2020,returnElo:2060,fs:.63,fsw:.75,ssw:.56,ace:4.2,df:2.1,hold:.84,brk:.49,retw:.43,hw:.81,cw:.82,gw:.79,age:22,cty:'ESP',fat:5,injured:true,injuryNote:'RG SF WD — right forearm. Wimbledon status uncertain.'},
+ 'C.Alcaraz':           {rank:2,  hardElo:2198,clayElo:2212,grassElo:2139,formElo:2210,serveElo:2020,returnElo:2060,fs:.63,fsw:.75,ssw:.56,ace:4.2,df:2.1,hold:.84,brk:.49,retw:.43,hw:.81,cw:.82,gw:.79,age:22,cty:'ESP',fat:2},
  'A.Zverev':            {rank:3,  hardElo:2031,clayElo:2021,grassElo:1894,formElo:2040,serveElo:2010,returnElo:1980,fs:.62,fsw:.74,ssw:.54,ace:5.1,df:2.4,hold:.83,brk:.40,retw:.40,hw:.76,cw:.80,gw:.70,age:28,cty:'GER',fat:2},
  'N.Djokovic':          {rank:4,  hardElo:2026,clayElo:1969,grassElo:1930,formElo:2010,serveElo:1970,returnElo:2060,fs:.63,fsw:.73,ssw:.54,ace:3.2,df:1.8,hold:.84,brk:.46,retw:.44,hw:.80,cw:.81,gw:.82,age:38,cty:'SRB',fat:3},
  'B.Shelton':           {rank:5,  hardElo:1965,clayElo:1820,grassElo:1880,formElo:1985,serveElo:2020,returnElo:1890,fs:.63,fsw:.74,ssw:.53,ace:6.5,df:2.5,hold:.84,brk:.37,retw:.37,hw:.73,cw:.63,gw:.70,age:23,cty:'USA',fat:1},
@@ -7650,17 +7659,18 @@ const RG_SCHEDULE={
 // ATP SF: June 4 · WTA SF: June 4 · All on clay · bo5 men / bo3 women
 // Court: Philippe-Chatrier (main show court)
 const TEN_TODAY_ATP=[
-  // === ATP SEMIFINAL — JUNE 5 2026 · ROLAND GARROS ===
-  // SF1 — CANCELLED: Alcaraz withdrew (right forearm injury). Sinner advances to final via walkover.
-  // SF2 — Philippe-Chatrier ~1:00 PM local
-  {p1:'C.Ruud',     p2:'A.Zverev',  surface:'clay',tournament:'Roland Garros SF · Chatrier',bo5:true, p1ml:185, p2ml:-225,date:'2026-06-05'},
+  // === ATP SEMIFINAL — JUNE 4 2026 · ROLAND GARROS ===
+  // SF1 — Philippe-Chatrier ~11:00 AM local
+  {p1:'J.Sinner',   p2:'C.Alcaraz', surface:'clay',tournament:'Roland Garros SF · Chatrier',bo5:true, p1ml:-145,p2ml:122, date:'2026-06-04'},
+  // SF2 — Philippe-Chatrier ~3:00 PM local (not before)
+  {p1:'C.Ruud',     p2:'A.Zverev',  surface:'clay',tournament:'Roland Garros SF · Chatrier',bo5:true, p1ml:185, p2ml:-225,date:'2026-06-04'},
 ];
 const TEN_TODAY_WTA=[
   // === WTA SEMIFINAL — JUNE 4 2026 · ROLAND GARROS ===
-  // SF1 — Philippe-Chatrier ~11:00 AM local (Andreeva advanced via QF win vs Kostyuk)
-  {p1:'I.Swiatek',  p2:'M.Andreeva',surface:'clay',tournament:'Roland Garros SF · Chatrier',bo5:false,p1ml:-280,p2ml:235, date:'2026-06-04'},
+  // SF1 — Philippe-Chatrier ~11:00 AM local
+  {p1:'I.Swiatek',  p2:'C.Gauff',   surface:'clay',tournament:'Roland Garros SF · Chatrier',bo5:false,p1ml:-280,p2ml:232, date:'2026-06-04'},
   // SF2 — Suzanne-Lenglen ~12:00 PM local
-  {p1:'A.Sabalenka',p2:'C.Gauff',   surface:'clay',tournament:'Roland Garros SF · Lenglen', bo5:false,p1ml:-340,p2ml:272, date:'2026-06-04'},
+  {p1:'A.Sabalenka',p2:'J.Paolini', surface:'clay',tournament:'Roland Garros SF · Lenglen', bo5:false,p1ml:-340,p2ml:272, date:'2026-06-04'},
 ];
 function renderTennisPicks(){
   const el=document.getElementById('ten-picks-list');if(!el)return;
@@ -7784,7 +7794,7 @@ const RG_R1_MEN=[
   {w:'R.Collignon',seed1:'',s2:'',l:'A.Vukic',upset:false},
   {w:'D.Merida',seed1:'',s2:'(5)',l:'B.Shelton',upset:true},
   // Quarter 2 — FAA (4)
-  {w:'C.Alcaraz',seed1:'(2)',s2:'',l:'D.Altmaier',upset:false},
+  {w:'F.Auger-Aliassime',seed1:'(4)',s2:'',l:'D.Altmaier',upset:false},
   {w:'S.Baez',seed1:'',s2:'',l:'R.Burruchaga',upset:false},
   {w:'L.Van-Assche',seed1:'',s2:'',l:'P.Kypson',upset:false},
   {w:'R.Bautista-Agut',seed1:'',s2:'(31)',l:'B.Nakashima',upset:true},
@@ -7836,7 +7846,7 @@ const RG_R1_MEN=[
   {w:'U.Humbert',seed1:'(32)',s2:'',l:'A.Mannarino',upset:false},
   {w:'Q.Halys',seed1:'',s2:'',l:'M.Bellucci',upset:false},
   {w:'T.Machac',seed1:'',s2:'',l:'Z.Bergs',upset:false},
-  {w:'A.Zverev',seed1:'(3)',s2:'',l:'B.Bonzi',upset:false},
+  {w:'B.Bonzi',seed1:'',s2:'(2)',l:'A.Zverev',upset:true},
 ];
 // Men's R2 Matchups (May 27-28, paired consecutively from R1)
 const RG_R2_MEN=[
@@ -7965,28 +7975,6 @@ const RG_R1_WOMEN_RESULTS=[
   // LIVE May 26
   {w:'N.Osaka',seed:'(16)',l:'L.Siegemund',ml:'-195',note:'LOCK ✓ — Osaka def. Siegemund. Clay specialist contained. Won in straight sets.',grade:'LOCK'},
   {w:'M.Keys',seed:'(19)',l:'H.Vandewinkel',ml:'-310',note:'LOCK ✓ — Keys power baseline too much for wildcard. Won comfortably.',grade:'LOCK'},
-];
-
-// ── Roland Garros 2026 — QF & SF Results ─────────────────────
-const RG_QF_MEN=[
-  {p1:'J.Sinner',  s1:'(1)', p2:'A.Bublik',   s2:'(9)', winner:'J.Sinner',  date:'Jun 3'},
-  {p1:'C.Alcaraz', s1:'(2)', p2:'F.Cobolli',  s2:'(10)',winner:'C.Alcaraz', date:'Jun 3'},
-  {p1:'A.Zverev',  s1:'(3)', p2:'T.Machac',   s2:'',    winner:'A.Zverev',  date:'Jun 3', note:'Zverev dominant in 4 sets'},
-  {p1:'C.Ruud',    s1:'(15)',p2:'H.Medjedovic',s2:'',   winner:'C.Ruud',    date:'Jun 3', note:'Ruud clinical on clay'},
-];
-const RG_QF_WOMEN=[
-  {p1:'I.Swiatek',  s1:'(3)', p2:'M.Sakkari',  s2:'',    winner:'I.Swiatek',  date:'Jun 3'},
-  {p1:'C.Gauff',    s1:'(6)', p2:'E.Rybakina',  s2:'(2)', winner:'C.Gauff',    date:'Jun 3'},
-  {p1:'A.Sabalenka',s1:'(1)', p2:'M.Keys',      s2:'(19)',winner:'A.Sabalenka',date:'Jun 3'},
-  {p1:'M.Andreeva', s1:'',    p2:'M.Kostyuk',   s2:'',    winner:'M.Andreeva', date:'Jun 4', note:'UPSET TRACKER WIN — Andreeva def. Kostyuk'},
-];
-const RG_SF_MEN=[
-  {p1:'J.Sinner',s1:'(1)',p2:'C.Alcaraz',s2:'(2)',status:'walkover',winner:'J.Sinner',date:'Jun 5',note:'Alcaraz WD — right forearm injury. Sinner advances to final via walkover.'},
-  {p1:'C.Ruud',  s1:'(15)',p2:'A.Zverev',s2:'(3)',status:'scheduled',date:'Jun 5',p1ml:185,p2ml:-225,note:'SF2 · Philippe-Chatrier ~1:00 PM local'},
-];
-const RG_SF_WOMEN=[
-  {p1:'I.Swiatek',  s1:'(3)',p2:'M.Andreeva',s2:'',  status:'scheduled',date:'Jun 4',p1ml:-280,p2ml:235,note:'SF1 · Philippe-Chatrier ~11:00 AM'},
-  {p1:'A.Sabalenka',s1:'(1)',p2:'C.Gauff',   s2:'(6)',status:'scheduled',date:'Jun 4',p1ml:-340,p2ml:272,note:'SF2 · Suzanne-Lenglen ~12:00 PM'},
 ];
 function lockTennisBet(tournament,match,pick,ml){
   const matchParts=match.split(' vs ');const hA=matchParts[0]||match;const awA=matchParts[1]||'';
@@ -8187,64 +8175,7 @@ function renderRGDraw(tour,round){
       </div>`;
     }).join('');
   }
-  } else if(tour==='men'&&round==='qf'){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--mc);margin-bottom:10px">// ♂ ATP MEN — QUARTERFINALS (JUN 3)</div>`;
-    html+=RG_QF_MEN.map(m=>{
-      const won=m.winner===m.p1;
-      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:6px;background:rgba(255,255,255,.04);border-radius:4px;border-left:3px solid ${won?'var(--nc)':'var(--hc)'}">
-        <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${won?'var(--vc)':'var(--t3)'}">${m.p1}${m.s1?'<span style="color:var(--t3);font-size:12px"> '+m.s1+'</span>':''}</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--t3)">vs</span>
-        <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${!won?'var(--vc)':'var(--t3)'}">${m.p2}${m.s2?'<span style="color:var(--t3);font-size:12px"> '+m.s2+'</span>':''}</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--gc)">${m.date}</span>
-      </div>${m.note?`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:4px;padding-left:4px">${m.note}</div>`:''}`;
-    }).join('');
-  } else if(tour==='women'&&round==='qf'){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--hc);margin-bottom:10px">// ♀ WTA WOMEN — QUARTERFINALS (JUN 3-4)</div>`;
-    html+=RG_QF_WOMEN.map(m=>{
-      const won=m.winner===m.p1;
-      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:6px;background:rgba(255,255,255,.04);border-radius:4px;border-left:3px solid ${won?'var(--nc)':'var(--hc)'}">
-        <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${won?'var(--vc)':'var(--t3)'}">${m.p1}${m.s1?'<span style="color:var(--t3);font-size:12px"> '+m.s1+'</span>':''}</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--t3)">vs</span>
-        <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:${!won?'var(--vc)':'var(--t3)'}">${m.p2}${m.s2?'<span style="color:var(--t3);font-size:12px"> '+m.s2+'</span>':''}</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--gc)">${m.date}</span>
-      </div>${m.note?`<div style="font-family:var(--mono);font-size:12px;color:var(--hc);margin-bottom:4px;padding-left:4px">★ ${m.note}</div>`:''}`;
-    }).join('');
-  } else if(tour==='men'&&round==='sf'){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--mc);margin-bottom:10px">// ♂ ATP MEN — SEMIFINALS (JUN 5)</div>`;
-    html+=RG_SF_MEN.map(m=>{
-      const isWO=m.status==='walkover';const isSched=m.status==='scheduled';
-      const borderCol=isWO?'var(--t3)':isSched?'var(--gc)':'var(--nc)';
-      return`<div style="padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,.04);border-radius:4px;border-left:3px solid ${borderCol}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:${isWO?'var(--vc)':'var(--t2)'}">${m.p1}${m.s1?'<span style="color:var(--t3);font-size:13px"> '+m.s1+'</span>':''}</span>
-          ${isWO?`<span style="font-family:var(--mono);font-size:12px;background:var(--vc);color:#000;padding:2px 7px;border-radius:3px">FINAL</span>`:isSched?`<div style="text-align:right"><span style="font-family:var(--mono);font-size:13px;color:${m.p1ml>0?'var(--vc)':'var(--t3)'}">${m.p1ml>0?'+'+m.p1ml:m.p1ml}</span></div>`:''}
-        </div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:4px">vs</div>
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t3)">${m.p2}${m.s2?'<span style="color:var(--t3);font-size:13px"> '+m.s2+'</span>':''}</span>
-          ${isSched?`<div style="text-align:right"><span style="font-family:var(--mono);font-size:13px;color:${m.p2ml<0?'var(--nc)':'var(--t3)'}">${m.p2ml>0?'+'+m.p2ml:m.p2ml}</span></div>`:''}
-        </div>
-        <div style="font-family:var(--mono);font-size:12px;color:${isWO?'var(--t3)':isSched?'var(--gc)':'var(--vc)'};margin-top:6px">${m.note}</div>
-      </div>`;
-    }).join('');
-  } else if(tour==='women'&&round==='sf'){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--hc);margin-bottom:10px">// ♀ WTA WOMEN — SEMIFINALS (JUN 4)</div>`;
-    html+=RG_SF_WOMEN.map(m=>{
-      return`<div style="padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,.04);border-radius:4px;border-left:3px solid var(--gc)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t2)">${m.p1}${m.s1?'<span style="color:var(--t3);font-size:13px"> '+m.s1+'</span>':''}</span>
-          <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${m.p1ml>0?'+'+m.p1ml:m.p1ml}</span>
-        </div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:4px">vs</div>
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t2)">${m.p2}${m.s2?'<span style="color:var(--t3);font-size:13px"> '+m.s2+'</span>':''}</span>
-          <span style="font-family:var(--mono);font-size:13px;color:${m.p2ml<0?'var(--nc)':'var(--vc)'}">${m.p2ml>0?'+'+m.p2ml:m.p2ml}</span>
-        </div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--gc);margin-top:6px">${m.note}</div>
-      </div>`;
-    }).join('');
-  
-    el.innerHTML=html;
+  el.innerHTML=html;
 }
 // ── Render: Grand Slam ────────────────────────────────────────
 function renderSlam(code){
@@ -8270,10 +8201,10 @@ function renderSlam(code){
     // RG Draw tabs
     html+=`<div class="sh">ROLAND GARROS 2026 — REAL DRAW</div>`;
     html+=`<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn btn-p btn-sm" onclick="renderRGDraw('men','sf')">ATP SF</button>
-      <button class="btn btn-p btn-sm" onclick="renderRGDraw('women','sf')">WTA SF</button>
-      <button class="btn btn-o btn-sm" onclick="renderRGDraw('men','qf')">ATP QF</button>
-      <button class="btn btn-o btn-sm" onclick="renderRGDraw('women','qf')">WTA QF</button>
+      <button class="btn btn-p btn-sm" onclick="renderRGDraw('men','r3')">ATP R3 TODAY</button>
+      <button class="btn btn-p btn-sm" onclick="renderRGDraw('women','r3')">WTA R3 TODAY</button>
+      <button class="btn btn-o btn-sm" onclick="renderRGDraw('men','r2')">ATP R2</button>
+      <button class="btn btn-o btn-sm" onclick="renderRGDraw('women','r1')">WTA R1</button>
       <button class="btn btn-o btn-sm" onclick="renderRGDraw('men','r1')">ATP R1</button>
     </div>
     <div id="rg-draw-content"></div>`;
@@ -8988,7 +8919,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-04 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-04 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -9055,15 +8986,15 @@ function patchNBATonight(games){
       NBA_TONIGHT.push({h:g.home,a:g.away,
         hML:g.homeML||-110,aML:g.awayML||110,
         ou:g.ou||220,hL:g.spread||-1.5,
-        ctx:g.seriesNote||`${g.away} @ ${g.home}`,
-        state:g.state||'pre',id:g.id,date:g.date,
-        hScore:g.homeScore,aScore:g.awayScore,network:g.network||''});
+        ctx:g.seriesNote||g.away+' @ '+g.home,
+        state:g.state||'pre',id:g.id,
+        hScore:g.homeScore,aScore:g.awayScore});
     });
   }
   const live=games.filter(g=>g.state==='in');
   for(const g of live){
-    const el=document.querySelector(`[data-game-id="${g.id}"] .live-score`);
-    if(el)el.textContent=`${g.awayScore}–${g.homeScore} Q${g.period} ${g.displayClock}`;
+    const el=document.querySelector('[data-game-id="'+g.id+'"] .live-score');
+    if(el)el.textContent=g.awayScore+'–'+g.homeScore+' Q'+g.period+' '+g.displayClock;
   }
   try{renderNBAGames();}catch(e){}
   try{renderNBATonightGames();}catch(e){}
@@ -9098,21 +9029,22 @@ function patchMLBStandings(standings){
 }
 function patchNHLTonight(games){
   window._remoteNHLGames=games;
+  // Keep TONIGHT in sync with remote game data
   const active=games.filter(g=>g.state!=='FUT');
   if(active.length){
     TONIGHT.length=0;
     active.forEach(g=>{
       const sn=g.seriesStatus||g.seriesNote||'';
       const gn=parseInt((sn.match(/Game\s*(\d)/i)||[0,1])[1])||1;
-      TONIGHT.push({h:g.home,a:g.away,gn,ctx:sn||`${g.away} @ ${g.home}`,
-        hML:g.homeML||0,aML:g.awayML||0,ou:g.ou||0,state:g.state||'pre',
-        hScore:g.homeScore,aScore:g.awayScore});
+      TONIGHT.push({h:g.home,a:g.away,gn,ctx:sn||g.away+' @ '+g.home,
+        hML:g.homeML||0,aML:g.awayML||0,ou:g.ou||0,
+        state:g.state||'pre',hScore:g.homeScore,aScore:g.awayScore});
     });
   }
   const live=games.filter(g=>g.state==='in');
   for(const g of live){
-    const el=document.querySelector(`[data-nhl-game="${g.home}-${g.away}"] .score`);
-    if(el)el.textContent=`${g.awayScore}–${g.homeScore} P${g.period} ${g.clock}`;
+    const el=document.querySelector('[data-nhl-game="'+g.home+'-'+g.away+'"] .score');
+    if(el)el.textContent=g.awayScore+'–'+g.homeScore+' P'+g.period+' '+g.clock;
   }
   try{renderNHLGames();}catch(e){}
   try{renderNHLTonight();}catch(e){}
@@ -9241,8 +9173,9 @@ function exportBetHistoryCSV(){const D=window.__CV_DATA||{};
 }
 
 // ── renderHomeBestBets (v6.0 — uses heroPicksForDay from data.json, filters garbage picks) ──
-function renderHomeBestBets(){const D=window.__CV_DATA||{};
+function renderHomeBestBets(){
   const el=document.getElementById('home-best-bets');if(!el)return;
+  const D=window.__CV_DATA||{};
   const todayStr=today();
 
   // Filter best bets to today only
@@ -12869,9 +12802,9 @@ function renderOvrTeamsFilter(league){
 <div id="navd-fb" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <div class="ndl"><button onclick="SS('fb');hideAllND()">NFL</button>
     <div class="ndl-sub">
-      <button onclick="SS('fb');hideAllND()">Picks</button>
-      <button onclick="SS('fb');hideAllND()">Schedule</button>
-      <button onclick="SS('fb');hideAllND()">Stats</button>
+      <button onclick="SS('fb');T('fb','picks');hideAllND()">Picks</button>
+      <button onclick="SS('fb');T('fb','schedule');hideAllND()">Schedule</button>
+      <button onclick="SS('fb');T('fb','stats');hideAllND()">Stats</button>
     </div>
   </div>
   <button onclick="SS('fb');setSub('fb','cfb');hideAllND()">College Football</button>
@@ -12879,13 +12812,13 @@ function renderOvrTeamsFilter(league){
 <div id="navd-hk" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <div class="ndl"><button onclick="SS('hk');hideAllND()">NHL</button>
     <div class="ndl-sub">
-      <button onclick="SS('hk');T('nhl','picks');hideAllND()">Picks</button>
-      <button onclick="SS('hk');T('nhl','games');hideAllND()">Today</button>
-      <button onclick="SS('hk');T('nhl','schedule');hideAllND()">Schedule</button>
-      <button onclick="SS('hk');T('nhl','props');hideAllND()">Props</button>
-      <button onclick="SS('hk');T('nhl','edge');hideAllND()">Edge</button>
-      <button onclick="SS('hk');T('nhl','goalies');hideAllND()">Goalies</button>
-      <button onclick="SS('hk');T('nhl','puck');hideAllND()">Stats</button>
+      <button onclick="SS('hk');T('hk','picks');hideAllND()">Picks</button>
+      <button onclick="SS('hk');T('hk','games');hideAllND()">Today</button>
+      <button onclick="SS('hk');T('hk','schedule');hideAllND()">Schedule</button>
+      <button onclick="SS('hk');T('hk','props');hideAllND()">Props</button>
+      <button onclick="SS('hk');T('hk','edge');hideAllND()">Edge</button>
+      <button onclick="SS('hk');T('hk','goalies');hideAllND()">Goalies</button>
+      <button onclick="SS('hk');T('hk','puck');hideAllND()">Stats</button>
     </div>
   </div>
   <button onclick="SS('hk');setSub('hk','pwhl');hideAllND()">PWHL</button>
