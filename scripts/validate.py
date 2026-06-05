@@ -412,6 +412,63 @@ for eid, desc in render_targets:
         err(f'MISSING RENDER TARGET: #{eid} ({desc})')
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 17. renderRGDraw() ARGUMENT VALIDITY
+#     Every renderRGDraw('tour','round') call in HTML must match a handled
+#     (tour===... && round===...) branch in the function body.
+#     NOTE: renderRGDraw uses heavy template literals which confuse simple
+#     brace counters. We search from function start to its real terminator
+#     (el.innerHTML=html followed by closing brace) to get the true body.
+# ─────────────────────────────────────────────────────────────────────────────
+rg_draw_fn_start = main_js.find('function renderRGDraw(')
+if rg_draw_fn_start != -1:
+    # Find the real function end: el.innerHTML=html;\n} right after the last else-if
+    # Search forward from function start for the terminating pattern
+    rg_search_window = main_js[rg_draw_fn_start:rg_draw_fn_start + 30000]
+    rg_term = re.search(r'el\.innerHTML=html;\s*\n\s*\}', rg_search_window)
+    if rg_term:
+        rg_fn = rg_search_window[:rg_term.end()]
+    else:
+        rg_fn = rg_search_window  # fallback: search whole window
+    # Extract all handled (tour, round) pairs
+    handled_pairs = set(re.findall(r"tour==='(\w+)'&&round==='(\w+)'", rg_fn))
+    # Extract all calls from HTML
+    called_pairs  = set(re.findall(r"renderRGDraw\('(\w+)','(\w+)'\)", html))
+    bad_calls = called_pairs - handled_pairs
+    if bad_calls:
+        for tour, rnd in sorted(bad_calls):
+            err(f"renderRGDraw('{tour}','{rnd}') called but NOT handled in function — silently renders blank")
+    else:
+        ok(f"All renderRGDraw() calls use handled round codes ({len(called_pairs)} calls, {len(handled_pairs)} handlers)")
+else:
+    warn('renderRGDraw function not found — skipping argument validity check')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 18. T() NAV ROUTING ARGUMENT VALIDITY
+#     T(sport, tab) routes sub-tabs inside a sport pane via saMap/navMap.
+#     Valid sports are those defined in T()'s saMap — not sp-{sport} IDs.
+#     Guards against dead routing links that appear to work but show nothing.
+# ─────────────────────────────────────────────────────────────────────────────
+t_fn_idx = main_js.find('function T(sport,tabId)')
+if t_fn_idx != -1:
+    t_fn_window = main_js[t_fn_idx:t_fn_idx+500]
+    # Extract sports from saMap: nhl:'nhl-sa', nba:'nba-sa', ...
+    sa_map_match = re.search(r'saMap=\{([^}]+)\}', t_fn_window)
+    valid_t_sports = set(['mlb'])  # mlb is the fallback default
+    if sa_map_match:
+        valid_t_sports |= set(re.findall(r"(\w+):'[^']+\-sa'", sa_map_match.group(1)))
+    t_calls_html = re.findall(r"T\('([^']+)','([^']+)'\)", html_without_js)
+    bad_t_calls = [(s, t) for s, t in t_calls_html if s not in valid_t_sports]
+    if bad_t_calls:
+        for sport, tab in bad_t_calls[:5]:
+            err(f"T('{sport}','{tab}') — sport '{sport}' not in T() saMap, routing will fail silently")
+        if len(bad_t_calls) > 5:
+            err(f"...and {len(bad_t_calls)-5} more invalid T() calls")
+    else:
+        ok(f"All T() nav calls use valid saMap sport keys ({len(t_calls_html)} calls, {len(valid_t_sports)} valid sports)")
+else:
+    warn('T() function not found — skipping nav routing check')
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
