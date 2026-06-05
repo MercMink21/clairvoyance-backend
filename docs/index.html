@@ -278,8 +278,13 @@ body{line-height:1.5}
 <div id="sp-home" class="spane act">
   <div class="sa" style="padding:16px">
     <!-- Daily Signals -->
+    <div style="background:rgba(10,0,24,.7);border:1px solid rgba(77,121,255,.2);border-radius:3px;padding:9px 12px;margin-bottom:10px;font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">
+      <span style="color:var(--nc);letter-spacing:1px">WIN PROBABILITY</span> — likelihood the engine assigns to a pick winning, based on ensemble model signals.<br>
+      <span style="color:var(--vc);letter-spacing:1px">EV (EXPECTED VALUE)</span> — edge above the implied odds. Positive EV means the bet pays more than its true risk warrants.
+    </div>
     <div class="sh" style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
       <span style="display:flex;align-items:center;gap:8px"><span class="p"></span> DAILY SIGNALS <span id="home-pulse" style="width:8px;height:8px;border-radius:50%;background:var(--nc);display:inline-block;animation:blink 1.2s infinite"></span></span>
+      <span id="home-signals-date" style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px"></span>
     </div>
     <div id="home-picks" style="margin-top:10px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px"></div>
     <!-- Engine Record Strip -->
@@ -6419,9 +6424,9 @@ function renderHomePage(){
   }
   const picks=[];
   // NHL picks
-  try{for(const g of TONIGHT){const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  try{const _todNHL=today();for(const g of TONIGHT){if(g.date&&g.date!==_todNHL)continue;const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:g.date||_todNHL});}}catch(e){}
   // NBA picks
-  try{for(const g of NBA_TONIGHT){const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2});}}catch(e){}
+  try{const _todNBA=today();for(const g of NBA_TONIGHT){if(g.date&&g.date!==_todNBA)continue;const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:g.date||_todNBA});}}catch(e){}
   // Tennis picks
   try{
     const allTenMat=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
@@ -6447,6 +6452,8 @@ function renderHomePage(){
     }
   }catch(e){}
     picks.sort((a,b)=>b.p-a.p);
+  // Populate date label next to header
+  try{const _sdEl=document.getElementById('home-signals-date');if(_sdEl){const _m=getMSTNow();_sdEl.textContent=_m.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}}catch(e){}
   // Daily Signals — top picks today, all sports, pure probability sort
   const _tod=today();
   const todayPicks=picks.filter(pk=>!pk.date||pk.date===_tod);
