@@ -3116,7 +3116,7 @@ function renderNHLPicks(){
   renderInjuryNews('nhl','nhl-injury-news');
   try{
     if(!TONIGHT.length){
-      el.innerHTML=`<div class="empty">NHL CONFERENCE FINALS COMPLETE<br><span style="font-size:14px;color:var(--nc);display:block;margin-top:6px">CAR defeated MTL 4-1 · Frederik Andersen dominant</span><span style="font-size:13px;color:var(--t3);display:block;margin-top:3px">CAR advances to Stanley Cup Finals vs Vegas Golden Knights</span></div>`;
+      el.innerHTML=`<div class="empty">STANLEY CUP FINALS — VGK vs CAR<br><span style="font-size:14px;color:var(--nc);display:block;margin-top:6px">VGK leads series 1-0 after G1 (5-4 WIN) · CAR won G2 4-3 — Series tied 1-1</span><span style="font-size:13px;color:var(--t3);display:block;margin-top:3px">Stanley Cup Finals in progress — G3 upcoming</span></div>`;
       return;
     }
     let html='';
@@ -3147,7 +3147,7 @@ async function fetchESPNNHL(dateStr){
     return d.events||[];
   }catch(e){return null;}
 }
-async function renderNHLGames(day){
+async async function renderNHLGames(day){
   const el=document.getElementById('nhl-games');if(!el)return;
   const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
   el.innerHTML='<div class="loading"><span class="spi"></span></div>';
@@ -4011,7 +4011,7 @@ const NBA_TEAMS={
 };
 // June 3 2026: NBA FINALS G1 — NYK @ SA · 8:30 PM ET ABC · SA -185 / NYK +150 · SA -4.5 · O/U 217.5 · Frost Bank Center San Antonio
 const NBA_TONIGHT=[
-  {h:'SA',a:'NY',hML:-185,aML:150,ou:218.5,hL:-4.5,ctx:'NBA FINALS G1 · June 3 2026 · 8:30 PM ET ABC · Frost Bank Center'}
+  {h:'SA',a:'NY',hML:-218,aML:180,ou:214.5,hL:-6.5,ctx:'NBA FINALS G2 · June 5 2026 · 8:30 PM ET ABC · Frost Bank Center'}
 ];
 // NBA_PLAYERS: All 4 CF teams rosters with ECF-relevant players
 const NBA_PLAYERS=[
@@ -4184,7 +4184,7 @@ function renderNBABracket(){
   ${s('SA','OKC',4,3,'WCF COMPLETE · SA WON 4-3 · Wemby 31pts G7 road win at Paycom Center',false)}
 
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin:14px 0 5px">── NBA FINALS ────────────────────</div>
-  <div class="card" style="border:1px solid var(--gc);padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--gc)">🏆 SA vs NYK · NBA FINALS · GAME 1 TONIGHT JUNE 3 · 8 PM ET ABC · AT&amp;T CENTER</div>`;
+  <div class="card" style="border:1px solid var(--gc);padding:10px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--gc)">🏆 SA vs NYK · NBA FINALS IN PROGRESS · SA vs NYK · G1 SA WON · G2 JUNE 5</div>`;
 }
 function renderNBATonightGames(){
   const el=document.getElementById('nba-tn');if(!el)return;
@@ -8988,7 +8988,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-04 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-04 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -9049,12 +9049,25 @@ function mergeSeededBets(seeded){
 }
 function patchNBATonight(games){
   window._remoteNBAGames=games;
+  if(games&&games.length){
+    NBA_TONIGHT.length=0;
+    games.forEach(g=>{
+      NBA_TONIGHT.push({h:g.home,a:g.away,
+        hML:g.homeML||-110,aML:g.awayML||110,
+        ou:g.ou||220,hL:g.spread||-1.5,
+        ctx:g.seriesNote||`${g.away} @ ${g.home}`,
+        state:g.state||'pre',id:g.id,date:g.date,
+        hScore:g.homeScore,aScore:g.awayScore,network:g.network||''});
+    });
+  }
   const live=games.filter(g=>g.state==='in');
   for(const g of live){
     const el=document.querySelector(`[data-game-id="${g.id}"] .live-score`);
     if(el)el.textContent=`${g.awayScore}–${g.homeScore} Q${g.period} ${g.displayClock}`;
   }
   try{renderNBAGames();}catch(e){}
+  try{renderNBATonightGames();}catch(e){}
+  try{renderNBAPicks();}catch(e){}
 }
 function patchNBAStandings(s){window._remoteNBAStandings=s;}
 function patchMLBTonight(games){
@@ -9085,13 +9098,25 @@ function patchMLBStandings(standings){
 }
 function patchNHLTonight(games){
   window._remoteNHLGames=games;
-  const live=games.filter(g=>!['FUT','PRE'].includes(g.state));
-  if(!live.length)return;
+  const active=games.filter(g=>g.state!=='FUT');
+  if(active.length){
+    TONIGHT.length=0;
+    active.forEach(g=>{
+      const sn=g.seriesStatus||g.seriesNote||'';
+      const gn=parseInt((sn.match(/Game\s*(\d)/i)||[0,1])[1])||1;
+      TONIGHT.push({h:g.home,a:g.away,gn,ctx:sn||`${g.away} @ ${g.home}`,
+        hML:g.homeML||0,aML:g.awayML||0,ou:g.ou||0,state:g.state||'pre',
+        hScore:g.homeScore,aScore:g.awayScore});
+    });
+  }
+  const live=games.filter(g=>g.state==='in');
   for(const g of live){
     const el=document.querySelector(`[data-nhl-game="${g.home}-${g.away}"] .score`);
     if(el)el.textContent=`${g.awayScore}–${g.homeScore} P${g.period} ${g.clock}`;
   }
   try{renderNHLGames();}catch(e){}
+  try{renderNHLTonight();}catch(e){}
+  try{renderNHLPicks();}catch(e){}
   try{autoSettleNHL&&autoSettleNHL();}catch(e){}
 }
 function patchNHLStandings(standings){
