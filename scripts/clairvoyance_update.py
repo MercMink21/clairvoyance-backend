@@ -98,7 +98,7 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 NHL_API   = "https://api-web.nhle.com/v1"
 NHL_STATS = "https://api.nhle.com/stats/rest/en"
 MP_BASE_REG     = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2025/regular"
-MP_BASE_PLAYOFF = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2024/playoff"  # fallback
+MP_BASE_PLAYOFF = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2026/playoff"  # fallback
 SEASON    = "20252026"
 YEAR      = 2026
 
@@ -787,39 +787,6 @@ def fetch_basketball_reference() -> dict:
 
     return result
 
-def fetch_basketball_reference_series(series_url: str) -> dict:
-    """Fetch a single Basketball Reference playoff series page and parse game log + per-game stats.
-    series_url example:
-      https://www.basketball-reference.com/playoffs/2026-nba-eastern-conference-finals-cavaliers-vs-knicks.html
-    Returns dict with gameLog, perGame, advanced, seriesStatus."""
-    log(f"Basketball Reference series: {series_url.split('/')[-1]}…")
-    result: dict = {"url": series_url, "gameLog": [], "perGame": [], "advanced": [], "seriesStatus": "", "fetchedAt": TODAY_ISO}
-    try:
-        time.sleep(2)
-        soup = fetch_html(series_url, ref=True)
-        if not soup:
-            return result
-        # Game log — usually a "games" table or "schedule"
-        game_log_rows = _table_to_rows(soup, "games", limit=7)
-        if not game_log_rows:
-            game_log_rows = _table_to_rows(soup, "schedule", limit=7)
-        result["gameLog"] = game_log_rows
-        # Per-game stats
-        for key, tbl_id in [("perGame","per_game"),("advanced","advanced")]:
-            rows = _table_to_rows(soup, tbl_id, limit=20)
-            result[key] = rows
-        # Series status from page title
-        h1 = soup.find("h1")
-        if h1: result["seriesStatus"] = h1.get_text(strip=True)[:120]
-        vlog(f"  BBRef series: {len(game_log_rows)} games, {len(result['perGame'])} per-game rows")
-    except Exception as exc:
-        log(f"Basketball Reference series {series_url}: {exc}", "WARN")
-        result["error"] = str(exc)
-    return result
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# NHL
-# ═══════════════════════════════════════════════════════════════════════════════
 def _fetch_nhl_game_odds(event_id: str) -> dict:
     """Fetch NHL game odds from ESPN Core API (returns ML, puck line, O/U)."""
     try:
@@ -1216,44 +1183,6 @@ def fetch_hockey_reference() -> dict:
             log(f"Hockey Reference {label}: {exc}", "WARN")
     return result
 
-def fetch_hockey_reference_series(series_url: str) -> dict:
-    """Fetch a single Hockey Reference playoff series page and parse game log.
-    series_url example:
-      https://www.hockey-reference.com/playoffs/2026-carolina-hurricanes-vs-montreal-canadiens-eastern-conference-finals.html
-    Returns dict with gameLog, scorers, seriesStatus."""
-    log(f"Hockey Reference series: {series_url.split('/')[-1]}…")
-    result: dict = {"url": series_url, "gameLog": [], "scorers": [], "seriesStatus": "", "fetchedAt": TODAY_ISO}
-    try:
-        time.sleep(2)
-        soup = fetch_html(series_url, ref=True)
-        if not soup:
-            return result
-        # Parse game log table (id="games" or first substantial table)
-        game_log_rows = _table_to_rows(soup, "games", limit=10)
-        if not game_log_rows:
-            for tbl in soup.find_all("table")[:4]:
-                tbl_id = tbl.get("id","")
-                rows = _table_to_rows(soup, tbl_id, limit=10) if tbl_id else []
-                if rows and len(rows) > 1:
-                    game_log_rows = rows; break
-        result["gameLog"] = game_log_rows
-        # Series status from page title or header
-        h1 = soup.find("h1")
-        if h1: result["seriesStatus"] = h1.get_text(strip=True)[:120]
-        # Top scorers
-        scorer_rows = _table_to_rows(soup, "skaters", limit=10)
-        if not scorer_rows:
-            scorer_rows = _table_to_rows(soup, "stats", limit=10)
-        result["scorers"] = scorer_rows
-        vlog(f"  Hockey Ref series: {len(game_log_rows)} games, {len(scorer_rows)} scorers")
-    except Exception as exc:
-        log(f"Hockey Reference series {series_url}: {exc}", "WARN")
-        result["error"] = str(exc)
-    return result
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Tennis
-# ═══════════════════════════════════════════════════════════════════════════════
 def _parse_tennis_abstract_table(soup: BeautifulSoup, limit: int = 100) -> list[dict]:
     tables = soup.find_all("table")
     table  = next((t for t in tables if t.find("tbody") and len(t.find("tbody").find_all("tr")) > 50), None)
