@@ -469,6 +469,48 @@ else:
     warn('T() function not found — skipping nav routing check')
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 20. FUNCTIONS USING BARE D WITHOUT LOCAL DEFINITION
+#     D (window.__CV_DATA) is never a global. Any function that accesses
+#     D.xxx without first declaring `const D=window.__CV_DATA||{};` will
+#     silently read undefined, causing empty sections — the core recurring
+#     blank-screen bug. Block any regression of this class.
+# ─────────────────────────────────────────────────────────────────────────────
+bare_D_offenders = []
+for fn_match in re.finditer(r'function\s+(\w+)\s*\([^)]*\)\s*\{', main_js):
+    fn_name = fn_match.group(1)
+    fn_start = fn_match.start()
+    depth = 0; fn_end = fn_start
+    for i, c in enumerate(main_js[fn_start:], fn_start):
+        if c == '{': depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0: fn_end = i+1; break
+    fn_body = main_js[fn_start:fn_end]
+    if len(fn_body) < 80: continue
+    has_bare_D  = bool(re.search(r'\bD[\.\?\|&]', fn_body))
+    has_local_D = bool(re.search(r'(const|let|var)\s+D\s*=', fn_body))
+    if has_bare_D and not has_local_D:
+        bare_D_offenders.append(fn_name)
+
+if bare_D_offenders:
+    for fn in bare_D_offenders:
+        err(f"Function {fn}() uses bare D without 'const D=window.__CV_DATA||{{}}' — will silently show blank content")
+else:
+    ok(f'No functions use bare D without local definition (checked all named functions)')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 21. HARDCODED DATE STRINGS IN LOGIC PATHS
+#     Dates hardcoded as `const TODAY='YYYY-MM-DD'` go stale immediately.
+#     Must use today() for any date comparison in live render functions.
+# ─────────────────────────────────────────────────────────────────────────────
+hardcoded_todays = re.findall(r"const TODAY\s*=\s*'(\d{4}-\d{2}-\d{2})'", main_js)
+if hardcoded_todays:
+    for d in hardcoded_todays:
+        err(f"Hardcoded const TODAY='{d}' — will go stale; use today() instead")
+else:
+    ok('No hardcoded const TODAY= date strings found')
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
