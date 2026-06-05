@@ -6423,14 +6423,49 @@ function renderHomePage(){
     recEl.innerHTML=`<div style="margin-bottom:6px;font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc)">PERFORMANCE</div><div style="display:flex;gap:8px;flex-wrap:wrap">${cell('OVERALL',pa)}${cell('ROLLING 7D',p7)}${cell('YESTERDAY',py)}</div>`;
   }
   const picks=[];
-  // NHL picks
-  try{const _todNHL=today();for(const g of TONIGHT){if(g.date&&g.date!==_todNHL)continue;const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',col:'var(--nc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:g.date||_todNHL});}}catch(e){}
-  // NBA picks
-  try{const _todNBA=today();for(const g of NBA_TONIGHT){if(g.date&&g.date!==_todNBA)continue;const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);const ml=p2ml(p);const d2=ml2d(ml);picks.push({sport:'NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',col:'var(--gc)',ctx:g.ctx||'',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:g.date||_todNBA});}}catch(e){}
-  // Tennis picks
+  // Helper: parse a date string (YYYY-MM-DD) from free text like "June 3 2026"
+  const _parseCtxDate=(txt)=>{
+    if(!txt)return null;
+    const MO={january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+    const m=txt.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:,?\s+(\d{4}))?/i);
+    if(!m)return null;
+    const yr=m[3]||String(new Date().getFullYear());
+    const mo=MO[m[1].toLowerCase()]||'01';
+    return `${yr}-${mo}-${String(parseInt(m[2])).padStart(2,'0')}`;
+  };
+  // Helper: data sync date — if LAST_AUTO_UPDATE has today's date, data is fresh
+  const _syncDate=(()=>{try{const lu=LAST_AUTO_UPDATE||'';const m=lu.match(/(\d{4}-\d{2}-\d{2})/);return m?m[1]:null;}catch(e){return null;}})();
+  const _tod2=today();
+
+  // NHL picks — skip if ctx date doesn't match today
+  try{for(const g of TONIGHT){
+    const gd=g.date||_parseCtxDate(g.ctx);
+    if(gd&&gd!==_tod2)continue;
+    const r=nhlEns(g.h,g.a);const hN=NHL[g.h]?.name||g.h;const aN=NHL[g.a]?.name||g.a;
+    const fav=r.p>=.5?hN:aN;const favAbbr=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);
+    const ml=p2ml(p);const d2=ml2d(ml);
+    picks.push({sport:'NHL',mu:`${aN} @ ${hN}`,pick:fav,abbr:favAbbr,p,det:'xGF+MC+GSAx',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:_tod2});
+  }}catch(e){}
+
+  // NBA picks — skip if ctx date doesn't match today
+  try{for(const g of NBA_TONIGHT){
+    const gd=g.date||_parseCtxDate(g.ctx);
+    if(gd&&gd!==_tod2)continue;
+    const r=nbaEns(g.h,g.a);const fav=r.p>=.5?g.h:g.a;const p=Math.max(r.p,1-r.p);
+    const ml=p2ml(p);const d2=ml2d(ml);
+    picks.push({sport:'NBA',mu:`${g.a} @ ${g.h}`,pick:fav,abbr:fav,p,det:'BBRef MC+ELO',ml,ev2:ev(p,d2),betType:'ML',hA:g.h,awA:g.a,d2,date:_tod2});
+  }}catch(e){}
+
+  // Tennis picks — only include if data was synced today
   try{
+    const tenFresh=_syncDate===_tod2;
     const allTenMat=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
     for(const m of allTenMat){
+      // Skip if match has a date that isn't today
+      const md=m.date||_parseCtxDate(m.tournament||'');
+      if(md&&md!==_tod2)continue;
+      // Skip if data hasn't been synced today (tennis data is stale)
+      if(!tenFresh&&!md)continue;
       const db=ATP_DB[m.p1]?ATP_DB:WTA_DB;const p1=db[m.p1],p2=db[m.p2];if(!p1||!p2)continue;
       const wp=tennisMatchWinProbFull(p1,p2,m.surface,m.bo5);
       const ev1=tennisEV(wp,m.p1ml);const ev2=tennisEV(1-wp,m.p2ml);
@@ -6438,27 +6473,31 @@ function renderHomePage(){
       const pEV=Math.max(ev1||0,ev2||0);if(pEV<0.03||pWin<0.55)continue;
       const ml=pML>0?`+${pML}`:String(pML);const d2=pML>0?pML/100+1:100/Math.abs(pML)+1;
       const opp=pick===m.p1?m.p2:m.p1;
-      picks.push({sport:'TEN',mu:`${pick} vs ${opp}`,pick,abbr:pick,p:pWin,det:'5-ELO+MC Clay',col:'var(--mc)',ctx:m.tournament,ml,ev2:pEV,betType:'ML',hA:pick,awA:opp,d2});
+      picks.push({sport:'TEN',mu:`${pick} vs ${opp}`,pick,abbr:pick,p:pWin,det:'5-ELO+MC Clay',ctx:m.tournament,ml,ev2:pEV,betType:'ML',hA:pick,awA:opp,d2,date:_tod2});
     }
   }catch(e){}
-  // MLB picks (from ESPN games)
+
+  // MLB picks — ESPN_GAMES populated by SYNC, always dated
   try{
     for(const g of ESPN_GAMES){
       if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])continue;
+      // Skip if game date doesn't match today
+      const gd=g.date||_parseCtxDate(g.ctx||'');
+      if(gd&&gd!==_tod2)continue;
       const ens=mlbEns(g.hA,g.awA,g);const p=ens.p;
       if(p<0.55&&(1-p)<0.55)continue;
       const fav=p>=.5?g.hA:g.awA;const fp=Math.max(p,1-p);const ml=p2ml(fp);const d2=ml2d(ml);
-      picks.push({sport:'MLB',mu:`${g.awA} @ ${g.hA}`,pick:fav,abbr:fav,p:fp,det:'Poisson+MC+ELO',col:'var(--hc)',ctx:'',ml,ev2:ev(fp,d2),betType:'ML',hA:g.hA,awA:g.awA,d2});
+      picks.push({sport:'MLB',mu:`${g.awA} @ ${g.hA}`,pick:fav,abbr:fav,p:fp,det:'Poisson+MC+ELO',ml,ev2:ev(fp,d2),betType:'ML',hA:g.hA,awA:g.awA,d2,date:g.date||_tod2});
     }
   }catch(e){}
-    picks.sort((a,b)=>b.p-a.p);
+
+  picks.sort((a,b)=>b.p-a.p);
   // Populate date label next to header
   try{const _sdEl=document.getElementById('home-signals-date');if(_sdEl){const _m=getMSTNow();_sdEl.textContent=_m.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}}catch(e){}
   // Daily Signals — top picks today, all sports, pure probability sort
-  const _tod=today();
-  const todayPicks=picks.filter(pk=>!pk.date||pk.date===_tod);
-  const topPicks=(todayPicks.length?todayPicks:picks).filter(pk=>pk.p>=0.55).slice(0,12);
-  if(!topPicks.length){el.innerHTML='<div class="empty">LOADING PICKS — SYNC DATA OR CHECK BACK SOON</div>';}
+  // Strict date filter — only show picks for today, never stale data
+  const topPicks=picks.filter(pk=>pk.p>=0.55).slice(0,12);
+  if(!topPicks.length){el.innerHTML='<div class="empty" style="padding:20px;line-height:1.8">NO PICKS FOR TODAY<br><span style="font-size:12px;color:var(--t3)">Tap SYNC to load today\'s games, or check back later</span></div>';}
   else{
     el.innerHTML=topPicks.map((pk,i)=>{
       const glbl=pk.p>=0.70?'ELITE':pk.p>=0.63?'LOCK':'LEAN';
