@@ -5901,37 +5901,44 @@ function buildAlyFilters(allRaw,F){
 function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const el=document.getElementById('ovr-history-list');if(!el)return;
   let all=[...getP()].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
-  // Sport filter
-  const sf=sportFilter||window._ovrHistSport||'ALL';
-  const df=dateFrom||window._ovrHistFrom||'';
-  const dt=dateTo||window._ovrHistTo||'';
-  if(sportFilter!==undefined)window._ovrHistSport=sf;
-  if(dateFrom!==undefined)window._ovrHistFrom=df;
-  if(dateTo!==undefined)window._ovrHistTo=dt;
+  // Sport filter — null means "preserve stored", undefined means "not passed"
+  const sf=(sportFilter!=null)?sportFilter:(window._ovrHistSport||'ALL');
+  // Date filter — use ternary so empty string ('') is respected (clears filter)
+  const df=(dateFrom!=null)?dateFrom:(window._ovrHistFrom||'');
+  const dt=(dateTo!=null)?dateTo:(window._ovrHistTo||'');
+  window._ovrHistSport=sf;
+  window._ovrHistFrom=df;
+  window._ovrHistTo=dt;
   if(sf&&sf!=='ALL')all=all.filter(p=>p.sport===sf);
-  if(df)all=all.filter(p=>p.date&&p.date>=df);
-  if(dt)all=all.filter(p=>p.date&&p.date<=dt);
+  // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
+  const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toISOString().slice(0,10):'');
+  if(df)all=all.filter(p=>{const d=pickDate(p);return d&&d>=df;});
+  if(dt)all=all.filter(p=>{const d=pickDate(p);return d&&d<=dt;});
   const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',F1:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
   const sports=['ALL','MLB','NBA','NHL','TEN','F1'];
   // Build filter controls
-  // Quick date-window helper
-  const qw=(days)=>{const t=new Date();const f=new Date(Date.now()-days*86400000);const iso=d=>d.toISOString().slice(0,10);window._ovrHistFrom=iso(f);window._ovrHistTo=iso(t);renderOverallHistory();};
+  // Quick date-window helper — stores active window size for button highlight
+  const qw=(days)=>{const t=new Date();const f=new Date(Date.now()-days*86400000);const iso=d=>d.toISOString().slice(0,10);window._ovrHistFrom=iso(f);window._ovrHistTo=iso(t);window._ovrHistQW=days;renderOverallHistory();};
+  // Determine which quick-window button is active
+  const qwActive=(days)=>{if(!df||!dt||window._ovrHistQW!==days)return false;const t=new Date();const f=new Date(Date.now()-days*86400000);const iso=d=>d.toISOString().slice(0,10);return df===iso(f)&&dt===iso(t);};
+  const btnAct='border-color:var(--pc);color:var(--pc)';
+  const noAct='';
   let filterHtml=`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">SPORT FILTER</div>
   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
-    ${sports.map(s=>`<button class="btn btn-o btn-sm" style="${(window._ovrHistSport||'ALL')===s?'border-color:var(--pc);color:var(--pc)':''}" onclick="renderOverallHistory('${s}')">${s}</button>`).join('')}
+    ${sports.map(s=>`<button class="btn btn-o btn-sm" style="${sf===s?btnAct:noAct}" onclick="renderOverallHistory('${s}')">${s}</button>`).join('')}
   </div>
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">DATE RANGE</div>
   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
-    <button class="btn btn-o btn-sm" onclick="qw(7)" style="${df&&dt?'':'border-color:rgba(255,255,255,.15)'}">7D</button>
-    <button class="btn btn-o btn-sm" onclick="qw(14)">14D</button>
-    <button class="btn btn-o btn-sm" onclick="qw(30)">30D</button>
-    <button class="btn btn-o btn-sm" onclick="qw(90)">90D</button>
-    <button class="btn btn-o btn-sm" onclick="window._ovrHistFrom='';window._ovrHistTo='';renderOverallHistory()" style="${!df&&!dt?'border-color:var(--pc);color:var(--pc)':''}">ALL</button>
+    <button class="btn btn-o btn-sm" onclick="qw(7)"  style="${window._ovrHistQW===7 &&df&&dt?btnAct:noAct}">7D</button>
+    <button class="btn btn-o btn-sm" onclick="qw(14)" style="${window._ovrHistQW===14&&df&&dt?btnAct:noAct}">14D</button>
+    <button class="btn btn-o btn-sm" onclick="qw(30)" style="${window._ovrHistQW===30&&df&&dt?btnAct:noAct}">30D</button>
+    <button class="btn btn-o btn-sm" onclick="qw(90)" style="${window._ovrHistQW===90&&df&&dt?btnAct:noAct}">90D</button>
+    <button class="btn btn-o btn-sm" onclick="window._ovrHistFrom='';window._ovrHistTo='';window._ovrHistQW=null;renderOverallHistory()" style="${!df&&!dt?btnAct:noAct}">ALL</button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-    <input type="date" class="fi" id="ovr-hist-from" value="${df}" placeholder="FROM" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" oninput="renderOverallHistory(null,this.value,document.getElementById('ovr-hist-to').value)">
+    <input type="date" class="fi" id="ovr-hist-from" value="${df}" placeholder="FROM" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" onchange="window._ovrHistQW=null;window._ovrHistFrom=this.value;window._ovrHistTo=document.getElementById('ovr-hist-to').value;renderOverallHistory()">
     <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">TO</span>
-    <input type="date" class="fi" id="ovr-hist-to" value="${dt}" placeholder="TO" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" oninput="renderOverallHistory(null,document.getElementById('ovr-hist-from').value,this.value)">
+    <input type="date" class="fi" id="ovr-hist-to" value="${dt}" placeholder="TO" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" onchange="window._ovrHistQW=null;window._ovrHistTo=this.value;window._ovrHistFrom=document.getElementById('ovr-hist-from').value;renderOverallHistory()">
   </div>`;
   if(!all.length){el.innerHTML=filterHtml+'<div class="empty">NO BETS FOR SELECTED FILTERS</div>';return;}
   // Weekly summary
