@@ -511,6 +511,30 @@ else:
     ok('No hardcoded const TODAY= date strings found')
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 22. MISSING COMMA BETWEEN seedBetHistory ARRAY ENTRIES
+#     A } followed by { without a comma is a SyntaxError that kills the entire
+#     script. This is the #1 recurring fatal bug. Detect it before every push.
+# ─────────────────────────────────────────────────────────────────────────────
+seed_idx = main_js.find('(function seedBetHistory(')
+if seed_idx > -1:
+    seed_end = seed_idx
+    depth = 0
+    for i, c in enumerate(main_js[seed_idx:], seed_idx):
+        if c == '{': depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0: seed_end = i + 1; break
+    seed_body = main_js[seed_idx:seed_end]
+    # Find closing } followed by optional whitespace/comments then opening { without comma
+    bad = re.findall(r'\}[ \t]*(?:\n[ \t]*//[^\n]*)*\n[ \t]*\{', seed_body)
+    if bad:
+        err(f"seedBetHistory has {len(bad)} missing comma(s) between array entries — causes SyntaxError blank engine")
+    else:
+        ok('seedBetHistory array entries all separated by commas')
+else:
+    err('seedBetHistory IIFE not found in script')
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
