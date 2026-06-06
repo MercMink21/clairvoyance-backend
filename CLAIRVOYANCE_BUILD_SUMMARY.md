@@ -120,7 +120,7 @@ Layer 3: docs/picks.json (GitHub)  — PERMANENT, cross-device, never lost
 
 **Token:** Enter in engine via **⚙ Sync Key** button (top header). Needs `repo` scope. Same token handles data sync AND picks storage.
 
-**picks.json current state:** 109 bets (95W–14L) covering NHL RS, NHL Playoffs, MLB, NBA Playoffs, WCF, Finals G1, Roland Garros R1 WTA.
+**picks.json current state:** 153 bets (128W–23L, 2 pending) covering NHL RS, NHL Playoffs, MLB, NBA Playoffs, WCF, Finals G1–G2, Roland Garros.
 
 ---
 
@@ -220,7 +220,7 @@ PYEOF
 
 - **WCF:** SA Spurs def. OKC Thunder 4–3. SA advances.
 - **ECF:** NYK Knicks def. CLE Cavaliers 4–2. NYK advances.
-- **NBA Finals:** SA Spurs vs NYK Knicks. **Game 1: Jun 3 2026, SA won.** (Wemby 40+pts)
+- **NBA Finals:** SA Spurs vs NYK Knicks. **NYK leads 2–0.** G1: SA won. G2: NYK won 105–104 (Jun 5).
 - **Stanley Cup Finals:** VGK Golden Knights vs CAR Hurricanes (VGK swept WCF 4-0)
 - **Roland Garros 2026:** In progress (Jun 4). French Open clay. ATP/WTA both active.
 
