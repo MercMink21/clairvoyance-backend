@@ -535,6 +535,192 @@ else:
     err('seedBetHistory IIFE not found in script')
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 23. TEMPLATE LITERAL EXPRESSION SYNTAX — TRAILING SEMICOLON CHECK
+#
+#     The exact bug that broke the engine: a semicolon was the last meaningful
+#     character inside a ${...} expression before its closing }:
+#
+#         color:${g.done ? 'var(--gc)' : 'var(--t3)';}   ← SyntaxError
+#
+#     JavaScript requires ${Expression} — a semicolon is not part of any
+#     Expression production, so the browser JS parser throws SyntaxError
+#     before a single line runs.
+#
+#     Detection strategy (no full JS parser needed):
+#       1. Extract all ${...} expression bodies using a balanced-brace walk
+#          that skips over JS strings, comments, and nested template literals.
+#       2. Strip the extracted body of its string literals and comments so
+#          semicolons inside string values (e.g. 'color:red;font-size:12px')
+#          are not counted.
+#       3. Flag if the last non-whitespace character is ';'.
+#
+#     This catches: ${expr;} ${a?b:c;} ${fn();} — and nothing else.
+# ─────────────────────────────────────────────────────────────────────────────
+REGEX_PRECEDE = set('=([,;!&|?:{+->~^%')  # chars after which / starts a regex literal
+
+def skip_string(src, pos, quote):
+    pos += 1
+    while pos < len(src):
+        if src[pos] == '\\': pos += 2; continue
+        if src[pos] == quote: return pos + 1
+        pos += 1
+    return pos
+
+def skip_regex(src, pos):
+    """Skip a JS regex literal starting at pos (the opening /)."""
+    pos += 1
+    while pos < len(src):
+        if src[pos] == '\\': pos += 2; continue
+        if src[pos] == '[':
+            pos += 1
+            while pos < len(src):
+                if src[pos] == '\\': pos += 2; continue
+                if src[pos] == ']': pos += 1; break
+                pos += 1
+            continue
+        if src[pos] == '/': pos += 1; break
+        pos += 1
+    while pos < len(src) and src[pos].isalpha(): pos += 1
+    return pos
+
+def extract_template_expressions(js):
+    """
+    Yield (start_pos, expr_body) for every ${...} in js,
+    walking balanced braces and skipping strings/comments/nested TL/regex.
+    """
+
+    def walk_template(src, pos, results):
+        """
+        Walk a template literal body (pos is AFTER the opening backtick).
+        Recursively extracts all ${...} expression bodies into results list.
+        Returns position after the closing backtick.
+        """
+        n = len(src)
+        while pos < n:
+            c = src[pos]
+            if c == '\\': pos += 2; continue
+            if c == '`': return pos + 1   # end of this template literal
+            if c == '$' and pos+1 < n and src[pos+1] == '{':
+                # Extract this expression
+                body, end_j = skip_expr_body(src, pos+2, results)
+                results.append((pos+2, body))
+                pos = end_j + 1; continue
+            pos += 1
+        return pos
+
+    def skip_expr_body(src, start, results=None):
+        """
+        Walk from start, find the matching } for the ${.
+        If results is not None, recursively collect nested template expressions too.
+        Returns (body, end_pos).
+        """
+        depth = 1; j = start; n = len(src); last_non_ws = ''
+        while j < n and depth > 0:
+            c = src[j]
+            if c == '/' and j+1 < n and src[j+1] == '/':
+                end = src.find('\n', j); j = end+1 if end != -1 else n; continue
+            if c == '/' and j+1 < n and src[j+1] == '*':
+                end = src.find('*/', j+2); j = end+2 if end != -1 else n; continue
+            if c == '/' and j+1 < n and src[j+1] not in ('/', '*'):
+                if last_non_ws in REGEX_PRECEDE or not last_non_ws:
+                    j = skip_regex(src, j); continue
+            if c in ('"', "'"):
+                j = skip_string(src, j, c); last_non_ws = ' '; continue
+            if c == '`':
+                # Nested template literal — recurse to collect inner expressions
+                if results is not None:
+                    j = walk_template(src, j+1, results)
+                else:
+                    j += 1
+                    while j < n:
+                        if src[j] == '\\': j += 2; continue
+                        if src[j] == '`': j += 1; break
+                        if src[j] == '$' and j+1 < n and src[j+1] == '{':
+                            j += 2; nd = 1
+                            while j < n and nd > 0:
+                                if src[j] == '{': nd += 1
+                                elif src[j] == '}': nd -= 1
+                                j += 1
+                            continue
+                        j += 1
+                last_non_ws = ' '; continue
+            if c == '{': depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0: break
+            if not c.isspace(): last_non_ws = c
+            j += 1
+        return src[start:j], j
+
+    i = 0; n = len(js); results = []
+    while i < n - 1:
+        if js[i] == '/' and js[i+1] == '/':
+            end = js.find('\n', i); i = end+1 if end != -1 else n; continue
+        if js[i] == '/' and js[i+1] == '*':
+            end = js.find('*/', i+2); i = end+2 if end != -1 else n; continue
+        if js[i] in ('"', "'"):
+            i = skip_string(js, i, js[i]); continue
+        # Top-level template literal — walk it recursively
+        if js[i] == '`':
+            i = walk_template(js, i+1, results)
+            for pos, body in results:
+                yield (pos, body)
+            results.clear()
+            continue
+        # Direct ${...} outside template literal (unusual but handle it)
+        if js[i] == '$' and js[i+1] == '{':
+            body, end_j = skip_expr_body(js, i+2, results)
+            yield (i+2, body)
+            for pos, body2 in results:
+                yield (pos, body2)
+            results.clear()
+            i = end_j + 1; continue
+        i += 1
+
+def strip_strings_and_comments(expr):
+    """Remove string literals, regex literals, and comments from a JS expression body."""
+    out = []; i = 0; n = len(expr); last_non_ws = ''
+    while i < n:
+        c = expr[i]
+        if c == '/' and i+1 < n and expr[i+1] == '/':
+            end = expr.find('\n', i); i = end+1 if end != -1 else n; continue
+        if c == '/' and i+1 < n and expr[i+1] == '*':
+            end = expr.find('*/', i+2); i = end+2 if end != -1 else n; continue
+        # Regex literal: / following an operator char
+        if c == '/' and i+1 < n and expr[i+1] not in ('/', '*'):
+            if last_non_ws in REGEX_PRECEDE or not last_non_ws:
+                i = skip_regex(expr, i); out.append(' '); last_non_ws = ' '; continue
+        if c in ('"', "'", '`'):
+            q = c; i += 1
+            while i < n:
+                if expr[i] == '\\': i += 2; continue
+                if expr[i] == q:    i += 1; break
+                i += 1
+            out.append(' ')  # placeholder
+            last_non_ws = ' '; continue
+        out.append(c)
+        if not c.isspace(): last_non_ws = c
+        i += 1
+    return ''.join(out)
+
+tl_issues = []
+for start_pos, body in extract_template_expressions(main_js):
+    stripped = strip_strings_and_comments(body).rstrip()
+    if stripped.endswith(';'):
+        line_no = main_js[:start_pos].count('\n') + 1
+        tl_issues.append((line_no, body.strip()[:120]))
+
+if tl_issues:
+    for line_no, body in tl_issues[:6]:
+        err(f"TEMPLATE LITERAL SYNTAX ERROR at line ~{line_no}: "
+            f"semicolon is last char in ${{...}} expression — SyntaxError kills entire script\n"
+            f"          Expression: ${{ {body} }}")
+    if len(tl_issues) > 6:
+        err(f"...and {len(tl_issues)-6} more trailing-semicolon template expressions")
+else:
+    ok("Template literal expressions: no trailing semicolons inside ${{...}} (would be SyntaxError)")
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
