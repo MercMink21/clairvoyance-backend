@@ -1985,8 +1985,9 @@ function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'⭐
 function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
 function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
-function getTomorrowET(){const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10).replace(/-/g,'');}
-function tomorrow(){const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)}
+function nDaysAgoET(n){return new Date(Date.now()-n*86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
+function getTomorrowET(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}).replace(/-/g,'');}
+function tomorrow(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'})}
 function fmtMST(){return new Date().toLocaleString('en-US',{timeZone:'America/Denver'})}
 function todayESPN(){return today().replace(/-/g,'')}
 function tomorrowESPN(){return tomorrow().replace(/-/g,'')}
@@ -3157,7 +3158,7 @@ function renderNHLPicks(){
       const hP=ens.p||0.5,aP=1-hP;
       const hML=p2ml(hP),aML=p2ml(aP),hD=ml2d(hML),aD=ml2d(aML);
       const ouP=typeof mc.overP==='number'?mc.overP:0.52;
-      const today=new Date().toISOString().slice(0,10);
+      // date: use outer today() ET function
       [[hP,hML,hD,ev(hP,hD),`ML ${g.h}`,g.h],[aP,aML,aD,ev(aP,aD),`ML ${g.a}`,g.a],[ouP,'-110',1.91,ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${g.ou||5.5}`,ouP>=.5?'OVER':'UNDER']].forEach(([p,ml,d2,e2,lb,betOn])=>{
         const t=tier(p,e2);if(t<1)return;
         const bc=t===3?'pkb-g':t===2?'pkb-p':'pkb-n';
@@ -4675,7 +4676,7 @@ function renderNBAFinalsProps(containerId){
       </div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--t2);margin-bottom:2px">${pp.hitRate}</div>
       <div style="font-family:var(--mono);font-size:11px;color:rgba(200,180,255,.6);margin-bottom:5px">${pp.basis}</div>
-      <button onclick="lockPick('SA','NYK','PROP','${lockLabel}',${pct/100},'${pp.ml||'-110'}',${dec},'${new Date().toISOString().slice(0,10)}')" style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+      <button onclick="lockPick('SA','NYK','PROP','${lockLabel}',${pct/100},'${pp.ml||'-110'}',${dec},'${today()}')" style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">LOCK PICK</button>
     </div>`;
   }).join('');
 }
@@ -5164,8 +5165,7 @@ function renderOverall(){
     return pnl/bets.length*100;
   };
   // 60-day window
-  const d60=new Date();d60.setDate(d60.getDate()-60);
-  const last60=settled.filter(p=>p.date&&new Date(p.date)>=d60);
+  const last60=settled.filter(p=>p.date&&p.date>=nDaysAgoET(60));
   const last60BySport={};
   for(const p of last60){const s=p.sport||'?';if(!last60BySport[s])last60BySport[s]=[];last60BySport[s].push(p);}
   const last60ByType={};
@@ -5202,7 +5202,7 @@ function renderOverall(){
 
   // Recent form narrative
   if(wk7Perf.n>=3){
-    const wk7Roi=roiPct(settled.filter(p=>{const d=new Date();d.setDate(d.getDate()-7);return p.date&&new Date(p.date)>=d;}));
+    const wk7Roi=roiPct(settled.filter(p=>p.date&&p.date>=nDaysAgoET(7)));
     if(wk7Perf.acc!==null&&wk7Perf.acc>=0.60)insights.push(`Strong recent form — ${wk7Perf.w}W–${wk7Perf.l}L over the last 7 days (${(wk7Perf.acc*100).toFixed(0)}% win rate, ${wk7Perf.units>=0?'+':''}${wk7Perf.units.toFixed(1)} units, ${wk7Roi!==null?(wk7Roi>=0?'+':'')+wk7Roi.toFixed(1)+'% ROI':''}).`);
     else if(wk7Perf.acc!==null&&wk7Perf.acc<0.45)insights.push(`Difficult 7-day stretch — ${wk7Perf.w}W–${wk7Perf.l}L. The engine has auto-tightened pick criteria. Consider reducing unit size until form recovers.`);
   }
@@ -5911,16 +5911,17 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   window._ovrHistTo=dt;
   if(sf&&sf!=='ALL')all=all.filter(p=>p.sport===sf);
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
-  const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toISOString().slice(0,10):'');
-  if(df)all=all.filter(p=>{const d=pickDate(p);return d&&d>=df;});
-  if(dt)all=all.filter(p=>{const d=pickDate(p);return d&&d<=dt;});
+  const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
+  const validISO=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);
+  if(validISO(df))all=all.filter(p=>{const d=pickDate(p);return d&&d>=df;});
+  if(validISO(dt))all=all.filter(p=>{const d=pickDate(p);return d&&d<=dt;});
   const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',F1:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
   const sports=['ALL','MLB','NBA','NHL','TEN','F1'];
   // Build filter controls
   // Quick date-window helper — stores active window size for button highlight
-  const qw=(days)=>{const t=new Date();const f=new Date(Date.now()-days*86400000);const iso=d=>d.toISOString().slice(0,10);window._ovrHistFrom=iso(f);window._ovrHistTo=iso(t);window._ovrHistQW=days;renderOverallHistory();};
+  const qw=(days)=>{window._ovrHistFrom=nDaysAgoET(days);window._ovrHistTo=today();window._ovrHistQW=days;renderOverallHistory();};
   // Determine which quick-window button is active
-  const qwActive=(days)=>{if(!df||!dt||window._ovrHistQW!==days)return false;const t=new Date();const f=new Date(Date.now()-days*86400000);const iso=d=>d.toISOString().slice(0,10);return df===iso(f)&&dt===iso(t);};
+  const qwActive=(days)=>{return window._ovrHistQW===days&&df===nDaysAgoET(days)&&dt===today();};
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
   let filterHtml=`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">SPORT FILTER</div>
@@ -5936,16 +5937,16 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     <button class="btn btn-o btn-sm" onclick="window._ovrHistFrom='';window._ovrHistTo='';window._ovrHistQW=null;renderOverallHistory()" style="${!df&&!dt?btnAct:noAct}">ALL</button>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-    <input type="date" class="fi" id="ovr-hist-from" value="${df}" placeholder="FROM" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" onchange="window._ovrHistQW=null;window._ovrHistFrom=this.value;window._ovrHistTo=document.getElementById('ovr-hist-to').value;renderOverallHistory()">
+    <input type="date" class="fi" id="ovr-hist-from" value="${df}" placeholder="FROM" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" oninput="window._ovrHistQW=null;window._ovrHistFrom=this.value;window._ovrHistTo=document.getElementById('ovr-hist-to')?.value||'';renderOverallHistory()">
     <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">TO</span>
-    <input type="date" class="fi" id="ovr-hist-to" value="${dt}" placeholder="TO" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" onchange="window._ovrHistQW=null;window._ovrHistTo=this.value;window._ovrHistFrom=document.getElementById('ovr-hist-from').value;renderOverallHistory()">
+    <input type="date" class="fi" id="ovr-hist-to" value="${dt}" placeholder="TO" style="padding:4px 8px;font-size:13px;flex:1;min-width:120px" oninput="window._ovrHistQW=null;window._ovrHistTo=this.value;window._ovrHistFrom=document.getElementById('ovr-hist-from')?.value||'';renderOverallHistory()">
   </div>`;
   if(!all.length){el.innerHTML=filterHtml+'<div class="empty">NO BETS FOR SELECTED FILTERS</div>';return;}
   // Weekly summary
   const weekMap={};const monthMap={};
   all.filter(p=>p.outcome!=='pending').forEach(p=>{
     const d=new Date(p.date||p.lockedAt||0);
-    const wk=new Date(d);wk.setDate(d.getDate()-d.getDay());const wkKey=wk.toISOString().slice(0,10);
+    const wk=new Date(d);wk.setDate(d.getDate()-d.getDay());const wkKey=wk.toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
     const mKey=p.date?p.date.slice(0,7):'';
     if(!weekMap[wkKey])weekMap[wkKey]={w:0,l:0,u:0};
     if(!monthMap[mKey])monthMap[mKey]={w:0,l:0,u:0};
@@ -5978,7 +5979,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const recentBets=all.filter(p=>_now-(p.lockedAt||new Date(p.date||0).getTime())<_3d);
   const archivedBets=all.filter(p=>_now-(p.lockedAt||new Date(p.date||0).getTime())>=_3d);
   const archByDate={};
-  for(const p of archivedBets){const dk=p.date||new Date(p.lockedAt||0).toISOString().slice(0,10);if(!archByDate[dk])archByDate[dk]=[];archByDate[dk].push(p);}
+  for(const p of archivedBets){const dk=p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'unknown');if(!archByDate[dk])archByDate[dk]=[];archByDate[dk].push(p);}
   const betHtml=recentBets.map(betCard).join('');
   const archFolders=Object.entries(archByDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date,bets])=>{
     const dW=bets.filter(p=>p.outcome==='win').length,dL=bets.filter(p=>p.outcome==='loss').length;
@@ -6412,7 +6413,7 @@ async function autoSettleNBA(){
 
 // ═══ MIDNIGHT MST SCHEDULER ══════════════════════════════════
 function getMSTNow(){return new Date(new Date().toLocaleString('en-US',{timeZone:'America/Denver'}));}
-function getMSTDate(){return getMSTNow().toISOString().slice(0,10);}
+function getMSTDate(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
 let lastMidDate=null,lastTenDate=null;
 // ─── MIDNIGHT AUTO-REFRESH ────────────────────────────────────────────────────
 // Runs every minute. At 00:00-00:02 MST triggers full day-rollover:
@@ -6492,10 +6493,10 @@ function showMidnightBanner(){
   // Store flag so home page can show "ready for today" note
   S.s('last_midnight_sync',getMSTDate());
 }
-function prepareDayEnd(){const yesterday=new Date(getMSTNow());yesterday.setDate(yesterday.getDate()-1);const yd=yesterday.toISOString().slice(0,10);const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
+function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
-function yesterday(){const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);}
+function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
 function renderHomePage(){
   const el=document.getElementById('home-picks');
   if(!el)return;
@@ -8353,7 +8354,7 @@ function renderSlam(code){
           <div style="font-family:var(--orb);font-size:14px;font-weight:700">${p1Name} vs ${p2Name}</div>
           <div style="font-family:var(--mono);font-size:12px;color:var(--nc);margin-top:2px">LEAN: ${proj}</div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${basis}</div>
-          <button onclick="lockPick('${p1Name.replace(/'/g,"\\'")}','${p2Name.replace(/'/g,"\\'")}','ML','${proj.replace(/'/g,"\\'")}',${projP.toFixed(3)},'auto',${(projP/(1-projP)).toFixed(3)},'${(new Date()).toISOString().slice(0,10)}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,119,0,.06);border:1px solid rgba(255,119,0,.3);color:var(--mc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+          <button onclick="lockPick('${p1Name.replace(/'/g,"\\'")}','${p2Name.replace(/'/g,"\\'")}','ML','${proj.replace(/'/g,"\\'")}',${projP.toFixed(3)},'auto',${(projP/(1-projP)).toFixed(3)},'${today()}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,119,0,.06);border:1px solid rgba(255,119,0,.3);color:var(--mc);border-radius:2px;cursor:pointer">LOCK PICK</button>
         </div>`;
       }).join('');
       html+=`</div>`;
@@ -10656,14 +10657,14 @@ function renderF1Schedule(){
     el.innerHTML='<div class="empty">NO F1 SCHEDULE LOADED · WILL POPULATE ON NEXT UPDATE</div>';
     fetch('http://ergast.com/api/f1/current.json?limit=25').then(r=>r.json()).then(d=>{
       const races=d.MRData?.RaceTable?.Races||[];
-      const today=new Date().toISOString().slice(0,10);
+      const today=today();
       el.innerHTML='<div style="overflow-x:auto"><table class="dt"><thead><tr><th>RND</th><th>RACE</th><th>CIRCUIT</th><th>COUNTRY</th><th>DATE</th></tr></thead><tbody>'+
         races.map(r=>{const past=r.date<today;return`<tr style="opacity:${past?.6:1}"><td style="color:var(--t3)">${r.round}</td><td style="font-family:var(--orb);font-weight:700;color:${past?'var(--t3)':'var(--nc)'}">${r.raceName}</td><td style="font-size:14px">${r.Circuit?.circuitName||''}</td><td style="font-size:14px">${r.Circuit?.Location?.country||''}</td><td style="font-family:var(--mono);font-size:14px;color:${r.date===today?'var(--hc)':past?'var(--t3)':'var(--t)'}">${r.date}${r.date===today?' ← TODAY':''}</td></tr>`;}).join('')+
       '</tbody></table></div>';
     }).catch(()=>{el.innerHTML='<div class="empty">ERGAST API UNAVAILABLE</div>';});
     return;
   }
-  const today=new Date().toISOString().slice(0,10);
+  const today=today();
   el.innerHTML='<div style="overflow-x:auto"><table class="dt"><thead><tr><th>RND</th><th>RACE</th><th>CIRCUIT</th><th>COUNTRY</th><th>DATE</th></tr></thead><tbody>'+
     schedule.filter(r=>r.round).map(r=>{const past=r.past;return`<tr style="opacity:${past?.6:1}"><td style="color:var(--t3)">${r.round}</td><td style="font-family:var(--orb);font-weight:700;color:${past?'var(--t3)':'var(--nc)'}">${r.name}</td><td style="font-size:14px">${r.circuit||''}</td><td style="font-size:14px">${r.country||''}</td><td style="font-family:var(--mono);font-size:14px;color:${r.date===today?'var(--hc)':past?'var(--t3)':'var(--t)'}">${r.date}${r.date===today?' ← TODAY':''}</td></tr>`;}).join('')+
   '</tbody></table></div>';
@@ -11630,12 +11631,11 @@ function renderNewsTab(){
   for(const s of sports){
     articles.push(...(news[s]||[]).map(a=>({...a,sport:s})));
   }
-  const today=new Date().toISOString().slice(0,10);
-  const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
-  if(dateFilter==='today')articles=articles.filter(a=>a.date===today);
-  else if(dateFilter==='yesterday')articles=articles.filter(a=>a.date===yesterday);
+  const _todayET=today(),_ydET=yesterday();
+  if(dateFilter==='today')articles=articles.filter(a=>a.date===_todayET);
+  else if(dateFilter==='yesterday')articles=articles.filter(a=>a.date===_ydET);
   else if(dateFilter==='week'){
-    const weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const weekAgo=nDaysAgoET(7);
     articles=articles.filter(a=>a.date>=weekAgo);
   }
   articles.sort((a,b)=>(b.published||'').localeCompare(a.published||''));
