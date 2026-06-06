@@ -5156,28 +5156,71 @@ function renderOverall(){
     return`<span class="form-dot" data-tip="${tip.replace(/"/g,"'")}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}88;flex-shrink:0;cursor:pointer" onmouseenter="showDotTip(this)" onmouseleave="hideDotTip()" ontouchstart="showDotTip(this)" ontouchend="setTimeout(hideDotTip,2000)"></span>`;
   }).join('');
 
-  // Auto insights
+  // ── Rich insights — narrative sentences ──────────────────────────────────
   const insights=[];
+  const roiPct=(bets)=>{
+    if(!bets.length)return null;
+    const pnl=bets.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    return pnl/bets.length*100;
+  };
+  // 60-day window
+  const d60=new Date();d60.setDate(d60.getDate()-60);
+  const last60=settled.filter(p=>p.date&&new Date(p.date)>=d60);
+  const last60BySport={};
+  for(const p of last60){const s=p.sport||'?';if(!last60BySport[s])last60BySport[s]=[];last60BySport[s].push(p);}
+  const last60ByType={};
+  for(const p of last60){const t=p.betType||'?';if(!last60ByType[t])last60ByType[t]=[];last60ByType[t].push(p);}
+
+  // Best & worst sport in 60 days
+  const sport60=Object.entries(last60BySport).filter(([,b])=>b.length>=3).map(([s,b])=>({s,n:b.length,roi:roiPct(b),acc:b.filter(p=>p.outcome==='win').length/b.length}));
+  sport60.sort((a,b)=>b.roi-a.roi);
+  const bestS60=sport60[0],worstS60=sport60[sport60.length-1];
+
+  // Best bet type in 60 days
+  const type60=Object.entries(last60ByType).filter(([,b])=>b.length>=3).map(([t,b])=>({t,n:b.length,roi:roiPct(b),acc:b.filter(p=>p.outcome==='win').length/b.length}));
+  type60.sort((a,b)=>b.roi-a.roi);
+  const bestT60=type60[0];
+
+  // Overall sentence
   if(acc!==null){
-    if(acc>=0.60)insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is well above the ${(0.55*100).toFixed(0)}% profitable threshold.`);
-    else if(acc>=0.55)insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is tracking above the ${(0.55*100).toFixed(0)}% profitable threshold.`);
-    else insights.push(`All-time win rate of ${(acc*100).toFixed(1)}% is below the ${(0.55*100).toFixed(0)}% profitable threshold — review model calibration.`);
+    const pfx=acc>=0.65?'Performing at an exceptional level':'Tracking solidly';
+    insights.push(`${pfx} — all-time win rate ${(acc*100).toFixed(1)}% across ${settled.length} settled picks (${wins}W–${losses}L).`);
   }
-  const bestSport=bySport.filter(s=>s.n>=3).sort((a,b)=>(b.acc||0)-(a.acc||0))[0];
-  const bestType =byType.filter(t=>t.n>=3).sort((a,b)=>(b.acc||0)-(a.acc||0))[0];
-  if(bestSport)insights.push(`${bestSport.lbl} is the top-performing sport at ${bestSport.acc!==null?(bestSport.acc*100).toFixed(0)+'%':'--'} (${bestSport.w}W-${bestSport.l}L, ${bestSport.units>=0?'+':''}${bestSport.units.toFixed(1)}u).`);
-  if(bestType) insights.push(`${bestType.lbl} bets are the most accurate type at ${bestType.acc!==null?(bestType.acc*100).toFixed(0)+'%':'--'} over ${bestType.n} picks.`);
+
+  // 60-day sport narrative
+  if(bestS60&&bestS60.roi!==null&&worstS60&&bestS60.s!==worstS60.s){
+    insights.push(`Over the last 60 days, ${bestS60.s} leads all sports with ${(bestS60.roi).toFixed(1)}% ROI (${(bestS60.acc*100).toFixed(0)}% win rate, ${bestS60.n} bets). ${worstS60.s} has lagged at ${(worstS60.roi).toFixed(1)}% ROI — model is auto-adjusting weights accordingly.`);
+  } else if(bestS60&&bestS60.roi!==null){
+    insights.push(`${bestS60.s} is the strongest sport over the last 60 days — ${(bestS60.roi).toFixed(1)}% ROI at ${(bestS60.acc*100).toFixed(0)}% win rate across ${bestS60.n} bets.`);
+  }
+
+  // Best bet type narrative
+  if(bestT60&&bestT60.roi!==null){
+    const typeLabel={ML:'Moneyline',PROP:'Player props',OU:'Totals',SPREAD:'Spread',PARLAY:'Parlay',NRFI:'NRFI',FUTURE:'Futures'}[bestT60.t]||bestT60.t;
+    insights.push(`${typeLabel} bets have been the most productive market over the last 60 days — ${(bestT60.roi).toFixed(1)}% ROI across ${bestT60.n} picks at ${(bestT60.acc*100).toFixed(0)}% hit rate.`);
+  }
+
+  // Recent form narrative
   if(wk7Perf.n>=3){
-    if(wk7Perf.acc!==null&&wk7Perf.acc>=0.60)insights.push(`Strong last-7-day stretch: ${wk7Perf.w}W-${wk7Perf.l}L (${(wk7Perf.acc*100).toFixed(0)}%) with ${wk7Perf.units>=0?'+':''}${wk7Perf.units.toFixed(1)} units.`);
-    else if(wk7Perf.acc!==null&&wk7Perf.acc<0.45)insights.push(`Difficult last-7-day stretch: ${wk7Perf.w}W-${wk7Perf.l}L. Monitor model inputs for drift.`);
+    const wk7Roi=roiPct(settled.filter(p=>{const d=new Date();d.setDate(d.getDate()-7);return p.date&&new Date(p.date)>=d;}));
+    if(wk7Perf.acc!==null&&wk7Perf.acc>=0.60)insights.push(`Strong recent form — ${wk7Perf.w}W–${wk7Perf.l}L over the last 7 days (${(wk7Perf.acc*100).toFixed(0)}% win rate, ${wk7Perf.units>=0?'+':''}${wk7Perf.units.toFixed(1)} units, ${wk7Roi!==null?(wk7Roi>=0?'+':'')+wk7Roi.toFixed(1)+'% ROI':''}).`);
+    else if(wk7Perf.acc!==null&&wk7Perf.acc<0.45)insights.push(`Difficult 7-day stretch — ${wk7Perf.w}W–${wk7Perf.l}L. The engine has auto-tightened pick criteria. Consider reducing unit size until form recovers.`);
   }
+
+  // Calibration narrative
   if(cal.length>0){
     const calDeviation=cal.map(b=>b.off).filter(v=>v!==null);
     const avgDev=calDeviation.length?calDeviation.reduce((a,v)=>a+v,0)/calDeviation.length:null;
-    if(avgDev!==null)insights.push(`Model calibration deviation: ${(avgDev*100).toFixed(1)}% average across confidence bands. ${avgDev<0.05?'Excellent calibration.':avgDev<0.10?'Slight drift — monitor.':'Recalibration recommended.'}`);
+    if(avgDev!==null){
+      const calStatus=avgDev<0.05?'strong — actual win rates are tracking within expected confidence bands.':avgDev<0.10?`holding — actual win rate is within ${(avgDev*100).toFixed(1)}% of expected across confidence bands.`:`drifting — ${(avgDev*100).toFixed(1)}% average deviation detected. Recalibration has been triggered.`;
+      insights.push(`Model calibration remains ${calStatus}`);
+    }
   }
-  if(curStreak>=3&&curStreakType==='win')insights.push(`Active ${curStreak}-bet winning streak. Maintain discipline — avoid overextending stake sizes.`);
-  if(maxLoss>=5)insights.push(`Longest losing streak: ${maxLoss}. Maximum drawdown: ${maxDD.toFixed(1)} units. Factor into bankroll management.`);
+
+  // Streak narrative
+  if(curStreak>=4&&curStreakType==='win')insights.push(`Current ${curStreak}-bet winning streak is the engine firing on all cylinders. Maintain discipline — avoid overextending stake sizes.`);
+  else if(curStreak>=3&&curStreakType==='loss')insights.push(`${curStreak}-bet losing streak in progress. Model is auto-recalibrating — consider reducing to LOCK-tier picks only until the skid breaks.`);
+  if(maxDD>5)insights.push(`Maximum drawdown to date: ${maxDD.toFixed(1)} units. Current drawdown: ${curDD.toFixed(1)} units. Factor into bankroll sizing.`);
 
   // ── HELPER RENDERERS ──────────────────────────────────────────────────────
   const accColor=a=>a===null?'var(--t3)':a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
@@ -8932,14 +8975,6 @@ function renderMorningReport(){
   const wins8=settled8.filter(p=>p.outcome==='win').length;
   const lastUpd=S.g('last_upd')||'—';
   const adSt=S.g('adaptive_state')||{};
-  const schedule=[
-    {time:'12:00 AM MST',desc:'AUTO-SETTLE ALL SPORTS + RELOAD SCHEDULES'},
-    {time:'10:00 AM MST',desc:'NBA/NHL STATS + PLAYER DATA REFRESH'},
-    {time:'10:00 PM MST',desc:"TOMORROW'S PICKS PRE-GENERATED"},
-    {time:'6:00–11:00 PM MST',desc:'LIVE SCORE TRACKER ACTIVE (30-SEC POLLING)'},
-    {time:'EVERY MINUTE',desc:'MIDNIGHT SCHEDULER TICK (CHECKMIDMST)'},
-    {time:'ON SETTLEMENT',desc:'ADAPTIVE ENGINE AUTO-CYCLES — WEIGHTS UPDATE'},
-  ];
   return`<div class="card" style="margin-top:14px;padding:13px;border:1px solid rgba(255,204,0,.22)">
     <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--gc);margin-bottom:10px">// MORNING REPORT — WHAT HAPPENED WHILE YOU WERE AWAY</div>
     <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
@@ -8956,23 +8991,18 @@ function renderMorningReport(){
         <div style="font-family:var(--mono);font-size:12px;color:var(--t3)">PENDING</div>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:2;margin-bottom:10px">
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:2">
       MODEL LAST REFRESHED: ${lastUpd}<br>
       ADAPTIVE ENGINE: ${adSt.lastRun?new Date(adSt.lastRun).toLocaleString():'NOT YET RUN'}<br>
       ${adSt.overallAcc?`30-BET MODEL ACC: ${(adSt.overallAcc*100).toFixed(1)}%`:''}<br>
       EV THRESHOLD: ${(+(S.g('evt')||2)).toFixed(1)}%<br>
       PICKS IN LOCAL DB: ${preds.length} · IDB SHADOW: ACTIVE
     </div>
-    <div style="font-family:var(--mono);font-size:13px;letter-spacing:1.5px;color:var(--pc);margin-bottom:6px">// SCHEDULED ENGINE EVENTS</div>
-    ${schedule.map(s=>`<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(77,121,255,.08)">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--gc);flex:0 0 130px;white-space:nowrap">${s.time}</div>
-      <div style="font-family:var(--mono);font-size:12px;color:var(--t2)">${s.desc}</div>
-    </div>`).join('')}
   </div>`;
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-05 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-06 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -9294,45 +9324,9 @@ function renderHomeBestBets(){
   renderHomeLockedBets();
 }
 
-// ── renderOverallDashboard (v5.1 — uses overallStats.roi + streak from data.json) ──
+// ── renderOverallDashboard — delegates to renderOverall() (single source of truth) ──
 function renderOverallDashboard(){
-  const el=document.getElementById('ovr-tab-dash');
-  if(!el)return;
-  const D=window.__CV_DATA;
-  const os=(D&&D.overallStats)||{};
-  const tot=os.total||{w:0,l:0,push:0,total:0,pct:0};
-  const roi=os.roi||{roi:0,totalPnl:0,totalWagered:0};
-  const streak=os.streak||{current:0,direction:'W'};
-  const bySport=os.bySport||{};
-  // Find the ovr-dashboard container inside ovr-tab-dash
-  const dashEl=el.querySelector('#ovr-dashboard');
-  const target=dashEl||el;
-  let html=`
-  <div class="g4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px">
-    <div class="stat-card"><div class="sc-val">${tot.w}-${tot.l}${tot.push?'-'+tot.push:''}</div><div class="sc-lbl">RECORD</div></div>
-    <div class="stat-card"><div class="sc-val">${tot.pct||0}%</div><div class="sc-lbl">WIN PCT</div></div>
-    <div class="stat-card"><div class="sc-val" style="color:${(roi.roi||0)>=0?'var(--gc)':'var(--rc)'}">${(roi.roi||0)>=0?'+':''}${roi.roi||0}%</div><div class="sc-lbl">ROI</div></div>
-    <div class="stat-card"><div class="sc-val" style="color:${(roi.totalPnl||0)>=0?'var(--gc)':'var(--rc)'}">${(roi.totalPnl||0)>=0?'+':''}${roi.totalPnl||0}u</div><div class="sc-lbl">NET UNITS</div></div>
-    <div class="stat-card"><div class="sc-val">${streak.current}${streak.direction}</div><div class="sc-lbl">STREAK</div></div>
-  </div>`;
-  html+='<div style="font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">// BY SPORT</div>';
-  html+='<div class="dt-wrap" style="overflow-x:auto"><table class="dt"><thead><tr><th>SPORT</th><th>W</th><th>L</th><th>PUSH</th><th>WIN%</th></tr></thead><tbody>';
-  for(const[sport,s]of Object.entries(bySport)){
-    html+=`<tr><td style="color:var(--nc)">${sport}</td><td style="color:var(--gc)">${s.w||0}</td><td style="color:var(--rc)">${s.l||0}</td><td>${s.push||0}</td><td>${s.pct||0}%</td></tr>`;
-  }
-  if(!Object.keys(bySport).length)html+='<tr><td colspan="5" style="color:var(--t3);text-align:center">No settled bets yet</td></tr>';
-  html+='</tbody></table></div>';
-  html+=`<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn btn-sm btn-p" onclick="renderOverallHistory()">VIEW FULL HISTORY</button>
-    <button class="btn btn-sm btn-n" onclick="exportBetHistoryCSV()">⬇ EXPORT CSV</button>
-  </div>`;
-  // Only inject into the inner dashboard div, preserve the rest of ovr-tab-dash
-  if(dashEl){dashEl.innerHTML=html;}
-  else{
-    // Append after existing heading/info bar if no ovr-dashboard div
-    const existing=el.querySelector('#ovr-dashboard');
-    if(existing)existing.innerHTML=html;
-  }
+  try{renderOverall();}catch(e){console.error('renderOverallDashboard',e);}
 }
 
 // ═══ LIVE DATA BOOTSTRAP (live_data.json — written by live_tracker.py every 45s) ═══
