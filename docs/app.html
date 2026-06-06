@@ -5149,8 +5149,13 @@ function renderOverall(){
   const lowConf =withProb.filter(p=>p.winProb<0.55);
   const agreeAcc=(bets)=>bets.length?bets.filter(p=>p.outcome==='win').length/bets.length:null;
 
-  // Recent form dots (last 20)
-  const recentForm=settled.slice(-20);
+  // Recent form — sort by date ASC then lockedAt, take newest 20
+  const settledByDate=settled.slice().sort((a,b)=>{const da=a.date||'',db=b.date||'';return da<db?-1:da>db?1:(a.lockedAt||0)-(b.lockedAt||0);});
+  const recentForm=settledByDate.slice(-20);
+  const rfW=recentForm.filter(p=>p.outcome==='win').length;
+  const rfL=recentForm.filter(p=>p.outcome==='loss').length;
+  const rfROI=recentForm.length?((recentForm.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0))/recentForm.length*100).toFixed(1):null;
+  const last5=recentForm.slice(-5);
   const formDots=recentForm.map(p=>{
     const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
     const tip=`${p.sport||''} ${p.date||''} | ${p.betOn||''} ${p.ml||''} | ${p.outcome?.toUpperCase()||''}`;
@@ -5287,8 +5292,23 @@ function renderOverall(){
     <div class="card cp" style="text-align:center;padding:10px"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${curStreakType==='win'?'var(--nc)':'var(--hc)'}">${curStreak>0?curStreak+(curStreakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">STREAK</div></div>
   </div>`;
 
-  // Recent Form
-  if(recentForm.length){h+=`<div class="card" style="margin-bottom:12px;padding:10px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3);margin-bottom:7px">RECENT FORM (LAST ${recentForm.length})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${formDots}</div></div>`;}
+  // Recent Form — enhanced
+  if(recentForm.length){
+    const rfColor=rfW/recentForm.length>=0.60?'var(--nc)':rfW/recentForm.length>=0.50?'var(--vc)':'var(--hc)';
+    const last5dots=last5.map(p=>{const c=p.outcome==="win"?"#00f0ff":p.outcome==="push"?"#ffdd00":"#ff2090";return `<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${c}">${p.outcome==="win"?"W":p.outcome==="push"?"P":"L"}</span>`;}).join('<span style="color:var(--t3);margin:0 2px">·</span>');
+    h+=`<div class="card" style="margin-bottom:12px;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3)">RECENT FORM (LAST ${recentForm.length})</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${rfColor}">${rfW}W–${rfL}L</span>
+          ${rfROI!==null?`<span style="font-family:var(--mono);font-size:11px;color:${parseFloat(rfROI)>=0?"var(--gc)":"var(--hc)"}">${parseFloat(rfROI)>=0?"+":""}${rfROI}% ROI</span>`:""}
+          <button onclick="renderOverall()" style="background:none;border:1px solid rgba(255,255,255,.15);color:var(--t3);font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:2px;cursor:pointer" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${last5.length?"8":"0"}px">${formDots}</div>
+      ${last5.length?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">LAST 5: ${last5dots} &nbsp;<span style="color:var(--t3);font-size:10px">(newest →)</span></div>`:""}
+    </div>`;
+  }
 
   // Period Performance
   h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:12px 0 6px">PERIOD PERFORMANCE</div>
@@ -8622,7 +8642,7 @@ async function idbRecoverPicks(){
       }
     }
   }
-  if(added){S.s('preds',local);updHdr();}
+  if(added){S.s('preds',local);updHdr();try{renderOverall();}catch(e){}}
 }
 // ══════════════════════════════════════════════════════════════
 // ═══ SYNC KEY API ═════════════════════════════════════════════
@@ -9064,7 +9084,8 @@ function mergeSeededBets(seeded){
     seeded.forEach(h=>clean.push(h));
     localStorage.setItem('preds',JSON.stringify(clean));
     try{S.s('preds',clean);}catch(e){}
-    // Re-render history tabs if visible
+    // Re-render dashboard + history whenever seeded bets change
+    try{renderOverall();}catch(e){}
     try{renderOverallHistory();}catch(e){}
     try{renderNBAHistory();}catch(e){}
   }catch(e){console.warn('[CV] mergeSeededBets:',e);}
@@ -10970,6 +10991,7 @@ async function loadPicksFromGitHub(){
     S.s('preds',merged);
     if(localOnly.length)savePicksToGitHub(merged);
     try{renderOverallHistory();}catch(e){}
+    try{renderOverall();}catch(e){}
     try{updHdr();}catch(e){}
   }catch(e){console.warn('[CV] loadPicksFromGitHub:',e.message);}
 }
