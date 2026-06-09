@@ -1034,14 +1034,20 @@ body{line-height:1.5}
   </div></div></div>
   <div id="analytics-byteam" class="subp"><div class="sa"><div class="tab act" style="padding:12px 12px 82px">
     <div class="sh"><span class="mc"></span> ENGINE PERFORMANCE BY TEAM</div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px" id="byteam-filters">
-      <button class="btn btn-o btn-sm act" onclick="renderByTeamAnalytics('ALL')">ALL</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('MLB')">MLB</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('NHL')">NHL</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('NBA')">NBA</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('TEN')">TENNIS</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('NFL')">NFL</button>
-      <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('CFB')">COLLEGE</button>
+    <div id="byteam-filters">
+      <!-- Sport row -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">
+        <button class="btn btn-o btn-sm act" onclick="renderByTeamAnalytics('ALL')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('BASEBALL')">BASEBALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('BASKETBALL')">BASKETBALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('HOCKEY')">HOCKEY</button>
+        <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('TENNIS')">TENNIS</button>
+        <button class="btn btn-o btn-sm" onclick="renderByTeamAnalytics('FOOTBALL')">FOOTBALL</button>
+      </div>
+      <!-- League sub-row (shown for multi-league sports) -->
+      <div id="byteam-league-row" style="display:none;gap:4px;flex-wrap:wrap;margin-bottom:5px;padding:4px 8px;background:rgba(10,0,24,.6);border-radius:2px;border:1px solid rgba(255,255,255,.07)"></div>
+      <!-- Team sub-row (shown when a league is selected) -->
+      <div id="byteam-team-row" style="display:none;gap:3px;flex-wrap:wrap;margin-bottom:5px;padding:4px 8px;background:rgba(4,0,12,.7);border-radius:2px;border:1px solid rgba(255,255,255,.05)"></div>
     </div>
     <div id="analytics-byteam-content"><div class="loading"><span class="spi"></span></div></div>
   </div></div></div>
@@ -13510,35 +13516,140 @@ function renderBySportAnalytics(key){
 }
 window.renderBySportAnalytics=renderBySportAnalytics;
 
-function renderByTeamAnalytics(league){
-  if(!league)league='ALL';
-  document.querySelectorAll('#byteam-filters button').forEach(b=>{b.classList.toggle('act',b.getAttribute('onclick')===`renderByTeamAnalytics('${league}')`)});
-  const el=document.getElementById('analytics-byteam-content');if(!el)return;
-  const all=getP().filter(p=>p.outcome!=='pending');
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+function renderByTeamAnalytics(key){
+  if(!key)key='ALL';
+  const SPORT_DEFS={
+    ALL:        {codes:['MLB','NHL','NBA','WNBA','TEN','NFL','CFB','FB','PWHL','KHL','SHL','LIIGA'], color:'var(--nc)', leagues:null},
+    BASEBALL:   {codes:['MLB'],                            color:'var(--vc)', leagues:null},
+    BASKETBALL: {codes:['NBA','WNBA'],                     color:'var(--pc)', leagues:[{k:'NBA',label:'NBA'},{k:'WNBA',label:'WNBA'}]},
+    HOCKEY:     {codes:['NHL','PWHL','KHL','SHL','LIIGA'], color:'var(--ic)', leagues:[{k:'NHL',label:'NHL'},{k:'PWHL',label:'PWHL'},{k:'KHL',label:'KHL'},{k:'SHL',label:'SHL'},{k:'LIIGA',label:'LIIGA'}]},
+    TENNIS:     {codes:['TEN'],                            color:'var(--mc)', leagues:null},
+    FOOTBALL:   {codes:['NFL','CFB','FB'],                 color:'var(--hc)', leagues:[{k:'NFL',label:'NFL'},{k:'CFB',label:'COLLEGE'}]},
+  };
+
+  // Resolve key → sport / league / team hierarchy
+  const SPORT_KEYS=Object.keys(SPORT_DEFS);
+  let activeSport='ALL', activeLeague=null, activeTeam=null;
+  if(SPORT_KEYS.includes(key)){
+    activeSport=key;
+  } else {
+    // Check if key is a league code
+    let foundSport=null;
+    for(const[sk,sd] of Object.entries(SPORT_DEFS)){
+      if((sd.leagues||[]).some(l=>l.k===key)){foundSport=sk;break;}
+    }
+    if(foundSport){activeSport=foundSport;activeLeague=key;}
+    else{
+      // Must be a team name — stored as window._byteam_state
+      const st=window._byteam_state||{};
+      activeSport=st.sport||'ALL';activeLeague=st.league||null;activeTeam=key;
+    }
+  }
+  // Persist state for team-level navigation
+  window._byteam_state={sport:activeSport,league:activeLeague,team:activeTeam};
+
+  const def=SPORT_DEFS[activeSport]||SPORT_DEFS.ALL;
   const pC=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';
   const uC=u=>u>=0?'var(--nc)':'var(--hc)';
-  const sportMap={MLB:'MLB',NHL:'NHL',NBA:'NBA',TEN:'TEN',NFL:'NFL',CFB:'CFB'};
-  const bets=league==='ALL'?all:all.filter(p=>(p.sport||'').toUpperCase()===sportMap[league]);
-  if(!bets.length){el.innerHTML='<div class="empty">NO BETS FOR THIS LEAGUE</div>';return;}
-  const teams={};
-  bets.forEach(p=>{
+  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+
+  // Update sport button highlights
+  document.querySelectorAll('#byteam-filters .btn').forEach(b=>{
+    const oc=b.getAttribute('onclick')||'';
+    const bk=oc.match(/renderByTeamAnalytics\('([^']+)'\)/)?.[1]||'';
+    b.classList.toggle('act',bk===activeSport&&!activeLeague&&!activeTeam);
+  });
+
+  // League sub-row
+  const leagueRow=document.getElementById('byteam-league-row');
+  if(leagueRow){
+    if(def.leagues&&def.leagues.length>1){
+      leagueRow.style.display='flex';
+      leagueRow.innerHTML=
+        `<button class="btn btn-sm" style="border:1px solid ${!activeLeague?def.color:'rgba(255,255,255,.18)'};color:${!activeLeague?def.color:'rgba(255,255,255,.55)'};background:transparent;font-size:11px;padding:2px 8px" onclick="renderByTeamAnalytics('${activeSport}')">ALL</button>`+
+        def.leagues.map(l=>`<button class="btn btn-sm" style="border:1px solid ${activeLeague===l.k?def.color:'rgba(255,255,255,.18)'};color:${activeLeague===l.k?def.color:'rgba(255,255,255,.55)'};background:transparent;font-size:11px;padding:2px 8px" onclick="renderByTeamAnalytics('${l.k}')">${l.label}</button>`).join('');
+    } else {
+      leagueRow.style.display='none';
+    }
+  }
+
+  // Build team list for the selected scope
+  const all=getP().filter(p=>p.outcome!=='pending');
+  let scopedBets;
+  if(activeLeague){
+    scopedBets=all.filter(p=>(p.sport||'').toUpperCase()===activeLeague);
+  } else {
+    scopedBets=all.filter(p=>def.codes.some(c=>(p.sport||'').toUpperCase()===c));
+  }
+
+  // Extract unique teams/picks from scoped bets
+  const teamMap={};
+  scopedBets.forEach(p=>{
     const raw=(p.betOn||'').replace(/(OVER|UNDER|[\d.]+\s*(PTS|REB|AST|BLK|STL|GOALS)|ML|PL|RL|\s[+-]\d{3})/gi,'').trim();
     const t=(raw.length>=2&&raw.length<=30)?raw:(p.hA||'');
     if(!t||t.length<2)return;
-    const key=t.toUpperCase().trim();
-    if(!teams[key])teams[key]={name:t,w:0,l:0,n:0,sport:p.sport||league,u:0,bets:[]};
-    if(p.outcome==='win'){teams[key].w++;teams[key].u+=(p.decOdds||2)-1;}
-    else if(p.outcome==='loss'){teams[key].l++;teams[key].u-=1;}
-    teams[key].n++;teams[key].bets.push(p);
+    const key2=t.toUpperCase().trim();
+    if(!teamMap[key2])teamMap[key2]={name:t,w:0,l:0,n:0,sport:p.sport,u:0,bets:[]};
+    if(p.outcome==='win'){teamMap[key2].w++;teamMap[key2].u+=(p.decOdds||2)-1;}
+    else if(p.outcome==='loss'){teamMap[key2].l++;teamMap[key2].u-=1;}
+    teamMap[key2].n++;teamMap[key2].bets.push(p);
   });
-  const rows=Object.values(teams).filter(d=>d.n>=1).sort((a,b)=>{const ra=a.n>=2?a.w/a.n:0.5,rb=b.n>=2?b.w/b.n:0.5;return rb-ra;});
-  const totalW=bets.filter(p=>p.outcome==='win').length;const totalU=bets.reduce((a,p)=>a+pnl(p),0);const acc=bets.length?totalW/bets.length:null;
-  const good=rows.filter(d=>d.n>=2&&d.w/d.n>=0.60);const mid=rows.filter(d=>d.n>=2&&d.w/d.n>=0.45&&d.w/d.n<0.60);const bad=rows.filter(d=>d.n>=2&&d.w/d.n<0.45);const single=rows.filter(d=>d.n===1);
-  const row=d=>{const a=d.n>=2?d.w/d.n:null;const col=a!==null?pC(a):'var(--t3)';const bw=a?Math.round(a*100):50;const lb=d.bets[d.bets.length-1]?.betType||'';return`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:11px;color:var(--t);min-width:80px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name}</span><div style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px"><div style="width:${bw}%;height:100%;background:${col};border-radius:2px"></div></div><span style="font-family:var(--mono);font-size:11px;color:${col};font-weight:700;min-width:28px;text-align:right">${a!==null?(a*100).toFixed(0)+'%':'1b'}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t2);min-width:40px">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:10px;color:${uC(d.u)};min-width:36px">${d.u>=0?'+':''}${d.u.toFixed(1)}u</span></div>`;};
+  const allTeams=Object.values(teamMap).filter(d=>d.n>=1).sort((a,b)=>{const ra=a.n>=2?a.w/a.n:0.5,rb=b.n>=2?b.w/b.n:0.5;return rb-ra;});
+
+  // Team sub-row — show when league is selected and teams exist
+  const teamRow=document.getElementById('byteam-team-row');
+  if(teamRow){
+    if((activeLeague||(def.leagues===null&&activeSport!=='ALL'))&&allTeams.length){
+      teamRow.style.display='flex';
+      const btn=(t)=>`<button class="btn btn-sm" style="border:1px solid ${activeTeam===t.name.toUpperCase()?def.color:'rgba(255,255,255,.12)'};color:${activeTeam===t.name.toUpperCase()?def.color:'rgba(255,255,255,.5)'};background:transparent;font-size:10px;padding:2px 7px;white-space:nowrap" onclick="window._byteam_state={sport:'${activeSport}',league:'${activeLeague||''}',team:'${t.name.toUpperCase()}'};renderByTeamAnalytics('${t.name.replace(/'/g,"\'")}')"><span style="color:${pC(t.n>=2?t.w/t.n:null||0)}">${t.n>=2?(t.w/t.n*100).toFixed(0)+'% ':''}</span>${t.name}</button>`;
+      teamRow.innerHTML=allTeams.slice(0,30).map(btn).join('');
+    } else {
+      teamRow.style.display='none';
+    }
+  }
+
+  const el=document.getElementById('analytics-byteam-content');if(!el)return;
+
+  // ── Render content ──────────────────────────────────────────────────────────
+  if(activeTeam){
+    // Team detail view
+    const tKey=activeTeam.toUpperCase();
+    const td=teamMap[tKey];
+    if(!td||!td.bets.length){el.innerHTML='<div class="empty">NO BETS FOUND FOR THIS TEAM/PICK</div>';return;}
+    const tw=td.w;const tl=td.l;const tacc=td.n?tw/td.n:null;const tu=td.u;
+    const settled2=td.bets.filter(p=>p.outcome!=='pending');
+    const typeBreak={};settled2.forEach(p=>{const t=(p.betType||'ML');if(!typeBreak[t])typeBreak[t]={w:0,l:0,u:0};if(p.outcome==='win'){typeBreak[t].w++;typeBreak[t].u+=(p.decOdds||2)-1;}else{typeBreak[t].l++;typeBreak[t].u-=1;}});
+    const dateBets=td.bets.slice().sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
+    let h=`<div class="card" style="margin-bottom:10px;padding:12px;border-left:3px solid ${def.color}">
+      <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:${def.color};margin-bottom:8px">${td.name}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;margin-bottom:6px">
+        <span style="color:${pC(tacc||0)};font-weight:700">${tacc!==null?(tacc*100).toFixed(1)+'%':'--'}</span>
+        <span>${tw}W-${tl}L</span>
+        <span style="color:${uC(tu)}">${tu>=0?'+':''}${tu.toFixed(1)}u</span>
+        <span style="color:var(--t3)">${td.n} bets</span>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,.07);border-radius:2px"><div style="width:${tacc?Math.round(tacc*100):0}%;height:100%;background:${pC(tacc||0)};border-radius:2px"></div></div>
+    </div>`;
+    if(Object.keys(typeBreak).length>0){h+=`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">BY BET TYPE</div>${Object.entries(typeBreak).map(([t,d])=>{const a=d.w+d.l?d.w/(d.w+d.l):null;return`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);font-size:11px"><span style="color:var(--t3)">${t}</span><span>${d.w}W-${d.l}L</span><span style="color:${pC(a||0)};font-weight:700">${a!==null?(a*100).toFixed(0)+'%':'--'}</span><span style="color:${uC(d.u)}">${d.u>=0?'+':''}${d.u.toFixed(1)}u</span></div>`;}).join('')}</div>`;}
+    h+=`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">ALL BETS FOR ${td.name}</div><div style="display:grid;gap:4px">${dateBets.map(b=>{const col=b.outcome==='win'?'var(--nc)':b.outcome==='loss'?'var(--hc)':b.outcome==='push'?'var(--vc)':'var(--pc)';return`<div style="background:rgba(10,0,24,.8);border-left:2px solid ${col};border-radius:2px;padding:7px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div style="font-family:var(--mono);font-size:11px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.betOn||''}</div><div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${b.betType||''} · ${b.ml||''} · ${b.date||''}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-family:var(--mono);font-size:10px;color:${col};font-weight:700">${(b.outcome||'PENDING').toUpperCase()}</div>${b.winProb?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${(b.winProb*100).toFixed(0)}%</div>`:''}</div></div>`;}).join('')}</div>`;
+    el.innerHTML=h;return;
+  }
+
+  // League / sport overview — ranked team list
+  if(!allTeams.length){el.innerHTML='<div class="empty">NO BETS FOR THIS SELECTION</div>';return;}
+  const totalW=scopedBets.filter(p=>p.outcome==='win').length;const totalU=scopedBets.reduce((a,p)=>a+pnl(p),0);const acc2=scopedBets.length?totalW/scopedBets.length:null;
+  const good=allTeams.filter(d=>d.n>=2&&d.w/d.n>=0.60);const mid=allTeams.filter(d=>d.n>=2&&d.w/d.n>=0.45&&d.w/d.n<0.60);const bad=allTeams.filter(d=>d.n>=2&&d.w/d.n<0.45);const single=allTeams.filter(d=>d.n===1);
+  const row=d=>{const a=d.n>=2?d.w/d.n:null;const col=a!==null?pC(a):'var(--t3)';const bw=a?Math.round(a*100):50;return`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="window._byteam_state={sport:'${activeSport}',league:'${activeLeague||''}',team:'${d.name.replace(/'/g,"\'")}'}; renderByTeamAnalytics('${d.name.replace(/'/g,"\'")}')"><span style="font-family:var(--mono);font-size:11px;color:var(--t);min-width:80px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name}</span><div style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px"><div style="width:${bw}%;height:100%;background:${col};border-radius:2px"></div></div><span style="font-family:var(--mono);font-size:11px;color:${col};font-weight:700;min-width:28px;text-align:right">${a!==null?(a*100).toFixed(0)+'%':'1b'}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t2);min-width:40px">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:10px;color:${uC(d.u)};min-width:36px">${d.u>=0?'+':''}${d.u.toFixed(1)}u</span><span style="font-family:var(--mono);font-size:9px;color:var(--t3)">▶</span></div>`;};
   const sec=(title,col,list)=>!list.length?'':
-    `<div style="font-family:var(--mono);font-size:10px;color:${col};letter-spacing:2px;padding:7px 12px;background:rgba(10,0,24,.6);border-bottom:1px solid rgba(255,255,255,.06)">${title} (${list.length})</div><div style="padding:0 12px">`+list.slice(0,20).map(row).join('')+`</div>`;
-  el.innerHTML=`<div class="card" style="margin-bottom:10px;padding:9px"><div style="display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px"><span style="color:var(--t3)">${league}</span><span style="color:${pC(acc||0)};font-weight:700">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</span><span>${totalW}W-${bets.length-totalW}L</span><span style="color:${uC(totalU)}">${totalU>=0?'+':''}${totalU.toFixed(1)}u</span><span style="color:var(--t3)">${rows.length} picks</span></div></div>
+    `<div style="font-family:var(--mono);font-size:10px;color:${col};letter-spacing:2px;padding:7px 12px;background:rgba(10,0,24,.6);border-bottom:1px solid rgba(255,255,255,.06)">${title} (${list.length})</div><div style="padding:0 12px">`+list.slice(0,25).map(row).join('')+`</div>`;
+  el.innerHTML=`<div class="card" style="margin-bottom:10px;padding:9px"><div style="display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px">
+    <span style="color:var(--t3)">${activeLeague||activeSport}</span>
+    <span style="color:${pC(acc2||0)};font-weight:700">${acc2!==null?(acc2*100).toFixed(1)+'%':'--'}</span>
+    <span>${totalW}W-${scopedBets.length-totalW}L</span>
+    <span style="color:${uC(totalU)}">${totalU>=0?'+':''}${totalU.toFixed(1)}u</span>
+    <span style="color:var(--t3)">${allTeams.length} picks tracked</span>
+  </div></div>
+  <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:4px">Tap a row to drill into that pick's history</div>
   <div class="card" style="padding:0;overflow:hidden">${sec('// WINNING (60%+)','var(--nc)',good)}${sec('// SOLID (45-60%)','var(--vc)',mid)}${sec('// UNDERPERFORMING (<45%)','var(--hc)',bad)}${single.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;padding:7px 12px;background:rgba(10,0,24,.6);border-bottom:1px solid rgba(255,255,255,.06)">// SINGLE BET (${single.length})</div><div style="padding:0 12px">`+single.slice(0,10).map(row).join('')+`</div>`:''}
   </div>`;
 }
