@@ -13353,10 +13353,12 @@ async function renderWNBAGames(){
       const stTxt=post?'FINAL'
         :live?`Q${c.status?.period||'?'} ${c.status?.displayClock||''}`
         :ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
-      // ESPN odds — try multiple paths
+      // ESPN odds — 2026 API: moneyline.home/away.close.odds
       const espnOdds=(c.odds||[])[0];
-      const espnHL=espnOdds?.homeTeamOdds?.moneyLine??espnOdds?.homeMoneyLine??null;
-      const espnAL=espnOdds?.awayTeamOdds?.moneyLine??espnOdds?.awayMoneyLine??null;
+      const _mlH=espnOdds?.moneyline?.home?.close?.odds??espnOdds?.homeTeamOdds?.moneyLine??null;
+      const _mlA=espnOdds?.moneyline?.away?.close?.odds??espnOdds?.awayTeamOdds?.moneyLine??null;
+      const espnHL=_mlH!=null?parseFloat(String(_mlH).replace('+','')):null;
+      const espnAL=_mlA!=null?parseFloat(String(_mlA).replace('+','')):null;
       const espnSpread=espnOdds?.details||null;
       const espnOU=espnOdds?.overUnder||null;
       // Run ensemble
