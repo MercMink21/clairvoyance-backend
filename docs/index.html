@@ -5989,12 +5989,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   }
   // Sport filter — null means "preserve stored", undefined means "not passed"
   const sf=(sportFilter!=null)?sportFilter:(window._ovrHistSport||'ALL');
-  // Date filter — use ternary so empty string ('') is respected (clears filter)
-  const df=(dateFrom!=null)?dateFrom:(window._ovrHistFrom||'');
-  const dt=(dateTo!=null)?dateTo:(window._ovrHistTo||'');
   window._ovrHistSport=sf;
-  window._ovrHistFrom=df;
-  window._ovrHistTo=dt;
   // Sport/league filter — sf can be a sport group ('BASEBALL') or a league code ('MLB','NBA',etc.)
   const _LEAGUE_MAP={
     BASEBALL:  ['MLB'],
@@ -6021,9 +6016,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   if(sf&&sf!=='ALL')all=all.filter(p=>_matchFilter(p,sf));
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
-  const validISO=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);
-  if(validISO(df))all=all.filter(p=>{const d=pickDate(p);return d&&d>=df;});
-  if(validISO(dt))all=all.filter(p=>{const d=pickDate(p);return d&&d<=dt;});
+
   const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',PROP:'var(--gc)',default:'var(--t3)'};
   // Build filter controls
   const btnAct='border-color:var(--pc);color:var(--pc)';
@@ -6058,21 +6051,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     <button class="btn btn-sm" style="border:1px solid ${sf===_activeSportGroup.key?_activeSportGroup.color:'rgba(255,255,255,.14)'};color:${sf===_activeSportGroup.key?_activeSportGroup.color:'rgba(255,255,255,.5)'};background:transparent;font-size:11px;padding:2px 8px" onclick="renderOverallHistory('${_activeSportGroup.key}')">ALL ${_activeSportGroup.label}</button>
     ${_activeSportGroup.leagues.map(l=>_leagueBtn(l.key,l.label,_activeSportGroup.color)).join('')}
   </div>`:'<div style="margin-bottom:10px"></div>'}
-  <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">DATE RANGE</div>
-  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
-    ${[7,14,30,90].map(n=>{
-      const isAct=window._ovrHistQW===n;
-      return`<button class="btn btn-sm" style="border:1px solid ${isAct?'var(--pc)':'rgba(255,255,255,.18)'};color:${isAct?'var(--pc)':'rgba(255,255,255,.55)'};background:${isAct?'rgba(240,0,255,.08)':'transparent'};font-size:12px;padding:3px 9px" onclick="window._ovrHistFrom=nDaysAgoET(${n});window._ovrHistTo=today();window._ovrHistQW=${n};renderOverallHistory()">${n}D</button>`;
-    }).join('')}
-    <button class="btn btn-sm" style="border:1px solid ${!df&&!dt?'var(--pc)':'rgba(255,255,255,.18)'};color:${!df&&!dt?'var(--pc)':'rgba(255,255,255,.55)'};background:${!df&&!dt?'rgba(240,0,255,.08)':'transparent'};font-size:12px;padding:3px 9px" onclick="window._ovrHistFrom='';window._ovrHistTo='';window._ovrHistQW=null;renderOverallHistory()">ALL TIME</button>
-  </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-    <span style="font-family:var(--mono);font-size:11px;color:var(--t3);flex-shrink:0">FROM</span>
-    <input type="date" class="fi" id="ovr-hist-from" value="${df}" style="padding:4px 8px;font-size:13px;flex:1;min-width:110px" onchange="window._ovrHistQW=null;window._ovrHistFrom=this.value;window._ovrHistTo=document.getElementById('ovr-hist-to')?.value||'';renderOverallHistory()">
-    <span style="font-family:var(--mono);font-size:11px;color:var(--t3);flex-shrink:0">TO</span>
-    <input type="date" class="fi" id="ovr-hist-to" value="${dt}" style="padding:4px 8px;font-size:13px;flex:1;min-width:110px" onchange="window._ovrHistQW=null;window._ovrHistTo=this.value;window._ovrHistFrom=document.getElementById('ovr-hist-from')?.value||'';renderOverallHistory()">
-    ${df||dt?`<button class="btn btn-sm" style="border:1px solid rgba(255,32,144,.4);color:var(--hc);background:transparent;font-size:11px;padding:2px 8px;flex-shrink:0" onclick="window._ovrHistFrom='';window._ovrHistTo='';window._ovrHistQW=null;renderOverallHistory()">✕ CLEAR</button>`:''}
-  </div>`;
+  `;
   if(!all.length){el.innerHTML=filterHtml+'<div class="empty">NO BETS FOR SELECTED FILTERS</div>';return;}
   // Weekly summary
   const weekMap={};const monthMap={};
