@@ -5995,25 +5995,70 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   window._ovrHistSport=sf;
   window._ovrHistFrom=df;
   window._ovrHistTo=dt;
-  if(sf&&sf!=='ALL')all=all.filter(p=>p.sport===sf);
+  // Sport/league filter — sf can be a sport group ('BASEBALL') or a league code ('MLB','NBA',etc.)
+  const _LEAGUE_MAP={
+    BASEBALL:  ['MLB'],
+    BASKETBALL:['NBA','WNBA'],
+    FOOTBALL:  ['NFL','CFB','FB'],
+    HOCKEY:    ['NHL','PWHL','NCAAH','KHL','SHL','LIIGA'],
+    TENNIS:    ['WTA','ATP','TEN'],
+  };
+  // Normalize sport tags in bets to canonical league codes for matching
+  const _normSport=s=>{
+    const u=(s||'').toUpperCase();
+    if(u==='TEN'||u==='TENNIS')return'TEN';
+    return u;
+  };
+  const _matchFilter=(p,filter)=>{
+    if(!filter||filter==='ALL')return true;
+    const ps=_normSport(p.sport);
+    // Is filter a sport group?
+    const leagues=_LEAGUE_MAP[filter];
+    if(leagues)return leagues.some(l=>ps===l||ps===_normSport(l));
+    // Otherwise filter is a league code
+    return ps===_normSport(filter);
+  };
+  if(sf&&sf!=='ALL')all=all.filter(p=>_matchFilter(p,sf));
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
   const validISO=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);
   if(validISO(df))all=all.filter(p=>{const d=pickDate(p);return d&&d>=df;});
   if(validISO(dt))all=all.filter(p=>{const d=pickDate(p);return d&&d<=dt;});
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',F1:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
-  const sports=['ALL','MLB','NBA','NHL','TEN','F1'];
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',PROP:'var(--gc)',default:'var(--t3)'};
   // Build filter controls
-  // Quick date-window helper — stores active window size for button highlight
   const qw=(days)=>{window._ovrHistFrom=nDaysAgoET(days);window._ovrHistTo=today();window._ovrHistQW=days;renderOverallHistory();};
-  // Determine which quick-window button is active
-  const qwActive=(days)=>{return window._ovrHistQW===days&&df===nDaysAgoET(days)&&dt===today();};
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
-  let filterHtml=`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">SPORT FILTER</div>
-  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
-    ${sports.map(s=>`<button class="btn btn-o btn-sm" style="${sf===s?btnAct:noAct}" onclick="renderOverallHistory('${s}')">${s}</button>`).join('')}
+  // Two-level sport filter: sport row + league sub-row
+  const _sportDefs=[
+    {key:'BASEBALL',  label:'BASEBALL',  color:'var(--vc)', leagues:[{key:'MLB',label:'MLB'}]},
+    {key:'BASKETBALL',label:'BASKETBALL',color:'var(--pc)', leagues:[{key:'NBA',label:'NBA'},{key:'WNBA',label:'WNBA'}]},
+    {key:'FOOTBALL',  label:'FOOTBALL',  color:'var(--hc)', leagues:[{key:'NFL',label:'NFL'},{key:'CFB',label:'COLLEGE'}]},
+    {key:'HOCKEY',    label:'HOCKEY',    color:'var(--ic)', leagues:[{key:'NHL',label:'NHL'},{key:'PWHL',label:'PWHL'},{key:'NCAAH',label:'COLLEGE'},{key:'KHL',label:'KHL'},{key:'SHL',label:'SHL'},{key:'LIIGA',label:'LIIGA'}]},
+    {key:'TENNIS',    label:'TENNIS',    color:'var(--mc)', leagues:[{key:'WTA',label:'WTA'},{key:'ATP',label:'ATP'}]},
+  ];
+  // Determine active sport group (for sub-row display)
+  const _activeSportGroup=_sportDefs.find(sd=>sd.key===sf||(sd.leagues||[]).some(l=>l.key===sf));
+  const _sportBtn=(sd)=>{
+    const isActive=sf===sd.key||(_activeSportGroup&&_activeSportGroup.key===sd.key);
+    const c=isActive?sd.color:'rgba(255,255,255,.55)';
+    const bg=isActive?'rgba(240,0,255,.08)':'transparent';
+    const bc=isActive?sd.color:'rgba(255,255,255,.18)';
+    return`<button class="btn btn-sm" style="border:1px solid ${bc};color:${c};background:${bg};font-size:12px;padding:3px 9px" onclick="renderOverallHistory('${sd.key}')">${sd.label}</button>`;
+  };
+  const _leagueBtn=(lk,ll,sc)=>{
+    const isActive=sf===lk;
+    return`<button class="btn btn-sm" style="border:1px solid ${isActive?sc:'rgba(255,255,255,.14)'};color:${isActive?sc:'rgba(255,255,255,.55)'};background:${isActive?'rgba(0,0,0,.3)':'transparent'};font-size:11px;padding:2px 8px" onclick="renderOverallHistory('${lk}')">${ll}</button>`;
+  };
+  let filterHtml=`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">SPORT</div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:${_activeSportGroup?'5':'10'}px">
+    <button class="btn btn-sm" style="border:1px solid ${sf==='ALL'?'var(--pc)':'rgba(255,255,255,.18)'};color:${sf==='ALL'?'var(--pc)':'rgba(255,255,255,.55)'};background:${sf==='ALL'?'rgba(240,0,255,.08)':'transparent'};font-size:12px;padding:3px 9px" onclick="renderOverallHistory('ALL')">ALL</button>
+    ${_sportDefs.map(_sportBtn).join('')}
   </div>
+  ${_activeSportGroup&&_activeSportGroup.leagues.length>1?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:10px;padding:4px 8px;background:rgba(10,0,24,.6);border-radius:2px;border:1px solid rgba(255,255,255,.08)">
+    <button class="btn btn-sm" style="border:1px solid ${sf===_activeSportGroup.key?_activeSportGroup.color:'rgba(255,255,255,.14)'};color:${sf===_activeSportGroup.key?_activeSportGroup.color:'rgba(255,255,255,.5)'};background:transparent;font-size:11px;padding:2px 8px" onclick="renderOverallHistory('${_activeSportGroup.key}')">ALL ${_activeSportGroup.label}</button>
+    ${_activeSportGroup.leagues.map(l=>_leagueBtn(l.key,l.label,_activeSportGroup.color)).join('')}
+  </div>`:'<div style="margin-bottom:10px"></div>'}
   <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">DATE RANGE</div>
   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
     <button class="btn btn-o btn-sm" onclick="qw(7)"  style="${window._ovrHistQW===7 &&df&&dt?btnAct:noAct}">7D</button>
