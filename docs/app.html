@@ -279,7 +279,8 @@ body{line-height:1.5}
     <!-- Live games ticker -->
     <div id="home-live-games" style="margin-bottom:14px"></div>
     <!-- Record blocks -->
-    <div id="home-engine-record" style="margin-bottom:14px"></div>
+    <div id="home-streak-tracker" style="margin-bottom:10px"></div>
+        <div id="home-engine-record" style="margin-bottom:14px"></div>
     <!-- By-sport breakdown -->
     <div id="home-performance" style="margin-bottom:14px"></div>
     <!-- Data timestamp -->
@@ -288,7 +289,7 @@ body{line-height:1.5}
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-o btn-sm" onclick="exportLockedProps()">EXPORT JSON</button>
       <button class="btn btn-p btn-sm" onclick="exportBetsClipboard()">SYNC EXPORT</button>
-      <button class="btn btn-o btn-sm" onclick="requestNotifPermission()">NOTIFS</button>
+      <button id="notif-btn" class="btn btn-o btn-sm" onclick="requestNotifPermission().then(()=>{const p=('Notification' in window)?Notification.permission:'unsupported';const b=document.getElementById('notif-btn');if(b){b.textContent=p==='granted'?'🔔 ON':p==='denied'?'🔕 OFF':'NOTIFS';b.style.borderColor=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';b.style.color=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';}})" style="min-width:70px">NOTIFS</button>
       <button class="btn btn-n btn-sm" onclick="showImportModal()">SYNC IMPORT</button>
     </div>
     <!-- Hidden stubs — keep IDs so legacy JS calls don't crash -->
@@ -2045,7 +2046,7 @@ async function loadGames(dateStr){
     [[ens.p,String(hML),hD,hEV,`ML ${g.hA}`,g.hA,g.awA],
      [1-ens.p,String(awML),awD,awEV,`ML ${g.awA}`,g.hA,g.awA],
      [ouP,'-110',1.91,ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,g.hA,g.awA]]
-    .forEach(([p,ml,d2,e2,lb,ha,awa])=>{if(tier(p,e2)>=1&&e2>=evT)picks.push({p,ml,d2,ev2:e2,lb,ha,awa,ens,gt:g.gt});});
+    .forEach(([p,ml,d2,e2,lb,ha,awa])=>{if(tier(p,e2)>=1&&e2>=evT)picks.push({p,ml,d2,ev2:e2,lb,ha,awa,ens,gt:g.gt,injH:ens.injH,injA:ens.injA});});
     pRows.push({hA:g.hA,awA:g.awA,ens,mc,d:g.date});
   }
   if(el&&isToday)el.innerHTML=html||'<div class="empty">NO GAMES TODAY</div>';
@@ -2166,7 +2167,7 @@ function autoSettleFromESPN(games){
       if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;
         // Update daily log
         const log=getDailyLog();if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA);if(rec)rec.outcome=outcome;saveDailyLog(log);}
-        toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
+        toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){}}
     }
   }
   if(changed){saveP(preds);updHdr();}
@@ -2196,7 +2197,7 @@ async function autoSettleNHL(){
           const total=hs+as;const ou=parseFloat(p.ou||5.5);
           outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';
         }
-        if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};}
       }
     }
     if(changed){saveP(preds);updHdr();}
@@ -2249,7 +2250,10 @@ function mlbEns(hA,awA,espnGame){
     p=p*.75+imp*.25; // 25% weight to market
   }
   p=sportCalibrate(p,'MLB');
-  return{p,mc:mc.hwP,bay,elo:eloP,mc2:mc};
+  const injH=computeInjuryImpact(hA,'mlb');
+  const injA=computeInjuryImpact(awA,'mlb');
+  p=Math.min(.92,Math.max(.08,p-injH.penalty+injA.penalty));
+  return{p,mc:mc.hwP,bay,elo:eloP,mc2:mc,injH,injA};
 }
 function applyMLB(data,type){
   if(!data.stats?.[0]?.splits)return;let updated=0;
@@ -2382,6 +2386,7 @@ function renderMLBPickCards(el, picks){
           <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--t)">${p.pick||p.lb||''}</div>
           <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.75);margin-top:2px">${p.game||((p.ha||'')+(p.awa?' vs '+p.awa:''))}</div>
           ${note?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.55);margin-top:3px;line-height:1.6">${note}</div>`:''}
+          ${(p.injH&&p.injH.flag||p.injA&&p.injA.flag)?injFlagHTML(p.injH,p.injA):''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
           <div style="text-align:right">
@@ -2907,8 +2912,11 @@ function nhlEns(hA,awA){
   const mpBoost=h.mp&&aw.mp?(h.mp.xgf_pct-aw.mp.xgf_pct)*.004:0;
   const edgeBoost=(h.edge?.avg_spd||20.5)-(aw.edge?.avg_spd||20.5);
   const blended=mc.hwP*.38+xgf*.26+(mc.hwP+gE)*.20+sm+hvM+mpBoost+edgeBoost*.005+.04;
-  const p=sportCalibrate(Math.min(.92,Math.max(.08,blended)),'NHL');
-  return{p,mc:mc.hwP,xgf,gE,hvM,sm,mcD:mc};
+  let p=sportCalibrate(Math.min(.92,Math.max(.08,blended)),'NHL');
+  const injH=computeInjuryImpact(hA,'nhl');
+  const injA=computeInjuryImpact(awA,'nhl');
+  p=Math.min(.92,Math.max(.08,p-injH.penalty+injA.penalty));
+  return{p,mc:mc.hwP,xgf,gE,hvM,sm,mcD:mc,injH,injA};
 }
 function renderBracket(){
   const el=document.getElementById('bracket');if(!el)return;
@@ -3094,7 +3102,8 @@ function renderNHLPicks(){
         const bc=t===3?'pkb-g':t===2?'pkb-p':'pkb-n';
         const col=t===3?'var(--gc)':t===2?'var(--pc)':'var(--nc)';
         const lbl=t===3?'ELITE':t===2?'LOCK':'LEAN';
-        html+=`<div class="pk" style="border-left:2px solid ${col}"><div class="pkb ${bc}">${lbl}</div><div style="flex:1"><div class="pkt">${h.name||g.h} vs ${aw.name||g.a} · G${g.gn}</div><div class="pkt2">${lb}</div><div class="pkd">WIN: <strong style="color:var(--t)">${(p*100).toFixed(1)}%</strong> · EV: <strong style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(1)}%</strong></div><div style="font-size:13px;color:var(--t3);margin-top:3px">${g.ctx||''}</div></div><button class="btn btn-o btn-sm" style="margin-left:8px" onclick="lockPick('${g.h}','${g.a}','PL','${betOn}',${p.toFixed(4)},'${ml}',${d2.toFixed(4)},'${today}')">LOCK</button></div>`;
+        const _injBadge=(ens.injH&&ens.injH.flag||ens.injA&&ens.injA.flag)?`<div style="margin-top:3px">${injFlagHTML(ens.injH,ens.injA)}</div>`:'';
+        html+=`<div class="pk" style="border-left:2px solid ${col}"><div class="pkb ${bc}">${lbl}</div><div style="flex:1"><div class="pkt">${h.name||g.h} vs ${aw.name||g.a} · G${g.gn}</div><div class="pkt2">${lb}</div><div class="pkd">WIN: <strong style="color:var(--t)">${(p*100).toFixed(1)}%</strong> · EV: <strong style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(1)}%</strong></div><div style="font-size:13px;color:var(--t3);margin-top:3px">${g.ctx||''}</div>${_injBadge}</div><button class="btn btn-o btn-sm" style="margin-left:8px" onclick="lockPick('${g.h}','${g.a}','PL','${betOn}',${p.toFixed(4)},'${ml}',${d2.toFixed(4)},'${today}')">LOCK</button></div>`;
       });
     }
     el.innerHTML=html||'<div class="empty">NO QUALIFYING PICKS — CHECK THRESHOLDS OR GAME DATA</div>';
@@ -4116,7 +4125,10 @@ function nbaEns(hA,awA,espnGame){
   // Blend with ESPN implied odds if available
   if(espnGame?.hL){const mld=ml2d(espnGame.hL);const imp=Math.min(.88,Math.max(.12,1/mld));p=p*.75+imp*.25;}
   p=sportCalibrate(p,'NBA');
-  return{p,mc:mc.hwP,bay,elo:eloP,mcD:mc};
+  const injH=computeInjuryImpact(hA,'nba');
+  const injA=computeInjuryImpact(awA,'nba');
+  p=Math.min(.90,Math.max(.10,p-injH.penalty+injA.penalty));
+  return{p,mc:mc.hwP,bay,elo:eloP,mcD:mc,injH,injA};
 }
 function updateNBAElo(hA,awA,hWon){
   const K=20,eH=nbaEloWP(NBA_ELO[hA]||1550,NBA_ELO[awA]||1550);
@@ -6513,7 +6525,7 @@ async function autoSettleNBA(){
         let outcome=null;
         if(p.betType==='ML'){if(p.betOn===hn)outcome=hs>as?'win':'loss';else if(p.betOn===an)outcome=as>hs?'win':'loss';}
         else if(p.betType==='OU'){const total=hs+as;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|\s/gi,''));if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
-        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`🏀 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`🏀 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};}
       }
     }
     if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
@@ -6612,7 +6624,7 @@ async function autoSettleTextFormat(){
     }
     if(outcome){
       p.outcome=outcome;p.settledAt=Date.now();p.hScore=game.hs;p.aScore=game.as;
-      changed=true;toast(`✓ AUTO-SETTLED: ${bon} → ${outcome.toUpperCase()}`);
+      changed=true;toast(`✓ AUTO-SETTLED: ${bon} → ${outcome.toUpperCase()}`);try{notifySettlement(bon,outcome);}catch(e){};
     }
   }
   if(changed){saveP(preds);updHdr();}
@@ -6747,10 +6759,76 @@ async function autoSettlePropsESPN(){
       const outcome=(parsed.direction==='OVER'?foundStat>parsed.line:foundStat<parsed.line)?'win':'loss';
       p.outcome=outcome;p.settledAt=Date.now();p.playerResult=foundStat;
       changed=true;
-      toast(`🎯 PROP SETTLED: ${parsed.player} ${parsed.stat} ${foundStat} vs ${parsed.line} → ${outcome.toUpperCase()}`);
+      toast(`🎯 PROP SETTLED: ${parsed.player} ${parsed.stat} ${foundStat} vs ${parsed.line} → ${outcome.toUpperCase()}`);try{notifySettlement(`${parsed.player} ${parsed.stat} ${parsed.direction} ${parsed.line}`,outcome);}catch(e){};
     }
   }
   if(changed){saveP(preds);updHdr();}
+}
+
+
+// ═══ STREAK / HOT HAND TRACKER ═══════════════════════════════
+function computeStreaks(){
+  const bets=getP().filter(p=>p.outcome==='win'||p.outcome==='loss');
+  if(!bets.length)return{streaks:[],overall:null,propDir:{over:{n:0},under:{n:0}}};
+  const sorted=[...bets].sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
+  const now=Date.now(),d7=now-7*86400000,d14=now-14*86400000,d30=now-30*86400000;
+  const curS=arr=>{if(!arr.length)return{n:0,type:''};let n=0,t=arr[arr.length-1].outcome;for(let i=arr.length-1;i>=0&&arr[i].outcome===t;i--)n++;return{n,type:t};};
+  const wr=(arr,since)=>{const s=arr.filter(b=>(b.lockedAt||0)>=since);const w=s.filter(b=>b.outcome==='win').length;return{w,l:s.length-w,n:s.length,pct:s.length?w/s.length:null};};
+  const dims=[
+    {key:'ALL',label:'ALL BETS',arr:sorted},
+    ...['MLB','NBA','NHL','TEN'].flatMap(sp=>[
+      {key:sp+'_ML',label:sp+' ML',arr:sorted.filter(b=>b.sport===sp&&b.betType==='ML')},
+      {key:sp+'_PROP',label:sp+' PROP',arr:sorted.filter(b=>b.sport===sp&&b.betType==='PROP')},
+      {key:sp+'_RL',label:sp+' SPREAD',arr:sorted.filter(b=>b.sport===sp&&(b.betType==='RL'||b.betType==='PL'))},
+    ])
+  ].filter(d=>d.arr.length>=2);
+  const streaks=dims.map(d=>({...d,streak:curS(d.arr),r7:wr(d.arr,d7),r30:wr(d.arr,d30)})).filter(d=>d.streak.n>=2||d.r7.n>=2);
+  const props=sorted.filter(b=>b.betType==='PROP');
+  const ov=props.filter(b=>(b.betOn||'').includes('OVER'));
+  const un=props.filter(b=>(b.betOn||'').includes('UNDER'));
+  return{streaks,propDir:{over:{...wr(ov,d14),streak:curS(ov)},under:{...wr(un,d14),streak:curS(un)}}};
+}
+
+function renderHotHandTracker(){
+  const el=document.getElementById('home-streak-tracker');if(!el)return;
+  const {streaks,propDir}=computeStreaks();
+  const hasData=streaks.some(d=>d.streak.n>=2)||propDir.over.n>=2||propDir.under.n>=2;
+  if(!hasData){el.innerHTML='';return;}
+  const sCol=t=>t==='win'?'var(--nc)':'var(--hc)';
+  const pCol=p=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
+  const arr=t=>t==='win'?'↑':'↓';
+  const overall=streaks.find(d=>d.key==='ALL');
+  const top=streaks.filter(d=>d.key!=='ALL').sort((a,b)=>{
+    const sc=d=>(d.streak.n>=3?d.streak.n*2:0)+(d.r7.pct||0)*3;return sc(b)-sc(a);
+  }).slice(0,6);
+  let html=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--vc);margin-bottom:7px">// HOT HAND TRACKER</div>`;
+  if(overall&&overall.streak.n>=3){
+    const sc=sCol(overall.streak.type);
+    html+=`<div style="background:${overall.streak.type==='win'?'rgba(0,240,255,.06)':'rgba(255,32,144,.05)'};border:1px solid ${sc};border-radius:3px;padding:7px 11px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:${sc}">${arr(overall.streak.type)} ${overall.streak.n}${overall.streak.type==='win'?'W':'L'} STREAK OVERALL</span><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">7D: ${overall.r7.w}-${overall.r7.l}${overall.r7.pct!==null?' · '+(overall.r7.pct*100).toFixed(0)+'%':''}</span></div>`;
+  }
+  if(top.length){
+    html+=`<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:7px">`;
+    for(const d of top){
+      const sc=d.streak.n>=2?sCol(d.streak.type):'var(--t3)';
+      const sStr=d.streak.n>=2?`${arr(d.streak.type)} ${d.streak.n}${d.streak.type==='win'?'W':'L'}`:'';
+      const r7=d.r7.n?`${d.r7.w}-${d.r7.l}${d.r7.pct!==null?' ('+( d.r7.pct*100).toFixed(0)+'%)':''}`:'-';
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.06);border-radius:3px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t2);min-width:90px;flex-shrink:0">${d.label}</span>
+        <span style="font-family:var(--orb);font-size:11px;font-weight:700;color:${sc};min-width:55px">${sStr}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">7D: ${r7}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">30D: ${d.r30.n?d.r30.w+'-'+d.r30.l:'-'}</span>
+        ${d.r7.pct!==null?`<div style="flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;min-width:30px"><div style="height:100%;width:${(d.r7.pct*100).toFixed(0)}%;background:${pCol(d.r7.pct)};border-radius:2px"></div></div>`:''}
+      </div>`;
+    }
+    html+='</div>';
+  }
+  if(propDir.over.n>=2||propDir.under.n>=2){
+    html+=`<div style="display:flex;gap:6px">`;
+    if(propDir.over.n>=2){const cs=propDir.over.streak;const sc=cs.type==='win'?'var(--nc)':'var(--hc)';html+=`<div style="flex:1;padding:7px 9px;background:rgba(10,0,24,.7);border:1px solid rgba(0,240,255,.18);border-radius:3px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:3px">OVERS · 14D</div><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${pCol(propDir.over.pct)}">${propDir.over.w}-${propDir.over.l}${propDir.over.pct!==null?' · '+(propDir.over.pct*100).toFixed(0)+'%':''}</div>${cs.n>=2?`<div style="font-family:var(--mono);font-size:10px;color:${sc};margin-top:2px">${arr(cs.type)} ${cs.n}${cs.type==='win'?'W':'L'} streak</div>`:''}</div>`;}
+    if(propDir.under.n>=2){const cs=propDir.under.streak;const sc=cs.type==='win'?'var(--nc)':'var(--hc)';html+=`<div style="flex:1;padding:7px 9px;background:rgba(10,0,24,.7);border:1px solid rgba(0,240,255,.18);border-radius:3px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:3px">UNDERS · 14D</div><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${pCol(propDir.under.pct)}">${propDir.under.w}-${propDir.under.l}${propDir.under.pct!==null?' · '+(propDir.under.pct*100).toFixed(0)+'%':''}</div>${cs.n>=2?`<div style="font-family:var(--mono);font-size:10px;color:${sc};margin-top:2px">${arr(cs.type)} ${cs.n}${cs.type==='win'?'W':'L'} streak</div>`:''}</div>`;}
+    html+='</div>';
+  }
+  el.innerHTML=html;
 }
 
 // ═══ MIDNIGHT MST SCHEDULER ══════════════════════════════════
@@ -6853,6 +6931,9 @@ function renderHomePage(){
 
   // ── Live games ────────────────────────────────────────────────────────────────
   renderHomeLiveGames();
+
+  // ── Hot hand tracker ─────────────────────────────────────────────────────────
+  try{renderHotHandTracker();}catch(e){}
 
   // ── Engine record (4 cells) ───────────────────────────────────────────────────
   const recEl=document.getElementById('home-engine-record');
@@ -10764,6 +10845,56 @@ async function renderNewsSport(sport){
   el.innerHTML=html;
 }
 
+// ── INJURY IMPACT ENGINE ─────────────────────────────────────────────────────
+// Builds player→team lookup from NBA_PLAYERS, NHL key arrays, PIT (today's SPs)
+function buildInjuryRoster(){
+  const r={};
+  for(const p of(window.NBA_PLAYERS||[])){r[p.n.toLowerCase()]={team:p.t,sport:'nba',rating:p.rating||'FAIR'};}
+  for(const[abbr,td] of Object.entries(window.NHL||{})){
+    for(const k of(td.key||[])){const nm=k.replace(/\s*\(.*?\)/g,'').trim().toLowerCase();if(nm)r[nm]={team:abbr,sport:'nhl',rating:'ELITE'};}
+    if(td.g1)r[td.g1.toLowerCase()]={team:abbr,sport:'nhl',rating:'G'};
+    if(td.g2)r[td.g2.toLowerCase()]={team:abbr,sport:'nhl',rating:'G2'};
+  }
+  for(const[abbr,pd] of Object.entries(window.PIT||{})){if(pd.name)r[pd.name.toLowerCase()]={team:abbr,sport:'mlb',rating:'SP'};}
+  window._injRoster=r;return r;
+}
+
+// Returns {penalty (0-0.12), flag (bool), players []} for team vs their sport's injury list
+function computeInjuryImpact(teamAbbr,sport){
+  const injs=(window.__CV_DATA?.injuries||{})[sport.toLowerCase()]||[];
+  if(!injs.length)return{penalty:0,flag:false,players:[]};
+  const roster=window._injRoster||buildInjuryRoster();
+  const ta=(teamAbbr||'').toUpperCase();
+  const sev=s=>{const sl=(s||'').toLowerCase();
+    if(sl.includes('out')||sl.includes('-il')||sl.includes(' ir')||sl.includes('-day'))return 1.0;
+    if(sl.includes('doubtful'))return 0.75;if(sl.includes('questionable'))return 0.30;return 0;};
+  const baseW=(pos,sp,rating)=>{
+    if(sp==='nba')return{ELITE:.070,LOCK:.045,GOOD:.025}[rating]||.012;
+    if(sp==='mlb'){const p=(pos||'').toUpperCase();if(p.includes('SP'))return .065;if(['C','SS','CF','3B'].includes(p))return .030;if(['LF','RF','2B','1B','DH'].includes(p))return .020;return .010;}
+    if(sp==='nhl'){const p=(pos||'').toUpperCase();if(rating==='G')return .080;if(rating==='ELITE')return .045;if(['C','LW','RW'].includes(p))return .030;if(p==='D')return .020;return .010;}
+    return .015;};
+  let total=0;const affected=[];
+  for(const inj of injs){
+    const sf=sev(inj.status);if(sf===0)continue;
+    const nl=(inj.name||'').toLowerCase();
+    let entry=roster[nl];
+    if(!entry){const last=nl.split(' ').pop();if(last&&last.length>3){const found=Object.entries(roster).find(([k,v])=>k.split(' ').pop()===last&&v.sport===sport.toLowerCase());if(found)entry=found[1];}}
+    if(!entry||( entry.team||'').toUpperCase()!==ta)continue;
+    const pen=baseW(inj.pos,sport.toLowerCase(),entry.rating)*sf;
+    total+=pen;affected.push({name:inj.name,pos:inj.pos||'?',status:inj.status,pen:+(pen*100).toFixed(1)});
+  }
+  total=Math.min(0.12,total);
+  return{penalty:total,flag:total>0.015,players:affected};
+}
+
+// Small injury flag chip rendered inside pick cards
+function injFlagHTML(injH,injA){
+  const parts=[];
+  if(injH&&injH.flag)parts.push(`<span title="${injH.players.map(p=>p.name+' '+p.status).join(', ')}" style="font-family:var(--mono);font-size:10px;padding:1px 5px;background:rgba(255,32,144,.15);border:1px solid var(--hc);color:var(--hc);border-radius:2px;cursor:help">🚑 H: ${injH.players.map(p=>p.name.split(' ').pop()).join(', ')}</span>`);
+  if(injA&&injA.flag)parts.push(`<span title="${injA.players.map(p=>p.name+' '+p.status).join(', ')}" style="font-family:var(--mono);font-size:10px;padding:1px 5px;background:rgba(255,32,144,.15);border:1px solid var(--hc);color:var(--hc);border-radius:2px;cursor:help">🚑 A: ${injA.players.map(p=>p.name.split(' ').pop()).join(', ')}</span>`);
+  return parts.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${parts.join('')}</div>`:'';
+}
+
 // Check locked bets against new injuries
 function checkInjuryImpactOnBets(){
   const preds=getP().filter(p=>p.outcome==='pending');if(!preds.length)return;
@@ -11390,8 +11521,8 @@ function renderGlobalLiveBets(){
   try{startLiveRefresh();}catch(e){console.warn('startLiveRefresh',e);}
   // Expose all render/utility functions defined inside INIT to global scope
   const _exp=[getStoredLines,saveStoredLines,storeOpeningLines,checkLineMovements,renderLineMovements,
-    showBetJournalModal,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,
-    notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,
+    showBetJournalModal,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,buildInjuryRoster,computeInjuryImpact,injFlagHTML,computeStreaks,renderHotHandTracker,
+    notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,renderHotHandTracker,computeStreaks,
     renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
     simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,renderPickCard,sharePickCard,
     downloadPickCard,renderTrackRecord,generatePickReasoning,getImpliedProb,getUmpireImpact,
