@@ -2073,9 +2073,32 @@ def fetch_linemate_props(sport: str) -> list[dict]:
     log(f"Linemate props {sport.upper()}…")
     raw = _linemate_playwright(
         f"https://linemate.io/{sport}",
-        ["[class*='PlayerPropCard']","[class*='PropCard']","[class*='prop-card']","[data-testid*='prop']","article"],
+        ["[class*='PlayerPropCard']","[class*='PropCard']","[class*='prop-card']",
+         "[data-testid*='prop']","[class*='prop']","[class*='player-card']","article"],
     )
-    props = [{"raw":t, "sport":sport.upper(), "src":"Linemate"} for t in raw]
+    props = []
+    for t in raw:
+        if not t or len(t) < 8: continue
+        lines = [l.strip() for l in t.split("\n") if l.strip()]
+        txt_lower = t.lower()
+        over_match = re.search(r'(over|under)\s*([\d.]+)', txt_lower)
+        conf_match = re.search(r'(\d{2,3})%', t)
+        team_match = re.search(r'\b([A-Z]{2,4})\b', t)
+        props.append({
+            "raw":       t[:300],
+            "sport":     sport.upper(),
+            "src":       "Linemate",
+            "player":    lines[0] if lines else "",
+            "team":      team_match.group(1) if team_match else "",
+            "over":      over_match.group(1).lower() == "over" if over_match else None,
+            "line":      float(over_match.group(2)) if over_match else None,
+            "conf":      int(conf_match.group(1)) if conf_match else 55,
+            "stat":      next((c for kw,c in [
+                             ("strikeout","Ks"),("saves","Saves"),("goal","Goals"),
+                             ("point","PTS"),("rebound","REB"),("assist","AST"),
+                             ("hit","Hits"),("rbi","RBIs"),("home run","HR"),
+                             ("total base","TB"),("shot","Shots")] if kw in txt_lower), ""),
+        })
     log(f"  Linemate {sport.upper()}: {len(props)} cards")
     return props
 
@@ -2083,25 +2106,46 @@ def fetch_linemate_trends(sport: str) -> list[dict]:
     log(f"Linemate trends {sport.upper()}…")
     raw = _linemate_playwright(
         f"https://linemate.io/{sport}/trends",
-        ["[class*='TrendRow']","[class*='trend-row']","[class*='PlayerRow']","table tr","article"],
+        ["[class*='TrendRow']","[class*='trend-row']","[class*='PlayerRow']",
+         "[class*='player-row']","[class*='prop-row']","table tr","article"],
     )
     trends: list[dict] = []
     for txt in raw:
+        if not txt or len(txt) < 5: continue
         parts     = [p.strip() for p in txt.split("\n") if p.strip()]
         txt_lower = txt.lower()
-        direction = ("hot" if any(k in txt_lower for k in ["hot","fire","streak"]) else
-                     "cold" if any(k in txt_lower for k in ["cold","slump"]) else
-                     "up"   if any(k in txt_lower for k in ["up","↑","over"]) else
-                     "down" if any(k in txt_lower for k in ["down","↓","under"]) else "neutral")
+        # Skip pure header/table rows
+        if parts and (parts[0].lower() in ("player","name","trend","gp","h","r","tb","ab","timeframe") or
+                      parts[0][0].isdigit() or "	" in parts[0]):
+            continue
+        # Player name is usually the first non-numeric, non-header line
+        player_name = next((p for p in parts if len(p) > 2 and not p[0].isdigit() and
+                           p.lower() not in ("over","under","home","away","season")), parts[0] if parts else "")
+        direction = ("hot" if any(k in txt_lower for k in ["hot","fire","streak","on fire"]) else
+                     "cold" if any(k in txt_lower for k in ["cold","slump","cold streak"]) else
+                     "up"   if any(k in txt_lower for k in ["up","↑","trending up"]) else
+                     "down" if any(k in txt_lower for k in ["down","↓","trending down"]) else "neutral")
+        # Extract L5/L10 hit rates like "4/5" or "8/10"
         nums = re.findall(r'(\d+)/(\d+)', txt)
+        # Detect stat category from content
+        stat_category = ""
+        for kw, cat in [("strikeout","Ks"),("saves","Saves"),("goal","Goals"),
+                        ("point","PTS"),("rebound","REB"),("assist","AST"),
+                        ("hit","Hits"),("rbi","RBIs"),("home run","HR"),
+                        ("total base","TB"),("shot","Shots")]:
+            if kw in txt_lower:
+                stat_category = cat
+                break
+        if not player_name or len(player_name) < 3:
+            continue
         trends.append({
-            "player":    parts[0] if parts else txt[:40],
-            "category":  parts[1] if len(parts)>1 else "",
+            "player":    player_name,
+            "category":  stat_category or (parts[1] if len(parts)>1 else ""),
             "direction": direction,
             "l5":        f"{nums[0][0]}/{nums[0][1]}" if nums else "",
             "l10":       f"{nums[1][0]}/{nums[1][1]}" if len(nums)>1 else "",
             "lineMove":  "up" if "line up" in txt_lower else ("down" if "line down" in txt_lower else ""),
-            "raw":       txt[:200], "sport": sport.upper(), "src": "Linemate/trends",
+            "raw":       txt[:250], "sport": sport.upper(), "src": "Linemate/trends",
         })
     log(f"  Linemate trends {sport.upper()}: {len(trends)} entries")
     return trends
@@ -3695,6 +3739,8 @@ def main() -> None:
             "props":  lm_props,
             "trends": lm_trends,
             "form":   lm_form,
+            "wnba_props":  lm_props.get("wnba", []),
+            "wnba_trends": lm_trends.get("wnba", []),
         },
         "bestBets":      best_bets,
         "heroPicksForDay": surface_best_bets_for_day(best_bets),
