@@ -2641,16 +2641,30 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   const preds=getP();
   const id=`${dateKey}_${hA}_${awA}_${type}_${betOn.replace(/\s/g,'')}`;
   // Infer sport from type, then team abbreviation
-  const _NHL=new Set(['VGK','CAR','BOS','NYR','TOR','FLA','EDM','COL','MTL','WPG','TBL','PIT','WSH','SJS','OTT','NJD','STL','MIN','DAL','NSH','CGY','ANA','DET','BUF','CBJ','CHI','SEA','VAN','NYI','LAK','ARI','PHI']);
-  const _NBA=new Set(['SA','NY','OKC','CLE','MIL','PHX','DEN','MEM','GS','LAL','LAC','MIA','ATL','BKN','SAS','POR','SAC','HOU','ORL','IND','CHA','UTA','NOP','MIN','WAS']);
+  // Comprehensive team sets for sport detection
+  const _NHL=new Set(['ANA','ARI','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']);
+  const _NBA=new Set(['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','NYK','OKC','ORL','PHI','PHX','POR','SAC','SA','SAS','TOR','UTA','WAS','WLA']);
+  const _WNBA=new Set(['WNBA-ATL','WNBA-CHI','WNBA-CON','WNBA-DAL','WNBA-IND','WNBA-LA','WNBA-LV','WNBA-MIN','WNBA-NY','WNBA-PHX','WNBA-SEA','WNBA-WSH','CON','LV']);
+  const _MLB=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
   let sportTag;
-  if(type==='NBA')sportTag='NBA';
+  // Explicit type-based detection first (most reliable)
+  if(type==='WNBA')sportTag='WNBA';
+  else if(type==='NBA'||type==='SPREAD'&&(_NBA.has(hA)||_NBA.has(awA)))sportTag='NBA';
   else if(type==='PL'||type==='NHL')sportTag='NHL';
   else if(type==='TEN'||type==='TENNIS')sportTag='TEN';
+  else if(type==='NFL')sportTag='NFL';
+  else if(type==='CFB')sportTag='CFB';
+  // PROP type — infer from team abbreviation
+  else if(type==='PROP'||type==='SPREAD'||type==='OU'||type==='ML'||type==='RL'){
+    if(_NHL.has(hA)||_NHL.has(awA))sportTag='NHL';
+    else if(_NBA.has(hA)||_NBA.has(awA)&&!_MLB.has(hA)&&!_MLB.has(awA))sportTag='NBA';
+    else if(_MLB.has(hA)||_MLB.has(awA))sportTag='MLB';
+    else sportTag='MLB';
+  }
   else if(_NHL.has(hA)||_NHL.has(awA))sportTag='NHL';
   else if(_NBA.has(hA)||_NBA.has(awA))sportTag='NBA';
   else sportTag='MLB';
-  const _betTypeNorm=type==='PL'?'PL':type==='RL'?'RL':type==='OU'?'OU':type==='PROP'?'PROP':'ML';
+  const _betTypeNorm=type==='PL'?'PL':type==='RL'?'RL':type==='OU'?'OU':type==='PROP'?'PROP':type==='SPREAD'?'SPREAD':type==='WNBA'?'ML':type==='NBA'?'ML':type==='TEN'||type==='TENNIS'?'ML':'ML';
   if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,surface:sportTag==='TEN'?'clay':null});saveP(preds);}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
@@ -11977,6 +11991,19 @@ function renderLockedTracker(){
   let picks=getP();
   if(sportF!=='all')picks=picks.filter(p=>(p.sport||'').toUpperCase()===sportF.toUpperCase());
   if(statusF!=='all')picks=picks.filter(p=>(p.outcome||'pending')===statusF);
+  // Re-infer sport for any picks that may have been stored with wrong tags
+  const _NHL_T=new Set(['ANA','ARI','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']);
+  const _NBA_T=new Set(['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','NYK','OKC','ORL','PHI','PHX','POR','SAC','SA','SAS','TOR','UTA','WAS']);
+  const _MLB_T=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
+  const _WNBA_T=new Set(['CON','LV']);
+  picks=picks.map(p=>{
+    if(p.sport&&p.sport!=='MLB')return p; // trust non-MLB tags
+    // Re-check: if teams are clearly NHL, fix it
+    const h=p.hA||'',a=p.awA||'';
+    if(_NHL_T.has(h)||_NHL_T.has(a)){return {...p,sport:'NHL'};}
+    if(p.betType==='TEN'||p.betType==='TENNIS'||(p.sport||'')==='TEN')return {...p,sport:'TEN'};
+    return p;
+  });
   picks=[...picks].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
   if(!picks.length){el.innerHTML='<div class="empty">NO BETS MATCH FILTER</div>';return;}
   // Group by date
@@ -11994,7 +12021,7 @@ function renderLockedTracker(){
       const prob=p.winProb||0.5;
       const mlStr=p.ml?(parseFloat(p.ml)>0?'+':'')+p.ml:'—';
       const betTypeLabel={'ML':'MONEYLINE','RL':'RUN LINE','PL':'PUCK LINE','OU':'OVER/UNDER','SPREAD':'SPREAD','PROP':'PLAYER PROP'}[p.betType]||p.betType||'BET';
-      const sportColor={'MLB':'var(--hc)','NBA':'var(--pc)','NHL':'var(--ic)','TEN':'var(--mc)','WNBA':'var(--vc)'}[p.sport]||'var(--t2)';
+      const sportColor={'MLB':'var(--hc)','NBA':'var(--pc)','NHL':'var(--ic)','TEN':'var(--mc)','WNBA':'var(--vc)','NFL':'var(--gc)','CFB':'var(--rc)'}[p.sport]||'var(--t2)';
       // Win probability bar
       const probPct=Math.round(prob*100);
       const probColor=probPct>=67?'var(--gc)':probPct>=62?'var(--nc)':probPct>=55?'var(--ic)':'var(--hc)';
