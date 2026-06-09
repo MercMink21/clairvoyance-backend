@@ -2245,188 +2245,208 @@ def fetch_ncaa_baseball() -> dict:
 
 
 def fetch_wnba_player_stats() -> list:
-    """Scrape WNBA per-game, per-100, advanced, totals stats from Basketball Reference."""
+    """Scrape WNBA 2026 per-game + advanced player stats from Basketball Reference.
+    BBRef WNBA uses table id='per_game' and player name is in <th data-stat='player'><a>.
+    """
     YEAR = 2026
-    # ── per-game base ──────────────────────────────────────────────────────
-    per_game: dict[str, dict] = {}
+    players: dict[str, dict] = {}
+
+    def _parse_wnba_table(soup, tbl_id: str) -> list[dict]:
+        """Parse a BBRef WNBA player table using th[data-stat=player] + td[data-stat]."""
+        tbl = soup.find("table", id=tbl_id)
+        if not tbl:
+            log(f"  Table {tbl_id!r} not found", "WARN")
+            return []
+        rows_out = []
+        for row in tbl.find_all("tr"):
+            # Player name is in <th data-stat='player'><a>
+            th = row.find("th", attrs={"data-stat": "player"})
+            if not th:
+                continue
+            a = th.find("a")
+            name = a.get_text(strip=True) if a else th.get_text(strip=True)
+            # Skip header rows
+            if not name or name in ("Player", "Rk", ""):
+                continue
+            row_data: dict = {"player": name}
+            for td in row.find_all("td"):
+                stat = td.get("data-stat", "")
+                val  = td.get_text(strip=True)
+                if stat:
+                    row_data[stat] = val
+            rows_out.append(row_data)
+        return rows_out
+
+    # ── Per-game stats ──────────────────────────────────────────────────────
     try:
         log("WNBA per-game (BBRef)…")
         time.sleep(2)
-        soup = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}_per_game.html", ref=True)
+        soup = fetch_html(
+            f"https://www.basketball-reference.com/wnba/years/{YEAR}_per_game.html",
+            ref=True,
+        )
         if soup:
-            for r in _table_to_rows(soup, "per_game_stats", limit=150):
-                name = r.get("player","").strip()
-                if not name or name == "Player": continue
+            for r in _parse_wnba_table(soup, "per_game"):
+                name = r["player"]
                 try:
-                    per_game[name] = {
-                        "name": name,
-                        "team": r.get("team_id", r.get("team","")),
-                        "pos":  r.get("pos",""),
-                        "g":    int(float(r.get("g","0") or 0)),
-                        "mp":   float(r.get("mp","0") or 0),
-                        "pts":  float(r.get("pts","0") or 0),
-                        "reb":  float(r.get("trb","0") or r.get("reb","0") or 0),
-                        "ast":  float(r.get("ast","0") or 0),
-                        "stl":  float(r.get("stl","0") or 0),
-                        "blk":  float(r.get("blk","0") or 0),
-                        "tov":  float(r.get("tov","0") or 0),
-                        "fg":   float(r.get("fg","0") or 0),
-                        "fga":  float(r.get("fga","0") or 0),
-                        "fg3":  float(r.get("fg3","0") or 0),
-                        "ft":   float(r.get("ft","0") or 0),
-                        "fta":  float(r.get("fta","0") or 0),
-                        "fg_pct":  float(r.get("fg_pct","0") or 0),
-                        "fg3_pct": float(r.get("fg3_pct","0") or 0),
-                        "ft_pct":  float(r.get("ft_pct","0") or 0),
-                        "ts_pct":  float(r.get("ts_pct","0") or 0),
-                        "usg_pct": float(r.get("usg_pct","0") or 0),
+                    players[name] = {
+                        "name":     name,
+                        "team":     r.get("team", ""),
+                        "pos":      r.get("pos", ""),
+                        "g":        int(float(r.get("g", 0) or 0)),
+                        "mp":       float(r.get("mp_per_g", 0) or 0),
+                        "pts":      float(r.get("pts_per_g", 0) or 0),
+                        "reb":      float(r.get("trb_per_g", 0) or 0),
+                        "ast":      float(r.get("ast_per_g", 0) or 0),
+                        "stl":      float(r.get("stl_per_g", 0) or 0),
+                        "blk":      float(r.get("blk_per_g", 0) or 0),
+                        "tov":      float(r.get("tov_per_g", 0) or 0),
+                        "fg_pct":   float(r.get("fg_pct", 0) or 0),
+                        "fg3_pct":  float(r.get("fg3_pct", 0) or 0),
+                        "ft_pct":   float(r.get("ft_pct", 0) or 0),
+                        "ts_pct":   0.0,
+                        "usg_pct":  0.0,
                     }
-                except (ValueError, TypeError): continue
-        log(f"WNBA per-game: {len(per_game)} players")
+                except (ValueError, TypeError):
+                    continue
+        log(f"WNBA per-game: {len(players)} players")
     except Exception as e:
         log(f"WNBA per-game: {e}", "WARN")
 
-    # ── per-100 possessions ────────────────────────────────────────────────
-    try:
-        log("WNBA per-100 (BBRef)…")
-        time.sleep(2.5)
-        soup2 = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}_per_poss.html", ref=True)
-        if soup2:
-            for r in _table_to_rows(soup2, "per_poss_stats", limit=150):
-                name = r.get("player","").strip()
-                if not name or name == "Player" or name not in per_game: continue
-                try:
-                    per_game[name]["pts_100"] = float(r.get("pts","0") or 0)
-                    per_game[name]["reb_100"] = float(r.get("trb","0") or r.get("reb","0") or 0)
-                    per_game[name]["ast_100"] = float(r.get("ast","0") or 0)
-                except (ValueError, TypeError): continue
-        log(f"WNBA per-100: enriched {sum(1 for p in per_game.values() if 'pts_100' in p)} players")
-    except Exception as e:
-        log(f"WNBA per-100: {e}", "WARN")
-
-    # ── advanced stats ─────────────────────────────────────────────────────
+    # ── Advanced stats (PER, TS%, USG%, eFG%, BPM) ─────────────────────────
     try:
         log("WNBA advanced (BBRef)…")
         time.sleep(2.5)
-        soup3 = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}_advanced.html", ref=True)
-        if soup3:
-            for r in _table_to_rows(soup3, "advanced_stats", limit=150):
-                name = r.get("player","").strip()
-                if not name or name == "Player" or name not in per_game: continue
+        soup2 = fetch_html(
+            f"https://www.basketball-reference.com/wnba/years/{YEAR}_advanced.html",
+            ref=True,
+        )
+        if soup2:
+            for r in _parse_wnba_table(soup2, "advanced"):
+                name = r["player"]
+                if name not in players:
+                    continue
                 try:
-                    per_game[name]["per"]    = float(r.get("per","0") or 0)
-                    per_game[name]["ws"]     = float(r.get("ws","0") or 0)
-                    per_game[name]["bpm"]    = float(r.get("bpm","0") or 0)
-                    per_game[name]["obpm"]   = float(r.get("obpm","0") or 0)
-                    per_game[name]["dbpm"]   = float(r.get("dbpm","0") or 0)
-                    per_game[name]["ortg"]   = float(r.get("ortg","0") or 0)
-                    per_game[name]["drtg"]   = float(r.get("drtg","0") or 0)
-                    if not per_game[name]["usg_pct"]:
-                        per_game[name]["usg_pct"] = float(r.get("usg_pct","0") or 0)
-                    if not per_game[name]["ts_pct"]:
-                        per_game[name]["ts_pct"] = float(r.get("ts_pct","0") or 0)
-                except (ValueError, TypeError): continue
-        log(f"WNBA advanced: enriched {sum(1 for p in per_game.values() if 'per' in p)} players")
+                    players[name]["per"]     = float(r.get("per", 0) or 0)
+                    players[name]["ts_pct"]  = float(r.get("ts_pct", 0) or 0)
+                    players[name]["usg_pct"] = float(r.get("usg_pct", 0) or 0)
+                    players[name]["efg_pct"] = float(r.get("efg_pct", 0) or 0)
+                    players[name]["bpm"]     = float(r.get("bpm", 0) or 0)
+                    players[name]["obpm"]    = float(r.get("obpm", 0) or 0)
+                    players[name]["dbpm"]    = float(r.get("dbpm", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+        log(f"WNBA advanced: enriched {sum(1 for p in players.values() if p.get('ts_pct',0)>0)} players")
     except Exception as e:
         log(f"WNBA advanced: {e}", "WARN")
 
-    # ── totals ─────────────────────────────────────────────────────────────
-    try:
-        log("WNBA totals (BBRef)…")
-        time.sleep(2)
-        soup4 = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}_totals.html", ref=True)
-        if soup4:
-            for r in _table_to_rows(soup4, "totals_stats", limit=150):
-                name = r.get("player","").strip()
-                if not name or name == "Player" or name not in per_game: continue
-                try:
-                    per_game[name]["tot_pts"] = int(float(r.get("pts","0") or 0))
-                    per_game[name]["tot_reb"] = int(float(r.get("trb","0") or r.get("reb","0") or 0))
-                    per_game[name]["tot_ast"] = int(float(r.get("ast","0") or 0))
-                except (ValueError, TypeError): continue
-    except Exception as e:
-        log(f"WNBA totals: {e}", "WARN")
-
-    players = list(per_game.values())
-    log(f"WNBA players total: {len(players)}")
-    return players
-
+    result = list(players.values())
+    log(f"WNBA players total: {len(result)}")
+    return result
 
 def fetch_wnba_team_stats() -> dict:
-    """Scrape WNBA team + opponent stats from Basketball Reference (team_misc + team_stats + opp_stats)."""
-    log("WNBA team stats (BBRef)…")
+    """Scrape WNBA 2026 team stats from BBRef using correct 2026 table IDs.
+    Main page: advanced-team (ORtg, DRtg, NRtg, Pace, eFG%, TOV%, ORB%)
+               per_game-team (pts, fg%, 3p%, ft%)
+               per_game-opponent (opp pts, opp fg%)
+    """
     YEAR = 2026
-    result = {}
+    result: dict = {}
     try:
+        log("WNBA team stats (BBRef 2026)…")
         time.sleep(2)
-        soup = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}.html", ref=True)
+        soup = fetch_html(
+            f"https://www.basketball-reference.com/wnba/years/{YEAR}.html",
+            ref=True,
+        )
         if not soup:
+            log("WNBA team stats: soup is None", "WARN")
             return result
-        # ── team per-game scoring ──────────────────────────────────────────
-        team_pg: dict[str, dict] = {}
-        for r in _table_to_rows(soup, "team_stats", limit=20):
-            team = r.get("team_name", r.get("team","")).strip().rstrip("*")
-            if not team or team in ("League Average","Totals"):
-                continue
-            abbr = r.get("team_id", team[:3].upper())
-            try:
-                team_pg[abbr] = {
-                    "pts_pg": float(r.get("pts","0") or 0),
-                    "fg_pct": float(r.get("fg_pct","0") or 0),
-                    "fg3_pct": float(r.get("fg3_pct","0") or 0),
-                    "ft_pct": float(r.get("ft_pct","0") or 0),
-                    "reb_pg": float(r.get("trb","0") or r.get("reb","0") or 0),
-                    "ast_pg": float(r.get("ast","0") or 0),
-                    "tov_pg": float(r.get("tov","0") or 0),
+
+        # ── Advanced team table (ORtg, DRtg, NRtg, Pace, eFG%, etc.) ──────
+        adv = soup.find("table", id="advanced-team")
+        if adv:
+            for row in adv.find_all("tr"):
+                cells = {
+                    c.get("data-stat", ""): c.get_text(strip=True)
+                    for c in row.find_all(["th", "td"])
+                    if c.get("data-stat")
                 }
-            except (ValueError, TypeError): continue
-        # ── opponent per-game stats ────────────────────────────────────────
-        opp_pg: dict[str, dict] = {}
-        for r in _table_to_rows(soup, "opp_stats", limit=20):
-            team = r.get("team_name", r.get("team","")).strip().rstrip("*")
-            if not team or team in ("League Average","Totals"):
-                continue
-            abbr = r.get("team_id", team[:3].upper())
-            try:
-                opp_pg[abbr] = {
-                    "opp_pts_pg": float(r.get("pts","0") or 0),
-                    "opp_fg_pct": float(r.get("fg_pct","0") or 0),
-                    "opp_reb":    float(r.get("trb","0") or r.get("reb","0") or 0),
-                }
-            except (ValueError, TypeError): continue
-        # ── team misc (ORTG/DRTG/pace) ────────────────────────────────────
-        for r in _table_to_rows(soup, "team_misc", limit=20):
-            team = r.get("team_name", r.get("team","")).strip().rstrip("*")
-            if not team or team in ("League Average","Totals"):
-                continue
-            abbr = r.get("team_id", team[:3].upper())
-            try:
-                entry: dict = {
-                    "name":    team,
-                    "ortg":    float(r.get("off_rtg","0") or 0),
-                    "drtg":    float(r.get("def_rtg","0") or 0),
-                    "pace":    float(r.get("pace","0") or 0),
-                    "efg_pct": float(r.get("efg_pct","0") or 0),
-                    "ts_pct":  float(r.get("ts_pct","0") or 0),
-                    "tov_pct": float(r.get("tov_pct","0") or 0),
-                    "orb_pct": float(r.get("orb_pct","0") or 0),
-                    "ft_rate": float(r.get("ft_rate","0") or 0),
-                    "arena":   r.get("arena",""),
-                    "attend":  r.get("attend",""),
-                }
-                if entry["ortg"] > 0:
-                    # Merge per-game + opp stats
-                    entry.update(team_pg.get(abbr, {}))
-                    entry.update(opp_pg.get(abbr, {}))
-                    # Net rating
-                    entry["net_rtg"] = round(entry["ortg"] - entry["drtg"], 2)
-                    result[abbr] = entry
-            except (ValueError, TypeError): continue
-        log(f"WNBA team stats: {len(result)} teams")
+                team_name = cells.get("team", "")
+                if not team_name or team_name in ("Team", ""):
+                    continue
+                # Derive abbreviation from anchor href
+                team_a = row.find("td", {"data-stat": "team"})
+                a_tag  = team_a.find("a") if team_a else None
+                abbr   = a_tag["href"].split("/")[3].upper() if (a_tag and "href" in a_tag.attrs) else team_name[:3].upper()
+                try:
+                    entry = {
+                        "name":     team_name,
+                        "abbr":     abbr,
+                        "w":        int(cells.get("wins", 0) or 0),
+                        "l":        int(cells.get("losses", 0) or 0),
+                        "mov":      float(cells.get("mov", 0) or 0),
+                        "srs":      float(cells.get("srs", 0) or 0),
+                        "ortg":     float(cells.get("off_rtg", 0) or 0),
+                        "drtg":     float(cells.get("def_rtg", 0) or 0),
+                        "net_rtg":  float((cells.get("net_rtg") or "0").replace("+", "") or 0),
+                        "pace":     float(cells.get("pace", 0) or 0),
+                        "ts_pct":   float(cells.get("ts_pct", 0) or 0),
+                        "efg_pct":  float(cells.get("efg_pct", 0) or 0),
+                        "tov_pct":  float(cells.get("tov_pct", 0) or 0),
+                        "orb_pct":  float(cells.get("orb_pct", 0) or 0),
+                        "ft_rate":  float(cells.get("fta_per_fga_pct", 0) or 0),
+                        "opp_efg":  float(cells.get("opp_efg_pct", 0) or 0),
+                        "pts_pg":   0.0,
+                        "opp_pts":  0.0,
+                        "fg_pct":   0.0,
+                    }
+                    if entry["ortg"] > 0:
+                        result[abbr] = entry
+                except (ValueError, TypeError):
+                    continue
+        log(f"WNBA team adv stats: {len(result)} teams")
+
+        # ── Per-game team scoring ──────────────────────────────────────────
+        pg_team = soup.find("table", id="per_game-team")
+        if pg_team:
+            for row in pg_team.find_all("tr"):
+                cells = {c.get("data-stat", ""): c.get_text(strip=True)
+                         for c in row.find_all(["th", "td"]) if c.get("data-stat")}
+                team_a2 = row.find("td", {"data-stat": "team"})
+                a2 = team_a2.find("a") if team_a2 else None
+                abbr2 = a2["href"].split("/")[3].upper() if (a2 and "href" in a2.attrs) else ""
+                if not abbr2 or abbr2 not in result:
+                    continue
+                try:
+                    result[abbr2]["pts_pg"] = float(cells.get("pts_per_g", 0) or 0)
+                    result[abbr2]["fg_pct"] = float(cells.get("fg_pct", 0) or 0)
+                    result[abbr2]["fg3_pct"]= float(cells.get("fg3_pct", 0) or 0)
+                    result[abbr2]["ft_pct"] = float(cells.get("ft_pct", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+
+        # ── Opponent per-game ──────────────────────────────────────────────
+        pg_opp = soup.find("table", id="per_game-opponent")
+        if pg_opp:
+            for row in pg_opp.find_all("tr"):
+                cells = {c.get("data-stat", ""): c.get_text(strip=True)
+                         for c in row.find_all(["th", "td"]) if c.get("data-stat")}
+                team_a3 = row.find("td", {"data-stat": "team"})
+                a3 = team_a3.find("a") if team_a3 else None
+                abbr3 = a3["href"].split("/")[3].upper() if (a3 and "href" in a3.attrs) else ""
+                if not abbr3 or abbr3 not in result:
+                    continue
+                try:
+                    result[abbr3]["opp_pts"] = float(cells.get("pts_per_g", 0) or 0)
+                    result[abbr3]["opp_fg"]  = float(cells.get("fg_pct", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+
+        log(f"WNBA team stats complete: {len(result)} teams")
     except Exception as e:
         log(f"WNBA team stats: {e}", "WARN")
     return result
-
 
 def fetch_wnba() -> dict:
     """Fetch WNBA scoreboard, standings, schedule from ESPN + BBRef player/team stats."""

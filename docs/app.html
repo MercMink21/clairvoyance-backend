@@ -13230,21 +13230,22 @@ const WNBA_WIN_PCT={
   CHI:.48,PHX:.46,ATL:.45,GS:.44,LA:.40,DAL:.40,WSH:.38,TOR:.30
 };
 // ESPN abbr → WNBA_ELO key map (expansion team aliases)
+// Maps ESPN abbrs, BBRef abbrs, and full names → canonical WNBA_ELO key
 const WNBA_ABBR_MAP={
-  'GS':'GS','GSV':'GS','GOLDEN STATE':'GS',
-  'TOR':'TOR','TORONTO':'TOR',
-  'NY':'NY','NYL':'NY','NEW YORK':'NY',
-  'MIN':'MIN','MINNESOTA':'MIN',
-  'LV':'LV','LVA':'LV','LAS VEGAS':'LV',
-  'CON':'CON','CONNECTICUT':'CON',
-  'IND':'IND','INDIANA':'IND',
-  'SEA':'SEA','SEATTLE':'SEA',
-  'CHI':'CHI','CHICAGO':'CHI',
-  'PHX':'PHX','PHOENIX':'PHX',
-  'ATL':'ATL','ATLANTA':'ATL',
-  'LA':'LA','LAP':'LA','LAS ANGELES':'LA','LOS ANGELES':'LA',
-  'DAL':'DAL','DALLAS':'DAL',
-  'WSH':'WSH','WAS':'WSH','WASHINGTON':'WSH',
+  'GS':'GS','GSV':'GS','GOLDEN STATE':'GS','GOLDEN STATE VALKYRIES':'GS',
+  'TOR':'TOR','TORONTO':'TOR','TORONTO TEMPO':'TOR',
+  'NY':'NY','NYL':'NY','NEW YORK':'NY','NEW YORK LIBERTY':'NY',
+  'MIN':'MIN','MINNESOTA':'MIN','MINNESOTA LYNX':'MIN',
+  'LV':'LV','LVA':'LV','LAS VEGAS':'LV','LAS VEGAS ACES':'LV','LAS':'LV',
+  'CON':'CON','CONNECTICUT':'CON','CONNECTICUT SUN':'CON',
+  'IND':'IND','INDIANA':'IND','INDIANA FEVER':'IND',
+  'SEA':'SEA','SEATTLE':'SEA','SEATTLE STORM':'SEA',
+  'CHI':'CHI','CHICAGO':'CHI','CHICAGO SKY':'CHI',
+  'PHX':'PHX','PHO':'PHX','PHOENIX':'PHX','PHOENIX MERCURY':'PHX',
+  'ATL':'ATL','ATLANTA':'ATL','ATLANTA DREAM':'ATL',
+  'LA':'LA','LAP':'LA','LAE':'LA','LOS ANGELES':'LA','LOS ANGELES SPARKS':'LA',
+  'DAL':'DAL','DALLAS':'DAL','DALLAS WINGS':'DAL',
+  'WSH':'WSH','WAS':'WSH','WASHINGTON':'WSH','WASHINGTON MYSTICS':'WSH',
 };
 function _wnbaKey(abbr){return WNBA_ABBR_MAP[abbr?.toUpperCase()]||abbr;}
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
@@ -13614,156 +13615,195 @@ async function renderWNBAProps(){
   const el=document.getElementById('wnba-props-list');if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING WNBA PROPS…</div>';
   try{
+    // Fetch today's scoreboard to get active games
     const sb=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard');
     const sbd=await sb.json();
     const events=(sbd.events||[]).filter(ev=>ev.competitions?.[0]?.status?.type?.state!=='post');
-    if(!events.length){el.innerHTML='<div class="empty">NO UPCOMING WNBA GAMES TODAY</div>';return;}
     const D=window.__CV_DATA||{};
-    const wnbaPlayers=D.wnba?.players||[];
-    const wnbaTeamStats=D.wnba?.teamStats||{};
+    // BBRef player data
+    const players=D.wnba?.players||[];
+    const teamStats=D.wnba?.teamStats||{};
+    // Linemate WNBA props
     const lmProps=(D.linemate?.props?.wnba)||[];
     const lmTrends=(D.linemate?.trends?.wnba)||[];
-    // Build player maps
-    const playerMap={};
-    wnbaPlayers.forEach(p=>{if(p.name){playerMap[p.name.toUpperCase()]=p;playerMap[(p.name.split(' ').pop()||'').toUpperCase()]=p;}});
-    // Build linemate trend map keyed by player name fragment
-    const trendMap={};
-    for(const t of lmTrends){const nm=(t.player||'').toUpperCase().split(' ').pop();if(nm)trendMap[nm]=t;}
-    const gradeLabel=r=>r>=.70?'ELITE':r>=.62?'LOCK':r>=.55?'LEAN':'SKIP';
-    const gradeCol=r=>r>=.70?'var(--gc)':r>=.62?'var(--nc)':r>=.55?'var(--ic)':'var(--hc)';
-    const propTypes=[
-      {key:'pts',label:'PTS',min:5,sigma:0.14,offset:0.88},
-      {key:'reb',label:'REB',min:3,sigma:0.16,offset:0.88},
-      {key:'ast',label:'AST',min:2,sigma:0.18,offset:0.88},
-      {key:'stl',label:'STL',min:1,sigma:0.20,offset:0.85},
-      {key:'blk',label:'BLK',min:1,sigma:0.20,offset:0.85},
-    ];
-    function mkPropProb(avg,offset,sigma){
-      if(!avg||avg<0.5)return null;
-      const line=Math.round(avg*offset*2)/2;
-      const mu=avg;const s=Math.max(mu*sigma,0.4);
-      // P(X > line) from normal CDF approximation
-      const z=(mu-line)/s;
-      const prob=Math.min(0.82,Math.max(0.45,0.5+z*0.18));
-      return{line,prob};
+    // Build player lookup map (name → stats, last-name → stats)
+    const pMap={};
+    players.forEach(p=>{
+      if(!p.name)return;
+      pMap[p.name.toUpperCase()]=p;
+      const last=p.name.split(' ').pop()?.toUpperCase();
+      if(last&&last.length>2)pMap[last]=p;
+    });
+    // Build linemate map
+    const lmMap={};
+    lmTrends.filter(t=>t.player&&t.player.length>3&&!t.player.includes('	')).forEach(t=>{
+      const k=t.player.toUpperCase();lmMap[k]=t;
+      const last=k.split(' ').pop();if(last)lmMap[last]=t;
+    });
+    // Grade helpers
+    const gradeLabel=p=>p>=.70?'ELITE':p>=.62?'LOCK':p>=.55?'LEAN':'SKIP';
+    const gradeCol=p=>p>=.70?'var(--gc)':p>=.62?'var(--nc)':p>=.55?'var(--ic)':'var(--hc)';
+    // Opponent defensive context
+    function defContext(oppAbbr,stat){
+      const oTs=teamStats[oppAbbr]||teamStats[_wnbaKey(oppAbbr)]||{};
+      if(!oTs.drtg)return 0;
+      const drtgAdj=(100-oTs.drtg)*0.015;
+      return{pts:drtgAdj,reb:drtgAdj*0.4,ast:drtgAdj*0.4,stl:0,blk:0}[stat]||0;
     }
-    // Matchup defensive adjustment
-    function defAdj(opp,propKey){
-      const oppTS=wnbaTeamStats[opp]||{};
-      const drtg=oppTS.drtg||100;
-      const lgAvgDrtg=100;
-      const adj=(lgAvgDrtg-drtg)*{pts:0.012,reb:0.006,ast:0.008,stl:0.004,blk:0.003}[propKey]||0;
-      return adj; // positive = good for over (weak defense)
+    // Poisson P(X>=n)
+    function _pGe(lam,n){
+      let cum=0,fact=1;const k=Math.floor(n);
+      for(let i=0;i<=k;i++){if(i>0)fact*=i;cum+=Math.pow(lam,i)*Math.exp(-lam)/fact;}
+      return Math.max(0,Math.min(1,1-cum));
     }
-    let html='';
-    for(const ev of events.slice(0,6)){
+    // Binomial P(>=1 hit) from average per game
+    function _p1(avg){return 1-Math.pow(Math.max(0,1-Math.min(avg/10,0.5)),Math.ceil(avg>0?1:0)+1);}
+    const props=[];
+    // ── Generate from BBRef player stats ─────────────────────────────────
+    for(const ev of events.slice(0,5)){
       const c=ev.competitions?.[0];
       const hTeam=c?.competitors?.find(t=>t.homeAway==='home');
       const aTeam=c?.competitors?.find(t=>t.homeAway==='away');
-      const hn2=hTeam?.team?.displayName||'';const an2=aTeam?.team?.displayName||'';
-      const hab2=hTeam?.team?.abbreviation||'';const aab2=aTeam?.team?.abbreviation||'';
+      const hab=hTeam?.team?.abbreviation||'';const aab=aTeam?.team?.abbreviation||'';
+      const hn=hTeam?.team?.displayName||hab;const an=aTeam?.team?.displayName||aab;
       const gameTime=ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
-      html+=`<div style="font-family:var(--mono);font-size:11px;color:var(--pc);letter-spacing:2px;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid rgba(240,0,255,.25)">${an2} <span style="color:var(--t3)">at</span> ${hn2} <span style="color:var(--t3);font-size:10px;margin-left:8px">${gameTime}</span></div>`;
-      // Fetch ESPN game summary for roster
-      let rosterLines='';
-      try{
-        const sumR=await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/summary?event=${ev.id}`);
-        const sum=await sumR.json();
-        const rosterAthletes=[];
-        const teams2=sum.athletes||sum.boxscore?.players||[];
-        for(const team of teams2){
-          const aths=team.athletes||[];
-          const teamAb=team.team?.abbreviation||'';
-          const oppAb=teamAb===hab2?aab2:hab2;
-          for(const ath of aths){
-            const nm=ath.displayName||ath.athlete?.displayName||'';
-            if(nm)rosterAthletes.push({name:nm,teamAb,oppAb});
-          }
+      // Get players for both teams (using key map)
+      const habKey=_wnbaKey(hab);const aabKey=_wnbaKey(aab);
+      const gamePlayers=players.filter(p=>{
+        const tk=_wnbaKey(p.team||'');
+        return tk===habKey||tk===aabKey||p.team===hab||p.team===aab;
+      }).sort((a,b)=>b.pts-a.pts);
+      if(!gamePlayers.length&&!lmProps.length)continue;
+      const gameHeader=`<div style="font-family:var(--mono);font-size:11px;color:var(--pc);letter-spacing:2px;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid rgba(240,0,255,.25)">${an} <span style="color:var(--t3)">at</span> ${hn} <span style="color:var(--t3);font-size:10px;margin-left:8px">${gameTime}</span></div>`;
+      let gameCards='';
+      let propsAdded=0;
+      for(const p of gamePlayers){
+        if(propsAdded>=8)break;
+        if(p.pts<6||p.mp<12)continue;
+        const isHome=_wnbaKey(p.team||'')==habKey||p.team===hab;
+        const oppAbbr=isHome?aab:hab;
+        // PTS prop
+        const dAdj=defContext(oppAbbr,'pts');
+        const adjPts=p.pts*(1+dAdj*0.5);
+        const ptsLine=Math.round(adjPts*0.82*2)/2;
+        const ptsProb=_pGe(adjPts,ptsLine);
+        if(ptsProb>=0.52){
+          const ml=p2ml(ptsProb);const ev2=ptsProb*ml2d(ml)-1;
+          const lmT=lmMap[p.name?.toUpperCase()]||lmMap[p.name?.split(' ').pop()?.toUpperCase()];
+          const lmBadge=lmT?`<span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid var(--ic);color:var(--ic);border-radius:2px;margin-left:5px">LM ${(lmT.direction||'').toUpperCase()}${lmT.l5?' L5:'+lmT.l5:''}</span>`:'';
+          const usageLine=p.usg_pct?`USG:${(p.usg_pct*100||p.usg_pct).toFixed(0)}%`:'';
+          const tsLine=p.ts_pct?`TS:${(p.ts_pct*100||p.ts_pct).toFixed(0)}%`:'';
+          const gc=gradeCol(ptsProb);
+          gameCards+=`<div class="card" style="margin-bottom:7px;padding:10px;border-left:3px solid ${gc}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${p.name}</span>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.team||''} · ${p.pos||''}</span>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">vs ${oppAbbr}</span>
+                  ${lmBadge}
+                </div>
+                <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:4px">
+                  PTS OVER <span style="color:var(--t);font-weight:700">${ptsLine}</span>
+                  <span style="color:var(--t3);font-size:11px;margin-left:8px">${p.pts.toFixed(1)} avg${dAdj>0.01?' · DEF ADJ: +'+(adjPts-p.pts).toFixed(1):''}${dAdj<-0.01?' · DEF ADJ: '+(adjPts-p.pts).toFixed(1):''}</span>
+                </div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:3px">${usageLine}${usageLine&&tsLine?' · ':''}${tsLine}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${gc};color:${gc};border-radius:2px;margin-bottom:4px">${gradeLabel(ptsProb)}</div>
+                <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:${gc}">${(ptsProb*100).toFixed(0)}%</div>
+                <div style="font-family:var(--mono);font-size:11px;color:${ev2>=0?'var(--nc)':'var(--hc)'};margin-top:2px">EV ${ev2>=0?'+':''}${(ev2*100).toFixed(1)}%</div>
+                <button class="btn btn-p btn-sm" style="margin-top:5px;font-size:10px" onclick="lockPick('${hab}','${aab}','WNBA','${p.name} PTS OVER ${ptsLine}',${ptsProb.toFixed(3)},'${ml}',${ml2d(ml).toFixed(3)},'${today()}')">LOCK</button>
+              </div>
+            </div>
+          </div>`;
+          propsAdded++;
         }
-        let propsAdded=0;
-        for(const {name,teamAb,oppAb} of rosterAthletes){
-          if(propsAdded>=10)break;
-          const nm=name.toUpperCase();
-          const lastName=(name.split(' ').pop()||'').toUpperCase();
-          const pData=playerMap[nm]||playerMap[lastName];
-          if(!pData)continue;
-          const pts=parseFloat(pData.pts||0);
-          if(pts<4)continue;
-          const lmTrend=trendMap[lastName]||null;
-          for(const pt of propTypes){
-            const avg=parseFloat(pData[pt.key]||0);
-            if(avg<pt.min)continue;
-            if(propsAdded>=10)break;
-            const dAj=defAdj(oppAb,pt.key);
-            const adjAvg=avg*(1+dAj*0.5);
-            const prop=mkPropProb(adjAvg,pt.offset,pt.sigma);
-            if(!prop||prop.prob<0.54)continue;
-            const gr=gradeLabel(prop.prob);
-            const grCol=gradeCol(prop.prob);
-            const ev2Val=(prop.prob*1.909-1);
-            const usageTxt=pData.usg_pct>0?`USG:${(pData.usg_pct*100).toFixed(0)}%`:'';
-            const tsTxt=pData.ts_pct>0?`TS:${(pData.ts_pct*100).toFixed(0)}%`:'';
-            const lmHtml=lmTrend?`<div style="margin-top:4px;font-family:var(--mono);font-size:10px;color:var(--ic)">LM ${lmTrend.direction?.toUpperCase()||''}${lmTrend.l5?' · L5: '+lmTrend.l5:''}${lmTrend.l10?' · L10: '+lmTrend.l10:''}</div>`:'';
-            rosterLines+=`<div class="card" style="margin-bottom:7px;padding:10px;border-left:3px solid ${grCol}">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        // REB prop for notable rebounders
+        if(p.reb>=5&&propsAdded<8){
+          const rebLine=Math.round(p.reb*0.82*2)/2;
+          const rebProb=_pGe(p.reb,rebLine);
+          if(rebProb>=0.54){
+            const ml=p2ml(rebProb);const ev2=rebProb*ml2d(ml)-1;const gc=gradeCol(rebProb);
+            gameCards+=`<div class="card" style="margin-bottom:7px;padding:10px;border-left:3px solid ${gc}">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
                 <div style="flex:1">
-                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${name}</span>
-                    <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${teamAb}</span>
-                    <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">vs ${oppAb}</span>
-                  </div>
-                  <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:4px">
-                    ${pt.label} OVER <span style="color:var(--t);font-weight:700">${prop.line}</span>
-                    <span style="color:var(--t3);font-size:11px;margin-left:8px">avg ${avg.toFixed(1)}/g${dAj>0.01?' · DEF ADJ: +'+((adjAvg-avg).toFixed(1)):''}${dAj<-0.01?' · DEF ADJ: '+((adjAvg-avg).toFixed(1)):''}</span>
-                  </div>
-                  <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:3px">${usageTxt}${usageTxt&&tsTxt?' · ':''}${tsTxt}</div>
-                  ${lmHtml}
+                  <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${p.name}</span>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:6px">${p.team||''} · vs ${oppAbbr}</span>
+                  <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:4px">REB OVER <span style="color:var(--t);font-weight:700">${rebLine}</span> <span style="color:var(--t3);font-size:11px">· ${p.reb.toFixed(1)} avg</span></div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
-                  <div style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${grCol};color:${grCol};border-radius:2px;margin-bottom:4px">${gr}</div>
-                  <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:${grCol}">${(prop.prob*100).toFixed(0)}%</div>
-                  <div style="font-family:var(--mono);font-size:11px;color:${ev2Val>=0?'var(--nc)':'var(--hc)'};margin-top:2px">EV ${ev2Val>=0?'+':''}${(ev2Val*100).toFixed(1)}%</div>
-                  <button class="btn btn-p btn-sm" style="margin-top:5px;font-size:10px" onclick="lockPick('${hab2}','${aab2}','WNBA','${name} ${pt.label} OVER ${prop.line}',${prop.prob.toFixed(3)},'-110',1.909,'${today()}')">LOCK</button>
+                  <div style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${gc};color:${gc};border-radius:2px;margin-bottom:3px">${gradeLabel(rebProb)}</div>
+                  <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:${gc}">${(rebProb*100).toFixed(0)}%</div>
+                  <button class="btn btn-p btn-sm" style="margin-top:4px;font-size:10px" onclick="lockPick('${hab}','${aab}','WNBA','${p.name} REB OVER ${rebLine}',${rebProb.toFixed(3)},'${ml}',${ml2d(ml).toFixed(3)},'${today()}')">LOCK</button>
                 </div>
               </div>
             </div>`;
             propsAdded++;
           }
         }
-      }catch(e2){}
-      if(!rosterLines){
-        // Fallback: show top players from data.json for this game's teams
-        const teamPlayers=wnbaPlayers.filter(p=>p.team===hab2||p.team===aab2).sort((a,b)=>b.pts-a.pts).slice(0,4);
-        rosterLines=teamPlayers.map(p=>{
-          const prop=mkPropProb(p.pts,0.88,0.14);
-          if(!prop||prop.prob<0.54)return'';
-          const gr=gradeLabel(prop.prob);const grCol=gradeCol(prop.prob);
-          return`<div class="card" style="margin-bottom:6px;padding:9px;border-left:2px solid ${grCol}">
-            <div style="display:flex;justify-content:space-between">
-              <div><span style="font-family:var(--orb);font-size:13px;font-weight:700">${p.name}</span> <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.team}</span>
-                <div style="font-family:var(--mono);font-size:12px;color:var(--t2);margin-top:2px">PTS OVER ${prop.line} · avg ${p.pts.toFixed(1)}/g</div>
+        // AST prop for high-assist players
+        if(p.ast>=5&&propsAdded<8){
+          const astLine=Math.round(p.ast*0.82*2)/2;
+          const astProb=_pGe(p.ast,astLine);
+          if(astProb>=0.54){
+            const ml=p2ml(astProb);const ev2=astProb*ml2d(ml)-1;const gc=gradeCol(astProb);
+            gameCards+=`<div class="card" style="margin-bottom:7px;padding:10px;border-left:3px solid ${gc}">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <div style="flex:1">
+                  <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${p.name}</span>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:6px">${p.team||''} · vs ${oppAbbr}</span>
+                  <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:4px">AST OVER <span style="color:var(--t);font-weight:700">${astLine}</span> <span style="color:var(--t3);font-size:11px">· ${p.ast.toFixed(1)} avg</span></div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${gc};color:${gc};border-radius:2px;margin-bottom:3px">${gradeLabel(astProb)}</div>
+                  <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:${gc}">${(astProb*100).toFixed(0)}%</div>
+                  <button class="btn btn-p btn-sm" style="margin-top:4px;font-size:10px" onclick="lockPick('${hab}','${aab}','WNBA','${p.name} AST OVER ${astLine}',${astProb.toFixed(3)},'${ml}',${ml2d(ml).toFixed(3)},'${today()}')">LOCK</button>
+                </div>
               </div>
-              <div style="text-align:right"><div style="font-family:var(--mono);font-size:11px;padding:2px 6px;border:1px solid ${grCol};color:${grCol};border-radius:2px">${gr}</div>
-                <div style="font-family:var(--mono);font-size:12px;color:${grCol};margin-top:3px">${(prop.prob*100).toFixed(0)}%</div>
-              </div>
+            </div>`;
+            propsAdded++;
+          }
+        }
+      }
+      // If no BBRef players found, show fallback message for this game
+      if(!gameCards&&!lmProps.length){
+        gameCards='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:8px 0">SYNC DATA TO LOAD PLAYER PROPS FOR THIS GAME</div>';
+      }
+      if(gameCards)props.push({header:gameHeader,body:gameCards});
+    }
+    // ── Linemate WNBA props overlay ───────────────────────────────────────
+    let lmHtml='';
+    const validLm=lmProps.filter(p=>p.player&&p.player.length>3&&p.player!==p.stat&&!p.player.match(/^\d/));
+    if(validLm.length){
+      lmHtml=`<div style="margin-top:14px;padding:9px 12px;background:rgba(102,144,255,.07);border:1px solid rgba(102,144,255,.3);border-radius:3px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ic);letter-spacing:2px;margin-bottom:7px">LINEMATE.IO/WNBA · ${validLm.length} PROPS</div>
+        ${validLm.slice(0,8).map(p=>{
+          const prob=(p.conf||55)/100;const gc=gradeCol(prob);
+          const isOver=p.over!==false;const lineTxt=p.line?` ${isOver?'OVER':'UNDER'} ${p.line}`:'';
+          return`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+            <div>
+              <span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--t)">${p.player}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-left:6px">${p.stat||''}${lineTxt}</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="font-family:var(--mono);font-size:12px;color:${gc}">${p.conf||55}%</span>
+              <span style="font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid ${gc};color:${gc};border-radius:2px">${gradeLabel(prob)}</span>
             </div>
           </div>`;
-        }).join('');
-        if(!rosterLines)rosterLines=`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:8px 0">SYNC DATA TO LOAD PLAYER PROPS</div>`;
-      }
-      html+=rosterLines;
-    }
-    // Linemate raw props banner if available
-    if(lmProps.length){
-      html+=`<div style="margin-top:14px;padding:8px 12px;background:rgba(102,144,255,.08);border:1px solid rgba(102,144,255,.3);border-radius:2px">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--ic);letter-spacing:2px;margin-bottom:5px">LINEMATE.IO WNBA · ${lmProps.length} PROPS</div>
-        ${lmProps.slice(0,5).map(p=>`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">${(p.raw||'').slice(0,90)}</div>`).join('')}
+        }).join('')}
       </div>`;
     }
-    el.innerHTML=html||'<div class="empty">NO WNBA PROP DATA AVAILABLE</div>';
-  }catch(e){el.innerHTML=`<div class="empty">WNBA PROPS UNAVAILABLE — ${e.message}</div>`;}
+    // Render
+    if(!props.length&&!validLm.length){
+      el.innerHTML='<div class="empty">NO WNBA PROPS — SYNC DATA TO LOAD BBREF PLAYER STATS</div>';
+      return;
+    }
+    el.innerHTML=props.map(p=>p.header+p.body).join('')+lmHtml;
+  }catch(e){el.innerHTML=`<div class="empty">WNBA PROPS ERROR — ${e.message}</div>`;}
 }
 window.renderWNBAProps=renderWNBAProps;
+;
 
 // ── WNBA Parlay helpers ───────────────────────────────────────────────────────
 window._wnbaParlay=[];
