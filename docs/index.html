@@ -311,9 +311,7 @@ body{line-height:1.5}
     <button class="nb" onclick="T('mlb','games')">TODAY</button>
     <button class="nb" onclick="T('mlb','parlay')">PARLAY</button>
     <button class="nb" onclick="T('mlb','nrfi')">NRFI</button>
-    <button class="nb" onclick="T('mlb','history')">HISTORY</button>
     <button class="nb" onclick="T('mlb','model')">MODEL</button>
-    <button class="nb" onclick="T('mlb','schedule')">SCHEDULE</button>
     <button class="nb" onclick="T('mlb','set')">CONFIG</button>
   </nav>
   <div class="sa" id="mlb-sa">
@@ -396,15 +394,7 @@ body{line-height:1.5}
       <div id="pnd-mlb-live" style="display:none"></div>
       <div id="pnd" style="display:none"></div>
     </div>
-    <div id="mlb-tab-history" class="tab">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        <div class="sh" style="margin:0"><span class="p"></span> HISTORY &amp; SELF-ASSESSMENT</div>
-        <button class="btn btn-p btn-sm" onclick="renderHistory()">↻</button>
-      </div>
-      <div id="sa-summary" style="margin-bottom:14px"></div>
-      <div class="sh"><span class="n"></span> DAILY LOG</div>
-      <div id="hist-list"><div class="loading"><span class="spi"></span></div></div>
-    </div>
+    <div id="mlb-tab-history" style="display:none"><div id="sa-summary"></div><div id="hist-list"></div></div>
     <div id="mlb-tab-ranks" class="tab">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:9px">
         <div class="sh" style="margin:0"><span class="p"></span> POWER MATRIX</div>
@@ -435,13 +425,7 @@ body{line-height:1.5}
       <div class="sh" style="margin-top:12px"><span class="p"></span> ADAPTIVE LEARNING</div>
       <div id="lrn"></div>
     </div>
-    <div id="mlb-tab-schedule" class="tab">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div class="sh" style="margin:0"><span class="vc">SCHEDULE</span> MLB — 7-DAY SCHEDULE</div>
-        <button class="btn btn-p btn-sm" onclick="renderScheduleTab('mlb','mlb-schedule-list')">↻</button>
-      </div>
-      <div id="mlb-schedule-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
-    </div>
+    <div id="mlb-tab-schedule" style="display:none"><div id="mlb-schedule-list"></div></div>
     <div id="mlb-tab-set" class="tab">
       <div class="sh"><span class="p"></span> SYSTEM CONFIG</div>
       <div class="sg">
@@ -479,7 +463,6 @@ body{line-height:1.5}
     <button class="mb" onclick="T('mlb','parlay')"><span class="mbi"></span>PARLAY</button>
     <button class="mb" onclick="T('mlb','nrfi')"><span class="mbi"></span>NRFI</button>
     <button class="mb" onclick="T('mlb','ranks')"><span class="mbi"></span>STATS</button>
-    <button class="mb" onclick="T('mlb','history')"><span class="mbi"></span>HIST</button>
     <button class="mb" onclick="T('mlb','model')"><span class="mbi"></span>MODEL</button>
     <button class="mb" onclick="T('mlb','set')"><span class="mbi"></span>CONFIG</button>
   </nav>
@@ -2246,15 +2229,32 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||4.5;const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||4.5;
   const statusDot=espnGame?.status==='in'?'<span class="status-live"></span>':espnGame?.status==='post'?'<span class="status-final"></span>':'<span class="status-pre"></span>';
   const statusTxt=espnGame?.status==='post'?`FINAL: ${espnGame.hScore??'?'}-${espnGame.aScore??'?'}`:espnGame?.status==='in'?'LIVE':gt;
+  // Determine top pick and tier for explanation
+  const topPick=hP>=aP?{team:hA,prob:hP,ml:hML,dec:hD}:{team:awA,prob:aP,ml:aML,dec:aD};
+  const topTier=tier(topPick.prob,ev(topPick.prob,topPick.dec));
+  const topTierLabel=topTier===3?'ELITE':topTier===2?'LOCK':topTier===1?'LEAN':'SKIP';
+  const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
+  // Build explanation
+  const favTeam=hP>=.5?hA:awA;const dogTeam=hP>=.5?awA:hA;
+  const favProb=Math.max(hP,aP);const favPit=hP>=.5?hPit:aPit;const dogPit=hP>=.5?aPit:hPit;
+  const favERA=hP>=.5?hPitERA:aPitERA;const dogERA=hP>=.5?aPitERA:hPitERA;
+  const hOff=h.off?.toFixed(0)||'--';const aOff=aw.off?.toFixed(0)||'--';
+  const hPit2=h.pit?.toFixed(0)||'--';const aPit2=aw.pit?.toFixed(0)||'--';
+  const evPct=(ev(topPick.prob,topPick.dec)*100).toFixed(1);
+  let explanation='';
+  if(topTier===3){explanation=`Model grades this ${favTeam} ML as ELITE (${(favProb*100).toFixed(1)}%, EV +${evPct}%). ${favPit} (${favERA} ERA) holds a significant pitching edge over ${dogPit} (${dogERA} ERA). Monte Carlo (${(ens.mc*100).toFixed(0)}%), Bayesian (${(ens.bay*100).toFixed(0)}%), and ELO (${(ens.elo*100).toFixed(0)}%) all align strongly. High-confidence lock — model sees material edge.`;}
+  else if(topTier===2){explanation=`${favTeam} ML rated LOCK (${(favProb*100).toFixed(1)}%, EV +${evPct}%). ${favPit} ERA (${favERA}) outperforms opponent starter (${dogERA}). Ensemble consensus: MC ${(ens.mc*100).toFixed(0)}%, BAY ${(ens.bay*100).toFixed(0)}%, ELO ${(ens.elo*100).toFixed(0)}%. Solid edge — lock with standard sizing.`;}
+  else if(topTier===1){explanation=`Lean toward ${favTeam} (${(favProb*100).toFixed(1)}%, EV +${evPct}%). ${favPit} (${favERA} ERA) has modest advantage. Model components do not fully agree — MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%. Thin edge, half-unit sizing recommended.`;}
+  else{explanation=`Model finds no qualifying edge in this matchup (best prob ${(favProb*100).toFixed(1)}%). ERA differential between ${favPit} (${favERA}) and ${dogPit} (${dogERA}) is insufficient to overcome juice. Skip or wait for a better number.`;}
   return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
     <div class="gch">
       <div>
-        <div style="display:flex;align-items:center;gap:5px">
-          <span class="gtm" style="color:${hP>=.5?'var(--pc)':'var(--t2)'}">${hA}</span>
-          <span style="color:var(--t3);font-size:12px;font-family:var(--mono)">HOME</span>
+        <div style="display:flex;align-items:center;gap:6px">
           <span class="gtm" style="color:${aP>=.5?'var(--pc)':'var(--t2)'}">${awA}</span>
+          <span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span>
+          <span class="gtm" style="color:${hP>=.5?'var(--pc)':'var(--t2)'}">${hA}</span>
         </div>
-        <div class="gsp">${hPit} (${hPitERA} ERA) vs ${aPit} (${aPitERA} ERA)</div>
+        <div class="gsp">${aPit} (${aPitERA} ERA) vs ${hPit} (${hPitERA} ERA)</div>
         ${espnGame?.hML?`<div class="gsp">ESPN: <span style="color:var(--pc)">${hA} ${hML>0?'+':''}${hML}</span> · <span style="color:var(--t2)">${awA} ${aML>0?'+':''}${aML}</span> · <span style="color:var(--vc)">O/U ${ouL}</span></div>`:''}
       </div>
       <div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div>
@@ -2267,8 +2267,15 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div class="${rlCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','RL','${hP>=.5?hA:awA} -1.5',${rlP.toFixed(3)},'-115',1.87,'${date||today()}')"><div class="cht">${hP>=.5?hA:awA} -1.5</div><div class="cho">-115</div><div class="chp">${(rlP*100).toFixed(1)}%</div></div>
       <div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',1.91,'${date||today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div>
     </div>
-    <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap">
-      <span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnGame?.hML?' ESPN:blended':''}</span>
+    <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">${explanation}</div>
+    </div>
+    <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
+      <span class="mono" style="font-size:12px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnGame?.hML?' ESPN:blended':''}</span>
       <button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="addLeg2('${hA}','${awA}','${date||today()}')">+PAR</button>
     </div>
   </div>`;
@@ -14213,8 +14220,7 @@ function renderOvrTeamsFilter(league){
     <div class="ndl-sub">
       <button onclick="SS('mlb');T('mlb','picks');hideAllND()">Picks</button>
       <button onclick="SS('mlb');T('mlb','games');hideAllND()">Today</button>
-      <button onclick="SS('mlb');T('mlb','schedule');hideAllND()">Schedule</button>
-      <button onclick="SS('mlb');T('mlb','props');hideAllND()">Props</button>
+          <button onclick="SS('mlb');T('mlb','props');hideAllND()">Props</button>
       <button onclick="SS('mlb');T('mlb','ranks');hideAllND()">Standings</button>
       <button onclick="SS('mlb');T('mlb','parlay');hideAllND()">Parlay</button>
       <button onclick="SS('mlb');T('mlb','nrfi');hideAllND()">NRFI</button>
