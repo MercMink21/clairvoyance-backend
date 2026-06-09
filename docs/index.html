@@ -929,7 +929,7 @@ body{line-height:1.5}
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
       <div class="sh"><span class="p"></span> CLAIRVOYANCE — OVERALL PERFORMANCE</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>TYPES: ML · SPREAD · O/U · PARLAY · PROP · FUTURE</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(102,144,255,.3);border-radius:2px;padding:9px 12px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.8">ALL SPORTS · ALL BET TYPES · LOCKED PICKS ONLY<br>TYPES: ML · SPREAD · O/U · PROP</div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-n btn-sm" onclick="showSyncKeyModal()">SYNC KEY</button>
         <button class="btn btn-o btn-sm" onclick="exportBetsClipboard()">EXPORT</button>
@@ -5103,7 +5103,7 @@ function renderOverall(){
 
   // Period helpers
   const now=Date.now();
-  const ydStart=now-86400000; const wk7=now-7*86400000;
+  const wk7=now-7*86400000;
   const d=new Date();const firstOfMonth=new Date(d.getFullYear(),d.getMonth(),1);
   const firstOfLastMonth=new Date(d.getFullYear(),d.getMonth()-1,1);
   const calcPerf=(bets)=>{
@@ -5112,7 +5112,8 @@ function renderOverall(){
     const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};
   };
-  const ydPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=ydStart));
+  const _ydStr=yesterday();
+  const ydPerf   = calcPerf(settled.filter(p=>p.date===_ydStr));
   const wk7Perf  = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
   const moPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
   const lastMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
@@ -5122,8 +5123,6 @@ function renderOverall(){
   const sportMap=[
     {lbl:'BASEBALL', codes:['MLB','NCAB','NCAAB']},
     {lbl:'BASKETBALL',codes:['NBA','WNBA']},
-    {lbl:'F1',        codes:['F1']},
-    {lbl:'FOOTBALL',  codes:['NFL','FB']},
     {lbl:'HOCKEY',    codes:['NHL','PWHL']},
     {lbl:'TENNIS',    codes:['TEN','tennis']},
   ];
@@ -5136,10 +5135,8 @@ function renderOverall(){
   const typeMap=[
     {lbl:'ML',     codes:['ML']},
     {lbl:'SPREAD', codes:['RL','PL','SPREAD','ATS']},
-    {lbl:'O/U',    codes:['OU','OU','TOTAL']},
-    {lbl:'PARLAY', codes:['PARLAY','PL']},
+    {lbl:'O/U',    codes:['OU','TOTAL']},
     {lbl:'PROP',   codes:['PROP','NRFI','PLAYER']},
-    {lbl:'FUTURE', codes:['FUTURE','FUT']},
   ];
   const byType=typeMap.map(tm=>{
     const tp=settled.filter(p=>tm.codes.some(c=>p.betType&&p.betType.toUpperCase()===c.toUpperCase()));
@@ -5536,8 +5533,8 @@ function renderOverallAnalytics(filterUpdate){
   if(N<3){el.innerHTML=`<div style="padding:10px">${buildAlyFilters(allRaw,F)}</div><div class="empty" style="font-family:var(--mono)">NOT ENOUGH DATA · LOCK MORE PICKS TO UNLOCK ANALYTICS</div>`;return;}
 
   // ── Filter strip ──────────────────────────────────────────────────────────
-  const sportChips=['ALL','MLB','NHL','NBA','TEN','F1'].map(s=>chip(s,'sport',s,F.sport)).join('');
-  const typeChips=['ALL','ML','OU','RL','PL','PARLAY','PROP','NRFI'].map(t=>chip(t,'type',t,F.type)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   const filtersHtml=`<div style="${glowBox('#f000ff')};border-radius:3px;padding:8px 10px;margin-bottom:10px">
     <div style="font-family:var(--mono);font-size:11px;color:rgba(240,0,255,.92);letter-spacing:2px;margin-bottom:5px">// SPORT</div>
@@ -5633,7 +5630,7 @@ function renderOverallAnalytics(filterUpdate){
   </div>`;
 
   // ── SPORT RADAR — separate mini-cards per sport, no overlapping ─────────
-  const sportList=['MLB','NHL','NBA','TEN','F1'];
+  const sportList=['MLB','NHL','NBA','TEN'];
   const sportColors2={'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','TEN':'#bbff00','F1':'#ff2090'};
   const allSettledFull=allRaw.filter(p=>p.outcome!=='pending');
   const sportData=sportList.map(s=>{
@@ -5710,7 +5707,7 @@ function renderOverallAnalytics(filterUpdate){
       </div>
     </div>`;
   }).join('');
-  const typeList=['ML','OU','RL','PL','PARLAY','PROP','NRFI'];
+  const typeList=['ML','OU','RL','PL','PROP'];
   const typeColMap={'ML':'#00f0ff','OU':'#4d79ff','RL':'#f000ff','PL':'#bbff00','PARLAY':'#ff9000','PROP':'#ff2090','NRFI':'#00ffaa'};
   const typeData=typeList.map(t=>{const tp=settled.filter(p=>p.betType===t);const tw=tp.filter(p=>p.outcome==='win').length;const tl=tp.filter(p=>p.outcome==='loss').length;const tu=tp.reduce((a,p)=>a+pnl(p),0);return{t,n:tp.length,w:tw,l:tl,acc:tp.length?tw/tp.length:0,units:tu};}).filter(d=>d.n>0).sort((a,b)=>b.n-a.n);
   const typeBars=typeData.map(d=>{const col=typeColMap[d.t]||'#f000ff';const isAct=F.type===d.t;const pct=d.acc;
@@ -5931,8 +5928,8 @@ function initAnalyticsExpand(){
 
 function buildAlyFilters(allRaw,F){
   const chip=(lbl,key,val,cur)=>{const a=cur===val;return`<button onclick="renderOverallAnalytics({${key}:'${val}'})" style="font-family:var(--mono);font-size:13px;padding:3px 8px;border-radius:2px;border:1px solid ${a?'#f000ff':'rgba(240,0,255,.2)'};background:${a?'rgba(240,0,255,.18)':'rgba(240,0,255,.04)'};color:${a?'#f000ff':'rgba(220,190,255,.88)'};cursor:pointer;white-space:nowrap">${lbl}</button>`;};
-  const sportChips=['ALL','MLB','NHL','NBA','TEN','F1'].map(s=>chip(s,'sport',s,F.sport)).join('');
-  const typeChips=['ALL','ML','OU','RL','PL','PARLAY','PROP','NRFI'].map(t=>chip(t,'type',t,F.type)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   return`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:3px;padding:8px 10px">
     <div style="font-family:var(--mono);font-size:11px;color:rgba(240,0,255,.5);letter-spacing:2px;margin-bottom:4px">SPORT</div>
@@ -6228,7 +6225,7 @@ el.innerHTML=reasonHtml+`
     ${worstDay&&worstDay.d!==bestDay?.d?`<div style="font-family:var(--mono);font-size:12px;color:#ff2090">WORST DAY: ${worstDay.d} — ${((worstDay.acc||0)*100).toFixed(0)}% win rate (${worstDay.n} bets)</div>`:''}
   </div>`;
   // ── D3 Self-Assessment ──────────────────────────────────────────
-  const spAll=['MLB','NHL','NBA','TEN','F1'];
+  const spAll=['MLB','NHL','NBA','TEN'];
   const spStats=spAll.map(s=>{const sp=all.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:0};}).filter(d=>d.n>=3);
   const bestSp=spStats.sort((a,b)=>b.pct-a.pct)[0];
   const worstSp=[...spStats].sort((a,b)=>a.pct-b.pct)[0];
