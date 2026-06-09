@@ -276,6 +276,8 @@ body{line-height:1.5}
 <!-- HOME -->
 <div id="sp-home" class="spane act">
   <div class="sa" style="padding:16px">
+    <!-- Live games ticker -->
+    <div id="home-live-games" style="margin-bottom:14px"></div>
     <!-- Record blocks -->
     <div id="home-engine-record" style="margin-bottom:14px"></div>
     <!-- By-sport breakdown -->
@@ -6602,9 +6604,6 @@ function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateStri
 // ═══ NAVIGATION ══════════════════════════════════════════════
 function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
 function renderHomePage(){
-  // ── Performance records ─────────────────────────────────────────────────────
-  const recEl=document.getElementById('home-engine-record');
-  const perfEl=document.getElementById('home-performance');
   const allBets=getP().filter(p=>p.outcome!=='pending');
   const calcPerf=(bets)=>{
     const w=bets.filter(p=>p.outcome==='win').length;
@@ -6612,24 +6611,27 @@ function renderHomePage(){
     const units=bets.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0);
     return{w,l,n:bets.length,pct:bets.length?w/bets.length:null,units};
   };
-  const now=Date.now();
-  const yd=yesterday();
-  const r7=allBets.filter(p=>p.lockedAt>=now-7*86400000);
-  const r30=allBets.filter(p=>p.lockedAt>=now-30*86400000);
-  const ry=allBets.filter(p=>p.date===yd);
-  const pa=calcPerf(allBets), p7=calcPerf(r7), p30=calcPerf(r30), py=calcPerf(ry);
+  const now=Date.now(), yd=yesterday();
   const col=(p)=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
   const uCol=(u)=>u>=0?'var(--nc)':'var(--hc)';
 
+  // ── Live games ────────────────────────────────────────────────────────────────
+  renderHomeLiveGames();
+
+  // ── Engine record (4 cells) ───────────────────────────────────────────────────
+  const recEl=document.getElementById('home-engine-record');
   if(recEl){
-    const cell=(lbl,d,accent)=>`<div style="flex:1;min-width:0;background:rgba(10,0,24,.85);border:1px solid ${accent||'rgba(0,240,255,.2)'};border-radius:3px;padding:10px 8px">
+    const r7=allBets.filter(p=>p.lockedAt>=now-7*86400000);
+    const r30=allBets.filter(p=>p.lockedAt>=now-30*86400000);
+    const ry=allBets.filter(p=>p.date===yd);
+    const pa=calcPerf(allBets),p7=calcPerf(r7),p30=calcPerf(r30),py=calcPerf(ry);
+    const cell=(lbl,d,accent)=>`<div style="flex:1;min-width:0;background:rgba(10,0,24,.85);border:1px solid ${accent};border-radius:3px;padding:10px 8px">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:6px;white-space:nowrap">${lbl}</div>
       <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:var(--t);white-space:nowrap">${d.w}W&ndash;${d.l}L</div>
       <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${col(d.pct)};margin-top:2px">${d.pct!==null?(d.pct*100).toFixed(1)+'%':'--'}</div>
       <div style="font-family:var(--mono);font-size:11px;color:${uCol(d.units)};margin-top:2px">${d.units>=0?'+':''}${d.units.toFixed(1)}u</div>
     </div>`;
-    recEl.innerHTML=`
-    <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// CLAIRVOYANCE ENGINE — RECORD</div>
+    recEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// ENGINE RECORD</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       ${cell('YESTERDAY',py,'rgba(255,221,0,.3)')}
       ${cell('ROLLING 7D',p7,'rgba(0,240,255,.25)')}
@@ -6638,10 +6640,11 @@ function renderHomePage(){
     </div>`;
   }
 
-  // ── By-sport breakdown ───────────────────────────────────────────────────────
+  // ── Record by sport + ML/PROP/RL sub-rows ─────────────────────────────────────
+  const perfEl=document.getElementById('home-performance');
   if(perfEl){
     const sports=['MLB','NHL','NBA','TEN'];
-    const sportLabel={MLB:'⚾ BASEBALL',NHL:'🏒 HOCKEY',NBA:'🏀 BASKETBALL',TEN:'🎾 TENNIS'};
+    const sportLabel={MLB:'⚾  BASEBALL',NHL:'🏒  HOCKEY',NBA:'🏀  BASKETBALL',TEN:'🎾  TENNIS'};
     const sportColor={MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)'};
     const rows=sports.map(s=>{
       const sb=allBets.filter(p=>p.sport===s);
@@ -6651,27 +6654,43 @@ function renderHomePage(){
       const pctStr=d.pct!==null?(d.pct*100).toFixed(1)+'%':'--';
       const barW=Math.min(100,Math.max(0,(d.pct||0)*100));
       const barCol=d.pct>=.62?'var(--nc)':d.pct>=.50?'var(--vc)':'var(--hc)';
-      return`<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-          <span style="font-family:var(--mono);font-size:13px;color:${c};letter-spacing:1px">${sportLabel[s]}</span>
-          <span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t)">${d.w}W&ndash;${d.l}L</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:2px;height:6px;overflow:hidden">
-            <div style="width:${barW}%;height:100%;background:${barCol};border-radius:2px;transition:width .4s"></div>
+      // Sub-rows: ML, PROP, RL (spread/line)
+      const types=['ML','PROP','RL'];
+      const typeLabel={ML:'ML',PROP:'PROP',RL:'SPREAD'};
+      const subRows=types.map(t=>{
+        const tb=sb.filter(p=>p.betType===t);
+        const td=calcPerf(tb);
+        if(!td.n)return'';
+        const tpct=td.pct!==null?(td.pct*100).toFixed(0)+'%':'--';
+        const tc=td.pct>=.62?'var(--nc)':td.pct>=.50?'var(--vc)':'var(--hc)';
+        return`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px 4px 16px;border-top:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${typeLabel[t]}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${td.w}W&ndash;${td.l}L</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${tc}">${tpct}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${uCol(td.units)}">${td.units>=0?'+':''}${td.units.toFixed(1)}u</span>
+        </div>`;
+      }).filter(Boolean).join('');
+      const fid='hsp_'+s;
+      return`<div style="border:1px solid rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-bottom:7px">
+        <div onclick="const c=document.getElementById('${fid}');c.style.display=c.style.display==='none'?'block':'none';this.querySelector('.hsp-arrow').textContent=c.style.display==='none'?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px 10px;background:rgba(10,0,24,.8)">
+          <div style="display:flex;align-items:center;gap:10px;flex:1">
+            <span class="hsp-arrow" style="font-family:var(--mono);font-size:11px;color:${c}">▼</span>
+            <span style="font-family:var(--mono);font-size:13px;color:${c};letter-spacing:1px">${sportLabel[s]}</span>
           </div>
-          <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${barCol};min-width:46px;text-align:right">${pctStr}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:${uCol(d.units)};min-width:44px;text-align:right">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:var(--orb);font-size:14px;font-weight:900;color:var(--t)">${d.w}W&ndash;${d.l}L</span>
+            <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${barCol};min-width:46px;text-align:right">${pctStr}</span>
+          </div>
         </div>
+        <div style="height:3px;background:rgba(255,255,255,.04)"><div style="width:${barW}%;height:100%;background:${barCol}"></div></div>
+        <div id="${fid}" style="background:rgba(4,0,12,.6)">${subRows}</div>
       </div>`;
     }).filter(Boolean).join('');
-    perfEl.innerHTML=`<div style="background:rgba(10,0,24,.85);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:10px 12px">
-      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3);margin-bottom:4px">// RECORD BY SPORT</div>
-      ${rows||'<div class="empty">NO SETTLED BETS</div>'}
-    </div>`;
+    perfEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// RECORD BY SPORT</div>
+      ${rows||'<div class="empty">NO SETTLED BETS</div>'}`;
   }
 
-  // ── Hero stats ────────────────────────────────────────────────────────────────
+  // ── Hero stats ─────────────────────────────────────────────────────────────────
   try{
     const _ha=allBets;const _hw=_ha.filter(p=>p.outcome==='win').length,_hl=_ha.filter(p=>p.outcome==='loss').length;
     const _hacc=_ha.length?_hw/_ha.length:null;
@@ -6682,6 +6701,78 @@ function renderHomePage(){
   }catch(e){}
 
   window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
+}
+
+// ── Home live games renderer (called from renderHomePage + loadLiveData) ───────
+function renderHomeLiveGames(){
+  const el=document.getElementById('home-live-games');
+  if(!el)return;
+  const ld=window.__CV_LIVE;
+  const allGames=[];
+  if(ld){
+    const sportConf={
+      mlb:{label:'MLB',color:'var(--hc)',icon:'⚾'},
+      nba:{label:'NBA',color:'var(--pc)',icon:'🏀'},
+      nhl:{label:'NHL',color:'var(--ic)',icon:'🏒'},
+      tennis:{label:'TEN',color:'var(--mc)',icon:'🎾'}
+    };
+    for(const [sk,conf] of Object.entries(sportConf)){
+      const games=(ld[sk]||[]).filter(g=>g.state==='in'||g.state==='pre');
+      for(const g of games)allGames.push({...g,_sport:sk,_conf:conf});
+    }
+  }
+  if(!allGames.length){
+    el.innerHTML='';// hide entirely when no live games
+    return;
+  }
+  const gameCard=(g)=>{
+    const c=g._conf;
+    const isLive=g.state==='in';
+    // Build state string
+    let stateStr='';
+    if(g._sport==='mlb'){
+      const half=g.topHalf?'Top':'Bot';
+      const inn=g.inning||'--';
+      const outs=g.outs!=null?` · ${g.outs} out`:'';
+      stateStr=`${half} ${inn}${outs}`;
+    } else if(g._sport==='nba'){
+      const q=g.quarter||'--';
+      const clock=g.displayClock||'';
+      stateStr=`Q${q} ${clock}`.trim();
+    } else if(g._sport==='nhl'){
+      const per=g.period||'--';
+      const clock=g.displayClock||'';
+      const perLabel=per===4?'OT':per===5?'SO':`P${per}`;
+      stateStr=`${perLabel} ${clock}`.trim();
+    } else if(g._sport==='tennis'){
+      stateStr=g.note||g.set||'LIVE';
+    }
+    const awayS=g.awayScore??'–';
+    const homeS=g.homeScore??'–';
+    const awayWin=isLive&&g.awayScore>g.homeScore;
+    const homeWin=isLive&&g.homeScore>g.awayScore;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${c.color};color:${c.color};border-radius:2px;white-space:nowrap">${c.label}</span>
+      <div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0">
+        <span style="font-family:var(--mono);font-size:13px;color:${awayWin?'var(--t)':'var(--t2)'}${awayWin?';font-weight:700':''}">${g.away||g.p1||'--'}</span>
+        <div style="text-align:center;flex-shrink:0">
+          <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:var(--t)">${awayS}&nbsp;–&nbsp;${homeS}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:${isLive?'var(--nc)':'var(--t3)'};letter-spacing:1px;margin-top:1px">${isLive?'● LIVE':stateStr}</div>
+        </div>
+        <span style="font-family:var(--mono);font-size:13px;color:${homeWin?'var(--t)':'var(--t2)'}${homeWin?';font-weight:700':''};text-align:right">${g.home||g.p2||'--'}</span>
+      </div>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap;min-width:50px;text-align:right">${stateStr}</span>
+    </div>`;
+  };
+  const ts=ld?.tsET?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-align:right;padding:4px 12px">${ld.tsET}</div>`:'';
+  el.innerHTML=`<div style="background:rgba(10,0,24,.85);border:1px solid rgba(0,240,255,.25);border-radius:3px;overflow:hidden">
+    <div style="padding:7px 12px;background:rgba(0,240,255,.07);border-bottom:1px solid rgba(0,240,255,.2);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:var(--orb);font-size:11px;font-weight:700;color:var(--nc);letter-spacing:2px">● LIVE GAMES</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${allGames.length} game${allGames.length!==1?'s':''} active</span>
+    </div>
+    ${allGames.map(gameCard).join('')}
+    ${ts}
+  </div>`;
 }
 
 function renderFuturesPanes(tab){
@@ -9495,6 +9586,7 @@ async function loadLiveData(){
     updateLiveDot(d);
     updateLiveGameCards(d);
     updateLiveProbabilities(d);
+    try{renderHomeLiveGames();}catch(e){}
   }catch(e){/* live_data.json not yet generated */}
 }
 
