@@ -8031,7 +8031,7 @@ function SS(s){
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
   if(s==='soc'){/* soccer coming soon — no render needed */}
-  if(s==='sim'){_t(simUpdateTeams);}
+  if(s==='sim'){_t(simUpdateTeams);_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
   if(s==='tracker'){_t(renderLockedTracker);_t(renderParlayTracker);}
 }
 function setSub(sport,sub){
@@ -13435,7 +13435,37 @@ async function renderWNBAGames(){
       </div>`;
     }).join('');
     if(parlayEl)parlayEl.innerHTML=parlayHtml||'<div class="empty">NO UPCOMING GAMES</div>';
-  }catch(e){el.innerHTML=`<div class="empty">WNBA DATA UNAVAILABLE — ${e.message}</div>`;}
+  }catch(e){
+    // ESPN API failed — fall back to data.json games
+    try{
+      const D=window.__CV_DATA||{};
+      const fallback=(D.wnba?.today||[]);
+      if(fallback.length){
+        const parlayEl=document.getElementById('wnba-parlay-games');let parlayHtml='';
+        function wnbaGrade2(p){if(p>=.68)return{lbl:'ELITE',col:'var(--gc)'};if(p>=.61)return{lbl:'LOCK',col:'var(--nc)'};if(p>=.54)return{lbl:'LEAN',col:'var(--ic)'};return{lbl:'SKIP',col:'var(--t3)'};}
+        function wnbaCC2(p){if(p>=.68)return{c:'chip-g',pl:'pg',lb:'ELITE'};if(p>=.61)return{c:'chip-p',pl:'pp',lb:'LOCK'};if(p>=.54)return{c:'chip-n',pl:'pn',lb:'LEAN'};return{c:'chip-h',pl:'ph',lb:'SKIP'};}
+        el.innerHTML=fallback.map(g=>{
+          const hab=g.home||'',aab=g.away||'';
+          const pre=g.state==='pre'||!g.state;const post=g.state==='post';const live=g.state==='in';
+          const ens=wnbaEns(hab,aab,g.homeML||null);
+          const hP=ens.p,aP=1-hP;
+          const hML=g.homeML?`${parseFloat(String(g.homeML))>0?'+':''}${g.homeML}`:p2ml(hP);
+          const aML=g.awayML?`${parseFloat(String(g.awayML))>0?'+':''}${g.awayML}`:p2ml(aP);
+          const hCS=wnbaCC2(hP),aCS=wnbaCC2(aP);
+          const hDec=ml2d(hML),aDec=ml2d(aML);
+          const favP=Math.max(hP,aP),favTeam=hP>=aP?hab:aab,gr=wnbaGrade2(favP);
+          const mc2=ens.mcD;
+          const reasonParts=[mc2?`PROJ: ${hab} ${mc2.hAvgPts} – ${aab} ${mc2.aAvgPts}`:'',`MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%`].filter(Boolean).join(' · ');
+          const stTxt=post?'FINAL':live?'LIVE':g.date?new Date(g.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
+          if(pre)parlayHtml+=`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc);margin-bottom:5px">${aab} at ${hab}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${hab}','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">ML ${hab} ${hML}</button><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${aab}','${aML}',${aP.toFixed(3)},'${aab}v${hab}')">ML ${aab} ${aML}</button></div></div>`;
+          return`<div class="gc" style="border-left:2px solid rgba(230,0,255,.45);margin-bottom:10px"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="gtm" style="color:var(--pc)">${aab}</span><span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span><span class="gtm">${hab}</span></div><div class="gsp" style="color:var(--nc);margin-top:2px">${stTxt}${g.ou?` · O/U ${g.ou}`:''}</div></div></div>${pre?`<div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${hab}',${hP.toFixed(3)},'${hML}',${hDec.toFixed(3)},'${today()}')"><div class="cht">ML ${hab}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${aab}',${aP.toFixed(3)},'${aML}',${aDec.toFixed(3)},'${today()}')"><div class="cht">ML ${aab}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div></div><div style="padding:7px 10px;background:rgba(240,0,255,.04);border-top:1px solid rgba(240,0,255,.12)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid ${gr.col};color:${gr.col};border-radius:2px">${gr.lbl}</span><span style="font-family:var(--mono);font-size:13px;color:var(--t2)">▶ ${favTeam} ${(favP*100).toFixed(1)}%</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${reasonParts}</div></div><div style="padding:4px 10px;border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:flex-end"><button class="btn btn-o btn-sm" onclick="addWNBALeg('${hab} ML','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">+PAR</button></div>`:''}${live?'<div style="padding:7px 10px;background:rgba(187,255,0,.04)"><div style="font-family:var(--mono);font-size:12px;color:var(--vc)">● LIVE · Score updating via ESPN</div></div>':''}${post?'<div style="padding:7px 10px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">FINAL</div></div>':''}</div>`;
+        }).join('');
+        if(parlayEl)parlayEl.innerHTML=parlayHtml||'<div class="empty">NO UPCOMING GAMES</div>';
+      }else{
+        el.innerHTML='<div class="empty">NO WNBA GAMES TODAY</div>';
+      }
+    }catch(e2){el.innerHTML=`<div class="empty">WNBA DATA UNAVAILABLE — ${e.message}</div>`;}
+  }
 }
 window.renderWNBAGames=renderWNBAGames;
 ;
@@ -15694,6 +15724,18 @@ function renderLockedTracker() {
   var sportF  = (document.getElementById('tracker-filter-sport') ||{}).value||'all';
   var statusF = (document.getElementById('tracker-filter-status')||{}).value||'all';
   var picks   = typeof getP==='function' ? getP() : [];
+  // If localStorage empty, pull seeded bets from data.json directly
+  if (!picks.length) {
+    try {
+      var D = window.__CV_DATA || {};
+      var seeded = D.seededBets || [];
+      if (seeded.length) {
+        // merge into localStorage then re-read
+        if (typeof mergeSeededBets === 'function') mergeSeededBets(seeded);
+        picks = typeof getP==='function' ? getP() : seeded;
+      }
+    } catch(e) {}
+  }
   if (!picks.length) {
     el.innerHTML='<div class="empty">No locked bets yet.<br><span style="font-size:13px;color:var(--t3)">Lock picks from any game card to track them here.</span></div>';
     return;
