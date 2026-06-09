@@ -292,7 +292,7 @@ perf_checks = [
     ('ALL TIME',       'All time label'),
     ('BY SPORT',       'By sport label'),
     ('FUTURE SPORTS',  'Future sports placeholder'),
-    ('RECORD BY SPORT', 'Home: record by sport section'),
+    ('ENGINE PERFORMANCE', 'Home: engine performance section'),
 ]
 for text, label in perf_checks:
     if text in html:
