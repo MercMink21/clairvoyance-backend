@@ -5956,7 +5956,10 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     pendingSection.innerHTML=`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.3);border-radius:3px;margin-bottom:14px;overflow:hidden">
       <div style="padding:9px 12px;background:rgba(0,240,255,.08);border-bottom:1px solid rgba(0,240,255,.2);display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc);letter-spacing:2px">⏳ PENDING BETS — ${pendingAll.length}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">Settle with WIN / LOSS buttons</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">Settle with WIN / LOSS buttons</span>
+          <button id="auto-settle-btn" class="btn btn-p btn-sm" onclick="autoSettleAll(this)" style="font-size:11px;padding:3px 10px">⚡ AUTO SETTLE ALL</button>
+        </div>
       </div>
       ${pHtml}
     </div>`;
@@ -6515,6 +6518,239 @@ async function autoSettleNBA(){
     }
     if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
   }catch(e){console.warn('NBA settle:',e);}
+}
+
+// ═══ AUTO SETTLE ALL — unified settle for ML, OU, RL, SPREAD, PROP ═══════
+async function autoSettleAll(btn){
+  if(btn){btn.disabled=true;btn.textContent='⏳ Settling...';}
+  try{
+    // Phase 1: structured hA/awA bets (existing settlers)
+    try{autoSettleFromESPN(ESPN_GAMES);}catch(e){}
+    try{await autoSettleNBA();}catch(e){}
+    try{await autoSettleNHL();}catch(e){}
+    // Phase 2: text-format bets (hA contains "@", betOn has "TEAM ML -xxx")
+    await autoSettleTextFormat();
+    // Phase 3: player props via ESPN box scores
+    await autoSettlePropsESPN();
+  }catch(e){console.error('autoSettleAll:',e);}
+  if(btn){btn.disabled=false;btn.textContent='⚡ AUTO SETTLE ALL';}
+  renderOverallHistory();
+  updHdr();
+}
+
+// Settle bets where hA is a game string like "NYY @ CLE"
+async function autoSettleTextFormat(){
+  const preds=getP();let changed=false;
+  const pending=preds.filter(p=>p.outcome==='pending'&&(p.hA||'').includes('@'));
+  if(!pending.length)return;
+  // Fetch MLB + NBA + NHL finished games and build team → score map
+  const gMap={};// "AWAY@HOME" → {hs,as,hn,an}
+  const fetchBoard=async(url,teamFn,scoreFn,stateFn)=>{
+    try{
+      const r=await fetch(url);if(!r.ok)return;
+      const d=await r.json();
+      for(const ev of(d.events||[])){
+        const c=ev.competitions?.[0];if(!c||!stateFn(c))continue;
+        const h=c.competitors?.find(t=>t.homeAway==='home');
+        const a=c.competitors?.find(t=>t.homeAway==='away');
+        if(!h||!a)continue;
+        const hn=teamFn(h),an=teamFn(a),hs=scoreFn(h),as2=scoreFn(a);
+        if(!hn||!an)continue;
+        gMap[`${an}@${hn}`]={hs,as:as2,hn,an,eventId:ev.id};
+        gMap[hn]={hs,as:as2,hn,an,isHome:true,eventId:ev.id};
+        gMap[an]={hs,as:as2,hn,an,isAway:true,eventId:ev.id};
+      }
+    }catch(e){}
+  };
+  await fetchBoard(
+    'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+    t=>t.team?.abbreviation,t=>parseInt(t.score||0),c=>c.status?.type?.state==='post'
+  );
+  await fetchBoard(
+    'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3',
+    t=>t.team?.abbreviation,t=>parseInt(t.score||0),c=>c.status?.type?.state==='post'
+  );
+  await fetchBoard(
+    'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+    t=>t.team?.abbreviation,t=>parseInt(t.score||0),c=>c.status?.type?.state==='post'
+  );
+
+  for(const p of pending){
+    const gs=p.hA||'';
+    const m=gs.match(/^([A-Z]{2,3})\s*@\s*([A-Z]{2,3})/i);
+    if(!m)continue;
+    const[,awT,hT]=m;
+    const game=gMap[`${awT.toUpperCase()}@${hT.toUpperCase()}`];
+    if(!game)continue;
+    const bon=(p.betOn||'').trim();
+    let outcome=null;
+    // ML: "NYY ML -159" or "NYY ML"
+    const mlM=bon.match(/^([A-Z]{2,3})\s+ML/i);
+    if(mlM){
+      const t=mlM[1].toUpperCase();
+      if(t===hT.toUpperCase())outcome=game.hs>game.as?'win':'loss';
+      else if(t===awT.toUpperCase())outcome=game.as>game.hs?'win':'loss';
+    }
+    // OU: "OVER 8.0" / "UNDER 8.5 (wind...)"
+    if(!outcome){
+      const ouM=bon.match(/(OVER|UNDER)\s+([\d.]+)/i);
+      if(ouM){
+        const isOver=ouM[1].toUpperCase()==='OVER';
+        const line=parseFloat(ouM[2]);
+        const total=game.hs+game.as;
+        if(!isNaN(line))outcome=(isOver?total>line:total<line)?'win':'loss';
+      }
+    }
+    // RL: "NYY -1.5 RL" or "NYY +1.5"
+    if(!outcome){
+      const rlM=bon.match(/^([A-Z]{2,3})\s+([+-][\d.]+)/i);
+      if(rlM){
+        const t=rlM[1].toUpperCase(),spread=parseFloat(rlM[2]);
+        const diff=(t===hT.toUpperCase())?(game.hs-game.as):(game.as-game.hs);
+        outcome=(diff+spread>0)?'win':'loss';
+      }
+    }
+    if(outcome){
+      p.outcome=outcome;p.settledAt=Date.now();p.hScore=game.hs;p.aScore=game.as;
+      changed=true;toast(`✓ AUTO-SETTLED: ${bon} → ${outcome.toUpperCase()}`);
+    }
+  }
+  if(changed){saveP(preds);updHdr();}
+}
+
+// Settle PROP bets using ESPN box score player stats
+async function autoSettlePropsESPN(){
+  const preds=getP();
+  const pending=preds.filter(p=>p.outcome==='pending'&&p.betType==='PROP');
+  if(!pending.length)return;
+  let changed=false;
+  const bsCache={};// eventId → boxscore data
+
+  // Sport → ESPN URL map
+  const scoreboards={
+    NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3',
+    NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard'
+  };
+  const summaryBase={
+    NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=',
+    NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=',
+    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event='
+  };
+
+  // Parse "Victor Wembanyama OVER PTS 26.5" → {player, direction, stat, line}
+  function parsePropBetOn(bon){
+    const m=bon.match(/^(.+?)\s+(OVER|UNDER)\s+([A-Z+%]+)\s+([\d.]+)$/i);
+    if(!m)return null;
+    return{player:m[1].trim(),direction:m[2].toUpperCase(),stat:m[3].toUpperCase(),line:parseFloat(m[4])};
+  }
+
+  // Stat type → box score label mapping
+  function extractStat(statNames,statVals,stat){
+    const idx=n=>statNames.findIndex(s=>s.toUpperCase()===n.toUpperCase());
+    const v=n=>{const i=idx(n);return i>=0?parseFloat(statVals[i])||0:0;};
+    if(stat==='PTS')return v('PTS');
+    if(stat==='REB')return v('REB');
+    if(stat==='AST')return v('AST');
+    if(stat==='BLK')return v('BLK');
+    if(stat==='STL')return v('STL');
+    if(stat==='TO')return v('TO');
+    if(stat==='3PM'){const i=idx('3PT');if(i<0)return 0;return parseInt((statVals[i]||'0').split('-')[0])||0;}
+    if(stat==='PTS+REB+AST'||stat==='PRA')return v('PTS')+v('REB')+v('AST');
+    if(stat==='PTS+AST')return v('PTS')+v('AST');
+    if(stat==='PTS+REB')return v('PTS')+v('REB');
+    if(stat==='REB+AST')return v('REB')+v('AST');
+    if(stat==='BLK+STL')return v('BLK')+v('STL');
+    return null;
+  }
+
+  // Fuzzy player name match: "Victor Wembanyama" vs "V. Wembanyama" or "Wembanyama"
+  function nameMatch(displayName,propPlayer){
+    const dn=displayName.toLowerCase().replace(/['.]/g,'');
+    const pp=propPlayer.toLowerCase().replace(/['.]/g,'');
+    if(dn===pp)return true;
+    const ppParts=pp.split(' ');
+    const lastName=ppParts[ppParts.length-1];
+    if(lastName.length>3&&dn.includes(lastName))return true;
+    // "OG Anunoby" special case — initials
+    if(pp.length<=3&&dn.startsWith(pp))return true;
+    return false;
+  }
+
+  // Group props by sport
+  const bySport={};
+  for(const p of pending){
+    const sp=p.sport||'NBA';
+    if(!bySport[sp])bySport[sp]=[];
+    bySport[sp].push(p);
+  }
+
+  for(const [sport,props] of Object.entries(bySport)){
+    if(!scoreboards[sport])continue;
+    let events=[];
+    try{
+      const r=await fetch(scoreboards[sport]);
+      if(!r.ok)continue;
+      const d=await r.json();
+      events=(d.events||[]).filter(ev=>ev.competitions?.[0]?.status?.type?.state==='post');
+    }catch(e){continue;}
+
+    for(const ev of events){
+      if(bsCache[ev.id])continue;
+      try{
+        const r=await fetch(summaryBase[sport]+ev.id);
+        if(r.ok)bsCache[ev.id]=await r.json();
+      }catch(e){}
+    }
+
+    for(const p of props){
+      if(p.outcome!=='pending')continue;
+      const parsed=parsePropBetOn(p.betOn||'');
+      if(!parsed)continue;
+
+      // Find the right event for this bet (match by team abbreviation or date)
+      let targetEvent=null;
+      for(const ev of events){
+        const c=ev.competitions?.[0];
+        const hn=c?.competitors?.find(t=>t.homeAway==='home')?.team?.abbreviation||'';
+        const an=c?.competitors?.find(t=>t.homeAway==='away')?.team?.abbreviation||'';
+        // Match by hA/awA (allow NY→NYK etc via prefix)
+        const hMatch=[hn,hn.slice(0,2)];const aMatch=[an,an.slice(0,2)];
+        if(hMatch.includes(p.hA)||aMatch.includes(p.awA)||hMatch.includes(p.awA)||aMatch.includes(p.hA)){
+          targetEvent=ev;break;
+        }
+        // Match by date if hA not set or doesn't match teams
+        const evDate=(ev.date||'').slice(0,10);
+        if(evDate===p.date&&p.hA&&(hn.includes(p.hA)||an.includes(p.hA)||p.hA.includes(hn)||p.hA.includes(an))){
+          targetEvent=ev;break;
+        }
+      }
+      if(!targetEvent)continue;
+      const bs=bsCache[targetEvent.id];
+      if(!bs?.boxscore?.players)continue;
+
+      // Build player stat lookup
+      let foundStat=null,foundPlayer=null;
+      outer:for(const teamData of bs.boxscore.players){
+        const statBlock=teamData.statistics?.[0];if(!statBlock)continue;
+        const names=statBlock.names||[];
+        for(const ath of(statBlock.athletes||[])){
+          const dName=ath.athlete?.displayName||'';
+          if(!nameMatch(dName,parsed.player))continue;
+          foundPlayer=dName;
+          foundStat=extractStat(names,ath.stats||[],parsed.stat);
+          break outer;
+        }
+      }
+      if(foundStat===null)continue;
+
+      const outcome=(parsed.direction==='OVER'?foundStat>parsed.line:foundStat<parsed.line)?'win':'loss';
+      p.outcome=outcome;p.settledAt=Date.now();p.playerResult=foundStat;
+      changed=true;
+      toast(`🎯 PROP SETTLED: ${parsed.player} ${parsed.stat} ${foundStat} vs ${parsed.line} → ${outcome.toUpperCase()}`);
+    }
+  }
+  if(changed){saveP(preds);updHdr();}
 }
 
 // ═══ MIDNIGHT MST SCHEDULER ══════════════════════════════════
