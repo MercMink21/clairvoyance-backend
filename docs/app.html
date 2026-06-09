@@ -6053,67 +6053,121 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   </div>`:'<div style="margin-bottom:10px"></div>'}
   `;
   if(!all.length){el.innerHTML=filterHtml+'<div class="empty">NO BETS FOR SELECTED FILTERS</div>';return;}
-  // Weekly summary
-  const weekMap={};const monthMap={};
-  all.filter(p=>p.outcome!=='pending').forEach(p=>{
-    const d=new Date(p.date||p.lockedAt||0);
-    const wk=new Date(d);wk.setDate(d.getDate()-d.getDay());const wkKey=wk.toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
-    const mKey=p.date?p.date.slice(0,7):'';
-    if(!weekMap[wkKey])weekMap[wkKey]={w:0,l:0,u:0};
-    if(!monthMap[mKey])monthMap[mKey]={w:0,l:0,u:0};
-    if(p.outcome==='win'){weekMap[wkKey].w++;monthMap[mKey].w++;const u=(p.decOdds||2)-1;weekMap[wkKey].u+=u;monthMap[mKey].u+=u;}
-    else if(p.outcome==='loss'){weekMap[wkKey].l++;monthMap[mKey].l++;weekMap[wkKey].u-=1;monthMap[mKey].u-=1;}
-  });
-  const tableHtml=(map,label)=>{const entries=Object.entries(map).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,8);if(!entries.length)return'';
-    return`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">// BY ${label}</div><table class="dt" style="font-size:13px"><thead><tr><th>${label}</th><th>W</th><th>L</th><th>WIN%</th><th>UNITS</th></tr></thead><tbody>${entries.map(([k,d])=>{const n=d.w+d.l;const pct=n?(d.w/n*100).toFixed(0)+'%':'--';const uc=d.u>=0?'var(--nc)':'var(--hc)';return`<tr><td style="color:var(--t3)">${k}</td><td style="color:var(--nc)">${d.w}</td><td style="color:var(--hc)">${d.l}</td><td>${pct}</td><td style="color:${uc}">${d.u>=0?'+':''}${d.u.toFixed(1)}u</td></tr>`;}).join('')}</tbody></table></div>`;
-  };
-  // ── Bet card renderer ──
+  // ── Locked bets canonical cache ──────────────────────────────────────────────
+  window._lockedBets=getP();
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const _now=Date.now();
+  const _pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
+  const _pickTs=p=>p.lockedAt||new Date((_pickDate(p)||'2000-01-01')+'T12:00:00').getTime();
+  const pctCol=pct=>pct===null?'var(--t3)':pct>=.62?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';
+  const uCol2=u=>u>=0?'var(--nc)':'var(--hc)';
+  const perf=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
+
+  // ── Bet card ───────────────────────────────────────────────────────────────
   const betCard=(p)=>{
-    const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':p.outcome==='push'?'var(--gc)':'var(--t3)';
+    const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':p.outcome==='push'?'var(--vc)':'var(--pc)';
+    const st=p.outcome==='pending'?'⏳ PENDING':p.outcome==='push'?'PUSH':p.outcome?.toUpperCase()||'PENDING';
     const sc=sportColor[p.sport]||sportColor.default;
-    const st=p.outcome==='pending'?'PENDING':p.outcome.toUpperCase();
-    return`<div class="card cp" style="margin-bottom:7px;padding:10px;border-left:2px solid ${oColor}">
-      <div style="display:flex;justify-content:space-between;align-items:start;gap:6px">
-        <div>
-          <span style="font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid ${sc};color:${sc};border-radius:2px;margin-right:6px">${p.sport}</span>
-          <span style="font-family:var(--orb);font-size:14px;font-weight:700">${p.hA==='PARLAY'||p.hA==='NBA-PARLAY'?'PARLAY':p.awA+' at '+p.hA}</span>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:3px">${p.betType} · ${p.betOn} · ${p.ml} · ${p.date||''}</div>
-          ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:11px;color:var(--t2);margin-top:2px">FINAL: ${p.awA} ${p.aScore} – ${p.hScore} ${p.hA}</div>`:''}
+    const mu=(p.hA==='PARLAY'||p.hA==='NBA-PARLAY')?'PARLAY':(p.awA&&p.hA)?p.awA+' at '+p.hA:(p.hA||'');
+    return`<div class="card" style="margin-bottom:7px;border-left:2px solid ${oColor};padding:9px 10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${mu}</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${p.betOn||''}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.betType||''}${p.ml?' · '+p.ml:''}${p.winProb?' · '+(p.winProb*100).toFixed(0)+'%':''}</div>
+          ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">FINAL: ${p.awA} ${p.aScore} – ${p.hScore} ${p.hA}</div>`:''}
         </div>
-        <span style="font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid ${oColor};color:${oColor};border-radius:2px;white-space:nowrap">${st}</span>
+        <span style="font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid ${oColor};color:${oColor};border-radius:2px;white-space:nowrap;flex-shrink:0">${st}</span>
       </div>
-      ${p.outcome==='pending'?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:11px;padding:2px 8px" onclick="removePick('${p.id}')">✕ REMOVE</button></div>`:''}
+      ${p.outcome==='pending'?`<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderOverallHistory()">✓ WIN</button>
+        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');renderOverallHistory()">✗ LOSS</button>
+        <button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:11px;padding:2px 7px" onclick="removePick('${p.id}');renderOverallHistory()">✕ REMOVE</button>
+      </div>`:''}
     </div>`;
   };
-  // ── Split: recent (<3 days) stays in main list; archived (3+ days) → day folders ──
-  const _3d=3*24*60*60*1000;const _now=Date.now();
-  const recentBets=all.filter(p=>_now-(p.lockedAt||new Date(p.date||0).getTime())<_3d);
-  const archivedBets=all.filter(p=>_now-(p.lockedAt||new Date(p.date||0).getTime())>=_3d);
-  const archByDate={};
-  for(const p of archivedBets){const dk=p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'unknown');if(!archByDate[dk])archByDate[dk]=[];archByDate[dk].push(p);}
-  const betHtml=recentBets.map(betCard).join('');
-  const archFolders=Object.entries(archByDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date,bets])=>{
-    const dW=bets.filter(p=>p.outcome==='win').length,dL=bets.filter(p=>p.outcome==='loss').length;
-    const dU=bets.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
-    const fid='fold_'+date.replace(/-/g,'');const uc=dU>=0?'var(--nc)':'var(--hc)';
-    return`<div style="margin-bottom:8px">
-      <div onclick="const c=document.getElementById('${fid}');const isOpen=c.style.display!=='none';c.style.display=isOpen?'none':'block';this.querySelector('span').textContent=isOpen?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.25);border-radius:3px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.7)">▶</span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--t);font-weight:700">${date}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5)">${bets.length} bet${bets.length>1?'s':''}</span>
+
+  // ── Day folder ─────────────────────────────────────────────────────────────
+  const dayFolder=(date,bets,prefix)=>{
+    const pr=perf(bets);
+    const fid='dfold_'+(prefix||'')+date.replace(/-/g,'');
+    const pending=bets.filter(p=>p.outcome==='pending').length;
+    let dateLabel=date;
+    try{const d=new Date(date+'T12:00:00');dateLabel=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(e){}
+    return`<div style="margin-bottom:5px">
+      <div onclick="const c=document.getElementById('${fid}');const open=c.style.display!=='none';c.style.display=open?'none':'block';this.querySelector('.dfa').textContent=open?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:7px 11px;background:rgba(240,0,255,.06);border:1px solid rgba(240,0,255,.18);border-radius:3px;gap:8px">
+        <div style="display:flex;align-items:center;gap:7px;flex:1;min-width:0">
+          <span class="dfa" style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.45)">▶</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--t);font-weight:700">${dateLabel}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35)">${bets.length} bet${bets.length!==1?'s':''}${pending?' · '+pending+' pending':''}</span>
         </div>
-        <div style="display:flex;gap:12px;align-items:center">
-          <span style="font-family:var(--mono);font-size:12px;color:var(--nc)">${dW}W</span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--hc)">${dL}L</span>
-          <span style="font-family:var(--mono);font-size:12px;color:${uc};font-weight:700">${dU>=0?'+':''}${dU.toFixed(1)}u</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--nc)">${pr.w}W</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--hc)">${pr.l}L</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pctCol(pr.pct)}">${pr.pct!==null?(pr.pct*100).toFixed(0)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${uCol2(pr.u)}">${pr.u>=0?'+':''}${pr.u.toFixed(1)}u</span>
         </div>
       </div>
-      <div id="${fid}" style="display:none;padding:8px 4px 2px;border:1px solid rgba(240,0,255,.15);border-top:none;border-radius:0 0 3px 3px;background:rgba(4,0,12,.4)">${bets.map(betCard).join('')}</div>
+      <div id="${fid}" style="display:none;padding:7px 4px 2px;border:1px solid rgba(240,0,255,.1);border-top:none;border-radius:0 0 3px 3px;background:rgba(4,0,12,.45)">
+        ${bets.slice().sort((a,b)=>(_pickTs(b)-_pickTs(a))).map(betCard).join('')}
+      </div>
     </div>`;
-  }).join('');
-  const archSection=archivedBets.length?`<div style="font-family:var(--mono);font-size:12px;color:rgba(240,0,255,.7);letter-spacing:2px;margin:14px 0 8px">// HISTORY ARCHIVE — ${archivedBets.length} BETS · ${Object.keys(archByDate).length} DAYS</div>${archFolders}`:'';
-  el.innerHTML=filterHtml+tableHtml(weekMap,'WEEK')+tableHtml(monthMap,'MONTH')+`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:8px">${all.length} BETS · ${recentBets.length} RECENT · ${archivedBets.length} ARCHIVED</div>`+betHtml+archSection;
+  };
+
+  // ── Month folder ───────────────────────────────────────────────────────────
+  const monthFolder=(mk,bets,days)=>{
+    const pr=perf(bets);
+    const fid='mfold_'+mk.replace(/-/g,'');
+    let monthLabel=mk;
+    try{const d=new Date(mk+'-01T12:00:00');monthLabel=d.toLocaleDateString('en-US',{month:'long',year:'numeric'}).toUpperCase();}catch(e){}
+    const dayHtml=Object.entries(days).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,db])=>dayFolder(d,db,mk)).join('');
+    return`<div style="margin-bottom:8px">
+      <div onclick="const c=document.getElementById('${fid}');const open=c.style.display!=='none';c.style.display=open?'none':'block';this.querySelector('.mfa').textContent=open?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span class="mfa" style="font-family:var(--mono);font-size:11px;color:rgba(0,240,255,.5)">▶</span>
+          <span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--nc)">${monthLabel}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35)">${bets.length} bet${bets.length!==1?'s':''} · ${Object.keys(days).length} day${Object.keys(days).length!==1?'s':''}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--nc)">${pr.w}W</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--hc)">${pr.l}L</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pctCol(pr.pct)}">${pr.pct!==null?(pr.pct*100).toFixed(0)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${uCol2(pr.u)}">${pr.u>=0?'+':''}${pr.u.toFixed(1)}u</span>
+        </div>
+      </div>
+      <div id="${fid}" style="display:none;padding:7px;border:1px solid rgba(0,240,255,.1);border-top:none;border-radius:0 0 3px 3px;background:rgba(0,10,20,.4)">
+        ${dayHtml}
+      </div>
+    </div>`;
+  };
+
+  // ── Group archived bets by month → day ────────────────────────────────────
+  const _3d=3*24*60*60*1000;
+  const recentBets=all.filter(p=>_now-_pickTs(p)<_3d);
+  const archivedBets=all.filter(p=>_now-_pickTs(p)>=_3d);
+  const archByMonth={};
+  for(const p of archivedBets){
+    const dk=_pickDate(p)||'unknown';
+    const mk=dk.length>=7?dk.slice(0,7):'unknown';
+    if(!archByMonth[mk])archByMonth[mk]={bets:[],days:{}};
+    archByMonth[mk].bets.push(p);
+    if(!archByMonth[mk].days[dk])archByMonth[mk].days[dk]=[];
+    archByMonth[mk].days[dk].push(p);
+  }
+  const recentByDay={};
+  for(const p of recentBets){const dk=_pickDate(p)||'unknown';if(!recentByDay[dk])recentByDay[dk]=[];recentByDay[dk].push(p);}
+  const recentHtml=Object.entries(recentByDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,db])=>dayFolder(d,db,'r')).join('');
+  const archHtml=Object.entries(archByMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,{bets,days}])=>monthFolder(mk,bets,days)).join('');
+  const totPr=perf(all);
+  const summaryBar=totPr.n?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px">${all.length} total · <span style="color:var(--nc)">${totPr.w}W</span> <span style="color:var(--hc)">${totPr.l}L</span> · <span style="color:${pctCol(totPr.pct)};font-weight:700">${totPr.pct!==null?(totPr.pct*100).toFixed(1)+'%':''}</span> · <span style="color:${uCol2(totPr.u)}">${totPr.u>=0?'+':''}${totPr.u.toFixed(1)}u</span></div>`:'';
+  el.innerHTML=filterHtml+summaryBar
+    +(recentBets.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;margin-bottom:5px">// RECENT — ${recentBets.length} BETS</div>`+recentHtml:'')
+    +(archivedBets.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px;margin:10px 0 6px">// HISTORY ARCHIVE — ${Object.keys(archByMonth).length} MONTH${Object.keys(archByMonth).length!==1?'S':''} · ${archivedBets.length} BETS</div>`+archHtml:'')
+    +(!all.length?'<div class="empty">NO BETS FOR SELECTED FILTERS</div>':'');
 }
 
 function renderTennisOverall(){
