@@ -6161,12 +6161,15 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const recentByDay={};
   for(const p of recentBets){const dk=_pickDate(p)||'unknown';if(!recentByDay[dk])recentByDay[dk]=[];recentByDay[dk].push(p);}
   const recentHtml=Object.entries(recentByDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,db])=>dayFolder(d,db,'r')).join('');
+  // Ensure current month + July 2026 always appear even with no bets
+  const _todayMk=today().slice(0,7);
+  ['2026-07',_todayMk].forEach(mk=>{if(!archByMonth[mk])archByMonth[mk]={bets:[],days:{}};});
   const archHtml=Object.entries(archByMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,{bets,days}])=>monthFolder(mk,bets,days)).join('');
   const totPr=perf(all);
   const summaryBar=totPr.n?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px">${all.length} total · <span style="color:var(--nc)">${totPr.w}W</span> <span style="color:var(--hc)">${totPr.l}L</span> · <span style="color:${pctCol(totPr.pct)};font-weight:700">${totPr.pct!==null?(totPr.pct*100).toFixed(1)+'%':''}</span> · <span style="color:${uCol2(totPr.u)}">${totPr.u>=0?'+':''}${totPr.u.toFixed(1)}u</span></div>`:'';
   el.innerHTML=filterHtml+summaryBar
     +(recentBets.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;margin-bottom:5px">// RECENT — ${recentBets.length} BETS</div>`+recentHtml:'')
-    +(archivedBets.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px;margin:10px 0 6px">// HISTORY ARCHIVE — ${Object.keys(archByMonth).length} MONTH${Object.keys(archByMonth).length!==1?'S':''} · ${archivedBets.length} BETS</div>`+archHtml:'')
+    +(Object.keys(archByMonth).length?`<div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px;margin:10px 0 6px">// HISTORY ARCHIVE — ${Object.keys(archByMonth).length} MONTH${Object.keys(archByMonth).length!==1?'S':''}${archivedBets.length?' · '+archivedBets.length+' BETS':''}</div>`+archHtml:'')
     +(!all.length?'<div class="empty">NO BETS FOR SELECTED FILTERS</div>':'');
 }
 
