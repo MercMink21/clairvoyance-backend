@@ -3219,6 +3219,10 @@ def write_data_json(bundle: dict) -> None:
     fe_mirror = ROOT / "frontend" / "data.json"
     fe_mirror.write_text(payload)
     note(f"data.json written ({len(payload)//1024} KB) → docs/ (github.io) + frontend/ (local)")
+    # Write version.json — mobile PWA reads this to detect when a new build is deployed
+    version_payload = json.dumps({"built": TODAY_ISO.replace("-","")[:8]+"-"+datetime.now().strftime("%H%M"), "ts": int(time.time())}, indent=2)
+    (ROOT / "docs" / "version.json").write_text(version_payload)
+    note("version.json updated for mobile freshness check")
 
 def patch_html_timestamp() -> None:
     # FE is now docs/app.html — source of truth.
