@@ -2479,13 +2479,13 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   if(API_ONLINE()){
     const mlInt=parseInt(String(ml).replace('+',''))||0;
     const espnGame=ESPN_GAMES.find(g=>(g.hA===hA&&g.awA===awA)||(g.hA===awA&&g.awA===hA));
-    const body={sport:type==='NBA'?'nba':type==='PL'?'nhl':'mlb',bet_type:type==='ML'?'moneyline':type==='OU'?'over':'runline',
+    const body={sport:sportTag.toLowerCase(),bet_type:_betTypeNorm==='ML'?'moneyline':_betTypeNorm==='OU'?'over':_betTypeNorm==='PROP'?'prop':'runline',
       selection:betOn,odds:mlInt,amount:100,model_probability:p,game_date:dateKey,
       home_team:hA,away_team:awA,espn_game_id:espnGame?.id||null,over_under:espnGame?.ou||null};
     const res=await api('POST','/picks/',body);
     if(res){
       const preds=getP();const localId=`api_${res.id}`;
-      if(!preds.find(x=>x.id===localId))preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:type==='NBA'?'NBA':type==='PL'?'NHL':'MLB',betType:type,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now()});
+      if(!preds.find(x=>x.id===localId))preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now()});
       saveP(preds);
       const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
@@ -2496,8 +2496,18 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   }
   const preds=getP();
   const id=`${dateKey}_${hA}_${awA}_${type}_${betOn.replace(/\s/g,'')}`;
-  const sportTag=type==='NBA'?'NBA':type==='PL'?'NHL':type==='TEN'?'TEN':'MLB';
-  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,betType:type,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,surface:type==='TEN'?'clay':null});saveP(preds);}
+  // Infer sport from type, then team abbreviation
+  const _NHL=new Set(['VGK','CAR','BOS','NYR','TOR','FLA','EDM','COL','MTL','WPG','TBL','PIT','WSH','SJS','OTT','NJD','STL','MIN','DAL','NSH','CGY','ANA','DET','BUF','CBJ','CHI','SEA','VAN','NYI','LAK','ARI','PHI']);
+  const _NBA=new Set(['SA','NY','OKC','CLE','MIL','PHX','DEN','MEM','GS','LAL','LAC','MIA','ATL','BKN','SAS','POR','SAC','HOU','ORL','IND','CHA','UTA','NOP','MIN','WAS']);
+  let sportTag;
+  if(type==='NBA')sportTag='NBA';
+  else if(type==='PL'||type==='NHL')sportTag='NHL';
+  else if(type==='TEN'||type==='TENNIS')sportTag='TEN';
+  else if(_NHL.has(hA)||_NHL.has(awA))sportTag='NHL';
+  else if(_NBA.has(hA)||_NBA.has(awA))sportTag='NBA';
+  else sportTag='MLB';
+  const _betTypeNorm=type==='PL'?'PL':type==='RL'?'RL':type==='OU'?'OU':type==='PROP'?'PROP':'ML';
+  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,surface:sportTag==='TEN'?'clay':null});saveP(preds);}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
@@ -8945,7 +8955,7 @@ function renderSlam(code){
           <div style="font-family:var(--orb);font-size:14px;font-weight:700">${p1Name} vs ${p2Name}</div>
           <div style="font-family:var(--mono);font-size:12px;color:var(--nc);margin-top:2px">LEAN: ${proj}</div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${basis}</div>
-          <button onclick="lockPick('${p1Name.replace(/'/g,"\\'")}','${p2Name.replace(/'/g,"\\'")}','ML','${proj.replace(/'/g,"\\'")}',${projP.toFixed(3)},'auto',${(projP/(1-projP)).toFixed(3)},'${today()}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,119,0,.06);border:1px solid rgba(255,119,0,.3);color:var(--mc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+          <button onclick="lockPick('${p1Name.replace(/'/g,"\\'")}','${p2Name.replace(/'/g,"\\'")}','TEN','${proj.replace(/'/g,"\\'")}',${projP.toFixed(3)},'auto',${(projP/(1-projP)).toFixed(3)},'${today()}')" style="margin-top:4px;font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(255,119,0,.06);border:1px solid rgba(255,119,0,.3);color:var(--mc);border-radius:2px;cursor:pointer">LOCK PICK</button>
         </div>`;
       }).join('');
       html+=`</div>`;
