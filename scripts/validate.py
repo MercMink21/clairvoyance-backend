@@ -123,7 +123,6 @@ required_ids = [
     ('sp-analytics',         'Analytics pane'),
     ('sp-social',            'Social pane'),
     ('sp-news',              'News pane'),
-    ('sp-fut',               'Futures pane'),
     ('hdr',                  'Header'),
     ('sbar',                 'Sport nav bar'),
     ('home-picks',           'Home picks container'),
