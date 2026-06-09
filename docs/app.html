@@ -276,29 +276,28 @@ body{line-height:1.5}
 <!-- HOME -->
 <div id="sp-home" class="spane act">
   <div class="sa" style="padding:16px">
-    <!-- Live games ticker -->
-    <div id="home-live-games" style="margin-bottom:14px"></div>
-    <!-- Record blocks -->
-    <div id="home-streak-tracker" style="margin-bottom:10px"></div>
-        <div id="home-engine-record" style="margin-bottom:14px"></div>
-    <!-- By-sport breakdown -->
-    <div id="home-performance" style="margin-bottom:14px"></div>
-    <!-- Data timestamp -->
-    <div id="home-data-ts" style="text-align:center;margin:10px 0 4px"></div>
+    <!-- Engine performance section -->
+    <div id="home-engine-record" style="margin-bottom:14px"></div>
+    <!-- Today's pending bets -->
+    <div id="home-pending-bets" style="margin-bottom:14px"></div>
     <!-- Utility buttons -->
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-o btn-sm" onclick="exportLockedProps()">EXPORT JSON</button>
       <button class="btn btn-p btn-sm" onclick="exportBetsClipboard()">SYNC EXPORT</button>
-      <button id="notif-btn" class="btn btn-o btn-sm" onclick="requestNotifPermission().then(()=>{const p=('Notification' in window)?Notification.permission:'unsupported';const b=document.getElementById('notif-btn');if(b){b.textContent=p==='granted'?'🔔 ON':p==='denied'?'🔕 OFF':'NOTIFS';b.style.borderColor=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';b.style.color=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';}})" style="min-width:70px">NOTIFS</button>
+      <button id="notif-btn" class="btn btn-o btn-sm" onclick="requestNotifPermission().then(()=>{const p=('Notification' in window)?Notification.permission:'unsupported';const b=document.getElementById('notif-btn');if(b){b.textContent=p==='granted'?'🔔 ON':p==='denied'?'🔕 OFF':'NOTIFS';b.style.borderColor=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';b.style.color=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':''}})" style="min-width:70px">NOTIFS</button>
       <button class="btn btn-n btn-sm" onclick="showImportModal()">SYNC IMPORT</button>
     </div>
     <!-- Hidden stubs — keep IDs so legacy JS calls don't crash -->
-    <div id="home-picks"           style="display:none"></div>
-    <div id="home-best-bets"       style="display:none"></div>
+    <div id="home-live-games"        style="display:none"></div>
+    <div id="home-streak-tracker"    style="display:none"></div>
+    <div id="home-performance"       style="display:none"></div>
+    <div id="home-data-ts"           style="display:none"></div>
+    <div id="home-picks"             style="display:none"></div>
+    <div id="home-best-bets"         style="display:none"></div>
     <div id="home-yesterday-results" style="display:none"></div>
-    <div id="home-games"           style="display:none"></div>
-    <div id="home-date-display"    style="display:none"></div>
-    <div id="home-locked"          style="display:none"></div>
+    <div id="home-games"             style="display:none"></div>
+    <div id="home-date-display"      style="display:none"></div>
+    <div id="home-locked"            style="display:none"></div>
   </div>
 </div>
 
@@ -6918,95 +6917,152 @@ function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateStri
 // ═══ NAVIGATION ══════════════════════════════════════════════
 function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
 function renderHomePage(){
-  const allBets=getP().filter(p=>p.outcome!=='pending');
-  const calcPerf=(bets)=>{
+  const allBets=getP();
+  const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
+  const pending=allBets.filter(p=>p.outcome==='pending');
+  const now=Date.now();
+  const todayStr=today();
+  const yd=yesterday();
+
+  const calcPerf=bets=>{
     const w=bets.filter(p=>p.outcome==='win').length;
     const l=bets.filter(p=>p.outcome==='loss').length;
     const units=bets.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0);
     return{w,l,n:bets.length,pct:bets.length?w/bets.length:null,units};
   };
-  const now=Date.now(), yd=yesterday();
-  const col=(p)=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
-  const uCol=(u)=>u>=0?'var(--nc)':'var(--hc)';
+  const pCol=p=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
+  const uCol=u=>u>=0?'var(--nc)':'var(--hc)';
+  const sportColor={MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',default:'var(--t3)'};
 
-  // ── Live games ────────────────────────────────────────────────────────────────
-  renderHomeLiveGames();
-
-  // ── Engine record (4 cells) ───────────────────────────────────────────────────
+  // ── ENGINE PERFORMANCE ──────────────────────────────────────────────────────
   const recEl=document.getElementById('home-engine-record');
   if(recEl){
-    const r7=allBets.filter(p=>p.lockedAt>=now-7*86400000);
-    const r30=allBets.filter(p=>p.lockedAt>=now-30*86400000);
-    const ry=allBets.filter(p=>p.date===yd);
-    const pa=calcPerf(allBets),p7=calcPerf(r7),p30=calcPerf(r30),py=calcPerf(ry);
-    const cell=(lbl,d,accent)=>`<div style="flex:1;min-width:0;background:rgba(10,0,24,.85);border:1px solid ${accent};border-radius:3px;padding:10px 8px">
-      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:6px;white-space:nowrap">${lbl}</div>
-      <div style="font-family:var(--orb);font-size:16px;font-weight:900;color:var(--t);white-space:nowrap">${d.w}W&ndash;${d.l}L</div>
-      <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${col(d.pct)};margin-top:2px">${d.pct!==null?(d.pct*100).toFixed(1)+'%':'--'}</div>
-      <div style="font-family:var(--mono);font-size:11px;color:${uCol(d.units)};margin-top:2px">${d.units>=0?'+':''}${d.units.toFixed(1)}u</div>
-    </div>`;
-    recEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// ENGINE RECORD</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${cell('YESTERDAY',py,'rgba(255,221,0,.3)')}
-      ${cell('ROLLING 7D',p7,'rgba(0,240,255,.25)')}
-      ${cell('LAST 30D',p30,'rgba(187,255,0,.2)')}
-      ${cell('ALL TIME',pa,'rgba(240,0,255,.25)')}
-    </div>`;
-  }
+    const pa=calcPerf(settled);
+    const r7=calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-7*86400000));
+    const r30=calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-30*86400000));
+    const ry=calcPerf(settled.filter(p=>p.date===yd));
+    const rtd=calcPerf(settled.filter(p=>p.date===todayStr));
 
-  // ── Record by sport + ML/PROP/RL sub-rows ─────────────────────────────────────
-  const perfEl=document.getElementById('home-performance');
-  if(perfEl){
-    const sports=['MLB','NHL','NBA','TEN'];
-    const sportLabel={MLB:'⚾  BASEBALL',NHL:'🏒  HOCKEY',NBA:'🏀  BASKETBALL',TEN:'🎾  TENNIS'};
-    const sportColor={MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)'};
-    const rows=sports.map(s=>{
-      const sb=allBets.filter(p=>p.sport===s);
-      const d=calcPerf(sb);
-      if(!d.n)return'';
+    // Build last-7-days day-by-day breakdown
+    const dayRows=[];
+    for(let i=6;i>=0;i--){
+      const d=new Date(Date.now()-i*86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
+      const db=settled.filter(p=>p.date===d);
+      if(!db.length)continue;
+      const dp=calcPerf(db);
+      const label=i===0?'TODAY':i===1?'YESTERDAY':new Date(Date.now()-i*86400000).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}).toUpperCase();
+      dayRows.push({label,dp,d});
+    }
+
+    // By-sport breakdown for the details panel
+    const sports=['MLB','NBA','NHL','TEN'];
+    const sportRows=sports.map(s=>{
+      const sb=settled.filter(p=>p.sport===s);const sp=calcPerf(sb);if(!sp.n)return'';
       const c=sportColor[s]||'var(--t2)';
-      const pctStr=d.pct!==null?(d.pct*100).toFixed(1)+'%':'--';
-      const barW=Math.min(100,Math.max(0,(d.pct||0)*100));
-      const barCol=d.pct>=.62?'var(--nc)':d.pct>=.50?'var(--vc)':'var(--hc)';
-      // Sub-rows: ML, PROP, RL (spread/line)
-      const types=['ML','PROP','RL'];
-      const typeLabel={ML:'ML',PROP:'PROP',RL:'SPREAD'};
-      const subRows=types.map(t=>{
-        const tb=sb.filter(p=>p.betType===t);
-        const td=calcPerf(tb);
-        if(!td.n)return'';
-        const tpct=td.pct!==null?(td.pct*100).toFixed(0)+'%':'--';
-        const tc=td.pct>=.62?'var(--nc)':td.pct>=.50?'var(--vc)':'var(--hc)';
-        return`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px 4px 16px;border-top:1px solid rgba(255,255,255,.04)">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${typeLabel[t]}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${td.w}W&ndash;${td.l}L</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${tc}">${tpct}</span>
-          <span style="font-family:var(--mono);font-size:10px;color:${uCol(td.units)}">${td.units>=0?'+':''}${td.units.toFixed(1)}u</span>
+      const bar=Math.min(100,Math.max(0,(sp.pct||0)*100));
+      const bc=pCol(sp.pct);
+      // type breakdown
+      const typeRows=['ML','PROP','RL'].map(t=>{
+        const tb=sb.filter(p=>p.betType===t||( t==='RL'&&p.betType==='PL'));const tp=calcPerf(tb);if(!tp.n)return'';
+        return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 16px;border-top:1px solid rgba(255,255,255,.04)">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${t==='RL'?'SPREAD':t}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${tp.w}W-${tp.l}L</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pCol(tp.pct)}">${tp.pct!==null?(tp.pct*100).toFixed(0)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${uCol(tp.units)}">${tp.units>=0?'+':''}${tp.units.toFixed(1)}u</span>
         </div>`;
       }).filter(Boolean).join('');
-      const fid='hsp_'+s;
-      return`<div style="border:1px solid rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-bottom:7px">
-        <div onclick="const c=document.getElementById('${fid}');c.style.display=c.style.display==='none'?'block':'none';this.querySelector('.hsp-arrow').textContent=c.style.display==='none'?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px 10px;background:rgba(10,0,24,.8)">
-          <div style="display:flex;align-items:center;gap:10px;flex:1">
-            <span class="hsp-arrow" style="font-family:var(--mono);font-size:11px;color:${c}">▼</span>
-            <span style="font-family:var(--mono);font-size:13px;color:${c};letter-spacing:1px">${sportLabel[s]}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-family:var(--orb);font-size:14px;font-weight:900;color:var(--t)">${d.w}W&ndash;${d.l}L</span>
-            <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${barCol};min-width:46px;text-align:right">${pctStr}</span>
-          </div>
+      return`<div style="border-top:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px">
+          <span style="font-family:var(--mono);font-size:12px;color:${c};min-width:38px">${s}</span>
+          <div style="flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px"><div style="width:${bar}%;height:100%;background:${bc};border-radius:2px"></div></div>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--t2);min-width:55px;text-align:right">${sp.w}W-${sp.l}L</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${bc};min-width:38px;text-align:right">${sp.pct!==null?(sp.pct*100).toFixed(1)+'%':'--'}</span>
         </div>
-        <div style="height:3px;background:rgba(255,255,255,.04)"><div style="width:${barW}%;height:100%;background:${barCol}"></div></div>
-        <div id="${fid}" style="background:rgba(4,0,12,.6)">${subRows}</div>
+        ${typeRows}
       </div>`;
     }).filter(Boolean).join('');
-    perfEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// RECORD BY SPORT</div>
-      ${rows||'<div class="empty">NO SETTLED BETS</div>'}`;
+
+    const detailsId='home-perf-details';
+    const day7Html=dayRows.length?dayRows.map(r=>{
+      const bc=pCol(r.dp.pct);
+      return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3);min-width:110px">${r.label}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${r.dp.w}W-${r.dp.l}L</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${bc}">${r.dp.pct!==null?(r.dp.pct*100).toFixed(0)+'%':'--'}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:${uCol(r.dp.units)}">${r.dp.units>=0?'+':''}${r.dp.units.toFixed(1)}u</span>
+      </div>`;
+    }).join(''):'<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px 0">NO SETTLED BETS IN LAST 7 DAYS</div>';
+
+    // Summary stat chips
+    const chip=(lbl,val,accent)=>`<div style="flex:1;min-width:0;text-align:center;padding:10px 6px;background:rgba(10,0,24,.85);border:1px solid ${accent};border-radius:3px">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:5px;white-space:nowrap">${lbl}</div>
+      <div style="font-family:var(--orb);font-size:15px;font-weight:900;color:var(--t)">${val.wl}</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pCol(val.pct)}">${val.pct!==null?(val.pct*100).toFixed(1)+'%':'--'}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:${uCol(val.units)};margin-top:1px">${val.units>=0?'+':''}${val.units.toFixed(1)}u</div>
+    </div>`;
+    const fmt=d=>({wl:`${d.w}W–${d.l}L`,pct:d.pct,units:d.units});
+
+    recEl.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc)">// ENGINE PERFORMANCE</span>
+      <button onclick="const d=document.getElementById('${detailsId}');const open=d.style.display!=='none';d.style.display=open?'none':'block';this.textContent=open?'▼ MORE':'▲ LESS'" style="font-family:var(--mono);font-size:11px;padding:2px 10px;background:transparent;border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">▼ MORE</button>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+      ${chip('TODAY',fmt(rtd),'rgba(255,221,0,.25)')}
+      ${chip('YESTERDAY',fmt(ry),'rgba(0,240,255,.2)')}
+      ${chip('ROLLING 7D',fmt(r7),'rgba(187,255,0,.18)')}
+      ${chip('ALL TIME',fmt(pa),'rgba(240,0,255,.22)')}
+    </div>
+    <div id="${detailsId}" style="display:none;border:1px solid rgba(0,240,255,.15);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.7)">
+      <div style="padding:10px 12px;border-bottom:1px solid rgba(0,240,255,.12)">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--nc);margin-bottom:8px">// LAST 7 DAYS</div>
+        ${day7Html}
+      </div>
+      <div style="padding:10px 12px">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3);margin-bottom:6px">// BY SPORT</div>
+        ${sportRows||'<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">NO DATA</div>'}
+      </div>
+    </div>`;
   }
 
-  // ── Hero stats ─────────────────────────────────────────────────────────────────
+  // ── TODAY'S PENDING BETS ────────────────────────────────────────────────────
+  const pendEl=document.getElementById('home-pending-bets');
+  if(pendEl){
+    const todayPending=pending.filter(p=>p.date===todayStr);
+    if(!todayPending.length){
+      pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// TODAY'S BETS</div>
+      <div class="empty" style="font-size:13px">NO BETS LOCKED FOR TODAY</div>`;
+    } else {
+      const sc=s=>sportColor[s]||sportColor.default;
+      const rows=todayPending.map(p=>{
+        const mu=p.hA==='PARLAY'?'PARLAY':(p.awA&&p.hA?p.awA+' at '+p.hA:p.hA||p.betOn||'');
+        const conf=p.winProb?`${(p.winProb*100).toFixed(0)}%`:'';
+        return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+              <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${mu}</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.betOn||''}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}${conf?' · '+conf:''}</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderHomePage()" style="font-size:11px">✓ WIN</button>
+            <button class="btn btn-o btn-sm" onclick="recR('${p.id}','loss');renderHomePage()" style="font-size:11px;color:var(--hc);border-color:var(--hc)">✗ LOSS</button>
+          </div>
+        </div>`;
+      }).join('');
+      pendEl.innerHTML=`
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// TODAY'S BETS — ${todayPending.length} PENDING</div>
+      <div style="border:1px solid rgba(0,240,255,.2);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6)">
+        ${rows}
+      </div>`;
+    }
+  }
+
+  // ── Hero stats (legacy hidden elements) ────────────────────────────────────
   try{
-    const _ha=allBets;const _hw=_ha.filter(p=>p.outcome==='win').length,_hl=_ha.filter(p=>p.outcome==='loss').length;
+    const _ha=settled;const _hw=_ha.filter(p=>p.outcome==='win').length,_hl=_ha.filter(p=>p.outcome==='loss').length;
     const _hacc=_ha.length?_hw/_ha.length:null;
     const _hae=document.getElementById('home-hero-acc');const _hre=document.getElementById('home-hero-rec');const _hte=document.getElementById('home-hero-ts');
     if(_hae)_hae.textContent=_hacc?(_hacc*100).toFixed(1)+'%':'--';
