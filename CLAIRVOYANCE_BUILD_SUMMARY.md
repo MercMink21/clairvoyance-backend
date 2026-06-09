@@ -1,5 +1,5 @@
 # CLAIRVOYANCE ENGINE — Master Build Summary & Session Context
-> Generated: June 9, 2026 (Session 4) | Supersedes all prior versions
+> Generated: June 9, 2026 (Session 5) | Supersedes all prior versions
 
 ---
 
@@ -12,11 +12,11 @@
 | **Root redirect** | `docs/index.html` → identical copy of `app.html` |
 | **Custom domain** | `clairvoyanceengine.info` (Talos spam review flagged ~2026-05-31) |
 | **GitHub Pages source** | `docs/` folder |
-| **Latest commit** | `2bcdf86` — feat(tags): CV_META league/sport system, correct tags everywhere |
+| **Latest commit** | `76b1952` — fix(wnba): real BBRef stats + working props |
 | **Local repo path** | `/Users/reeseoliver/clairvoyance-backend/` |
-| **Mobile repo** | `MercMink21/Clairvoyance-backend-mobile` — `https://mercmink21.github.io/Clairvoyance-backend-mobile/` |
+| **Mobile repo** | `MercMink21/Clairvoyance-backend-mobile` |
 
-**⚠️ ALWAYS link to `/app.html` directly** — never the root URL.
+**ALWAYS link to `/app.html` directly** — never the root URL.
 
 ---
 
@@ -24,112 +24,80 @@
 
 ```
 docs/
-  app.html          # 15,483 lines — full SPA, SOURCE OF TRUTH (HTML+CSS+JS+standalone script)
+  app.html          # 15,996 lines — full SPA, SOURCE OF TRUTH
   index.html        # IDENTICAL copy of app.html — always kept in sync
-  data.json         # 784KB — live sports data (written by Python, network-first)
-  picks.json        # 545KB — permanent bet history (212 bets, 166W-37L-9P)
-  version.json      # Tiny — build timestamp, read by mobile PWA freshness check
-  live_data.json    # Live in-game scores (MLB/NBA/NHL/Tennis, refreshes ~45s)
-  sw.js             # Service worker SELF-DESTRUCT (clears cache, unregisters)
-  manifest.json     # PWA manifest — start_url: ./app.html
-  config.js         # API base URL detection (localhost vs GitHub Pages)
-  card.png          # Social card image
+  data.json         # ~578KB — live sports data
+  picks.json        # ~546KB — permanent bet history (212 bets, 166W-37L-9P)
+  version.json      # Build timestamp
+  live_data.json    # Live in-game scores (~45s refresh)
+  sw.js             # Service worker SELF-DESTRUCT (prevents caching)
 scripts/
-  clairvoyance_update.py  # 3,700+ lines — Python data fetcher + GitHub pusher
-  validate.py             # Pre-push validator (93 checks, auto-blocks bad pushes)
-  run_update.sh           # Wrapper — use --push to auto-commit
-  setup_cron.sh           # Installs cron jobs
-  mobile_transform.py     # Transforms app.html into iPhone-optimized build
-  inject_sim_tracker.py   # Injects Simulator+Tracker standalone <script> block
+  clairvoyance_update.py  # 3,800+ lines — Python data fetcher
+  validate.py             # Pre-push validator (93 checks)
+  run_update.sh           # --push flag auto-commits
+  mobile_transform.py     # iPhone-optimized build
+  inject_sim_tracker.py   # Injects Simulator+Tracker standalone script
 .github/workflows/
-  mobile-sync.yml         # GitHub Action: syncs to Clairvoyance-backend-mobile on every push
-data/
-  bundle.json       # Internal data bundle
-CLAIRVOYANCE_BUILD_SUMMARY.md     # This file
-CLAIRVOYANCE_SESSION_CONTEXT.json # Machine-readable session state
+  mobile-sync.yml         # Auto-syncs to mobile repo on every push
+CLAIRVOYANCE_BUILD_SUMMARY.md
+CLAIRVOYANCE_SESSION_CONTEXT.json
 ```
 
-### Script Architecture Note (CRITICAL):
-`app.html` contains **two script blocks**:
-1. **Main script** (line ~144, ~1.1MB) — all engine logic inside `DOMContentLoaded` async IIFE
-2. **Standalone script** (injected by `inject_sim_tracker.py` after main `</script>`) — Simulator + Tracker functions as true globals, NOT inside IIFE
+### Script Architecture (CRITICAL):
+app.html has THREE script blocks:
+1. Script 1: tiny inline (0 chars)
+2. Main script (~1.13MB) — DOMContentLoaded async IIFE
+3. Standalone script (~38KB) — Simulator + Tracker globals
 
-Any new global functions needed by `onclick` handlers must either be:
-- Added to the standalone script block, OR
-- Exported via `window.fnName = fn` inside the IIFE
+New global functions for onclick handlers must go in standalone script OR be exported via window.fnName = fn inside the IIFE.
 
 ---
 
 ## 3. Tech Stack
 
-- **Frontend**: Vanilla JS/HTML/CSS — single file SPA, NO build step, NO npm, NO framework
-- **Fonts**: Orbitron (`var(--orb)`), Share Tech Mono (`var(--mono)`), Exo 2
-- **Backend**: Python 3 (`clairvoyance_update.py`) — runs via GitHub Actions
-- **Hosting**: GitHub Pages (static, `docs/` folder)
-- **Data refresh**: GitHub Actions (`manual-sync.yml`) triggered by ↻ SYNC button
-- **No service worker**: `sw.js` self-destructs on every load (prevents caching issues)
+- Frontend: Vanilla JS/HTML/CSS — single file SPA, NO build step, NO npm
+- Fonts: Orbitron (--orb), Share Tech Mono (--mono), Exo 2
+- Backend: Python 3 (clairvoyance_update.py) via GitHub Actions
+- Hosting: GitHub Pages (docs/ folder)
+- No service worker: sw.js self-destructs on every load
 
 ---
 
 ## 4. Design System (CSS Tokens)
 
 ```css
---void: #010006     /* page background */
---nc:   #00f0ff     /* neon cyan — primary accent */
---hc:   #ff2090     /* hot pink — danger/loss / MLB */
---vc:   #bbff00     /* volt green — value picks */
---ic:   #6690ff     /* indigo — NHL/info */
---pc:   #f000ff     /* purple — NBA/picks */
---gc:   #ffdd00     /* gold — wins/champion */
---mc:   #ff7700     /* orange — tennis/warning */
---rc:   #00ffaa     /* seafoam — special */
---orb:  'Orbitron', sans-serif
+--void: #010006  --nc: #00f0ff  --hc: #ff2090  --vc: #bbff00
+--ic: #6690ff    --pc: #f000ff  --gc: #ffdd00  --mc: #ff7700  --rc: #00ffaa
+--orb: 'Orbitron', sans-serif
 --mono: 'Share Tech Mono', monospace
 ```
-
-**CSS utility classes**: `.card`, `.sh`, `.nb`, `.btn`, `.btn-p`, `.btn-o`, `.btn-sm`, `.tab`, `.act`, `.sa`, `.sg`, `.sgt`, `.spane`, `.fi`, `.pk`, `.pkt`, `.pkt2`, `.pkd`, `.pkb`, `.g2`, `.g3`, `.g4`, `.ct`, `.stat-val`, `.stat-lbl`, `.chip`, `.gc`, `.gch`, `.gtm`, `.gsp`, `.brow`, `.tbl-wrap`
 
 ---
 
 ## 5. Sport Panes & Navigation
 
-### Main Nav: `SS(sport)` | Sub-tab: `T(sport, tab)` | Sub-pane: `setSub(sport, sub)`
+Main Nav: SS(sport) | Sub-tab: T(sport, tab) | Sub-pane: setSub(sport, sub)
 
 | Pane ID | Nav Label | Sub-tabs | Sub-panes |
 |---|---|---|---|
-| `sp-home` | HOME | — | — |
-| `sp-mlb` | BASEBALL | today, games, schedule, props, parlay, nrfi, ranks, model, set | mlb |
-| `sp-nba` | BASKETBALL | today, props, parlay, model, config | nba, wnba |
-| `sp-hk` | HOCKEY | today, props, parlay, model, config, edge, goalies, puck | nhl, pwhl, ncaah (College Hockey), khl, shl, liiga |
-| `sp-fb` | FOOTBALL | picks, schedule, stats | nfl, cfb |
-| `sp-soc` | SOCCER | worldcup | — |
-| `sp-ten` | TENNIS | picks, today, slams, schedule, h2h, rankings, compare, model, config | — |
-| `sp-sim` | SIMULATOR | — | — |
-| `sp-tracker` | TRACKER | — | locked, parlay |
-| `sp-ovr` | OVERALL | dash, history, adaptive, sync | — |
-| `sp-analytics` | ANALYTICS | — | betanalytics, bethistory, bysport, byteam, mlb, nhl, nba, ncaa, fb, trends |
-| `sp-fut` | FUTURES | nba, mlb, nhl, tennis | — |
-| `sp-social` | SOCIAL | cards, monte, record | — |
-| `sp-news` | NEWS | all, mlb, nba, nhl, injuries, trades | — |
-| `sp-live` | LIVE | games, bets | — |
+| sp-home | HOME | — | — |
+| sp-mlb | BASEBALL | games, schedule, props, parlay, nrfi, ranks, model, set | mlb |
+| sp-nba | BASKETBALL | games, props, parlay, model, config | nba, wnba |
+| sp-hk | HOCKEY | games, props, parlay, model, config, edge, goalies, puck | nhl, pwhl, ncaah, khl, shl, liiga |
+| sp-fb | FOOTBALL | picks, schedule, stats | nfl, cfb |
+| sp-soc | SOCCER | worldcup | — |
+| sp-ten | TENNIS | picks, today, slams, schedule, h2h, rankings, compare, model, config | — |
+| sp-sim | SIMULATOR | — | — |
+| sp-tracker | TRACKER | — | locked, parlay |
+| sp-ovr | OVERALL | dash, history, adaptive, sync | — |
+| sp-analytics | ANALYTICS | — | betanalytics, bethistory, bysport, byteam, mlb, nhl, nba, trends |
+| sp-fut | FUTURES | nba, mlb, nhl, tennis | — |
+| sp-social | SOCIAL | cards, monte, record | — |
+| sp-news | NEWS | all, mlb, nba, nhl, injuries, trades | — |
+| sp-live | LIVE | games, bets | — |
 
-### Auto-load behavior (added Session 4):
-`SS()` now calls `T(sport, 'today_tab')` on navigation so every sport lands on the TODAY tab:
-- MLB → `T('mlb','games')` | Hockey → `setSub('hk','nhl')` + `T('hk','games')`
-- Basketball → `setSub('nba','nba')` + `T('nba','games')` | Tennis → `T('ten','today')`
-- `setSub()` also auto-jumps: NHL → TODAY, NBA → TODAY, WNBA → TODAY
-
-### Coming Soon panes (activates dates):
-| Sub-pane | Activates |
-|---|---|
-| College Hockey | October 2026 · 2026-27 Season |
-| PWHL | November 2026 · 2026-27 Season |
-| KHL | September 1, 2026 |
-| SHL | September 10, 2026 |
-| LIIGA | September 5, 2026 |
-| CFB | August 29, 2026 |
-| NFL | September 3, 2026 |
-| World Cup | June–July 2026 |
+WNBA sub-tabs (inside NBA pane): TODAY · PROPS · PARLAY · MODEL · CONFIG
+(SCHEDULE and STATS were added then removed in Session 5)
 
 ---
 
@@ -137,529 +105,254 @@ Any new global functions needed by `onclick` handlers must either be:
 
 ### MLB
 - Monte Carlo (5K-8K sims) + Bayesian + ELO + Poisson runs model
-- xFIP, wOBA, wRC+, BABIP, ISO from sabermetrics; NRFI probability model
-- Ensemble: `ENS = {mc:.50, bay:.20, elo:.30}`
-- Key functions: `mlbEns()`, `buildMLB()`, `renderMLBEnginePicks()`, `projectMLBScore()`
+- Ensemble: ENS = {mc:.50, bay:.20, elo:.30}
+- Key: mlbEns(), buildMLB(), renderMLBEnginePicks()
 
 ### NBA
-- ELO (`NBA_ELO`), Monte Carlo (5K sims), BBRef advanced stats
-- TS%, BPM, Net Rating, Pace, eFG%
-- Ensemble: `NBA_ENS = {mc:.50, bay:.20, elo:.30}`
-- Key functions: `nbaEns()`, `renderNBAGames()`, `applyNBAWeights()`
+- ELO (NBA_ELO), Monte Carlo (5K sims), BBRef advanced stats
+- Ensemble: NBA_ENS = {mc:.50, bay:.20, elo:.30}
+- Key: nbaEns(), renderNBAGames(), applyNBAWeights()
 
-### WNBA
-- Same model architecture as NBA
-- Ensemble: `WNBA_ENS = {mc:.50, bay:.20, elo:.30}` — `applyWNBAWeights()`
-- Win probability: net rating logistic transform from `D.wnba.teamStats`
-- Key functions: `renderWNBAGames()`, `renderWNBAProps()`, `applyWNBAWeights()`
+### WNBA (Session 5 — fully rebuilt)
+- wnbaMC(): Poisson 5K MC using team net ratings; inline Box-Muller RNG
+- wnbaEns(): MC(45%) + Bayesian(25%) + ELO(30%), ESPN odds blended 30%
+- WNBA_ELO: 14 teams — NY:1640, MIN:1590, LV:1560, CON:1535, IND:1525,
+  SEA:1495, CHI:1485, PHX:1455, ATL:1445, LA:1430, DAL:1415, GS:1410, WSH:1390, TOR:1355
+- WNBA_WIN_PCT: 2026 fallback win% (NY:.72, MIN:.65, LV:.60 ... TOR:.30)
+- _wnbaKey(): ESPN/BBRef/full-name abbr normaliser
+- Grades: ELITE>=68% · LOCK>=61% · LEAN>=54% · SKIP<54%
+- Net rating derived from ELO when teamStats empty: (elo-1490)*0.10
+
+### WNBA Props (Session 5 — rebuilt)
+- Source: BBRef per-game stats (205 players, table id=per_game)
+- PTS/REB/AST props via Poisson model P(X >= line) at line ~82% of avg
+- Opponent defensive context from teamStats.drtg
+- USG%, TS% per card; Linemate WNBA trend overlay appended
+- Team abbr via _wnbaKey() for ESPN/BBRef mismatch
 
 ### NHL
-- xGF/60, Corsi, GSAx, MoneyPuck goalie data, HockeyViz
-- Monte Carlo (Poisson 5K sims), PP%, PK%
-- Ensemble: `NHL_ENS = {mc:.50, bay:.20, elo:.30}`
-- Key functions: `nhlEns()`, `renderNHLTonight()`
+- xGF/60, Corsi, GSAx, MoneyPuck, Poisson 5K sims
+- Ensemble: NHL_ENS = {mc:.50, bay:.20, elo:.30}
+- renderNHLPropsLive(filter): Linemate props + NHL_PROPS_DATA fallback
+  Filters: ALL · POINTS · GOALS · SAVES · SHOTS · TOP PICKS
+
+### MLB Props (Session 5 — partial)
+- HTML filter buttons: STRIKEOUTS · HITS · RBIs · HOME RUNS · TOP PICKS
+- IMPORTANT: renderMLBPropsLive() was written but NOT saved to file (build failure)
+- Current file still uses old static renderMLBProps + MLB_PROPS_DATA array
+- Data available: mlb.reference.batting/pitching (BBRef, 50 players each)
+- TODO: properly inject renderMLBPropsLive
 
 ### Tennis
 - Surface ELO (clay/hard/grass/form), yELO, 5-factor composite
-- Key functions: `tennisMatchWinProbFull()`, `renderTennisPicks()`
+- Key: tennisMatchWinProbFull(), renderTennisPicks()
 
-### Simulator (Session 4 — new)
-- Standalone MC engine: 5,000 / 7,500 / 10,000 iterations selectable
-- Sports: MLB, NBA, NHL, WNBA, Tennis — uses existing `mlbEns`, `nbaEns`, `nhlEns` for base probability
-- Flags: Injury adj, Home adv, Recent form, Rest/fatigue, Weather
-- Output: win prob split + EV, score distributions (P10/P90), 20-block trend, outliers (>2σ), engine findings
-- Lock buttons wire directly to `lockPick()` via `setTimeout` listeners
-- Key functions: `simUpdateTeams()`, `runSimulator()`, `_simRun()`, `_simRender()`
-
-### Pick Grade Thresholds
-- **ELITE**: ≥67% win prob / EV ≥5%
-- **LOCK**: ≥62% win prob / EV ≥3%
-- **LEAN**: 55–62%
-- **SKIP**: <55%
+### Pick Grades (MLB/NBA/NHL)
+- ELITE: >=67% / EV>=5% · LOCK: >=62% / EV>=3% · LEAN: 55-62% · SKIP: <55%
 
 ---
 
-## 7. Python Data Pipeline (`scripts/clairvoyance_update.py`)
+## 7. Python Data Pipeline
 
-**3,700+ lines | 55+ fetch functions**
+3,800+ lines | 55+ fetch functions
 
-### Functions added Session 3:
-- `fetch_wnba_player_stats()` — BBRef per-game stats
-- `fetch_wnba_team_stats()` — BBRef team advanced stats
-- `write_data_json()` also writes `docs/version.json`
+### WNBA Functions (Session 5 — rewritten):
+fetch_wnba_player_stats():
+- BBRef table id='per_game' (2026, NOT 'per_game_stats')
+- Player name from <th data-stat="player"><a> anchor
+- Team from <td data-stat="team"> anchor
+- Advanced: table id='advanced' for PER, TS%, USG%, eFG%, BPM
 
-### data.json Top-Level Keys (24):
-`generated, generatedMT, version, mlb, nba, nhl, ncaaBaseball, wnba, pwhl, mp, weather, tennis, futures, f1, linemate, bestBets, heroPicksForDay, bestOdds, settled, betHistory, overallStats, seededBets, news, injuries`
+fetch_wnba_team_stats():
+- BBRef table id='advanced-team' for ORtg/DRtg/NRtg/Pace/eFG%/TOV%/ORB%
+- BBRef table id='per_game-team' for pts_pg/fg%/3p%/ft%
+- BBRef table id='per_game-opponent' for opp_pts/opp_fg
+- Team abbr from href: /wnba/teams/MIN/2026.html -> MIN
+
+### Linemate Pipeline (Session 5):
+- Sports: nba, mlb, nhl, wnba (wnba added)
+- Improved parsing: extracts player, team, over/line/conf, stat category
+- Filters header/table rows from trends
+- Output: data.json.linemate.props.wnba + linemate.trends.wnba
+
+### data.json Top-Level Keys:
+generated, generatedMT, version, mlb, nba, nhl, ncaaBaseball, wnba, pwhl,
+mp, weather, tennis, futures, f1, linemate, bestBets, heroPicksForDay,
+bestOdds, settled, betHistory, overallStats, seededBets, news, injuries
 
 ### GitHub Actions Schedules:
-- **09:00, 15:00, 23:00 MT** — full refresh via `scheduled-refresh.yml`
-- **16:00–23:00 MT** — live tracking every 2 min
-- **On every push to main** — `mobile-sync.yml` transforms + pushes to `Clairvoyance-backend-mobile`
+- 09:00, 15:00, 23:00 MT — full refresh
+- 16:00-23:00 MT — live tracking every 2 min
+- On every push — mobile-sync.yml
 
 ---
 
-## 8. CV_META — Centralized Sport/League Registry (Session 4 — new)
-
-**Location**: standalone script block in `app.html` (after main `</script>`)
-
-```js
-CV_META.sports   // Baseball, Basketball, Hockey, Tennis, Football, Soccer
-CV_META.leagues  // MLB, NBA, WNBA, NFL, CFB, NHL, PWHL, CH, KHL, SHL, LIIGA, ATP, WTA, WORLD_CUP
-CV_META.sportToLeague  // sport code → default league
-```
-
-**Tag helper functions** (globally accessible):
-- `cvLeagueTag(leagueKey)` — colored pill badge for league (e.g. NHL in indigo)
-- `cvSportTag(leagueKey)` — muted sport category derived from league
-- `cvBetTypeTag(betType)` — MONEYLINE / PUCK LINE / O/U / SPREAD / PROP
-- `cvParlayTag(legCount)` — purple `PARLAY N-LEG` badge
-- `cvParlayLegTag(n)` — `LEG 1`, `LEG 2` per parlay leg
-- `cvPickLeague(pick)` — resolves league from stored pick (checks `p.league`, falls back to sport code + ATP_DB/WTA_DB for tennis)
-
-**To add a new sport/league**: add one entry to `CV_META.leagues` and optionally `CV_META.sports`. All tag rendering auto-updates.
-
-**lockPick now stores `league` field** on every pick object alongside `sport`.
-
----
-
-## 9. Permanent Pick Storage — 3-Layer System
+## 8. File Health (Session 5)
 
 ```
-Layer 1: localStorage['preds']     — instant, in-browser
-Layer 2: IndexedDB                 — survives most cache clears
-Layer 3: docs/picks.json (GitHub)  — PERMANENT, cross-device, never lost
-Layer 4: localStorage['cv_parlays'] — parlay history (up to 50 parlays)
-```
-
-- `loadPicksFromGitHub()` — merges GitHub + localStorage on every load
-- `savePicksToGitHub(picks)` — writes `docs/picks.json` via GitHub Contents API
-- `syncPicksToGitHub()` — debounced 5s, fires after every `saveP()` call
-- `seedBetHistory()` — IIFE, runs every load, strip+reinsert by ID
-- `saveParlayToTracker(legs, sport)` — saves parlays to `cv_parlays` localStorage
-
----
-
-## 10. Current Pick Record (June 9, 2026)
-
-**212 total | 166W – 37L – 9P | 81.8% win rate**
-
-| Sport | Bets | W | L | P | Win% |
-|---|---|---|---|---|---|
-| MLB | ~75 | 47 | 16 | ~12 | 75% |
-| NBA | ~57 | 39 | 7 | ~11 | 85% |
-| NHL | ~56 | 39 | 8 | ~9 | 83% |
-| TEN | 24 | 24 | 0 | 0 | 100% |
-
----
-
-## 11. File Health (June 9, 2026 — Session 4)
-
-```
-app.html:    15,483 lines | 1,307 KB
-Backticks:   2,536 (even ✅)  — main script only
-Braces:      10,241 / 10,241 (balanced ✅)
-Standalone script: 38,192 chars | 183/183 braces ✅
+app.html:    15,996 lines | ~1,340 KB
+Backticks:   2,626 (even OK)
+Braces:      10,513 / 10,513 (balanced OK)
+Standalone:  38,192 chars | 183/183 braces OK
 LOCKED_PROPS declarations: 1
 _origSaveP declarations: 1
 SW registrations: 0
-#app hidden on load: false
-renderHomePage() in init: true
-endSplash() in init: true
-Validator checks: 93 / 93 pass ✅
-Named functions: 482
-data.json: 784 KB
-picks.json: 545 KB
+Validator: 93/93 pass OK
+Script blocks: 3
+data.json: ~578 KB
+picks.json: ~546 KB
 ```
 
 ---
 
-## 12. Header — Current Structure
+## 9. WNBA 2026 Real Data (BBRef verified June 9, 2026)
 
-```
-#hdr (56px desktop / 48px mobile)
-  ├── .hdr-l   SYNC button + ⚙ Sync Key button + live dot
-  ├── .logo    CLAIRVOYANCE (neon purple glow, Orbitron 900)
-  │            └── #hdr-status-bar (hidden, for status messages)
-  └── .hdr-r   #hdr-clock — live dual timezone
-               Desktop: "MT HH:MM:SS · ET HH:MM:SS" (neon purple glow)
-               Mobile ≤480px: "MT HH:MM · ET HH:MM"
-               Mobile ≤390px: hidden entirely
-```
+Team Stats:
+- MIN: ORtg=113.4 DRtg=98.4 Net=+15.0 Pace=79.7
+- ATL: ORtg=109.1 DRtg=100.8 Net=+8.3 Pace=78.7
+- DAL: ORtg=114.4 DRtg=106.2 Net=+8.2 Pace=78.2
+- GSV: ORtg=111.6 DRtg=104.6 Net=+7.0 Pace=76.9
+- NYL: ORtg=110.4 DRtg=103.9 Net=+6.5
 
----
+Player Leaders:
+- A'ja Wilson (LVA): 25.9pts 9.6reb 3.3ast
+- Kelsey Plum (LAS): 25.5pts 2.4reb 6.4ast
+- Kelsey Mitchell (IND): 20.5pts 1.5reb 2.5ast
+- Breanna Stewart (NYL): 20.5pts 8.6reb 2.6ast
+- Caitlin Clark (IND): 18.7pts 4.5reb 7.9ast
+- Paige Bueckers (DAL): 18.3pts 3.6reb 6.2ast
 
-## 13. Game Card Design — Unified `gc` Cards (ALL sports)
-
-All game cards across MLB, NBA, WNBA, NHL, Tennis use the same `gc` card structure:
-
-```
-div.gc (clipped border, backdrop blur)
-  ├── div.gch
-  │   ├── left: AWAY at HOME (gtm, fav highlighted purple)
-  │   │         odds/matchup line (gsp)
-  │   │         status/time (gsp, colored by state)
-  │   └── right: status indicator (LIVE dot / FINAL / time)
-  ├── div.brow (chips: ML home · ML away · spread/puck line · O/U)
-  │   └── each chip: ELITE/LOCK/LEAN/SKIP grade pill + lockPick() on tap
-  ├── ENGINE REASONING block (grade badge + explanation text)
-  └── footer: MC%/xGF%/ELO% ensemble + +PAR button
-```
-
-- **NHL**: gold border, goalie matchup in gsp, puck line chip, MC/xGF/ELO footer
-- **NBA/WNBA**: purple border, ESPN odds, spread chip
-- **MLB**: purple border, pitcher ERA, run line chip
-- **Tennis**: teal border, surface + tour (ATP/WTA), model% vs market%
+BBRef abbreviations (differ from ESPN):
+- LVA = Las Vegas Aces (ESPN: LV)
+- NYL = New York Liberty (ESPN: NY)
+- GSV = Golden State Valkyries (ESPN: GS)
+- PHO = Phoenix Mercury (ESPN: PHX)
+- WAS = Washington Mystics (ESPN: WSH)
+- LAE = Los Angeles Sparks (ESPN: LA)
 
 ---
 
-## 14. NHL Today Tab — Cleaned Structure (Session 4)
+## 10. Current Sports State (June 9, 2026)
 
-The NHL TODAY tab now shows ONLY:
-1. Header with date + ↻ refresh button
-2. `#nhl-tn` — `renderNHLTonight()` gc game cards (SCF series game)
-
-**Removed**: schedule section header, `#nhl-games` lower cards, live scores section, `#nhl-series-status`, `#nhl-inline-props`
-
----
-
-## 15. SIMULATOR Tab (Session 4 — new)
-
-**Location**: `sp-sim` pane, top nav between SOCIAL and TRACKER
-
-**Controls**:
-- Sport selector: MLB / NBA / NHL / WNBA / Tennis
-- Home / Away team dropdowns (auto-populate from live data; hardcoded fallbacks)
-- Sim count: 5,000 / 7,500 / 10,000
-- Filter toggles: Injury adj · Home adv · Recent form · Rest/fatigue · Weather
-
-**Output panels**:
-- Win probability split (home% vs away%) with moneyline + EV for each side
-- O/U projection — over% from simulations vs set O/U line
-- Score distribution charts (home / total / away): bar histogram + P10–P90 band
-- Win probability trend: 20 simulation blocks, STABLE vs VOLATILE flag
-- Outlier outcomes: results >2σ from mean, blowout rate
-- Engine Findings: tier (ELITE/LOCK/LEAN/EDGE), margin projection, O/U recommendation, EV, confidence
-- Lock buttons: LOCK [home] ML / LOCK [away] ML / LOCK OVER/UNDER (wired via setTimeout listeners)
-
-**Key functions** (in standalone script): `simUpdateTeams()`, `runSimulator()`, `_simRun()`, `_simRender()`, `_simBarChart()`
+NBA Finals: NYK leads SA 3-0 — G4 June 10 @ MSG
+NHL SCF: VGK leads CAR 2-1 — G4 tonight June 9 @ PNC Arena, 8 PM ET TNT
+Roland Garros 2026: COMPLETE (Andreeva WTA, Zverev ATP)
+MLB: 2026 Regular Season active (15 games today)
+WNBA: 2026 Season active (3 games: ATL@CHI, DAL@MIN, PHX@GS)
 
 ---
 
-## 16. TRACKER Tab (Session 4 — new)
+## 11. Pick Record (June 9, 2026)
 
-**Location**: `sp-tracker` pane, top nav (last item)
-
-### LOCKED BETS sub-tab
-- Reads all picks from `getP()`
-- Filters: by sport (MLB/NBA/NHL/TEN/WNBA) + by status (all/pending/win/loss)
-- Each bet card shows:
-  - **League tag** (colored: NHL=indigo, NBA=purple, MLB=pink, etc.)
-  - **Sport category** tag (HOCKEY, BASKETBALL, etc.)
-  - **Bet type** (MONEYLINE / PUCK LINE / O/U / SPREAD / PROP)
-  - **Status badge** (PENDING=cyan / WIN=gold / LOSS=red)
-  - **PARLAY badge** for parlay bets, **LEG N** badge if part of a saved parlay
-  - Win probability bar (color-coded by confidence tier)
-  - Locked timestamp + EV calculation
-  - WIN / LOSS / PUSH settle buttons for pending bets
-  - For PARLAY bets: full leg list with LEG N badges and individual leg text
-
-### PARLAY sub-tab
-- Reads from `localStorage['cv_parlays']` + live `PAR[]` + `NBA_PAR[]`
-- Each parlay card shows:
-  - **PARLAY N-LEG** badge + league (or MULTI-SPORT if mixed leagues)
-  - Combined moneyline + win probability
-  - Leg count status (X/N won · Y lost · Z pending)
-  - Payout multiplier
-  - **Full leg breakdown**: LEG N badge + league tag + bet type + selection + odds + win% + outcome
-  - Combined prob + payout + EV summary row
-- `saveParlayToTracker(legs, sport)` — persists to `cv_parlays` localStorage (max 50)
-
-**Key functions** (in standalone script): `renderLockedTracker()`, `renderParlayTracker()`, `saveParlayToTracker()`, `cvPickLeague()`
+212 total | 166W-37L-9P | 81.8% win rate
+MLB ~75: 47W-16L | NBA ~57: 39W-7L | NHL ~56: 39W-8L | TEN 24: 24W-0L
 
 ---
 
-## 17. Mobile Repository — Clairvoyance-backend-mobile (Session 4 — new)
+## 12. Known Issues (Session 5 Active)
 
-| Property | Value |
-|---|---|
-| **GitHub** | `MercMink21/Clairvoyance-backend-mobile` |
-| **Live URL** | `https://mercmink21.github.io/Clairvoyance-backend-mobile/` |
-| **GitHub Pages** | `docs/` folder |
-| **Sync trigger** | `mobile-sync.yml` — fires on every push to `clairvoyance-backend` main |
-
-**mobile_transform.py** applies these changes to `app.html`:
-- Viewport: `maximum-scale=1, user-scalable=no, viewport-fit=cover`
-- Font reductions: body 15px→13px, `.sp` 10px, `.nb` 10px, `.sh` 12px, `.gtm` 14px
-- Header height: 56px→42px, logo 17px
-- Chip padding further reduced, tab bottom padding 86px
-- `.g2/.g3/.g4` → 1-column grid
-- Safe-area insets for iPhone notch via `env(safe-area-inset-top/bottom)`
-- SW cache name prefixed `cve-mobile-v*` to avoid collision with desktop
-- PWA name: "Clairvoyance Mobile" / short_name: "CVE-M"
-- `MOBILE_SYNC_TOKEN` secret stored in clairvoyance-backend repo secrets
-
-**Repos are fully independent** — mobile sync is one-way (desktop → mobile only). Never pull from mobile back to desktop.
-
----
-
-## 18. Mobile Architecture (Desktop Repo)
-
-### Mobile Nav Bars (bottom of screen, shown/hidden by SS() / setSub())
-
-| Sport | Nav ID | Tabs |
+| Issue | Priority | Notes |
 |---|---|---|
-| MLB | `mn` | TODAY · PARLAY · STATS · MODEL · CONFIG |
-| NHL | `mn2` | TODAY · PROPS · PARLAY · MODEL · CONFIG |
-| NBA | `mn3` | TODAY · PROPS · PARLAY · MODEL · CONFIG |
-| WNBA | `mn8` | TODAY · PROPS · PARLAY · MODEL · CONFIG |
-| OVERALL | `mn4` | DASH · BETS · ADAPTIVE · SYNC |
-| TENNIS | `mn5` | PICKS · TODAY · TOURN · COMPARE · H2H · RANKS |
-| ANALYTICS | `mn6` | BET LAB · BY SPORT · BY TEAM · TRENDS · HISTORY |
-| LIVE | `mn7` | LIVE · BETS |
-| SOCIAL | `mn9` | CARDS · MONTE · RECORD |
-| NEWS | `mn10` | ALL · MLB · NBA · NHL · INJURY · TRADES |
-| FUTURES | `mn11` | NBA · MLB · NHL · TENNIS |
+| renderMLBPropsLive missing | HIGH | build_props_v1.py failed mid-run, function never written to file |
+| WNBA teamStats/players empty | MEDIUM | Will populate on next GitHub Actions run (BBRef scrape fixed) |
+| write_social_copy import | LOW | Wrong function name in content_generator.py |
+| Football tab | LOW | Coming Soon, no data source |
+| Linemate Playwright | LOW | Desktop only, Actions uses --no-linemate |
+| NHL SCF G4 result | PENDING | VGK@CAR tonight, update series after |
+| NBA Finals G4 | PENDING | SA@NYK June 10 |
 
 ---
 
-## 19. Sport/League Tag System (Session 4)
+## 13. Critical Architecture Rules
 
-### Sport categories (display names):
-| Code | Label | Color |
-|---|---|---|
-| baseball | BASEBALL | `var(--hc)` pink |
-| basketball | BASKETBALL | `var(--pc)` purple |
-| hockey | HOCKEY | `var(--ic)` indigo |
-| tennis | TENNIS | `var(--mc)` orange |
-| football | FOOTBALL | `var(--gc)` gold |
-| soccer | SOCCER | `var(--nc)` cyan |
+1. app.html is SOURCE OF TRUTH — always write both app.html AND index.html
+2. NEVER re-enable service worker
+3. NEVER use agents for large edits — use targeted Python string replacement
+4. ALWAYS validate before pushing: python3 scripts/validate.py
+5. seedBetHistory() IIFE must survive every push
+6. One let LOCKED_PROPS — never re-declare
+7. One const _origSaveP — patched once only
+8. renderHomePage() + endSplash() must be in DOMContentLoaded init block
+9. #app must never start with opacity:0
+10. Always copy app.html → index.html
+11. Standalone script AFTER main </script> but BEFORE nav dropdown HTML
 
-### Leagues:
-| Key | Label | Sport | Color |
-|---|---|---|---|
-| MLB | MLB | baseball | pink |
-| NBA | NBA | basketball | purple |
-| WNBA | WNBA | basketball | volt |
-| NFL | NFL | football | gold |
-| CFB | CFB | football | seafoam |
-| NHL | NHL | hockey | indigo |
-| PWHL | PWHL | hockey | purple |
-| CH | COLLEGE HCKY | hockey | volt |
-| KHL | KHL | hockey | blue |
-| SHL | SHL | hockey | cyan |
-| LIIGA | LIIGA | hockey | seafoam |
-| ATP | ATP | tennis | orange |
-| WTA | WTA | tennis | pink |
-| WORLD_CUP | WORLD CUP | soccer | gold |
-
-**To add a new league**: one entry in `CV_META.leagues` + one in `CV_META.sportToLeague`. All rendering auto-adapts.
+### Template Literal Safety (CRITICAL — Session 5 lesson):
+- NEVER put a literal newline byte (0x0a) inside a JS string literal
+- 'LF' between single quotes = SyntaxError = entire engine dead, no splash
+- Python: use '\\n' (double-escaped) when writing JS code in strings/heredocs
+- Validator now catches this automatically (check added Session 5)
+- NEVER put ; as last char inside ${...} template expressions
 
 ---
 
-## 20. lockPick — Sport & League Detection
-
-```js
-lockPick(hA, awA, type, betOn, p, ml, d, date)
-// Stores: { sport: sportTag, league: leagueTag, betType: _betTypeNorm, ... }
-```
-
-**Type → sport mapping** (explicit, checked first):
-`WNBA→WNBA`, `NBA→NBA`, `PL/NHL→NHL`, `TEN/TENNIS→TEN`, `NFL→NFL`, `CFB→CFB`, `PWHL→PWHL`, `KHL→KHL`, `SHL→SHL`, `LIIGA→LIIGA`, `CH→CH`, `SOC/WORLDCUP→SOC`, `ATP→ATP`, `WTA→WTA`
-
-**Fallback** (team abbreviation lookup): NHL set → NBA set → MLB set
-
-**League detection**: `_leagueMap[sportTag]` — for TEN sport, checks `ATP_DB[hA]` / `WTA_DB[hA]` at lock time.
-
----
-
-## 21. Validator — 93 Checks
-
-Pre-push validator runs on every commit/push via git hooks. All 93 checks pass on current build.
-
-**Important**: Validator checks that nav dropdowns are AFTER all `</script>` tags. The standalone script injected after the main script must stay before the nav dropdown HTML section. Use `inject_sim_tracker.py` to re-inject if the standalone script needs to be rebuilt.
-
----
-
-## 22. Critical Architecture Rules — NON-NEGOTIABLE
-
-1. **`app.html` is SOURCE OF TRUTH** — always write both `app.html` AND `index.html`
-2. **NEVER re-enable service worker** — `sw.js` self-destructs
-3. **NEVER use agents for large edits** — use targeted Python scripts with string replacement
-4. **ALWAYS validate before pushing** — `python3 scripts/validate.py`
-5. **`seedBetHistory()` IIFE must survive every push** — never remove it
-6. **One `let LOCKED_PROPS`** — never re-declare
-7. **One `const _origSaveP`** — saveP patched once only
-8. **`renderHomePage()` + `endSplash()` must be in DOMContentLoaded init block**
-9. **`#app` must never start with `opacity:0`**
-10. **Always copy `app.html` → `index.html`** — they must be identical
-11. **Standalone script must be injected AFTER main `</script>` but BEFORE nav dropdown HTML** — use `inject_sim_tracker.py`; do NOT put onclick-accessible functions inside the IIFE
-
-### Template Literal Safety (CRITICAL):
-- **NEVER put `;` as the last char inside `${...}` template expressions**
-- `color:${a ? b : c;}` → SyntaxError that kills entire script
-- Validator check 23 catches this automatically
-
-### Standalone Script Injection:
-- Run `python3 scripts/inject_sim_tracker.py docs/app.html` to re-inject
-- Script targets: after the 2nd `</script>` close (main script), before nav dropdowns
-- Never inject near `</body>` or `</html>` — validator will reject
-
----
-
-## 23. Safe Edit Protocol
+## 14. Safe Edit Protocol
 
 ```python
 html = open('docs/app.html').read()
 old = "exact string to replace"
 new = "replacement string"
-assert html.count(old) == 1, f"Pattern not unique: {html.count(old)}"
+assert html.count(old) == 1
 html = html.replace(old, new, 1)
 
-# Validate MAIN script:
 import re
 scripts = list(re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', html))
-main_js = [s.group(2) for s in scripts if len(s.group(2)) > 10000][0]
-bt = main_js.count('`'); op = main_js.count('{'); cl = main_js.count('}')
-assert bt%2==0 and op==cl
+js = [s.group(2) for s in scripts if len(s.group(2)) > 10000][0]
+bt=js.count('`'); op=js.count('{'); cl=js.count('}')
+bad=js.count(chr(39)+chr(10)+chr(39))  # literal newline in string
+assert bt%2==0 and op==cl and bad==0
 
 open('docs/app.html','w').write(html)
 open('docs/index.html','w').write(html)
+# Then: python3 scripts/validate.py
 ```
-
-Then: `python3 scripts/validate.py`
 
 ---
 
-## 24. Git Push Workflow
+## 15. Git Push Workflow
 
 ```bash
 cd /Users/reeseoliver/clairvoyance-backend
-git add docs/app.html docs/index.html docs/picks.json
+git add docs/app.html docs/index.html
 git commit -m "feat/fix: description"
 git stash && git pull --rebase origin main && git stash pop && git push
-# On data.json conflict: git checkout --theirs docs/data.json && git add docs/data.json && git rebase --continue
+# data.json conflict: git checkout --theirs docs/data.json && git add docs/data.json && git rebase --continue
 ```
 
 ---
 
-## 25. Current Sports State (June 9, 2026)
-
-### NBA Finals: NYK Knicks vs SA Spurs
-- **NYK leads 3-0** — won G1, G2, G3
-- **G4: June 10 @ MSG** — SA must win to avoid sweep
-- G5: June 12 @ SA | G6: June 14 @ MSG | G7: June 16 @ SA (if needed)
-
-### NHL Stanley Cup Finals: VGK vs CAR
-- **VGK leads 2-1** — G4 tonight June 9 @ PNC Arena, 8 PM ET TNT
-- CAR must win G4 to stay alive; series lines CAR -125 / VGK +105
-- TONIGHT array updated: `{h:'CAR',a:'VGK',gn:4,ctx:'SCF — VGK leads 2-1',time:'8 PM ET',net:'TNT',ou:5.5}`
-
-### Roland Garros 2026 — COMPLETE
-- **WTA Champion**: Mirra Andreeva (RUS, seed 8)
-- **ATP Champion**: Alexander Zverev (GER, seed 2)
-
-### MLB: 2026 Regular Season active
-
----
-
-## 26. All Features & Changes — Session 4 (June 9, 2026)
-
-### NHL Game Cards — Unified gc Format:
-- `renderNHLTonight()` rebuilt to gc card (was custom old format)
-- `renderNHLGames()` ESPN path rebuilt to gc card
-- `renderNHLGamesOffline()` rebuilt to gc card
-- All show: away at home, goalie matchup, puck line chip, engine reasoning, MC/xGF/ELO footer, +PAR
-- Gold border `rgba(255,204,0,.5)` for SCF games
-- Series state updated: VGK 2-1 CAR, G4 tonight
-
-### NHL Today Tab Cleanup:
-- Removed: SCHEDULE section header, lower `#nhl-games` card block, live scores section
-- Now shows ONLY: tonight header + `#nhl-tn` gc cards
-
-### Emoji Removal:
-- Removed all decorative emojis from visible UI: NCAA Hockey, MLB buttons, WNBA, tennis tournaments, bracket, goalie prefixes
-- Replaced `🥅` with `GOALIES:`, `🏏`/`💥` with text labels, etc.
-
-### Coming Soon Screens (all leagues):
-- PWHL, College Hockey, KHL, SHL, LIIGA, CFB, NFL: uniform styled preview cards
-- Format: gradient title + `Activates: [date]` + description
-- No emojis in any coming soon screen
-
-### NCAA Hockey → College Hockey:
-- Nav button, dropdown, sub-tab ID `hk-ncaah` — label changed to "COLLEGE HOCKEY"
-
-### Soccer Tab Added:
-- `sp-soc` pane with WORLD CUP sub-tab
-- Coming soon: FIFA World Cup 2026 module description
-- Dropdown nav entry added
-
-### SIMULATOR Tab (new):
-- Full Monte Carlo engine: 5k/7.5k/10k sims, all 5 sports
-- Score distributions, trend analysis, outlier detection
-- Implemented as standalone script to avoid IIFE isolation
-- All functions global via separate `<script>` tag
-
-### TRACKER Tab (new):
-- LOCKED BETS: reads `getP()`, filters, shows league+sport+type tags, settle buttons
-- PARLAY: reads cv_parlays + PAR[] + NBA_PAR[], leg-by-leg breakdown
-- Implemented as standalone script
-
-### CV_META Tag System (new):
-- Centralized registry for all sports and leagues
-- `cvLeagueTag()`, `cvSportTag()`, `cvBetTypeTag()`, `cvParlayTag()`, `cvParlayLegTag()`
-- `lockPick` now stores `league` field on every pick
-- ATP vs WTA distinguished at lock time via ATP_DB/WTA_DB
-- Re-inference for old picks without league field in `renderLockedTracker`
-
-### Sport Tag Fixes:
-- WNBA bets no longer tagged as NBA/MLB (type==='WNBA' handled first)
-- NHL PROP bets correctly tagged NHL
-- NBA SPREAD/OU correctly tagged NBA
-- Complete NHL team set (32 teams), NBA set with correct abbreviations
-
-### Auto-load TODAY Tab:
-- `SS()` calls `T(sport,'games')` on every sport navigation
-- `setSub()` calls `T()` when switching sub-leagues (NHL, NBA, WNBA)
-
-### Mobile Repository (new):
-- `MercMink21/Clairvoyance-backend-mobile` created and deployed
-- `scripts/mobile_transform.py` — applies iPhone-specific CSS
-- `mobile-sync.yml` GitHub Action — auto-syncs on every desktop push
-- `MOBILE_SYNC_TOKEN` secret configured in clairvoyance-backend
-
----
-
-## 27. Known Issues (Active)
-
-| Issue | Notes |
-|---|---|
-| `write_social_copy` import error | Python imports function not in content_generator.py. Content generation skipped every run |
-| Football tab | NFL/CFB shows Coming Soon — no data source connected |
-| Linemate Playwright | Only works on desktop. GitHub Actions uses `--no-linemate` flag |
-| Custom domain | `clairvoyanceengine.info` — Talos spam review may need resolution |
-| NHL SCF G4 result | VGK vs CAR G4 tonight (June 9) — result not yet recorded |
-| NBA Finals G4 | June 10 — need props and series update after game |
-| Parlay leg linkback | Picks in getP() don't have `inParlay` flag yet — parlay lookup by pickId incomplete |
-
----
-
-## 28. Session Start Checklist
+## 16. Session Start Checklist
 
 ```bash
-cd /Users/reeseoliver/clairvoyance-backend
 git pull
 python3 -c "
 import re, json
-html = open('docs/app.html').read()
-scripts = list(re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', html))
-js = [s.group(2) for s in scripts if len(s.group(2)) > 10000][0]
-bt = js.count('\x60'); op = js.count('{'); cl = js.count('}')
-bets = json.load(open('docs/picks.json'))
-w = sum(1 for b in bets if b.get('outcome')=='win')
-l = sum(1 for b in bets if b.get('outcome')=='loss')
-p = sum(1 for b in bets if b.get('outcome') not in ('win','loss'))
-print(f'Lines: {html.count(chr(10))+1}')
-print(f'BT:{bt}(ok={bt%2==0}) Braces:{op}/{cl}(ok={op==cl})')
-print(f'Picks: {len(bets)} | {w}W-{l}L-{p}P | {w/(w+l)*100:.1f}%')
+html=open('docs/app.html').read()
+scripts=list(re.finditer(r'<script([^>]*)>([\s\S]*?)</script>',html))
+js=[s.group(2) for s in scripts if len(s.group(2))>10000][0]
+bt=js.count('\x60'); op=js.count('{'); cl=js.count('}')
+bad=js.count(chr(39)+chr(10)+chr(39))
+bets=json.load(open('docs/picks.json'))
+w=sum(1 for b in bets if b.get('outcome')=='win')
+l=sum(1 for b in bets if b.get('outcome')=='loss')
+p=sum(1 for b in bets if b.get('outcome') not in ('win','loss'))
+print(f'Lines:{html.count(chr(10))+1}')
+print(f'BT:{bt}(ok={bt%2==0}) Braces:{op}/{cl}(ok={op==cl}) LF:{bad}(ok={bad==0})')
+print(f'Picks:{len(bets)} {w}W-{l}L-{p}P {w/(w+l)*100:.1f}%')
 "
+```
+
+---
+
+## 17. Session 5 Commit Log
+
+```
+76b1952 fix(wnba): real BBRef stats + working props
+c06ec8e fix(wnba): ML model producing real signal — calibrated grades + fallback strength data
+71c8551 remove WNBA schedule + stats sub-tabs
+4c54bdb fix(validate): add literal newline in JS string check
+39be9f6 fix(critical): unterminated string literal in renderNHLPropsLive killing entire engine
+2b86a3d fix(wnba): resolve ReferenceError on randn + complete T() tab routing
+c906fac feat(props): live MLB/NHL props rebuild + Linemate integration
+441e594 feat(wnba): full data model rebuild — BBRef multi-table + Linemate + gc cards
 ```
