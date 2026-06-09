@@ -5089,6 +5089,25 @@ function renderOverall(){
     return{lbl:tm.lbl,...calcPerf(tp)};
   });
 
+  // By league
+  const leagueMap=[
+    {lbl:'MLB',   codes:['MLB']},
+    {lbl:'NHL',   codes:['NHL']},
+    {lbl:'NBA',   codes:['NBA']},
+    {lbl:'WNBA',  codes:['WNBA']},
+    {lbl:'TEN',   codes:['TEN']},
+    {lbl:'NFL',   codes:['NFL','FB']},
+    {lbl:'CFB',   codes:['CFB']},
+    {lbl:'PWHL',  codes:['PWHL']},
+    {lbl:'KHL',   codes:['KHL']},
+    {lbl:'SHL',   codes:['SHL']},
+    {lbl:'LIIGA', codes:['LIIGA']},
+  ];
+  const byLeague=leagueMap.map(lm=>{
+    const lb=settled.filter(p=>lm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+    return{lbl:lm.lbl,...calcPerf(lb)};
+  }).filter(d=>d.n>0);
+
   // Last N
   const lastN=[10,25,50,75,100];
   const lastNData=lastN.map(n=>{
@@ -5289,8 +5308,8 @@ function renderOverall(){
     ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
   </div>`;
 
-  // By Sport + By Bet Type side by side
-  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+  // By Sport + By Bet Type + By League
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
       ${bySport.map(sportRow).join('')}
@@ -5298,6 +5317,10 @@ function renderOverall(){
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">BET TYPE</div>
       ${byType.map(sportRow).join('')}
+    </div>
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">LEAGUE</div>
+      ${byLeague.map(sportRow).join('')}
     </div>
   </div>`;
 
@@ -9928,7 +9951,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-08 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-08 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
