@@ -925,6 +925,7 @@ body{line-height:1.5}
     <button class="nb" onclick="T('ovr','trends')">TRENDS</button>
     <button class="nb" onclick="T('ovr','clv')">CLV</button>
     <button class="nb" onclick="T('ovr','analytics')">ANALYTICS</button>
+    <button class="nb" onclick="T('ovr','sync')">SYNC</button>
   </nav>
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
@@ -963,6 +964,10 @@ body{line-height:1.5}
       <div class="sh"><span class="nc"></span> CLOSING LINE VALUE TRACKER</div>
       <div id="ovr-clv"><div class="loading"><span class="spi"></span></div></div>
     </div>
+    <div id="ovr-tab-sync" class="tab">
+      <div class="sh"><span class="gc"></span> CROSS-DEVICE SYNC</div>
+      <div id="ovr-sync"><div class="loading"><span class="spi"></span></div></div>
+    </div>
     <div id="ovr-tab-analytics" class="tab">
       <div class="sh"><span class="p"></span> ANALYTICS</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="analytics-filters">
@@ -992,6 +997,7 @@ body{line-height:1.5}
     <button class="mb" onclick="T('ovr','trends')"><span class="mbi"></span>TRENDS</button>
     <button class="mb" onclick="T('ovr','clv')"><span class="mbi"></span>CLV</button>
     <button class="mb" onclick="T('ovr','analytics')"><span class="mbi"></span>ANALYTICS</button>
+    <button class="mb" onclick="T('ovr','sync')"><span class="mbi"></span>SYNC</button>
   </nav>
 </div>
 <!-- TENNIS -->
@@ -6405,193 +6411,287 @@ function triggerInstantCalibration(){
 
 function renderAdaptiveLearning(){
   const el=document.getElementById('ovr-adaptive');if(!el)return;
-  // Capture previous state before tick for "what changed" comparison
   const prevStateRaw=S.g('adaptive_prev_state');
   const prevState=prevStateRaw?JSON.parse(prevStateRaw):null;
   const state=adaptiveTick();
   try{S.s('adaptive_prev_state',JSON.stringify({weights:state.weights,overallAcc:state.overallAcc,recentAcc:state.recentAcc,totalBets:state.totalBets,evThreshold:state.evThreshold,ts:Date.now()}));}catch(e){}
+  // Log this run
+  try{
+    const log=JSON.parse(S.g('adaptive_log')||'[]');
+    log.push({ts:Date.now(),overallAcc:state.overallAcc,recentAcc:state.recentAcc,findings:(state.findings||[]).length,weaknesses:(state.weaknesses||[]).length,recs:(state.recommendations||[]).length,bets:state.totalBets,status:state.status});
+    S.s('adaptive_log',JSON.stringify(log.slice(-50)));
+  }catch(e){}
   const ts=state.lastRun?new Date(state.lastRun).toLocaleString():'Never';
-  let html=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:2px;margin-bottom:12px">// ADAPTIVE LEARNING ENGINE · LAST CYCLE: ${ts}</div>`;
-  if(state.status==='INSUFFICIENT_DATA'){html+=`<div class="empty">${state.msg}</div>`+renderMorningReport()+`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;el.innerHTML=html;return;}
-  // ── WHAT CHANGED THIS CYCLE ──
-  if(prevState&&prevState.weights){
-    const changes=[];
-    for(const sport of ['MLB','NHL','NBA']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=1){changes.push({sport,key:key.toUpperCase(),delta,type:delta>0?'up':'down'});}}}
-    const accDelta=((state.overallAcc||0)-(prevState.overallAcc||0))*100;
-    const betsDelta=(state.totalBets||0)-(prevState.totalBets||0);
-    html+=`<div class="card" style="margin-bottom:12px;padding:12px;border-left:3px solid var(--pc)"><div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">// WHAT CHANGED THIS UPDATE</div>`;
-    if(betsDelta>0){html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:5px;line-height:1.7">+ ${betsDelta} new settled bet${betsDelta>1?'s':''} analyzed and ingested into model</div>`;}
-    if(Math.abs(accDelta)>=0.5){html+=`<div style="font-family:var(--mono);font-size:14px;color:${accDelta>0?'var(--nc)':'var(--hc)'};margin-bottom:5px;line-height:1.7">${accDelta>0?'IMPROVED':'DECLINED'}: Overall accuracy ${accDelta>0?'+':''}${accDelta.toFixed(1)}% from last cycle (now ${((state.overallAcc||0)*100).toFixed(1)}%)</div>`;}
-    if(changes.length){html+=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin:8px 0 4px">WEIGHT ADJUSTMENTS MADE:</div>`;html+=changes.map(c=>`<div style="font-family:var(--mono);font-size:14px;color:${c.type==='up'?'var(--nc)':'var(--hc)'};margin-bottom:3px;line-height:1.7">${c.type==='up'?'UP':'DOWN'} ${c.sport} ${c.key}: ${c.delta>0?'+':''}${c.delta.toFixed(1)}% — ${c.type==='up'?'Overperforming; weight increased':'Underperforming; weight reduced'}</div>`).join('');}
-    if(!changes.length&&Math.abs(accDelta)<0.5&&betsDelta===0){html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3)">No significant changes this cycle — model is stable.</div>`;}
-    if(prevState.ts&&(Date.now()-prevState.ts)<7*24*3600000){const recentDelta=((state.recentAcc||0)-(prevState.recentAcc||0))*100;if(Math.abs(recentDelta)>=0.5){html+=`<div style="font-family:var(--mono);font-size:14px;color:${recentDelta>0?'var(--nc)':'var(--hc)'};margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">${recentDelta>0?'EFFECTIVE':'NOT YET EFFECTIVE'}: Recent accuracy (L10) ${recentDelta>0?'improved':'declined'} ${Math.abs(recentDelta).toFixed(1)}% since last adjustment</div>`;}}
-    html+=`</div>`;
-  }else{html+=`<div class="card" style="margin-bottom:12px;padding:10px;border-left:3px solid var(--t3)"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">// WHAT CHANGED — Run a second learning cycle to compare state deltas and see adjustments.</div></div>`;}
-  const accColor=a=>a>=.60?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
-  // ── Performance snapshot ──
-  html+=`<div class="card" style="margin-bottom:12px;padding:13px">
-    <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">// PERFORMANCE SNAPSHOT</div>
-    <div style="display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:10px">
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${accColor(state.overallAcc)}">${(state.overallAcc*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">30-BET ACC</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${accColor(state.recentAcc)}">${(state.recentAcc*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">10-BET TREND</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--ic)">${state.totalBets}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">TOTAL BETS</div></div>
-      <div style="text-align:center"><div style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--vc)">${(state.evThreshold||2).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">EV THRESH</div></div>
+  const accColor=a=>a>=.62?'var(--nc)':a>=.52?'var(--vc)':'var(--hc)';
+  const pCol=p=>p>=.62?'var(--nc)':p>=.52?'var(--vc)':'var(--hc)';
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:6px">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px">// ADAPTIVE ENGINE · LAST CYCLE: ${ts}</span>
+    <button class="btn btn-p btn-sm" onclick="adaptiveTick();renderAdaptiveLearning();toast('// LEARNING CYCLE COMPLETE')">⚡ RUN CYCLE</button>
+  </div>`;
+  if(state.status==='INSUFFICIENT_DATA'){el.innerHTML=html+`<div class="empty">${state.msg}</div>`;return;}
+
+  // ── PERFORMANCE SNAPSHOT ─────────────────────────────────────────────────
+  const all=getP().filter(p=>p.outcome!=='pending');
+  const now=Date.now();
+  const L10=all.slice(-10);const L30=all.slice(-30);
+  const l10w=L10.filter(p=>p.outcome==='win').length;const l30w=L30.filter(p=>p.outcome==='win').length;
+  const l10acc=L10.length?l10w/L10.length:null;const l30acc=L30.length?l30w/L30.length:null;
+  const allW=all.filter(p=>p.outcome==='win').length;const allAcc=all.length?allW/all.length:null;
+  html+=`<div class="card" style="margin-bottom:12px;padding:12px">
+    <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--pc);margin-bottom:10px">// PERFORMANCE SNAPSHOT</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${[['L10 TREND',l10acc,L10.length],['L30 WINDOW',l30acc,L30.length],['ALL TIME',allAcc,all.length]].map(([lbl,acc,n])=>`<div style="flex:1;min-width:70px;background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.2);border-radius:3px;padding:9px;text-align:center">
+        <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${acc!==null?accColor(acc):'var(--t3)'}">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:2px">${lbl}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${n} bets</div>
+      </div>`).join('')}
+      <div style="flex:1;min-width:70px;background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.2);border-radius:3px;padding:9px;text-align:center">
+        <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--vc)">${(state.evThreshold||2).toFixed(1)}%</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:2px">EV THRESH</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">auto-tuned</div>
+      </div>
     </div>
   </div>`;
-  // ── Auto-tuned weights ──
-  html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-    <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--ic);margin-bottom:10px">// AUTO-TUNED ENSEMBLE WEIGHTS</div>
-    ${['MLB','NHL','NBA'].filter(s=>state.weights&&state.weights[s]).map(sport=>{
-      const w=state.weights[sport];
-      return`<div style="margin-bottom:10px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:6px">${sport}</div>
-      <div style="display:flex;gap:5px">
-        ${[['MC',w.mc,'var(--pc)'],['BAY',w.bay,'var(--ic)'],['ELO',w.elo,'var(--nc)']].map(([lbl,v,c])=>`<div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:7px;text-align:center">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${lbl}</div>
-          <div style="font-family:var(--orb);font-size:21px;font-weight:700;color:${c}">${(v*100).toFixed(0)}%</div>
-          <div style="height:3px;background:rgba(77,121,255,.15);border-radius:1px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${(v*100).toFixed(0)}%;background:${c};border-radius:1px"></div></div>
-        </div>`).join('')}
-      </div></div>`;
-    }).join('')}
-  </div>`;
-  // ── Calibration table ──
-  if(Object.keys(state.calErrors||{}).length){
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--gc);margin-bottom:9px">// CALIBRATION ANALYSIS (PREDICTED vs ACTUAL)</div>
-      <table class="dt" style="font-size:13px"><tr><th>TIER</th><th>PREDICTED</th><th>ACTUAL</th><th>DRIFT</th><th>N</th></tr>
-      ${Object.entries(state.calErrors).map(([bk,d])=>{const drift=d.predicted-d.actual;const dc=Math.abs(drift)>0.06?'var(--hc)':Math.abs(drift)>0.03?'var(--mc)':'var(--nc)';return`<tr><td style="color:var(--t3);text-transform:uppercase">${bk}</td><td>${(d.predicted*100).toFixed(1)}%</td><td style="color:${d.actual>=d.predicted?'var(--nc)':'var(--hc)'}">${(d.actual*100).toFixed(1)}%</td><td style="color:${dc}">${drift>=0?'+':''}${(drift*100).toFixed(1)}%</td><td>${d.n}</td></tr>`;}).join('')}
-      </table>
-    </div>`;
-  }
-  // ── Sport performance ──
-  if(Object.keys(state.sportPerf||{}).length){
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--vc);margin-bottom:8px">// SPORT BREAKDOWN (30-BET WINDOW)</div>
-      <div style="display:flex;gap:6px">
-        ${Object.entries(state.sportPerf).map(([s,p])=>`<div style="flex:1;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:9px;text-align:center">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:4px">${s}</div>
-          <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${accColor(p.acc)}">${(p.acc*100).toFixed(0)}%</div>
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:3px">${p.wins}W / ${p.losses}L</div>
-        </div>`).join('')}
-      </div>
-    </div>`;
-  }
-  // ── Bet type performance ──
-  const typeData=Object.entries(state.typePerf||{}).filter(([,p])=>p.n>=3);
-  if(typeData.length){
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--mc);margin-bottom:8px">// BET TYPE PERFORMANCE</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        ${typeData.map(([bt,p])=>`<div style="flex:1;min-width:60px;background:rgba(10,0,24,.8);border:1px solid var(--w2);border-radius:2px;padding:7px;text-align:center">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${bt}</div>
-          <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${accColor(p.acc)}">${(p.acc*100).toFixed(0)}%</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.n} bets</div>
-        </div>`).join('')}
-      </div>
-    </div>`;
-  }
-  // ── Trend history mini-chart ──
-  if((state.history||[]).length>1){
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--pc);margin-bottom:9px">// ACCURACY TREND (EACH BAR = ONE LEARNING CYCLE)</div>
-      <div style="display:flex;align-items:flex-end;gap:3px;height:44px">
-        ${state.history.map(h=>{const pct=h.overallAcc||0.5;const ht=Math.max(4,Math.round(pct*44));const c=pct>=.58?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';return`<div style="flex:1;background:${c};height:${ht}px;border-radius:1px;opacity:.85;min-width:4px" title="${(pct*100).toFixed(1)}%"></div>`;}).join('')}
-      </div>
-      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:4px"><span>OLDEST</span><span>NOW</span></div>
-    </div>`;
-  }
-  // ── Findings ──
-  if((state.findings||[]).length){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--t3);margin-bottom:8px;margin-top:14px">// WHAT THE MODEL LEARNED</div>`;
-    const fColor={strength:'var(--nc)',weakness:'var(--hc)',up:'var(--nc)',down:'var(--hc)',calibration:'var(--gc)',alert:'var(--mc)',insight:'var(--ic)'};
-    const fLabel={strength:'STRENGTH',weakness:'WEAKNESS',up:'WEIGHT UP',down:'WEIGHT DOWN',calibration:'CALIBRATION',alert:'ALERT',insight:'INSIGHT'};
-    html+=state.findings.map(f=>`<div class="card" style="margin-bottom:7px;border-left:3px solid ${fColor[f.type]||'var(--t3)'};padding:9px">
-      <div style="display:flex;gap:7px;align-items:center;margin-bottom:4px">
-        <span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid ${fColor[f.type]||'var(--t3)'};color:${fColor[f.type]||'var(--t3)'};border-radius:2px">${fLabel[f.type]||f.type.toUpperCase()}</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${f.component}</span>
-      </div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t);line-height:1.7">${f.msg}</div>
-    </div>`).join('');
-  }
-  // ── Model weight visualization bars ──
-  if(state.weights&&Object.keys(state.weights).length){
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--ic);margin-bottom:10px">// CURRENT MODEL WEIGHT DISTRIBUTION</div>`;
-    const wColors={mc:'var(--pc)',bay:'var(--ic)',elo:'var(--nc)'};
-    for(const [sport,w] of Object.entries(state.weights)){
-      html+=`<div style="margin-bottom:10px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:5px">${sport}</div>
-        <div style="display:flex;gap:4px">
-          ${Object.entries({MC:w.mc,BAY:w.bay,ELO:w.elo}).map(([lbl,v])=>{
-            const pct=Math.round((v||0)*100);const c=wColors[lbl.toLowerCase()]||'var(--t3)';
-            return`<div style="flex:1;text-align:center">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:3px">${lbl}</div>
-              <div style="background:rgba(10,0,24,.8);border:1px solid rgba(77,121,255,.2);border-radius:2px;padding:6px;position:relative;overflow:hidden">
-                <div style="position:absolute;bottom:0;left:0;width:${pct}%;height:${pct}%;background:${c};opacity:.2;border-radius:2px"></div>
-                <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${c};position:relative">${pct}%</div>
-              </div>
-              <div style="height:3px;background:rgba(77,121,255,.1);border-radius:1px;margin-top:3px"><div style="height:100%;width:${pct}%;background:${c};border-radius:1px;transition:width .5s"></div></div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
+
+  // ── WHAT CHANGED THIS CYCLE ──────────────────────────────────────────────
+  if(prevState&&prevState.weights){
+    const changes=[];
+    for(const sport of ['MLB','NHL','NBA']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=0.8)changes.push({sport,key:key.toUpperCase(),delta});}}
+    const accDelta=((state.overallAcc||0)-(prevState.overallAcc||0))*100;
+    const betsDelta=(state.totalBets||0)-(prevState.totalBets||0);
+    html+=`<div class="card" style="margin-bottom:12px;padding:12px;border-left:3px solid var(--pc)">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--pc);margin-bottom:8px">// WHAT CHANGED THIS CYCLE</div>`;
+    if(betsDelta>0)html+=`<div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-bottom:4px">+ ${betsDelta} new settled bet${betsDelta>1?'s':''} ingested into model</div>`;
+    if(Math.abs(accDelta)>=0.3)html+=`<div style="font-family:var(--mono);font-size:13px;color:${accDelta>0?'var(--nc)':'var(--hc)'};margin-bottom:4px">${accDelta>0?'▲ IMPROVED':'▼ DECLINED'}: 30-bet accuracy ${accDelta>0?'+':''}${accDelta.toFixed(1)}% → now ${(state.overallAcc*100).toFixed(1)}%</div>`;
+    if(changes.length){
+      html+=`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:6px 0 3px">WEIGHT ADJUSTMENTS:</div>`;
+      html+=changes.map(c=>`<div style="font-family:var(--mono);font-size:12px;color:${c.delta>0?'var(--nc)':'var(--hc)'};margin-bottom:2px">${c.delta>0?'↑':'↓'} ${c.sport} ${c.key}: ${c.delta>0?'+':''}${c.delta.toFixed(1)}%</div>`).join('');
     }
+    if(!changes.length&&Math.abs(accDelta)<0.3&&betsDelta===0)html+=`<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">No significant changes — model stable.</div>`;
     html+=`</div>`;
   }
-  // ── Feature trending (up/down) ──
-  if((state.findings||[]).some(f=>['up','down','strength','weakness'].includes(f.type))){
-    const trending=state.findings.filter(f=>['up','down','strength','weakness'].includes(f.type));
-    html+=`<div class="card" style="margin-bottom:10px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--mc);margin-bottom:8px">// FEATURE TRENDS</div>
-      ${trending.map(f=>{const up=f.type==='up'||f.type==='strength';return`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(77,121,255,.08)"><span style="font-size:16px">${up?'↑':'↓'}</span><span style="font-family:var(--mono);font-size:13px;color:${up?'var(--nc)':'var(--hc)'};flex:1">${f.component}: ${f.msg}</span></div>`;}).join('')}
-    </div>`;
-  }
-  // ── Last 30 days vs Season accuracy ──
-  const allSettled=getP().filter(p=>p.outcome!=='pending');
-  const thirtyDaysAgo=Date.now()-30*24*60*60*1000;
-  const last30=allSettled.filter(p=>p.lockedAt&&p.lockedAt>thirtyDaysAgo);
-  const l30w=last30.filter(p=>p.outcome==='win').length;const l30acc=last30.length?l30w/last30.length:null;
-  const allW=allSettled.filter(p=>p.outcome==='win').length;const allAcc=allSettled.length?allW/allSettled.length:null;
-  if(last30.length||allSettled.length){
-    html+=`<div class="card" style="margin-bottom:12px;padding:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--vc);margin-bottom:10px">// LAST 30 DAYS vs SEASON ACCURACY</div>
-      <div style="display:flex;gap:10px">
-        <div style="flex:1;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${l30acc===null?'var(--t3)':l30acc>=.55?'var(--nc)':l30acc>=.50?'var(--vc)':'var(--hc)'}">${l30acc!==null?(l30acc*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">LAST 30 DAYS (${last30.length} BETS)</div></div>
-        <div style="flex:1;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${allAcc===null?'var(--t3)':allAcc>=.55?'var(--nc)':allAcc>=.50?'var(--vc)':'var(--hc)'}">${allAcc!==null?(allAcc*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">SEASON (${allSettled.length} BETS)</div></div>
-        ${l30acc!==null&&allAcc!==null?`<div style="flex:1;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${l30acc>allAcc?'var(--nc)':'var(--hc)'}">${l30acc>allAcc?'↑':'↓'}${Math.abs((l30acc-allAcc)*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">TREND</div></div>`:''}
+
+  // ── WHAT CLAIRVOYANCE HAS LEARNED ────────────────────────────────────────
+  if((state.findings||[]).length){
+    const fColor={strength:'var(--nc)',weakness:'var(--hc)',up:'var(--nc)',down:'var(--hc)',calibration:'var(--gc)',alert:'var(--mc)',insight:'var(--ic)'};
+    const fLabel={strength:'STRENGTH',weakness:'WEAKNESS',up:'↑ WEIGHT UP',down:'↓ WEIGHT DOWN',calibration:'CALIBRATION',alert:'⚠ ALERT',insight:'INSIGHT'};
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--nc);margin:12px 0 6px">// WHAT CLAIRVOYANCE HAS LEARNED</div>`;
+    html+=state.findings.map(f=>`<div class="card" style="margin-bottom:6px;border-left:3px solid ${fColor[f.type]||'var(--t3)'};padding:8px 11px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:3px">
+        <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${fColor[f.type]||'var(--t3)'};color:${fColor[f.type]||'var(--t3)'};border-radius:2px">${fLabel[f.type]||f.type.toUpperCase()}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${f.component}</span>
       </div>
-    </div>`;
-  }
-  // ── WHERE WE'RE FALLING SHORT ──
-  if((state.weaknesses||[]).length){
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--hc);margin:16px 0 8px">// WHERE THE MODEL IS FALLING SHORT</div>`;
-    html+=state.weaknesses.map(w=>`<div class="card" style="margin-bottom:7px;border-left:3px solid var(--hc);padding:10px 12px">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--hc);letter-spacing:1px;margin-bottom:5px">// ${w.area}</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t);line-height:1.75">${w.detail}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t);line-height:1.65">${f.msg}</div>
     </div>`).join('');
-  }else if(state.status==='OK'){
-    html+=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--nc);padding:10px 12px">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--nc);letter-spacing:1px;margin-bottom:4px">✓ NO STRUCTURAL WEAKNESSES DETECTED</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.75">Model is operating within acceptable calibration bounds across all tracked dimensions. Continue monitoring as sample grows.</div>
+  }
+
+  // ── IMPLEMENTED THIS CYCLE ────────────────────────────────────────────────
+  const implItems=[];
+  if(prevState?.weights){
+    for(const sp of['MLB','NHL','NBA']){const cw=state.weights?.[sp],pw=prevState.weights?.[sp];if(!cw||!pw)continue;for(const k of['mc','bay','elo']){const d=((cw[k]||0)-(pw[k]||0))*100;if(Math.abs(d)>=0.5)implItems.push(`${sp} ${k.toUpperCase()} weight ${d>0?'increased':'decreased'} by ${Math.abs(d).toFixed(1)}%`);}}
+  }
+  if(state.evThreshold&&prevState?.evThreshold&&Math.abs(state.evThreshold-prevState.evThreshold)>=0.1)
+    implItems.push(`EV threshold adjusted from ${prevState.evThreshold.toFixed(1)}% to ${state.evThreshold.toFixed(1)}%`);
+  if(implItems.length){
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--vc);margin:12px 0 6px">// IMPLEMENTED THIS CYCLE</div>
+    <div class="card" style="padding:10px;border-left:3px solid var(--vc)">
+      ${implItems.map(i=>`<div style="font-family:var(--mono);font-size:12px;color:var(--t2);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">✓ ${i}</div>`).join('')}
     </div>`;
   }
-  // ── RECOMMENDED ADJUSTMENTS ──
+
+  // ── AUTO-TUNED ENSEMBLE WEIGHTS ───────────────────────────────────────────
+  html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--ic);margin:12px 0 6px">// AUTO-TUNED ENSEMBLE WEIGHTS</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
+    ${['MLB','NHL','NBA'].filter(s=>state.weights?.[s]).map(sport=>{
+      const w=state.weights[sport];
+      const sp=Object.entries(state.sportPerf||{}).find(([s])=>s===sport)?.[1];
+      return`<div class="card" style="padding:10px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:6px">${sport}${sp?' · '+(sp.acc*100).toFixed(0)+'%':''}</div>
+        ${[['MC',w.mc,'var(--pc)'],['BAY',w.bay,'var(--ic)'],['ELO',w.elo,'var(--nc)']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${l}</span>
+          <div style="flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:1px;margin:0 6px"><div style="width:${(v*100).toFixed(0)}%;height:100%;background:${c};border-radius:1px"></div></div>
+          <span style="font-family:var(--orb);font-size:12px;font-weight:700;color:${c}">${(v*100).toFixed(0)}%</span>
+        </div>`).join('')}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  // ── BY SPORT + LEAGUE BREAKDOWN ───────────────────────────────────────────
+  html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--vc);margin:12px 0 6px">// PERFORMANCE BY SPORT & LEAGUE</div>`;
+  const sportGroups={
+    BASEBALL:{sports:['MLB'],color:'var(--vc)'},
+    BASKETBALL:{sports:['NBA','WNBA'],color:'var(--pc)'},
+    HOCKEY:{sports:['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'],color:'var(--ic)'},
+    TENNIS:{sports:['TEN','WTA','ATP'],color:'var(--mc)'},
+    FOOTBALL:{sports:['NFL','CFB','FB'],color:'var(--hc)'},
+  };
+  const perfAll=getP().filter(p=>p.outcome!=='pending');
+  html+=`<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">`;
+  for(const[grp,{sports,color}]of Object.entries(sportGroups)){
+    const bets=perfAll.filter(p=>sports.some(s=>(p.sport||'').toUpperCase()===s));
+    if(!bets.length)continue;
+    const w=bets.filter(p=>p.outcome==='win').length;const acc=bets.length?w/bets.length:null;
+    const units=bets.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
+    // Per-league inside group
+    const leagueRows=sports.map(s=>{const lb=bets.filter(p=>(p.sport||'').toUpperCase()===s);if(!lb.length)return'';const lw=lb.filter(p=>p.outcome==='win').length;const lu=lb.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);const lacc=lb.length?lw/lb.length:null;return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 20px;border-top:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${s}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${lw}W-${lb.length-lw}L</span><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pCol(lacc||0)}">${lacc!==null?(lacc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:10px;color:${units>=0?'var(--nc)':'var(--hc)'}">${lu>=0?'+':''}${lu.toFixed(1)}u</span></div>`;}).filter(Boolean).join('');
+    const fid2='adsp_'+grp;
+    html+=`<div style="border:1px solid rgba(255,255,255,.08);border-radius:3px;overflow:hidden">
+      <div onclick="const c=document.getElementById('${fid2}');c.style.display=c.style.display==='none'?'block':'none'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7)">
+        <span style="font-family:var(--mono);font-size:12px;color:${color}">${grp}</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${w}W-${bets.length-w}L</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pCol(acc||0)}">${acc!==null?(acc*100).toFixed(1)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:${units>=0?'var(--nc)':'var(--hc)'}">${units>=0?'+':''}${units.toFixed(1)}u</span>
+        </div>
+      </div>
+      <div id="${fid2}" style="display:none;background:rgba(4,0,12,.5)">${leagueRows}</div>
+    </div>`;
+  }
+  html+=`</div>`;
+
+  // ── BY BET TYPE ───────────────────────────────────────────────────────────
+  const typeMap={ML:'Moneyline',RL:'Run Line',PL:'Puck Line',OU:'Over/Under',PROP:'Player Props'};
+  const typeBets=['ML','RL','PL','OU','PROP'].map(bt=>{const tb=perfAll.filter(p=>p.betType===bt);if(!tb.length)return null;const tw=tb.filter(p=>p.outcome==='win').length;const tu=tb.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);return{bt,n:tb.length,w:tw,acc:tb.length?tw/tb.length:null,units:tu};}).filter(Boolean);
+  if(typeBets.length){
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--mc);margin:12px 0 6px">// BY BET TYPE</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px">
+      ${typeBets.map(t=>`<div style="flex:1;min-width:70px;background:rgba(10,0,24,.8);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:9px;text-align:center">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:3px">${typeMap[t.bt]||t.bt}</div>
+        <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:${pCol(t.acc||0)}">${t.acc!==null?(t.acc*100).toFixed(0)+'%':'--'}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">${t.w}W-${t.n-t.w}L</div>
+        <div style="font-family:var(--mono);font-size:10px;color:${t.units>=0?'var(--nc)':'var(--hc)'}">${t.units>=0?'+':''}${t.units.toFixed(1)}u</div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // ── CALIBRATION ANALYSIS ──────────────────────────────────────────────────
+  if(Object.keys(state.calErrors||{}).length){
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--gc);margin:12px 0 6px">// CALIBRATION ANALYSIS — PREDICTED vs ACTUAL</div>
+    <div class="card" style="margin-bottom:12px;padding:10px;overflow-x:auto">
+      <table class="dt" style="font-size:12px;min-width:280px"><thead><tr><th>TIER</th><th>PREDICTED</th><th>ACTUAL</th><th>DRIFT</th><th>N</th></tr></thead><tbody>
+      ${Object.entries(state.calErrors).map(([bk,d])=>{const drift=d.predicted-d.actual;const dc=Math.abs(drift)>0.06?'var(--hc)':Math.abs(drift)>0.03?'var(--mc)':'var(--nc)';return`<tr><td style="color:var(--t3)">${bk.toUpperCase()}</td><td>${(d.predicted*100).toFixed(1)}%</td><td style="color:${d.actual>=d.predicted?'var(--nc)':'var(--hc)'}">${(d.actual*100).toFixed(1)}%</td><td style="color:${dc}">${drift>=0?'+':''}${(drift*100).toFixed(1)}%</td><td style="color:var(--t3)">${d.n}</td></tr>`;}).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  // ── ACCURACY TREND CHART ──────────────────────────────────────────────────
+  if((state.history||[]).length>1){
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--pc);margin:12px 0 6px">// ACCURACY TREND — EACH BAR = ONE LEARNING CYCLE</div>
+    <div class="card" style="margin-bottom:12px;padding:10px">
+      <div style="display:flex;align-items:flex-end;gap:3px;height:48px">
+        ${state.history.map(h=>{const pct=h.overallAcc||0.5;const ht=Math.max(4,Math.round(pct*48));const c=pct>=.60?'var(--nc)':pct>=.52?'var(--vc)':'var(--hc)';return`<div style="flex:1;background:${c};height:${ht}px;border-radius:2px 2px 0 0;min-width:4px;opacity:.9" title="${(pct*100).toFixed(1)}%"></div>`;}).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px"><span>OLDEST</span><span>NOW → ${(state.overallAcc*100).toFixed(1)}%</span></div>
+    </div>`;
+  }
+
+  // ── WHERE THE MODEL IS FALLING SHORT ─────────────────────────────────────
+  html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--hc);margin:12px 0 6px">// WHERE THE MODEL FALLS SHORT</div>`;
+  if((state.weaknesses||[]).length){
+    html+=state.weaknesses.map(w=>`<div class="card" style="margin-bottom:6px;border-left:3px solid var(--hc);padding:9px 11px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--hc);letter-spacing:1px;margin-bottom:4px">▼ ${w.area}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t);line-height:1.65">${w.detail}</div>
+    </div>`).join('');
+  } else {
+    html+=`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--nc);padding:9px 11px"><div style="font-family:var(--mono);font-size:12px;color:var(--nc)">✓ NO STRUCTURAL WEAKNESSES DETECTED — model operating within bounds</div></div>`;
+  }
+
+  // ── RECOMMENDATIONS & NEXT STEPS ─────────────────────────────────────────
   if((state.recommendations||[]).length){
     const pColor={URGENT:'var(--hc)',HIGH:'var(--mc)',MEDIUM:'var(--vc)',LOW:'var(--nc)'};
-    html+=`<div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--gc);margin:14px 0 8px">// RECOMMENDED ADJUSTMENTS</div>`;
-    html+=state.recommendations.map(r=>{
-      const pc=pColor[r.priority]||'var(--t3)';
-      return`<div class="card" style="margin-bottom:7px;border-left:3px solid ${pc};padding:10px 12px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-          <span style="font-family:var(--mono);font-size:11px;padding:2px 5px;border:1px solid ${pc};color:${pc};border-radius:2px">${r.priority}</span>
-          <span style="font-family:var(--mono);font-size:13px;color:${pc};font-weight:700">${r.action}</span>
-        </div>
-        <div style="font-family:var(--mono);font-size:14px;color:var(--t);line-height:1.75">${r.detail}</div>
+    html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--gc);margin:12px 0 6px">// RECOMMENDATIONS & NEXT STEPS</div>`;
+    html+=state.recommendations.map(r=>{const pc=pColor[r.priority]||'var(--t3)';return`<div class="card" style="margin-bottom:6px;border-left:3px solid ${pc};padding:9px 11px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${pc};color:${pc};border-radius:2px">${r.priority}</span>
+        <span style="font-family:var(--mono);font-size:12px;color:${pc};font-weight:700">${r.action}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t);line-height:1.65">${r.detail}</div>
+    </div>`;}).join('');
+  }
+
+  // ── ADJUSTMENT MEASUREMENT ────────────────────────────────────────────────
+  html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--ic);margin:12px 0 6px">// ADJUSTMENT IMPACT MEASUREMENT</div>`;
+  const adjLog=JSON.parse(S.g('adaptive_log')||'[]');
+  if(adjLog.length>=2){
+    const recent=adjLog.slice(-5);
+    const impactRows=recent.map((entry,i)=>{
+      const prev=adjLog[adjLog.length-recent.length+i-1];
+      const accDelta=prev?(((entry.overallAcc||0)-(prev.overallAcc||0))*100):null;
+      const impact=accDelta===null?'—':accDelta>1?'✓ POSITIVE':accDelta<-1?'✗ NEGATIVE':'~ NEUTRAL';
+      const ic=accDelta===null?'var(--t3)':accDelta>1?'var(--nc)':accDelta<-1?'var(--hc)':'var(--t2)';
+      return`<tr>
+        <td style="color:var(--t3);font-size:11px">${new Date(entry.ts).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td style="color:${pCol(entry.overallAcc||0)}">${entry.overallAcc?(entry.overallAcc*100).toFixed(1)+'%':'--'}</td>
+        <td style="color:${ic}">${accDelta!==null?(accDelta>0?'+':'')+accDelta.toFixed(1)+'%':''}</td>
+        <td style="color:${ic}">${impact}</td>
+        <td style="color:var(--t3)">${entry.bets||0} bets</td>
+      </tr>`;
+    }).join('');
+    html+=`<div class="card" style="margin-bottom:12px;padding:10px;overflow-x:auto">
+      <table class="dt" style="font-size:12px;min-width:300px"><thead><tr><th>CYCLE</th><th>ACC</th><th>ΔACC</th><th>IMPACT</th><th>N</th></tr></thead><tbody>${impactRows}</tbody></table>
+    </div>`;
+  } else {
+    html+=`<div class="card" style="margin-bottom:12px;padding:9px;border-left:3px solid var(--t3)"><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">Run at least 2 learning cycles to measure adjustment impact.</div></div>`;
+  }
+
+  // ── ADAPTIVE LOG ──────────────────────────────────────────────────────────
+  html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--t3);margin:12px 0 6px">// ADAPTIVE LOG — CYCLE HISTORY</div>`;
+  if(adjLog.length){
+    const logFid='adaptive-log-body';
+    const logRows=adjLog.slice().reverse().map((e,i)=>{
+      const badge=e.weaknesses?'var(--hc)':e.findings?'var(--nc)':'var(--t3)';
+      return`<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${new Date(e.ts).toLocaleString()}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:${pCol(e.overallAcc||0)}">${e.overallAcc?(e.overallAcc*100).toFixed(1)+'%':'--'}</span>
+        <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${badge};color:${badge};border-radius:2px">${e.weaknesses?e.weaknesses+' WEAK':e.findings?e.findings+' SIGNALS':'STABLE'}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${e.bets} bets</span>
       </div>`;
     }).join('');
+    html+=`<div class="card" style="padding:10px;margin-bottom:12px">${logRows}</div>`;
+  } else {
+    html+=`<div class="card" style="margin-bottom:12px;padding:9px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">No cycles logged yet — run the learning cycle above.</div></div>`;
   }
-  // ── Morning report + controls ──
-  html+=renderMorningReport();
-  html+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-p" style="flex:1;padding:11px" onclick="adaptiveTick();renderAdaptiveLearning();toast('// LEARNING CYCLE COMPLETE — WEIGHTS UPDATED')">[ RUN LEARNING CYCLE ]</button><button id="calib-btn" class="btn btn-n" style="flex:1;padding:11px;font-size:12px" onclick="triggerInstantCalibration()">CALIBRATE NOW</button></div>`;
-  html+=`<div class="card" style="margin-top:12px;padding:12px">${renderSyncCodePanel()}</div>`;
+
+  el.innerHTML=html;
+}
+
+function renderCrossDeviceSync(){
+  const el=document.getElementById('ovr-sync');if(!el)return;
+  const preds=getP();
+  const wins=preds.filter(p=>p.outcome==='win').length;
+  const losses=preds.filter(p=>p.outcome==='loss').length;
+  const pending=preds.filter(p=>p.outcome==='pending').length;
+  const syncLog=JSON.parse(S.g('sync_log')||'[]');
+  let html=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--gc);margin-bottom:12px">// CROSS-DEVICE SYNC</div>
+  <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.9;margin-bottom:12px">Sync all picks, bet history and model weights to another device via a portable code.<br>Generate on this device → paste on the other device to import.</div>
+  <div class="card" style="margin-bottom:12px;padding:12px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:8px">CURRENT DATABASE</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${[['PICKS',preds.length,'var(--nc)'],['WINS',wins,'var(--nc)'],['LOSSES',losses,'var(--hc)'],['PENDING',pending,'var(--pc)']].map(([l,v,c])=>`<div style="flex:1;min-width:60px;text-align:center;background:rgba(10,0,24,.8);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:8px"><div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${c}">${v}</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${l}</div></div>`).join('')}
+    </div>
+    <button class="btn btn-p btn-fw" style="padding:11px;margin-bottom:8px" onclick="genSyncCode();const el=document.getElementById('ovr-sync');if(el)renderCrossDeviceSync()">📋 GENERATE + COPY SYNC CODE</button>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:6px">IMPORT FROM ANOTHER DEVICE:</div>
+    <div style="display:flex;gap:6px">
+      <input id="sync-code-in" class="fi" placeholder="PASTE SYNC CODE HERE" style="flex:1;font-size:12px;padding:6px 8px"/>
+      <button class="btn btn-n btn-sm" onclick="importSyncCode(document.getElementById('sync-code-in').value);renderCrossDeviceSync()">IMPORT</button>
+    </div>
+  </div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--nc);letter-spacing:2px;margin:14px 0 6px">// GITHUB SYNC — PERMANENT STORAGE</div>
+  <div class="card" style="margin-bottom:12px;padding:12px">
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.8;margin-bottom:8px">picks.json on GitHub is the permanent record. Use the ⚙ Sync Key button (header) to authorize GitHub writes. Once authorized, bets sync automatically on every lock.</div>
+    <button class="btn btn-o btn-fw" style="padding:10px" onclick="syncPicksToGitHub?.(getP());toast('// SYNCING TO GITHUB...')">↻ FORCE GITHUB SYNC NOW</button>
+  </div>`;
+  // Sync log
+  if(syncLog.length){
+    html+=`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin:14px 0 6px">// SYNC LOG</div>
+    <div class="card" style="padding:10px">
+      ${syncLog.slice().reverse().slice(0,20).map(e=>`<div style="font-family:var(--mono);font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;gap:8px">
+        <span style="color:var(--t3)">${new Date(e.ts).toLocaleString()}</span>
+        <span style="color:${e.ok?'var(--nc)':'var(--hc)'}">${e.ok?'✓ SUCCESS':'✗ FAILED'}</span>
+        <span style="color:var(--t3)">${e.type||'sync'}</span>
+      </div>`).join('')}
+    </div>`;
+  }
   el.innerHTML=html;
 }
 
@@ -7482,7 +7582,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}if(tabId==='schedule')renderScheduleTab('nba','nba-schedule-list');
   if(sport==='fut'){renderFuturesPanes(tabId);}
-  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')try{renderOvrAnalytics('all');}catch(e){};if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')try{renderOverallTrends();}catch(e){};if(tabId==='clv')try{renderCLVTab();}catch(e){};}
+  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='analytics')try{renderOvrAnalytics('all');}catch(e){};if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='trends')try{renderOverallTrends();}catch(e){};if(tabId==='clv')try{renderCLVTab();}catch(e){};if(tabId==='sync')renderCrossDeviceSync();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}
