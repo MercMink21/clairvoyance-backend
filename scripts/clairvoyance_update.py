@@ -2200,10 +2200,86 @@ def fetch_ncaa_baseball() -> dict:
     return result
 
 
+def fetch_wnba_player_stats() -> list:
+    """Scrape WNBA per-game player stats from Basketball Reference."""
+    log("WNBA player stats (BBRef)…")
+    YEAR = 2026
+    players = []
+    try:
+        time.sleep(2)
+        soup = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}_per_game.html", ref=True)
+        if not soup:
+            return players
+        rows = _table_to_rows(soup, "per_game_stats", limit=120)
+        for r in rows:
+            name = r.get("player","").strip()
+            if not name or name == "Player":
+                continue
+            try:
+                players.append({
+                    "name": name,
+                    "team": r.get("team_id", r.get("team","")),
+                    "g":    int(r.get("g","0") or 0),
+                    "pts":  float(r.get("pts","0") or 0),
+                    "reb":  float(r.get("trb","0") or r.get("reb","0") or 0),
+                    "ast":  float(r.get("ast","0") or 0),
+                    "stl":  float(r.get("stl","0") or 0),
+                    "blk":  float(r.get("blk","0") or 0),
+                    "tov":  float(r.get("tov","0") or 0),
+                    "fg_pct": float(r.get("fg_pct","0") or 0),
+                    "ts_pct": float(r.get("ts_pct","0") or 0),
+                    "usg_pct": float(r.get("usg_pct","0") or 0),
+                    "mp":   float(r.get("mp","0") or 0),
+                })
+            except (ValueError, TypeError):
+                continue
+        log(f"WNBA players: {len(players)}")
+    except Exception as e:
+        log(f"WNBA player stats: {e}", "WARN")
+    return players
+
+
+def fetch_wnba_team_stats() -> dict:
+    """Scrape WNBA team advanced stats (ortg, drtg, pace) from Basketball Reference."""
+    log("WNBA team stats (BBRef)…")
+    YEAR = 2026
+    result = {}
+    try:
+        time.sleep(2)
+        soup = fetch_html(f"https://www.basketball-reference.com/wnba/years/{YEAR}.html", ref=True)
+        if not soup:
+            return result
+        # Try team_misc or team_stats table
+        for tbl_id in ("team_misc", "team_stats"):
+            rows = _table_to_rows(soup, tbl_id, limit=20)
+            for r in rows:
+                team = r.get("team_name", r.get("team","")).strip().rstrip("*")
+                if not team or team in ("League Average",""):
+                    continue
+                abbr = r.get("team_id", team[:3].upper())
+                try:
+                    entry = {
+                        "name":  team,
+                        "ortg":  float(r.get("off_rtg","0") or 0),
+                        "drtg":  float(r.get("def_rtg","0") or 0),
+                        "pace":  float(r.get("pace","0") or 0),
+                        "efg_pct": float(r.get("efg_pct","0") or 0),
+                        "ts_pct": float(r.get("ts_pct","0") or 0),
+                    }
+                    if entry["ortg"] > 0:
+                        result[abbr] = entry
+                except (ValueError, TypeError):
+                    continue
+        log(f"WNBA team stats: {len(result)} teams")
+    except Exception as e:
+        log(f"WNBA team stats: {e}", "WARN")
+    return result
+
+
 def fetch_wnba() -> dict:
-    """Fetch WNBA scoreboard, standings, schedule from ESPN."""
+    """Fetch WNBA scoreboard, standings, schedule from ESPN + BBRef player/team stats."""
     log("WNBA scoreboard…")
-    result = {"today": [], "standings": {}, "schedule": []}
+    result = {"today": [], "standings": {}, "schedule": [], "players": [], "teamStats": {}}
     try:
         data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates={TODAY_ET}&limit=15")
         for ev in (data or {}).get("events", []):
@@ -2247,6 +2323,8 @@ def fetch_wnba() -> dict:
                 })
             time.sleep(0.2)
     except Exception as e: log(f"WNBA schedule: {e}", "WARN")
+    result["players"] = fetch_wnba_player_stats()
+    result["teamStats"] = fetch_wnba_team_stats()
     return result
 
 
