@@ -75,6 +75,12 @@ if bt % 2 == 0:
     ok(f'Backticks even: {bt}')
 else:
     err(f'ODD BACKTICK COUNT ({bt}) — unclosed template literal will crash engine')
+# Check: split('<LF>') pattern — literal newline byte inside quoted string = SyntaxError
+_lf = chr(10)
+_precise_bad = main_js.count("'" + _lf + "'")
+if _precise_bad:
+    err(f'LITERAL NEWLINE IN JS STRING: {_precise_bad} occurrence(s) of ' + "'" + r'<LF>' + "'" + ' — SyntaxError kills entire engine')
+
 
 op = main_js.count('{')
 cl = main_js.count('}')
