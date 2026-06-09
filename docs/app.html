@@ -5925,6 +5925,45 @@ function buildAlyFilters(allRaw,F){
 function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const el=document.getElementById('ovr-history-list');if(!el)return;
   let all=[...getP()].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
+  // ── PENDING BETS — always shown at top regardless of filters ──────────────
+  const pendingAll=all.filter(p=>p.outcome==='pending');
+  if(pendingAll.length){
+    const sportColor2={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',default:'var(--t3)'};
+    const pHtml=pendingAll.map(p=>{
+      const sc=sportColor2[p.sport]||sportColor2.default;
+      const mu=p.hA==='PARLAY'?'PARLAY':p.awA+' at '+p.hA;
+      return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${mu}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.date||''}</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.betOn||p.betType}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}</div>
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');setTimeout(renderOverallHistory,400)">✓ WIN</button>
+          <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');setTimeout(renderOverallHistory,400)">✗ LOSS</button>
+        </div>
+      </div>`;
+    }).join('');
+    // Prepend pending section before the main list (don't return, let normal render continue)
+    const pendingSection=document.createElement('div');
+    pendingSection.id='ovr-pending-section';
+    pendingSection.innerHTML=`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.3);border-radius:3px;margin-bottom:14px;overflow:hidden">
+      <div style="padding:9px 12px;background:rgba(0,240,255,.08);border-bottom:1px solid rgba(0,240,255,.2);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--orb);font-size:12px;font-weight:700;color:var(--nc);letter-spacing:2px">⏳ PENDING BETS — ${pendingAll.length}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">Settle with WIN / LOSS buttons</span>
+      </div>
+      ${pHtml}
+    </div>`;
+    // Remove old pending section if exists, then prepend fresh
+    const old=document.getElementById('ovr-pending-section');if(old)old.remove();
+    el.parentNode.insertBefore(pendingSection,el);
+  } else {
+    const old=document.getElementById('ovr-pending-section');if(old)old.remove();
+  }
   // Sport filter — null means "preserve stored", undefined means "not passed"
   const sf=(sportFilter!=null)?sportFilter:(window._ovrHistSport||'ALL');
   // Date filter — use ternary so empty string ('') is respected (clears filter)
