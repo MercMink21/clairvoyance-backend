@@ -3726,6 +3726,18 @@ function applyNHLWeightsModel(){
   toast('// NHL WEIGHTS APPLIED');
 }
 function applyNBAWeights(){const mc=+document.getElementById('nba-w-mc')?.value||50;const bay=+document.getElementById('nba-w-bay')?.value||20;const elo=+document.getElementById('nba-w-elo')?.value||30;const s=mc+bay+elo||100;NBA_ENS={mc:mc/s,bay:bay/s,elo:elo/s};S.s('nba_ens',NBA_ENS);try{renderNBAPicks();}catch(e){}toast('// NBA WEIGHTS LIVE — PICKS RECALCULATED');}
+function applyWNBAWeights(){
+  const mc=parseFloat(document.getElementById('wnba-w-mc')?.value||50)/100;
+  const bay=parseFloat(document.getElementById('wnba-w-bay')?.value||20)/100;
+  const elo=parseFloat(document.getElementById('wnba-w-elo')?.value||30)/100;
+  const tot=mc+bay+elo||1;
+  window.WNBA_ENS={mc:mc/tot,bay:bay/tot,elo:elo/tot};
+  const wTxt=`WEIGHTS: MC ${(mc/tot*100).toFixed(0)}% · BAY ${(bay/tot*100).toFixed(0)}% · ELO ${(elo/tot*100).toFixed(0)}%`;
+  ['wnba-model-weights','wnba-model-weights-b'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:8px">${wTxt}</div>`;});
+}
+window.applyWNBAWeights=applyWNBAWeights;
+window.WNBA_ENS={mc:0.50,bay:0.20,elo:0.30};
+
 function applyTennisWeights(){const surf=+document.getElementById('ten-w-surf')?.value||40;const h2h=+document.getElementById('ten-w-h2h')?.value||20;const rem=100-surf-h2h;window._TEN_ENS={surf:surf/100,h2h:h2h/100,base:Math.max(0,rem)/100};S.s('ten_ens',window._TEN_ENS);try{renderTennisPicks();}catch(e){}toast('// TENNIS WEIGHTS LIVE — PICKS RECALCULATED');}
 
 // ── Form dot tooltip ──
@@ -4245,35 +4257,42 @@ async function renderNBAGames(day){
     const events=d.events||[];
     if(!events.length){el.innerHTML='<div class="empty">NO NBA GAMES TODAY</div>';return;}
     el.innerHTML=events.map(espnEv=>{
-      const c=espnEv.competitions?.[0];if(!c)return '';
+      const c=espnEv.competitions?.[0];if(!c)return'';
       const h=c.competitors?.find(t=>t.homeAway==='home'),a=c.competitors?.find(t=>t.homeAway==='away');
       const hn=h?.team?.abbreviation||'HOM',an=a?.team?.abbreviation||'AWY';
-      const hs=h?.score||'',as=a?.score||'';
-      const st=c.status?.type?.description||'Scheduled';
-      const live=c.status?.type?.state==='in';
-      const pre=c.status?.type?.state==='pre';
-      // Model probability via nbaEns if team data exists
-      let modelLine='';
-      try{
-        const ens=nbaEns(hn,an);
-        if(ens&&ens.p&&pre){
-          const hML=p2ml(ens.p),hD=ml2d(hML),hEV=+(ev(ens.p,hD)*100).toFixed(1);
-          const aML=p2ml(1-ens.p),aD=ml2d(aML),aEV=+(ev(1-ens.p,aD)*100).toFixed(1);
-          const top=ens.p>=.5?{t:hn,p:ens.p,eV:hEV}:{t:an,p:1-ens.p,eV:aEV};
-          const eg=evGrd(top.eV);
-          modelLine=`<div style="display:flex;align-items:center;gap:5px;margin-top:4px"><span style="font-family:var(--mono);font-size:13px;color:${top.eV>0?'var(--nc)':'var(--t3)'}">MODEL: ${top.t} ${(top.p*100).toFixed(0)}%${top.eV>0?' · EV +'+top.eV+'%':''}</span>${top.eV>1?`<span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid ${eg.col};color:${eg.col};border-radius:2px">${eg.lbl}</span>`:''}</div>`;
-        }
-      }catch(e){}
-      return `<div class="card" style="margin-bottom:8px;border-left:2px solid ${live?'var(--vc)':'var(--t3)'}">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:var(--orb);font-size:20px;font-weight:700">${hn} ${hs}</span>
-          <span style="font-family:var(--mono);font-size:13px;color:${live?'var(--vc)':'var(--t3)'}">${st}</span>
-          <span style="font-family:var(--orb);font-size:20px;font-weight:700">${as} ${an}</span>
-        </div>${modelLine}
-        <div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap">
-          <button class="btn btn-p btn-sm" onclick="lockNBAGame('${an} @ ${hn}','${hn} ML','')">${hn} ML</button>
-          <button class="btn btn-o btn-sm" onclick="lockNBAGame('${an} @ ${hn}','${an} ML','')">${an} ML</button>
-        </div></div>`;
+      const hs=parseInt(h?.score||0),as2=parseInt(a?.score||0);
+      const state=c.status?.type?.state||'pre';
+      const live=state==='in';const pre=state==='pre';const post=state==='post';
+      const stCol=post?'var(--t3)':live?'var(--hc)':'var(--nc)';
+      const stTxt=post?`FINAL ${as2}-${hs}`:live?`Q${c.status?.period||'?'} ${c.status?.displayClock||''}`:espnEv.date?new Date(espnEv.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
+      let hP=0.53,aP=0.47,hML='-115',aML='-105',hEV=0,aEV=0;
+      try{const ens=nbaEns(hn,an);if(ens?.p){hP=ens.p;aP=1-ens.p;hML=p2ml(hP);aML=p2ml(aP);hEV=+(ev(hP,ml2d(hML))*100).toFixed(1);aEV=+(ev(aP,ml2d(aML))*100).toFixed(1);}}catch(e){}
+      const hCS=chipC(hP,hEV/100);const aCS=chipC(aP,aEV/100);
+      const D=window.__CV_DATA||{};const NBA_T=D.nba?.teamStats||{};
+      const hTS=NBA_T[hn]||{};const aTS=NBA_T[an]||{};
+      const hNet=hTS.ortg?`${hTS.ortg.toFixed(0)}/${hTS.drtg?.toFixed(0)||'--'}`:'--/--';
+      const aNet=aTS.ortg?`${aTS.ortg.toFixed(0)}/${aTS.drtg?.toFixed(0)||'--'}`:'--/--';
+      const espnOdds=(c.odds||[])[0];
+      const espnHL=espnOdds?.homeTeamOdds?.moneyLine;const espnAL=espnOdds?.awayTeamOdds?.moneyLine;
+      return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4);margin-bottom:8px">
+        <div class="gch"><div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${an}</span>
+            <span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span>
+            <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${hn}</span>
+          </div>
+          <div class="gsp" style="color:${stCol}">${stTxt}</div>
+          ${espnHL?`<div class="gsp">ESPN: <span style="color:var(--pc)">${hn} ${espnHL>0?'+':''}${espnHL}</span> \xb7 <span style="color:var(--t2)">${an} ${espnAL>0?'+':''}${espnAL}</span></div>`:''}
+          <div class="gsp" style="color:var(--t3)">ORTG/DRTG — ${hn}: ${hNet} \xb7 ${an}: ${aNet}</div>
+        </div>
+        <div style="text-align:right"><div class="np mono" style="font-size:13px;color:${stCol}">${live?'● LIVE':post?'FINAL':''}</div></div></div>
+        ${pre?`<div class="brow">
+          <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${ml2d(hML).toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+          <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${an}',${aP.toFixed(3)},'${aML}',${ml2d(aML).toFixed(3)},'${today()}')"><div class="cht">ML ${an}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+        </div>`:''}
+        ${post?`<div style="padding:6px 10px;font-family:var(--mono);font-size:14px;font-weight:700;color:var(--t3)">${as2>hs?an:hn} WIN \xb7 ${Math.max(as2,hs)}-${Math.min(as2,hs)}</div>`:''}
+        ${live?`<div class="brow"><div style="font-family:var(--orb);font-size:22px;font-weight:900;flex:1;text-align:center;color:${as2>hs?'var(--pc)':'var(--t2)'}">${an} ${as2}</div><div style="font-family:var(--mono);font-size:13px;color:var(--hc);align-self:center">LIVE</div><div style="font-family:var(--orb);font-size:22px;font-weight:900;flex:1;text-align:center;color:${hs>=as2?'var(--pc)':'var(--t2)'}">${hs} ${hn}</div></div>`:''}
+      </div>`;
     }).join('');
   }catch(e){el.innerHTML='<div class="empty">ESPN UNAVAILABLE — CHECK CONNECTION</div>';}
 }
@@ -12739,33 +12758,23 @@ async function renderWNBAGames(){
     const d=await r.json();
     const events=d.events||[];
     if(!events.length){el.innerHTML='<div class="empty">NO WNBA GAMES TODAY</div>';return;}
-    // Pull team stats from data.json for win prob calculation
     const D=window.__CV_DATA||{};
     const wnbaStandings=D.wnba?.standings||{};
     const wnbaTeamStats=D.wnba?.teamStats||{};
     function wnbaWinProb(hab,aab){
-      // Use net rating if available; fall back to win% then 53/47
       const h=wnbaTeamStats[hab]||wnbaTeamStats[hab?.toUpperCase()]||{};
       const a=wnbaTeamStats[aab]||wnbaTeamStats[aab?.toUpperCase()]||{};
-      const hNet=(h.ortg||100)-(h.drtg||100);
-      const aNet=(a.ortg||100)-(a.drtg||100);
       if(h.ortg&&a.ortg){
-        // logistic transform of net rating diff + home edge
-        const diff=hNet-aNet+2.5;
+        const diff=(h.ortg-h.drtg)-(a.ortg-a.drtg)+2.5;
         const hP=1/(1+Math.exp(-diff*0.12));
         return{hP:Math.min(Math.max(hP,0.35),0.75),aP:1-Math.min(Math.max(hP,0.35),0.75)};
       }
-      // fall back to win%
-      const hSt=wnbaStandings[hab]||wnbaStandings[hab?.toUpperCase()]||{};
-      const aSt=wnbaStandings[aab]||wnbaStandings[aab?.toUpperCase()]||{};
-      const hWp=parseFloat(hSt.pct||0.5)||0.5;
-      const aWp=parseFloat(aSt.pct||0.5)||0.5;
-      const sum=hWp+aWp||1;
-      const hP=Math.min(Math.max((hWp/sum)*0.95+0.05+0.02,0.35),0.75);
+      const hSt=wnbaStandings[hab]||{};const aSt=wnbaStandings[aab]||{};
+      const hWp=parseFloat(hSt.pct||0.5)||0.5;const aWp=parseFloat(aSt.pct||0.5)||0.5;
+      const sum=hWp+aWp||1;const hP=Math.min(Math.max((hWp/sum)*0.95+0.05+0.02,0.35),0.75);
       return{hP,aP:1-hP};
     }
-    const parlayEl=document.getElementById('wnba-parlay-games');
-    let parlayHtml='';
+    const parlayEl=document.getElementById('wnba-parlay-games');let parlayHtml='';
     el.innerHTML=events.map(ev=>{
       const c=ev.competitions?.[0];if(!c)return'';
       const h=c.competitors?.find(t=>t.homeAway==='home');
@@ -12775,28 +12784,34 @@ async function renderWNBAGames(){
       const hab=h?.team?.abbreviation||'';const aab=a?.team?.abbreviation||'';
       const hs=parseInt(h?.score||0),as2=parseInt(a?.score||0);
       const state=c.status?.type?.state||'pre';
-      const stateStr=state==='post'?`FINAL ${as2}-${hs}`:state==='in'?`LIVE Q${c.status?.period} ${c.status?.displayClock}`:ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
+      const live=state==='in';const pre=state==='pre';const post=state==='post';
+      const stCol=post?'var(--t3)':live?'var(--hc)':'var(--nc)';
+      const stTxt=post?`FINAL ${as2}-${hs}`:live?`Q${c.status?.period||'?'} ${c.status?.displayClock||''}`:ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
       const {hP,aP}=wnbaWinProb(hab,aab);
       const hML=p2ml(hP);const aML=p2ml(aP);
       const hEV=hP*ml2d(hML)-1;const aEV=aP*ml2d(aML)-1;
       const hCS=chipC(hP,hEV);const aCS=chipC(aP,aEV);
-      const stCol=state==='post'?'var(--t3)':state==='in'?'var(--hc)':'var(--nc)';
-      if(state==='pre'){
-        parlayHtml+=`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc);margin-bottom:5px">${an} at ${hn}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${hab}','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">ML ${hab} ${hML}</button><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${aab}','${aML}',${aP.toFixed(3)},'${aab}v${hab}')">ML ${aab} ${aML}</button></div></div>`;
-      }
-      return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
+      const hTS=wnbaTeamStats[hab]||{};const aTS=wnbaTeamStats[aab]||{};
+      const hNet=hTS.ortg?`${hTS.ortg.toFixed(0)}/${hTS.drtg?.toFixed(0)||'--'}`:'--/--';
+      const aNet=aTS.ortg?`${aTS.ortg.toFixed(0)}/${aTS.drtg?.toFixed(0)||'--'}`:'--/--';
+      if(pre){parlayHtml+=`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc);margin-bottom:5px">${an} at ${hn}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${hab}','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">ML ${hab} ${hML}</button><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${aab}','${aML}',${aP.toFixed(3)},'${aab}v${hab}')">ML ${aab} ${aML}</button></div></div>`;}
+      return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4);margin-bottom:8px">
         <div class="gch"><div>
           <div style="display:flex;align-items:center;gap:6px">
-            <span class="gtm" style="color:var(--pc)">${an}</span>
+            <span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${an}</span>
             <span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span>
-            <span class="gtm" style="color:var(--pc)">${hn}</span>
+            <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${hn}</span>
           </div>
-          <div class="gsp" style="color:${stCol}">${stateStr}</div>
-        </div></div>
-        ${state==='pre'?`<div class="brow">
+          <div class="gsp" style="color:${stCol}">${stTxt}</div>
+          <div class="gsp" style="color:var(--t3)">ORTG/DRTG — ${hab}: ${hNet} \xb7 ${aab}: ${aNet}</div>
+        </div>
+        <div style="text-align:right"><div class="np mono" style="font-size:13px;color:${stCol}">${live?'● LIVE':post?'FINAL':''}</div></div></div>
+        ${pre?`<div class="brow">
           <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${hab}',${hP.toFixed(3)},'${hML}',${ml2d(hML).toFixed(3)},'${today()}')"><div class="cht">ML ${hab}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
           <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${aab}',${aP.toFixed(3)},'${aML}',${ml2d(aML).toFixed(3)},'${today()}')"><div class="cht">ML ${aab}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
         </div>`:''}
+        ${post?`<div style="padding:6px 10px;font-family:var(--mono);font-size:14px;font-weight:700;color:var(--t3)">${as2>hs?an:hn} WIN \xb7 ${Math.max(as2,hs)}-${Math.min(as2,hs)}</div>`:''}
+        ${live?`<div class="brow"><div style="font-family:var(--orb);font-size:22px;font-weight:900;flex:1;text-align:center;color:${as2>hs?'var(--pc)':'var(--t2)'}">${an} ${as2}</div><div style="font-family:var(--mono);font-size:13px;color:var(--hc);align-self:center">LIVE</div><div style="font-family:var(--orb);font-size:22px;font-weight:900;flex:1;text-align:center;color:${hs>=as2?'var(--pc)':'var(--t2)'}">${hs} ${hn}</div></div>`:''}
       </div>`;
     }).join('');
     if(parlayEl)parlayEl.innerHTML=parlayHtml||'<div class="empty">NO UPCOMING GAMES</div>';
