@@ -8170,7 +8170,14 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
     }
   }
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}if(tabId==='games'){try{if(typeof renderNBAGames==='function')renderNBAGames();}catch(e){}}
-  if(sport==='wnba'){if(tabId==='games')try{renderWNBAGames();}catch(e){};if(tabId==='props')try{renderWNBAProps();}catch(e){};}
+  if(sport==='wnba'){
+    try{
+      if(tabId==='games')renderWNBAGames();
+      else if(tabId==='props')renderWNBAProps();
+      else if(tabId==='schedule')renderWNBASchedule();
+      else if(tabId==='stats')renderWNBAStats();
+    }catch(e){console.error('WNBA tab',tabId,e);}
+  }
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
@@ -13262,8 +13269,11 @@ function wnbaMC(hA,awA){
   let hw=0,ou=0,totArr=[];
   const N=5000;
   for(let i=0;i<N;i++){
-    const hs=Math.round(hAvgPts+randn()*Math.sqrt(hAvgPts*0.18));
-    const as2=Math.round(aAvgPts+randn()*Math.sqrt(aAvgPts*0.18));
+    const _u1=Math.random()||1e-10,_u2=Math.random()||1e-10;
+    const _z1=Math.sqrt(-2*Math.log(_u1))*Math.cos(2*Math.PI*_u2);
+    const _z2=Math.sqrt(-2*Math.log(Math.random()||1e-10))*Math.cos(2*Math.PI*Math.random());
+    const hs=Math.round(hAvgPts+_z1*Math.sqrt(hAvgPts*0.18));
+    const as2=Math.round(aAvgPts+_z2*Math.sqrt(aAvgPts*0.18));
     if(hs>as2)hw++;
     const tot=hs+as2;totArr.push(tot);
     if(tot>168)ou++;
@@ -13326,7 +13336,7 @@ async function renderWNBAGames(){
       const espnSpread=espnOdds?.details;
       const espnOU=espnOdds?.overUnder;
       // Ensemble
-      const ens=wnbaEns(hab,aab,espnHL);
+      let ens;try{ens=wnbaEns(hab,aab,espnHL);}catch(_e){ens={p:.5,mc:.5,bay:.5,elo:.5,mcD:null};}
       let hP=ens.p;let aP=1-hP;
       // Override with ESPN implied if available
       if(espnHL){const hImp=Math.min(.88,Math.max(.12,espnHL<0?Math.abs(espnHL)/(Math.abs(espnHL)+100):100/(100+espnHL)));hP=ens.p*.7+hImp*.3;aP=1-hP;}
