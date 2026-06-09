@@ -10461,7 +10461,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-08 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-09 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -13219,62 +13219,97 @@ function renderNCAABaseballContent(){
 
 
 // ── WNBA ELO ratings (2026 season baseline) ──────────────────────────────
-window.WNBA_ELO={NY:1620,MIN:1580,LV:1555,CON:1530,IND:1515,CHI:1490,SEA:1485,PHX:1465,ATL:1450,LA:1420,DAL:1410,WSH:1380};
+// ── WNBA 2026 team strength data (fallback when BBRef data unavailable) ────
+window.WNBA_ELO={
+  NY:1640,MIN:1590,LV:1560,CON:1535,IND:1525,SEA:1495,
+  CHI:1485,PHX:1455,ATL:1445,LA:1430,DAL:1415,GS:1410,WSH:1390,TOR:1355
+};
+// 2026 WNBA win% fallback (used when standings empty)
+const WNBA_WIN_PCT={
+  NY:.72,MIN:.65,LV:.60,CON:.58,IND:.58,SEA:.52,
+  CHI:.48,PHX:.46,ATL:.45,GS:.44,LA:.40,DAL:.40,WSH:.38,TOR:.30
+};
+// ESPN abbr → WNBA_ELO key map (expansion team aliases)
+const WNBA_ABBR_MAP={
+  'GS':'GS','GSV':'GS','GOLDEN STATE':'GS',
+  'TOR':'TOR','TORONTO':'TOR',
+  'NY':'NY','NYL':'NY','NEW YORK':'NY',
+  'MIN':'MIN','MINNESOTA':'MIN',
+  'LV':'LV','LVA':'LV','LAS VEGAS':'LV',
+  'CON':'CON','CONNECTICUT':'CON',
+  'IND':'IND','INDIANA':'IND',
+  'SEA':'SEA','SEATTLE':'SEA',
+  'CHI':'CHI','CHICAGO':'CHI',
+  'PHX':'PHX','PHOENIX':'PHX',
+  'ATL':'ATL','ATLANTA':'ATL',
+  'LA':'LA','LAP':'LA','LAS ANGELES':'LA','LOS ANGELES':'LA',
+  'DAL':'DAL','DALLAS':'DAL',
+  'WSH':'WSH','WAS':'WSH','WASHINGTON':'WSH',
+};
+function _wnbaKey(abbr){return WNBA_ABBR_MAP[abbr?.toUpperCase()]||abbr;}
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
 function updateWNBAElo(hA,awA,hWon){
-  const K=20,eH=wnbaEloWP(WNBA_ELO[hA]||1500,WNBA_ELO[awA]||1500);
+  const hk=_wnbaKey(hA),ak=_wnbaKey(awA);
+  const K=20,eH=wnbaEloWP(WNBA_ELO[hk]||1490,WNBA_ELO[ak]||1490);
   if(hWon===undefined)return;
-  WNBA_ELO[hA]=Math.round((WNBA_ELO[hA]||1500)+K*(hWon?1:0-eH));
-  WNBA_ELO[awA]=Math.round((WNBA_ELO[awA]||1500)+K*(hWon?0:1-(1-eH)));
+  WNBA_ELO[hk]=Math.round((WNBA_ELO[hk]||1490)+K*(hWon?1:0-eH));
+  WNBA_ELO[ak]=Math.round((WNBA_ELO[ak]||1490)+K*(hWon?0:1-(1-eH)));
 }
 function wnbaMC(hA,awA){
+  const hk=_wnbaKey(hA),ak=_wnbaKey(awA);
   const D=window.__CV_DATA||{};
   const ts=D.wnba?.teamStats||{};
-  const h=ts[hA]||ts[hA?.toUpperCase()]||{};
-  const a=ts[awA]||ts[awA?.toUpperCase()]||{};
-  const hNet=(h.ortg||100)-(h.drtg||100);
-  const aNet=(a.ortg||100)-(a.drtg||100);
-  const hPace=h.pace||91;const aPace=a.pace||91;const avgPace=(hPace+aPace)/2;
-  const diff=hNet-aNet;
-  const hfa=2.5;
-  // Score distribution (Poisson-ish): avg WNBA team scores ~83 pts
-  const hAvgPts=83+(hNet/10)+(diff/8)+2.5; // HFA
-  const aAvgPts=83+(aNet/10)-(diff/8);
-  // 5k MC sims
-  let hw=0,ou=0,totArr=[];
-  const N=5000;
-  for(let i=0;i<N;i++){
-    const _u1=Math.random()||1e-10,_u2=Math.random()||1e-10;
-    const _z1=Math.sqrt(-2*Math.log(_u1))*Math.cos(2*Math.PI*_u2);
-    const _z2=Math.sqrt(-2*Math.log(Math.random()||1e-10))*Math.cos(2*Math.PI*Math.random());
-    const hs=Math.round(hAvgPts+_z1*Math.sqrt(hAvgPts*0.18));
-    const as2=Math.round(aAvgPts+_z2*Math.sqrt(aAvgPts*0.18));
-    if(hs>as2)hw++;
-    const tot=hs+as2;totArr.push(tot);
-    if(tot>168)ou++;
+  // Try live teamStats first; fall back to ELO-derived ratings
+  let hNet,aNet;
+  const hTS=ts[hA]||ts[hk]||{};const aTS=ts[awA]||ts[ak]||{};
+  if(hTS.ortg&&aTS.ortg){
+    hNet=(hTS.ortg||100)-(hTS.drtg||100);
+    aNet=(aTS.ortg||100)-(aTS.drtg||100);
+  }else{
+    // Derive net rating from ELO: 1500 baseline, ±1 pt per 10 ELO
+    const hElo=WNBA_ELO[hk]||1490, aElo=WNBA_ELO[ak]||1490;
+    hNet=(hElo-1490)*0.10;
+    aNet=(aElo-1490)*0.10;
   }
-  totArr.sort((a,b)=>a-b);
-  const medOU=totArr[Math.floor(N/2)];
-  return{hwP:hw/N,ou:medOU,hAvgPts:hAvgPts.toFixed(1),aAvgPts:aAvgPts.toFixed(1),hNet,aNet,diff};
+  const diff=hNet-aNet;
+  const hAvgPts=82+(hNet/8)+(diff/10)+2.5; // 2.5pt HFA
+  const aAvgPts=82+(aNet/8)-(diff/10);
+  let hw=0;const N=5000;
+  for(let i=0;i<N;i++){
+    const u1=Math.random()||1e-10,u2=Math.random()||1e-10;
+    const z1=Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+    const z2=Math.sqrt(-2*Math.log(Math.random()||1e-10))*Math.cos(2*Math.PI*Math.random());
+    const hs=Math.round(hAvgPts+z1*Math.sqrt(hAvgPts*0.17));
+    const as2=Math.round(aAvgPts+z2*Math.sqrt(aAvgPts*0.17));
+    if(hs>as2)hw++;
+  }
+  return{hwP:hw/N,hAvgPts:hAvgPts.toFixed(1),aAvgPts:aAvgPts.toFixed(1),hNet,aNet,diff};
 }
 function wnbaEns(hA,awA,espnOdds){
+  const hk=_wnbaKey(hA),ak=_wnbaKey(awA);
   const D=window.__CV_DATA||{};
-  const ts=D.wnba?.teamStats||{};
   const st=D.wnba?.standings||{};
   const mc=wnbaMC(hA,awA);
-  if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
-  const hfa=0.025;
-  // Bayesian from win pct
-  const hW=parseFloat((st[hA]||{}).pct||0.5)||0.5;
-  const aW=parseFloat((st[awA]||{}).pct||0.5)||0.5;
-  const sum2=hW+aW||1;
-  const bayP=Math.min(.87,Math.max(.13,(hW/sum2)+hfa));
-  // ELO
-  const eloP=Math.min(.87,Math.max(.13,wnbaEloWP(WNBA_ELO[hA]||1500,WNBA_ELO[awA]||1500)+hfa));
-  const ens=window.WNBA_ENS||{mc:.50,bay:.20,elo:.30};
+  const hfa=0.028; // WNBA home court ~2.8%
+  // Bayesian: use live standings pct if available, else WNBA_WIN_PCT fallback
+  const hWinPct=parseFloat((st[hA]||st[hk]||{}).pct||0)||WNBA_WIN_PCT[hk]||0.50;
+  const aWinPct=parseFloat((st[awA]||st[ak]||{}).pct||0)||WNBA_WIN_PCT[ak]||0.50;
+  const sum2=hWinPct+aWinPct||1;
+  const bayP=Math.min(.86,Math.max(.14,(hWinPct/sum2)+hfa));
+  // ELO win probability
+  const eloP=Math.min(.86,Math.max(.14,wnbaEloWP(WNBA_ELO[hk]||1490,WNBA_ELO[ak]||1490)+hfa));
+  // Ensemble weights
+  const ens=window.WNBA_ENS||{mc:.45,bay:.25,elo:.30};
   let p=Math.min(.88,Math.max(.12,mc.hwP*ens.mc+bayP*ens.bay+eloP*ens.elo));
-  // Blend ESPN implied odds 25%
-  if(espnOdds){const mld=ml2d(espnOdds);const imp=Math.min(.88,Math.max(.12,1/mld));p=p*.75+imp*.25;}
+  // Blend ESPN implied odds at 30% when available
+  if(espnOdds&&espnOdds!==null&&espnOdds!==undefined){
+    const mlNum=parseFloat(String(espnOdds).replace('+',''));
+    if(!isNaN(mlNum)){
+      const dec=mlNum>0?mlNum/100+1:100/Math.abs(mlNum)+1;
+      const imp=Math.min(.87,Math.max(.13,1/dec));
+      p=p*.70+imp*.30;
+    }
+  }
   return{p,mc:mc.hwP,bay:bayP,elo:eloP,mcD:mc};
 }
 // ── WNBA Games ───────────────────────────────────────────────────────────────
@@ -13288,8 +13323,20 @@ async function renderWNBAGames(){
     const events=d.events||[];
     if(!events.length){el.innerHTML='<div class="empty">NO WNBA GAMES TODAY</div>';return;}
     const D=window.__CV_DATA||{};
-    const lmProps=(D.linemate?.props?.wnba)||[];
     const parlayEl=document.getElementById('wnba-parlay-games');let parlayHtml='';
+    // Grade thresholds calibrated for WNBA probability spread
+    function wnbaGrade(p){
+      if(p>=.68)return{lbl:'ELITE',col:'var(--gc)'};
+      if(p>=.61)return{lbl:'LOCK', col:'var(--nc)'};
+      if(p>=.54)return{lbl:'LEAN', col:'var(--ic)'};
+      return{lbl:'SKIP',col:'var(--t3)'};
+    }
+    function wnbaChipClass(p){
+      if(p>=.68)return{c:'chip-g',pl:'pg',lb:'ELITE'};
+      if(p>=.61)return{c:'chip-p',pl:'pp',lb:'LOCK'};
+      if(p>=.54)return{c:'chip-n',pl:'pn',lb:'LEAN'};
+      return{c:'chip-h',pl:'ph',lb:'SKIP'};
+    }
     el.innerHTML=events.map(ev=>{
       const c=ev.competitions?.[0];if(!c)return'';
       const h=c.competitors?.find(t=>t.homeAway==='home');
@@ -13301,53 +13348,55 @@ async function renderWNBAGames(){
       const state=c.status?.type?.state||'pre';
       const live=state==='in';const pre=state==='pre';const post=state==='post';
       const stCol=post?'var(--t3)':live?'var(--vc)':'var(--nc)';
-      const stTxt=post?`FINAL`
+      const stTxt=post?'FINAL'
         :live?`Q${c.status?.period||'?'} ${c.status?.displayClock||''}`
         :ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'';
-      // ESPN odds
+      // ESPN odds — try multiple paths
       const espnOdds=(c.odds||[])[0];
-      const espnHL=espnOdds?.homeTeamOdds?.moneyLine;
-      const espnAL=espnOdds?.awayTeamOdds?.moneyLine;
-      const espnSpread=espnOdds?.details;
-      const espnOU=espnOdds?.overUnder;
-      // Ensemble
-      let ens;try{ens=wnbaEns(hab,aab,espnHL);}catch(_e){ens={p:.5,mc:.5,bay:.5,elo:.5,mcD:null};}
+      const espnHL=espnOdds?.homeTeamOdds?.moneyLine??espnOdds?.homeMoneyLine??null;
+      const espnAL=espnOdds?.awayTeamOdds?.moneyLine??espnOdds?.awayMoneyLine??null;
+      const espnSpread=espnOdds?.details||null;
+      const espnOU=espnOdds?.overUnder||null;
+      // Run ensemble
+      const ens=wnbaEns(hab,aab,espnHL);
       let hP=ens.p;let aP=1-hP;
-      // Override with ESPN implied if available
-      if(espnHL){const hImp=Math.min(.88,Math.max(.12,espnHL<0?Math.abs(espnHL)/(Math.abs(espnHL)+100):100/(100+espnHL)));hP=ens.p*.7+hImp*.3;aP=1-hP;}
-      const hML=espnHL?`${espnHL>0?'+':''}${espnHL}`:p2ml(hP);
-      const aML=espnAL?`${espnAL>0?'+':''}${espnAL}`:p2ml(aP);
-      const hEV=(hP*ml2d(hML)-1);const aEV=(aP*ml2d(aML)-1);
-      const hCS=chipC(hP,hEV);const aCS=chipC(aP,aEV);
-      // Spread chips
+      // Build display ML
+      const hML=espnHL?`${parseFloat(String(espnHL))>0?'+':''}${espnHL}`:p2ml(hP);
+      const aML=espnAL?`${parseFloat(String(espnAL))>0?'+':''}${espnAL}`:p2ml(aP);
+      const hCS=wnbaChipClass(hP);const aCS=wnbaChipClass(aP);
+      // EV calculation using display ML
+      const hDec=ml2d(hML);const aDec=ml2d(aML);
+      const hEV=hP*hDec-1;const aEV=aP*aDec-1;
+      // Grade for engine reasoning
+      const favP=Math.max(hP,aP);const favTeam=hP>=aP?hn:an;const favAbb=hP>=aP?hab:aab;
+      const gr=wnbaGrade(favP);
+      // Engine reasoning text
+      const mc2=ens.mcD;
+      const diffSign=mc2?.diff>=0?'+':'';
+      const reasonParts=[
+        mc2?`PROJ: ${hab} ${mc2.hAvgPts} – ${aab} ${mc2.aAvgPts}`:'',
+        mc2?`NET DIFF: ${diffSign}${mc2.diff?.toFixed(1)}`:'',
+        `MC:${(ens.mc*100).toFixed(0)}%`,
+        `BAY:${(ens.bay*100).toFixed(0)}%`,
+        `ELO:${(ens.elo*100).toFixed(0)}%`,
+      ].filter(Boolean).join(' · ');
+      const sourceTag=espnHL?'ESPN ODDS BLENDED':'ELO + WIN% MODEL';
+      // Spread chip
       let spreadChip='';
-      if(espnSpread&&pre){
-        const spVal=parseFloat((espnSpread||'').replace(/[^-0-9.]/g,''))||0;
-        const favIsHome=spVal<0;
-        const spP=favIsHome?.57:.43;
-        const spCS=chipC(spP,spP*1.91-1);
-        spreadChip=`<div class="${spCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${favIsHome?hab:aab} SPREAD',${spP.toFixed(3)},'${espnSpread}',1.91,'${today()}')"><div class="cht">SPREAD</div><div class="cho">${espnSpread||'PK'}</div><div class="chp">${(spP*100).toFixed(0)}%</div><div style="margin-top:2px"><span class="pill ${spCS.pl}">${spCS.lb}</span></div></div>`;
+      if(pre&&espnSpread){
+        const spNum=parseFloat(String(espnSpread).replace(/[^-\d.]/g,''))||0;
+        const favIsHome=spNum<0;const spP=favIsHome?.56:.44;
+        const spEV=spP*1.909-1;const spCS=wnbaChipClass(spP);
+        spreadChip=`<div class="${spCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${favIsHome?hab:aab} SPREAD',${spP.toFixed(3)},'${espnSpread}',1.909,'${today()}')"><div class="cht">SPREAD</div><div class="cho">${espnSpread}</div><div class="chp">${(spP*100).toFixed(0)}%</div><div style="margin-top:2px"><span class="pill ${spCS.pl}">${spCS.lb}</span></div></div>`;
       }
       // O/U chip
       let ouChip='';
-      if(espnOU&&pre){
-        const overP=.50+((ens.mcD?.hAvgPts?parseFloat(ens.mcD.hAvgPts)+parseFloat(ens.mcD.aAvgPts):168)-espnOU)*0.008;
-        const clampedOP=Math.min(.65,Math.max(.38,overP));
-        const ouCS=chipC(clampedOP,clampedOP*1.91-1);
-        ouChip=`<div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','OVER ${espnOU}',${clampedOP.toFixed(3)},'-110',1.909,'${today()}')"><div class="cht">OVER ${espnOU}</div><div class="cho">-110</div><div class="chp">${(clampedOP*100).toFixed(0)}%</div><div style="margin-top:2px"><span class="pill ${ouCS.pl}">${ouCS.lb}</span></div></div>`;
+      if(pre&&espnOU){
+        const projTotal=mc2?(parseFloat(mc2.hAvgPts)+parseFloat(mc2.aAvgPts)):164;
+        const overP=Math.min(.64,Math.max(.40,.50+(projTotal-espnOU)*0.012));
+        const ouEV=overP*1.909-1;const ouCS=wnbaChipClass(overP);
+        ouChip=`<div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','OVER ${espnOU}',${overP.toFixed(3)},'-110',1.909,'${today()}')"><div class="cht">O ${espnOU}</div><div class="cho">-110</div><div class="chp">${(overP*100).toFixed(0)}%</div><div style="margin-top:2px"><span class="pill ${ouCS.pl}">${ouCS.lb}</span></div></div>`;
       }
-      // Team stats context
-      const ts=(D.wnba?.teamStats)||{};
-      const hTS=ts[hab]||{};const aTS=ts[aab]||{};
-      const hNet=hTS.ortg?`${hTS.ortg.toFixed(0)}/${hTS.drtg?.toFixed(0)||'--'}`:null;
-      const aNet=aTS.ortg?`${aTS.ortg.toFixed(0)}/${aTS.drtg?.toFixed(0)||'--'}`:null;
-      const netLine=hNet?`<div class="gsp" style="color:var(--t3);font-size:11px">ORTG/DRTG — ${hab}:${hNet} · ${aab}:${aNet||'--/--'}</div>`:'';
-      // Engine reasoning
-      const mc2=ens.mcD;
-      const favTeam=hP>=aP?hn:an;const favP=Math.max(hP,aP);
-      const grade2=favP>=.72?'ELITE':favP>=.65?'LOCK':favP>=.57?'LEAN':'SKIP';
-      const gradeCol2={ELITE:'var(--gc)',LOCK:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'}[grade2];
-      const reason=mc2?`NET DIFF: ${mc2.diff>=0?'+':''}${mc2.diff.toFixed(1)} · PROJ SCORE: ${hab} ${mc2.hAvgPts} – ${aab} ${mc2.aAvgPts}`:`${favTeam} MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%`;
       if(pre){parlayHtml+=`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc);margin-bottom:5px">${an} at ${hn}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${hab}','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">ML ${hab} ${hML}</button><button class="btn btn-o btn-sm" onclick="addWNBALeg('ML ${aab}','${aML}',${aP.toFixed(3)},'${aab}v${hab}')">ML ${aab} ${aML}</button></div></div>`;}
       return`<div class="gc" style="border-left:2px solid rgba(230,0,255,.45);margin-bottom:10px">
         <div class="gch"><div>
@@ -13357,26 +13406,24 @@ async function renderWNBAGames(){
             <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${hn}</span>
           </div>
           <div class="gsp" style="color:${stCol};margin-top:2px">${stTxt}${live?` · ${an} ${as2}–${hs} ${hn}`:post?` · ${as2>hs?an:hn} WIN ${Math.max(as2,hs)}-${Math.min(as2,hs)}`:''}</div>
-          ${netLine}
         </div>
         <div style="text-align:right">
-          ${live?`<div style="font-family:var(--mono);font-size:12px;color:var(--vc);animation:blink 1s infinite">● LIVE</div>`:''}
-          ${post?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">FINAL</div>`:''}
+          ${live?'<div style="font-family:var(--mono);font-size:12px;color:var(--vc);animation:blink 1s infinite">● LIVE</div>':''}
+          ${post?'<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">FINAL</div>':''}
         </div></div>
         ${pre?`<div class="brow">
-          <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${hab}',${hP.toFixed(3)},'${hML}',${ml2d(hML).toFixed(3)},'${today()}')"><div class="cht">ML ${hab}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
-          <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${aab}',${aP.toFixed(3)},'${aML}',${ml2d(aML).toFixed(3)},'${today()}')"><div class="cht">ML ${aab}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+          <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${hab}',${hP.toFixed(3)},'${hML}',${hDec.toFixed(3)},'${today()}')"><div class="cht">ML ${hab}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+          <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hab}','${aab}','WNBA','${aab}',${aP.toFixed(3)},'${aML}',${aDec.toFixed(3)},'${today()}')"><div class="cht">ML ${aab}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
           ${spreadChip}${ouChip}
         </div>`:''}
         ${pre?`<div style="padding:7px 10px;background:rgba(240,0,255,.04);border-top:1px solid rgba(240,0,255,.12)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span style="font-family:var(--mono);font-size:10px;padding:1px 6px;border:1px solid ${gradeCol2};color:${gradeCol2};border-radius:2px">${grade2}</span>
-            <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">▶ ${favTeam} ${(favP*100).toFixed(1)}%</span>
+            <span style="font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid ${gr.col};color:${gr.col};border-radius:2px">${gr.lbl}</span>
+            <span style="font-family:var(--mono);font-size:13px;color:var(--t2)">▶ ${favTeam} ${(favP*100).toFixed(1)}%</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${sourceTag}</span>
           </div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${reason}</div>
-          <div style="display:flex;gap:10px;margin-top:4px;font-family:var(--mono);font-size:11px;color:var(--t3)">
-            <span>MC: ${(ens.mc*100).toFixed(0)}%</span><span>BAY: ${(ens.bay*100).toFixed(0)}%</span><span>ELO: ${(ens.elo*100).toFixed(0)}%</span>
-          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${reasonParts}</div>
+          ${hEV>0.01||aEV>0.01?`<div style="font-family:var(--mono);font-size:11px;color:var(--nc);margin-top:3px">EV: ${hab} ${hEV>=0?'+':''}${(hEV*100).toFixed(1)}% · ${aab} ${aEV>=0?'+':''}${(aEV*100).toFixed(1)}%</div>`:''}
         </div>`:''}
         ${pre?`<div style="padding:4px 10px;border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:flex-end">
           <button class="btn btn-o btn-sm" onclick="addWNBALeg('${hab} ML','${hML}',${hP.toFixed(3)},'${aab}v${hab}')">+PAR</button>
@@ -13387,6 +13434,7 @@ async function renderWNBAGames(){
   }catch(e){el.innerHTML=`<div class="empty">WNBA DATA UNAVAILABLE — ${e.message}</div>`;}
 }
 window.renderWNBAGames=renderWNBAGames;
+;
 
 // ── WNBA Schedule ─────────────────────────────────────────────────────────────
 async function renderWNBASchedule(){
