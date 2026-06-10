@@ -2575,7 +2575,7 @@ function lockBet(sport,game,pick,prob,ml){
   else addPendingUpload(pred);
   try{broadcastBetLock(pred);}catch(e){}
   try{updHdr();}catch(e){}
-  toast(`// LOCKED: ${pick} — ${game}`);
+  toast(`// LOCKED: ${pick} — ${game}`);try{window.showBetPopup({type:'lock',betOn:pick,sport:sport.toUpperCase(),betType:'ML',ml,prob,decOdds});}catch(ex){}
 }
 
 function renderPicks(picks){
@@ -3644,7 +3644,7 @@ function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
 function clrP(){PAR=[];renderLegs();document.getElementById('p-res').innerHTML='';document.getElementById('lc').textContent='(0)';}
 function renderLegs(){const el=document.getElementById('p-legs');if(!el)return;document.getElementById('lc').textContent=`(${PAR.length})`;if(!PAR.length){el.innerHTML='<div class="empty" style="padding:8px">NO LEGS</div>';return;}el.innerHTML=PAR.map((l,i)=>`<div class="pleg"><div><div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--pc)">${l.name}</div><div class="mono" style="font-size:13px;color:var(--t3)">${l.matchup} · ${(l.prob*100).toFixed(1)}% · ${l.ml}</div></div><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:20px;height:20px;cursor:pointer;font-weight:700" onclick="removeLeg(${i})">×</button></div>`).join('');}
 function calcP(){if(PAR.length<2){document.getElementById('p-res').innerHTML='';return;}const w=parseFloat(document.getElementById('p-w')?.value||100)||100;const cP=PAR.reduce((p,l)=>p*l.prob,1);const cD=PAR.reduce((p,l)=>p*l.dec,1);const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);const cs=chipC(cP,e2);document.getElementById('p-res').innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:28px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:16px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:14px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">// LOCK PARLAY</button></div>`;}
-function lockParlay(w,p,ml,d){const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:'MLB',betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');}
+function lockParlay(w,p,ml,d){const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:'MLB',betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:'MLB PARLAY',sport:'MLB',betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}}
 
 // ═══ LIVE TRACKER ═══════════════════════════════════════════
 function igWP(hs,as,inn,top,prior){const outs=(inn-1)*3+(top?0:1.5);const done=Math.min(outs/27,.95);const diff=hs-as;const sP=diff===0?.5:diff>0?.5+Math.min(.45,diff*.12*(1+done)):.5-Math.min(.45,Math.abs(diff)*.12*(1+done));return Math.min(.97,Math.max(.03,prior*(1-done)+sP*done));}
@@ -3794,7 +3794,7 @@ function lockNRFIBet(gameStr,betLabel,awA,hA,prob){
   try{broadcastBetLock(p);}catch(e){}
   try{updHdr();}catch(e){}
   try{adaptiveTick();}catch(e){}
-  toast(`// LOCKED: ${betLabel} — ${gameStr}`);
+  toast(`// LOCKED: ${betLabel} — ${gameStr}`);try{window.showBetPopup({type:'lock',betOn:betLabel,sport:'MLB',league:'MLB',betType:'NRFI',ml:'+100',prob:prob,decOdds:2});}catch(ex){}
 }
 
 // ── Date strip updater — called on init and after sync ──
@@ -3826,7 +3826,7 @@ function lockNHLGame(gameStr,pick,ml){
   const pred={id,date:today(),hA,awA,sport:'NHL',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderNHLLockedBets();try{renderHomeLockedBets();}catch(e){}
-  toast('// NHL LOCKED: '+pick);
+  toast('// NHL LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick,sport:'NHL',league:'NHL',betType:'ML',ml,prob:0.55,decOdds:dec});}catch(ex){}
 }
 function lockNHLSeriesBet(gameStr,pick,ml){lockNHLGame(gameStr,pick,ml);}
 function renderNHLLockedBets(){
@@ -4556,7 +4556,7 @@ function lockNBAGame(gameStr,pick,ml){
   const pred={id,date:today(),hA,awA,sport:'NBA',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderNBALockedBets();try{renderHomeLockedBets();}catch(e){}
-  toast('// NBA LOCKED: '+pick);
+  toast('// NBA LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick,sport:'NBA',league:'NBA',betType:'ML',ml,prob:0.55,decOdds:dec});}catch(ex){}
 }
 function renderNBALockedBets(){
   const el=document.getElementById('nba-locked');if(!el)return;
@@ -5236,7 +5236,7 @@ function lockMLBProp(team,opp,player,betOn,over,conf,ml){
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
-  toast(`// MLB PROP LOCKED: ${player} ${betOn}`);
+  toast(`// MLB PROP LOCKED: ${player} ${betOn}`);try{window.showBetPopup({type:'lock',betOn:`${player} ${betOn}`,sport:'MLB',league:'MLB',betType:'PROP',ml,prob:conf||0.60,decOdds:dec});}catch(ex){}
   renderMLBProps('all');
 }
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
@@ -5287,7 +5287,7 @@ function calcNBAP(){
 function lockNBAParlay(w,p,ml,d){
   const preds=getP();
   preds.push({id:`nba_p_${today()}_${Date.now()}`,date:today(),hA:'NBA-PARLAY',awA:'',sport:'NBA',betType:'PARLAY',betOn:NBA_PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});
-  saveP(preds);updHdr();toast('// NBA PARLAY LOCKED');
+  saveP(preds);updHdr();toast('// NBA PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:'NBA PARLAY',sport:'NBA',betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}
 }
 
 // ═══ NRFI (NO RUN FIRST INNING) ══════════════════════════════
@@ -8413,7 +8413,7 @@ function lockProp(team,player,line,over,conf,ml){
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   // Also add to main picks store so it shows in bet history
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
-  toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);
+  toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);try{window.showBetPopup({type:'lock',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,sport,betType:'PROP',ml,prob:conf||0.60,decOdds:dec});}catch(ex){}
   renderPropsTracker();
 }
 function lockNHLProp(player,stat,dir,prob,ml,line){
@@ -8437,7 +8437,7 @@ function lockNHLProp(player,stat,dir,prob,ml,line){
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
-  toast(`// LOCKED: ${fullBet}`);
+  toast(`// LOCKED: ${fullBet}`);try{window.showBetPopup({type:'lock',betOn:fullBet,sport:'NHL',league:'NHL',betType:'PROP',ml:mlNum,prob,decOdds:dec});}catch(ex){}
   try{renderPropsTracker();}catch(e){}
 }
 function renderPropsTracker(){const targets=['nhl-props-tracker','nba-props-tracker'];targets.forEach(id=>{const el=document.getElementById(id);if(!el)return;if(!LOCKED_PROPS.length){el.innerHTML='<div class="empty">NO LOCKED PROPS</div>';return;}el.innerHTML=LOCKED_PROPS.map((p,i)=>{const oc=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:15px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t2)">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · ${p.team} · ${p.ml}</div></div><div style="display:flex;gap:4px;align-items:center"><span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${p.outcome.toUpperCase()}</span><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:18px;height:18px;cursor:pointer;font-size:13px" onclick="LOCKED_PROPS.splice(${i},1);localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));renderPropsTracker()">×</button></div></div></div>`;}).join('');});}
@@ -8671,7 +8671,7 @@ function lockLiveBet(sport,game,pick,ml,modelPct,betContext){
   localStorage.setItem('locked_bets',JSON.stringify(bets));
   // Also save to main picks store for history tracking
   try{const preds=getP();preds.unshift({...bet,betType:'ML',betOn:pick,hA:game.split(' @ ')[1]||game,awA:game.split(' @ ')[0]||'',winProb:(parseInt(modelPct)||50)/100,decOdds:1.91,wager:0});saveP(preds);updHdr();}catch(ex){}
-  toast(`🔒 LIVE LOCKED: ${pick}`);
+  toast(`🔒 LIVE LOCKED: ${pick}`);try{window.showBetPopup({type:'lock',betOn:pick,sport:sport.toUpperCase(),betType:'ML',ml,prob:(parseInt(modelPct)||50)/100});}catch(ex){}
   renderAllLockedBets();
 }
 
@@ -9489,7 +9489,7 @@ function lockTennisBet(tournament,match,pick,ml){
   const pred={id,date:today(),hA,awA,sport:'TEN',betType:'ML',betOn,winProb:0.60,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now(),surface:'clay',note:tournament};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderTennisPendingBets();try{renderHomeLockedBets();}catch(e){}
-  toast('// TENNIS LOCKED: '+pick);
+  toast('// TENNIS LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick+' ML',sport:'TEN',league:'TEN',betType:'ML',ml,prob:0.60,decOdds:dec});}catch(ex){}
 }
 function renderTennisPendingBets(){
   const el=document.getElementById('ten-pending');if(!el)return;
@@ -11198,7 +11198,7 @@ function lockFuture(sport,market,pick,lockedML,notes){
   const futs=getFutures();
   futs.push({id,sport,market,pick,lockedML,lockedDec,impliedProb,notes:notes||'',lockedAt:Date.now(),currentML:null,settled:false,result:null});
   saveFutures(futs);
-  toast(`// FUTURE LOCKED: ${pick} @ ${lockedML>0?'+':''}${lockedML}`);
+  toast(`// FUTURE LOCKED: ${pick} @ ${lockedML>0?'+':''}${lockedML}`);try{window.showBetPopup({type:'lock',betOn:pick,sport:sport.toUpperCase(),betType:'FUTURE',ml:lockedML,prob:impliedProb,decOdds:lockedDec});}catch(ex){}
   try{renderFuturesTab();}catch(e){}
 }
 
@@ -12371,7 +12371,7 @@ function lockF1Bet(race,pick,ml){
   const pred={id,date:today(),hA:pick,awA:'',sport:'F1',betType:'ML',betOn:pick,winProb:0.50,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now(),note:race};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();try{renderHomeLockedBets();}catch(e){}
-  toast('// F1 LOCKED: '+pick);
+  toast('// F1 LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick,sport:'F1',betType:'ML',ml,prob:0.50,decOdds:dec});}catch(ex){}
 }
 function renderF1Analysis(){const D=window.__CV_DATA||{};
   const el=document.getElementById('f1-analysis-content');if(!el)return;
