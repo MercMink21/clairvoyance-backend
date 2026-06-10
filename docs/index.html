@@ -5360,21 +5360,75 @@ function renderNBAFinalsProps(containerId){
 }
 function renderNBAProps(){
   const el=document.getElementById('nba-props');if(!el)return;
+  const D=window.__CV_DATA||{};
+  const dpEl=document.getElementById('nba-props-date');
+  // Get linemate NBA props — filter to valid player names
+  const lmRaw=(D.linemate?.props?.nba||[]);
+  const lmProps=lmRaw.filter(p=>p.player&&/^[A-Z][a-z]+\s+[A-Z]/.test(p.player)&&p.line!=null);
+  const hasLinemate=lmProps.length>=3;
+  if(dpEl)dpEl.textContent=hasLinemate?'SOURCE: LINEMATE.IO/NBA · LIVE PROPS':'NBA FINALS SERIES DATA · MODEL ANALYSIS';
+  const gradeC={ELITE:'var(--gc)',LOCK:'var(--nc)',LEAN:'var(--ic)',SKIP:'rgba(255,32,144,.8)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
+  if(hasLinemate){
+    // Deduplicate by player+stat+line
+    const seen=new Set();
+    const uniq=lmProps.filter(p=>{const k=p.player+'_'+p.stat+'_'+p.line;if(seen.has(k))return false;seen.add(k);return true;});
+    // Sort by conf desc
+    uniq.sort((a,b)=>(b.conf||55)-(a.conf||55));
+    const srcHdr=`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:12px">
+      <div style="color:var(--nc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">LINEMATE.IO/NBA · ${uniq.length} PLAYER PROPS</div>
+      <div style="color:var(--t3);font-size:11px">Live consensus odds · Hit rates from recent form</div>
+    </div>`;
+    el.innerHTML=srcHdr+uniq.map(p=>{
+      const prob=Math.min(.99,Math.max(.01,(p.conf||55)/100));
+      const mlNum=prob>=.5?-Math.round(prob/(1-prob)*100):Math.round((1-prob)/prob*100);
+      const mlStr=mlNum>0?'+'+mlNum:''+mlNum;
+      const gc=prob>=.67?'var(--gc)':prob>=.60?'var(--nc)':prob>=.54?'var(--ic)':'var(--t2)';
+      const grade=prob>=.67?'ELITE':prob>=.60?'LOCK':prob>=.54?'LEAN':'FADE';
+      const statDisp=p.stat||'PROP';
+      const dirDisp=p.over!==false?'▲ OVER':'▼ UNDER';
+      const dirCol=p.over!==false?'var(--gc)':'var(--pc)';
+      const mu=p.team?p.player+' · '+p.team:'';
+      const conf=p.conf||55;
+      const confCol=conf>=67?'var(--nc)':conf>=60?'var(--vc)':'var(--t2)';
+      return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gc}">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">
+          <div><span style="font-family:var(--orb);font-size:17px;font-weight:700">${p.player}</span>
+          ${p.team?`<span style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-left:5px">${p.team}</span>`:''}
+          </div>
+          <div style="display:flex;gap:4px;align-items:center">
+            ${p.hitRate?`<span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid rgba(255,255,255,.15);color:var(--t3);border-radius:2px">${p.hitRate}</span>`:''}
+            <span style="font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid ${gc};color:${gc};border-radius:2px;font-weight:700">${grade}</span>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:17px;color:${dirCol};margin-bottom:4px;font-weight:700">${dirDisp} ${p.line} ${statDisp} <span style="font-size:14px;font-weight:400;color:${mlNum>0?'var(--nc)':'var(--t3)'}">${mlStr}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:${confCol}">${conf}%</div>
+          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden">
+            <div style="width:${Math.min(100,conf)}%;height:100%;background:${confCol};border-radius:1px;transition:width .4s"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: Linemate.io</span>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-p btn-sm" onclick="lockProp('${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp} ${p.over!==false?'O':'U'}${p.line}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">LOCK PROP</button>
+            <button class="btn btn-o btn-sm" onclick="cvParlayAddLeg('nba','${p.player.replace(/'/g,"\\'")} ${p.over!==false?'O':'U'}${p.line} ${statDisp}',${mlNum},${prob.toFixed(3)},'${p.team||'NBA'} PROP','PROP')">+PAR</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return;
+  }
+  // ── Fallback: NBA_PROPS_DATA (hardcoded series props) ─────────────────────
   const activeNBATeams=NBA_TONIGHT.flatMap(g=>[g.h,g.a]);
   const hasTonightGames=activeNBATeams.length>0;
-  const dpEl=document.getElementById('nba-props-date');
-  if(dpEl)dpEl.textContent='FINALS G4 · Jun 10 · 8:30 PM ET @ Frost Bank Center · SA -108';
-  const gradeC={ELITE:'var(--gc)',LOCK:'var(--nc)',LEAN:'var(--ic)',SKIP:'rgba(255,32,144,.8)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
   const filtered=hasTonightGames?NBA_PROPS_DATA.filter(p=>activeNBATeams.includes(p.t)):NBA_PROPS_DATA;
   if(!filtered.length){el.innerHTML='<div class="empty">NO NBA PROPS FOR TONIGHT</div>';return;}
   const order={ELITE:0,LOCK:1,LEAN:2,SKIP:4,GOOD:2,FAIR:3,FADE:5};
   const sorted=[...filtered].sort((a,b)=>(order[a.grade]||4)-(order[b.grade]||4)||b.conf-a.conf);
-  // ── Injury banner ──
   const injBanner=`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.25);border-radius:3px;padding:10px 14px;margin-bottom:10px;font-family:var(--mono);font-size:13px">
     <div style="color:var(--nc);font-weight:700;margin-bottom:5px">NBA FINALS G4 — NY at SA · Frost Bank Center · 8:30 PM ET · NYK LEADS 2-1</div>
     <div style="color:var(--t2);line-height:1.8">G1 (@ SA): NYK WIN — Brunson 30pts/2ast · Wemby 26pts/12reb/3blk · OG 17pts<br>G2 (@ SA): NYK WIN — Brunson 28+pts/6+ast · Wemby 26+pts/10.5+reb/3blk<br>G3 (@ MSG): NYK WIN · SA MUST WIN G4 at home · June 10 · SA -108 / NYK -112</div>
   </div>`;
-  // ── Top 2 props highlight ──
   const topTwo=sorted.slice(0,2);
   const topBanner=topTwo.length?`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px">
     <div style="font-family:var(--mono);font-size:12px;color:var(--nc);margin-bottom:6px;letter-spacing:1.5px">TOP PROPS TODAY — SERIES DATA BACKED</div>
@@ -13837,14 +13891,16 @@ async function _renderWNBAGamesInner(el,dateEl,force){
   }
   var games=[];
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard');
+    var eDateStr=todayStr.replace(/-/g,'');
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates='+eDateStr+'&limit=20');
     if(r.ok){var jd=await r.json();games=jd.events||[];}
   }catch(ex){console.warn('WNBA scoreboard',ex);}
   if(!games.length){
     var fb=(D.wnba&&D.wnba.today)||[];
     games=fb.map(function(g){
       return{_fb:true,home:g.home||g.homeName,away:g.away||g.awayName,
-             homeML:g.homeML,awayML:g.awayML,overUnder:g.ou};
+             homeML:g.homeML,awayML:g.awayML,overUnder:g.ou,
+             venue:g.venue,network:g.network,spread:g.spread,date:g.date};
     });
   }
   if(!games.length){el.innerHTML='<div class="empty">NO WNBA GAMES TODAY</div>';return;}
@@ -13853,8 +13909,10 @@ async function _renderWNBAGamesInner(el,dateEl,force){
     var hab,aab,homeML,awayML,spread,ou,homeName,awayName,homeRec,awayRec;
     if(ev._fb){
       hab=_wnbaKey(ev.home);aab=_wnbaKey(ev.away);
-      homeML=ev.homeML;awayML=ev.awayML;ou=ev.overUnder;
-      homeName=ev.home;awayName=ev.away;homeRec='';awayRec='';spread=null;
+      homeML=ev.homeML;awayML=ev.awayML;ou=ev.overUnder||ev.spread;
+      homeName=ev.home;awayName=ev.away;homeRec='';awayRec='';
+      spread=ev.spread!=null?ev.spread:null;
+      ou=ev.overUnder;
     }else{
       var comps=(ev.competitions&&ev.competitions[0])||{};
       var teams=comps.competitors||[];
@@ -13980,9 +14038,64 @@ async function renderWNBAProps(){
   var wnbaD=D.wnba||{};
   var players=wnbaD.players||[];
   var ts=wnbaD.teamStats||{};
+  // Try linemate WNBA data first
+  var lmRaw=(D.linemate&&D.linemate.wnba_props)||[];
+  var lmProps=lmRaw.filter(function(p){return p.player&&/^[A-Z][a-z]+\s+[A-Z]/.test(p.player)&&p.line!=null;});
+  if(lmProps.length>=3){
+    var seen=new Set();
+    var uniq=lmProps.filter(function(p){var k=p.player+'_'+p.stat+'_'+p.line;if(seen.has(k))return false;seen.add(k);return true;});
+    uniq.sort(function(a,b){return(b.conf||55)-(a.conf||55);});
+    var srcHdr='<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:12px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">LINEMATE.IO/WNBA · '+uniq.length+' PLAYER PROPS</div><div style="color:var(--t3);font-size:11px">Live consensus odds · Hit rates from recent form</div></div>';
+    var parlayProps=[];
+    el.innerHTML=srcHdr+uniq.map(function(p){
+      var prob=Math.min(.99,Math.max(.01,(p.conf||55)/100));
+      var mlNum=prob>=.5?-Math.round(prob/(1-prob)*100):Math.round((1-prob)/prob*100);
+      var mlStr=mlNum>0?'+'+mlNum:''+mlNum;
+      var gc=prob>=.67?'var(--gc)':prob>=.60?'var(--nc)':prob>=.54?'var(--ic)':'var(--t2)';
+      var grade=prob>=.67?'ELITE':prob>=.60?'LOCK':prob>=.54?'LEAN':'FADE';
+      var statDisp=p.stat||'PROP';
+      var dirDisp=p.over!==false?'▲ OVER':'▼ UNDER';
+      var dirCol=p.over!==false?'var(--gc)':'var(--pc)';
+      var conf=p.conf||55;
+      var confCol=conf>=67?'var(--nc)':conf>=60?'var(--vc)':'var(--t2)';
+      parlayProps.push({label:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp,ml:mlNum,prob:prob,key:p.player.replace(/\s/g,'_')+'_'+p.stat});
+      return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+gc+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">'
+        +'<div><span style="font-family:var(--orb);font-size:17px;font-weight:700">'+p.player+'</span>'
+        +(p.team?'<span style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-left:5px">'+p.team+'</span>':'')
+        +'</div>'
+        +'<div style="display:flex;gap:4px;align-items:center">'
+        +(p.hitRate?'<span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid rgba(255,255,255,.15);color:var(--t3);border-radius:2px">'+p.hitRate+'</span>':'')
+        +'<span style="font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid '+gc+';color:'+gc+';border-radius:2px;font-weight:700">'+grade+'</span>'
+        +'</div></div>'
+        +'<div style="font-family:var(--mono);font-size:17px;color:'+dirCol+';margin-bottom:4px;font-weight:700">'+dirDisp+' '+p.line+' '+statDisp+' <span style="font-size:14px;font-weight:400;color:'+(mlNum>0?'var(--nc)':'var(--t3)')+'">'+mlStr+'</span></div>'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+        +'<div style="font-family:var(--orb);font-size:20px;font-weight:700;color:'+confCol+'">'+conf+'%</div>'
+        +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden">'
+        +'<div style="width:'+Math.min(100,conf)+'%;height:100%;background:'+confCol+';border-radius:1px;transition:width .4s"></div></div></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: Linemate.io/wnba</span>'
+        +'<div style="display:flex;gap:5px">'
+        +'<button class="btn btn-p btn-sm" onclick="lockProp(\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'  \',\''+statDisp+' '+(p.over!==false?'O':'U')+p.line+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK PROP</button>'
+        +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
+        +'</div></div></div>';
+    }).join('');
+    // Populate parlay props panel
+    var pp=document.getElementById('wnba-par-props-list');
+    if(pp&&parlayProps.length){
+      pp.innerHTML=parlayProps.map(function(p){var ms=p.ml>0?'+':'';return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">'+p.label+'</span><div style="display:flex;gap:5px;align-items:center"><span style="color:var(--vc)">'+ms+p.ml+'</span><span style="color:var(--t3)">'+Math.round(p.prob*100)+'%</span><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="cvParlayAddLeg(\'wnba\',\''+p.label.replace(/'/g,"\\'")+'\','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\',\'PROP\')">+PAR</button></div></div>';}).join('');
+    }
+    return;
+  }
+  // ── Fallback: ESPN stats-based props ────────────────────────────────────────
   var gameData=window._wnbaGameData||[];
   if(!gameData.length){
-    el.innerHTML='<div class="empty">NO GAME DATA &mdash; VIEW TODAY TAB FIRST</div>';
+    // Try to trigger game data load
+    if(typeof renderWNBAGames==='function')await renderWNBAGames();
+    gameData=window._wnbaGameData||[];
+  }
+  if(!gameData.length){
+    el.innerHTML='<div class="empty">NO GAME DATA — VIEW TODAY TAB FIRST OR NO GAMES TODAY</div>';
     return;
   }
   var parlayProps=[];
@@ -15534,11 +15647,37 @@ function _cvPropsForSport(s){
       var activeTeams=((D.nhl&&D.nhl.today)||[]).flatMap(function(g){return[g.home||g.hA||'',g.away||g.awA||''];}).filter(Boolean);
       var raw=activeTeams.length?NHL_PROPS_DATA.filter(function(p){return activeTeams.indexOf(p.t||p.team||'')>=0;}):NHL_PROPS_DATA;
       props=raw.map(function(p){return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:p.ml||'-110',prob:(p.conf||55)/100,matchup:(p.opp?(p.t+' vs '+p.opp):(p.t||'')),over:p.over!==false};});
-    } else if(s==='nba'&&typeof NBA_PROPS_DATA!=='undefined'&&NBA_PROPS_DATA.length){
-      var activeTeams2=(typeof NBA_TONIGHT!=='undefined'?NBA_TONIGHT:[]).flatMap(function(g){return[g.h||'',g.a||''];}).filter(Boolean);
-      var raw2=activeTeams2.length?NBA_PROPS_DATA.filter(function(p){return activeTeams2.indexOf(p.t||p.team||'')>=0;}):NBA_PROPS_DATA;
-      props=raw2.map(function(p){return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:p.ml||'-110',prob:(p.conf||55)/100,matchup:(p.t||''),over:p.over!==false};});
+    } else if(s==='nba'){
+      // Try linemate NBA data first
+      var lmNBA=(D.linemate&&D.linemate.props&&D.linemate.props.nba)||[];
+      var validLM=lmNBA.filter(function(p){return p.player&&/^[A-Z][a-z]+\s+[A-Z]/.test(p.player)&&p.line!=null;});
+      if(s==='nba'&&validLM.length>=3){
+        var seenNBA=new Set();
+        return validLM.filter(function(p){var k=p.player+'_'+p.stat+'_'+p.line;if(seenNBA.has(k))return false;seenNBA.add(k);return true;}).map(function(p){
+          var prob=Math.min(.99,Math.max(.01,(p.conf||55)/100));
+          var mlNum=prob>=.5?-Math.round(prob/(1-prob)*100):Math.round((1-prob)/prob*100);
+          return{player:p.player,stat:p.stat||'PROP',lineValue:p.line,ml:mlNum,prob:prob,
+                 matchup:p.team?p.team+' PROP':'NBA PROP',over:p.over!==false};
+        });
+      }
+      if(typeof NBA_PROPS_DATA!=='undefined'&&NBA_PROPS_DATA.length){
+        var activeTeams2=(typeof NBA_TONIGHT!=='undefined'?NBA_TONIGHT:[]).flatMap(function(g){return[g.h||'',g.a||''];}).filter(Boolean);
+        var raw2=activeTeams2.length?NBA_PROPS_DATA.filter(function(p){return activeTeams2.indexOf(p.t||p.team||'')>=0;}):NBA_PROPS_DATA;
+        props=raw2.map(function(p){return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:p.ml||'-110',prob:(p.conf||55)/100,matchup:(p.t||''),over:p.over!==false};});
+      }
     } else if(s==='wnba'){
+      // Try linemate WNBA data first
+      var lmWNBA=(D.linemate&&D.linemate.wnba_props)||[];
+      var validWNBA=lmWNBA.filter(function(p){return p.player&&/^[A-Z][a-z]+\s+[A-Z]/.test(p.player)&&p.line!=null;});
+      if(s==='wnba'&&validWNBA.length>=3){
+        var seenW=new Set();
+        return validWNBA.filter(function(p){var k=p.player+'_'+p.stat+'_'+p.line;if(seenW.has(k))return false;seenW.add(k);return true;}).map(function(p){
+          var prob=Math.min(.99,Math.max(.01,(p.conf||55)/100));
+          var mlNum=prob>=.5?-Math.round(prob/(1-prob)*100):Math.round((1-prob)/prob*100);
+          return{player:p.player,stat:p.stat||'PROP',lineValue:p.line,ml:mlNum,prob:prob,
+                 matchup:p.team?p.team+' PROP':'WNBA PROP',over:p.over!==false};
+        });
+      }
       var gd=window._wnbaGameData||[];var plrs=(D.wnba&&D.wnba.players)||[];
       gd.forEach(function(g){
         var hab=g.hab,aab=g.aab;

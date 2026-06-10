@@ -2056,7 +2056,7 @@ def _linemate_playwright(url: str, selectors: list[str], limit: int = 100) -> li
                                           viewport={"width":1280,"height":900})
             page    = ctx.new_page()
             page.goto(url, wait_until="networkidle", timeout=45_000)
-            page.wait_for_timeout(4_000)
+            page.wait_for_timeout(5_000)
             for sel in selectors:
                 rows = page.query_selector_all(sel)
                 if len(rows) > 3:
@@ -2064,6 +2064,17 @@ def _linemate_playwright(url: str, selectors: list[str], limit: int = 100) -> li
                         txt = row.inner_text().strip()
                         if len(txt) > 8: items.append(txt)
                     break
+            # Fallback: grab large content sections from main/body
+            if not items:
+                for container in ['main', '[class*="content"]', 'body']:
+                    try:
+                        txt = page.inner_text(container)
+                        if txt and len(txt) > 200:
+                            # split into blocks separated by blank lines
+                            blocks = [b.strip() for b in re.split(r'\n{2,}', txt) if len(b.strip()) > 20]
+                            items = blocks[:limit]
+                            if items: break
+                    except: pass
             browser.close()
     except Exception as exc:
         log(f"Playwright {url}: {exc}", "WARN")
@@ -2073,31 +2084,60 @@ def fetch_linemate_props(sport: str) -> list[dict]:
     log(f"Linemate props {sport.upper()}…")
     raw = _linemate_playwright(
         f"https://linemate.io/{sport}",
-        ["[class*='PlayerPropCard']","[class*='PropCard']","[class*='prop-card']",
-         "[data-testid*='prop']","[class*='prop']","[class*='player-card']","article"],
+        ["[class*='PlayerPropCard']","[class*='player-prop-card']","[class*='PropCard']",
+         "[class*='prop-card']","[class*='PlayerRow']","[class*='player-row']",
+         "[data-testid*='prop']","[data-testid*='player']","article","li[class*='prop']"],
     )
     props = []
+    STAT_KWDS = [("strikeout","Ks"),("saves","Saves"),("goal","Goals"),
+                 ("point","PTS"),("rebound","REB"),("assist","AST"),
+                 ("hit","Hits"),("rbi","RBIs"),("home run","HR"),
+                 ("total base","TB"),("shot","Shots"),("three","3PM"),("block","BLK"),("steal","STL")]
     for t in raw:
         if not t or len(t) < 8: continue
         lines = [l.strip() for l in t.split("\n") if l.strip()]
         txt_lower = t.lower()
-        over_match = re.search(r'(over|under)\s*([\d.]+)', txt_lower)
-        conf_match = re.search(r'(\d{2,3})%', t)
-        team_match = re.search(r'\b([A-Z]{2,4})\b', t)
+        # Identify player name: first Title Case line that's not a pure stat/number line
+        player_name = ""
+        for ln in lines[:6]:
+            # Skip pure stat lines like "5+ Points", numbers, team tags, Over/Under
+            is_stat_line = bool(re.match(r'^\d+[+\-.]', ln)) or ln.lower() in ('over','under','home','away')
+            is_team_tag = bool(re.match(r'^[A-Z]{2,4}$', ln))
+            is_pct = bool(re.search(r'\d+%', ln))
+            is_fraction = bool(re.search(r'\d+/\d+', ln))
+            is_name = bool(re.match(r'^[A-Z][a-zA-Z\'.\-]+ [A-Z][a-zA-Z\'.\-]+', ln)) and not is_stat_line
+            if is_name and not is_team_tag and not is_pct and not is_fraction:
+                player_name = ln; break
+        # Extract over/under and line value
+        over_match  = re.search(r'(over|under)\s*([\d.]+)', txt_lower)
+        # Also match patterns like "15+ Points" → line=15, over=True
+        plus_match  = re.search(r'(\d+(?:\.\d+)?)\+\s+\w', t) if not over_match else None
+        conf_match  = re.search(r'(\d{2,3})%', t)
+        team_match  = re.search(r'\b([A-Z]{2,4})\b', t)
+        hit_match   = re.search(r'(\d+)/(\d+)', t)
+        stat_cat = next((c for kw,c in STAT_KWDS if kw in txt_lower), "")
+        # Derive player name from stat line if still missing
+        if not player_name:
+            player_name = lines[0] if lines else ""
+        over_val = None; line_val = None
+        if over_match:
+            over_val = over_match.group(1).lower() == "over"
+            line_val = float(over_match.group(2))
+        elif plus_match:
+            over_val = True
+            line_val = float(plus_match.group(1))
+        hit_rate = f"{hit_match.group(1)}/{hit_match.group(2)}" if hit_match else ""
         props.append({
-            "raw":       t[:300],
-            "sport":     sport.upper(),
-            "src":       "Linemate",
-            "player":    lines[0] if lines else "",
-            "team":      team_match.group(1) if team_match else "",
-            "over":      over_match.group(1).lower() == "over" if over_match else None,
-            "line":      float(over_match.group(2)) if over_match else None,
-            "conf":      int(conf_match.group(1)) if conf_match else 55,
-            "stat":      next((c for kw,c in [
-                             ("strikeout","Ks"),("saves","Saves"),("goal","Goals"),
-                             ("point","PTS"),("rebound","REB"),("assist","AST"),
-                             ("hit","Hits"),("rbi","RBIs"),("home run","HR"),
-                             ("total base","TB"),("shot","Shots")] if kw in txt_lower), ""),
+            "raw":      t[:300],
+            "sport":    sport.upper(),
+            "src":      "Linemate",
+            "player":   player_name,
+            "team":     team_match.group(1) if team_match else "",
+            "over":     over_val,
+            "line":     line_val,
+            "conf":     int(conf_match.group(1)) if conf_match else 55,
+            "stat":     stat_cat,
+            "hitRate":  hit_rate,
         })
     log(f"  Linemate {sport.upper()}: {len(props)} cards")
     return props
