@@ -874,13 +874,7 @@ body{line-height:1.5}
       <button class="mb" onclick="T('nba','model')"><span class="mbi"></span>MODEL</button>
       <button class="mb" onclick="T('nba','config')"><span class="mbi"></span>CONFIG</button>
     </nav>
-    <nav id="mn8" style="display:none">
-      <button class="mb" onclick="T('wnba','games')"><span class="mbi"></span>TODAY</button>
-      <button class="mb" onclick="T('wnba','props')"><span class="mbi"></span>PROPS</button>
-<button class="mb" onclick="T('wnba','parlay')"><span class="mbi"></span>PARLAY</button>
-      <button class="mb" onclick="T('wnba','model')"><span class="mbi"></span>MODEL</button>
-      <button class="mb" onclick="T('wnba','config')"><span class="mbi"></span>CONFIG</button>
-    </nav>
+
   </div>
   <div id="nba-wnba" class="subp">
 
@@ -890,6 +884,13 @@ body{line-height:1.5}
 <button class="nb" onclick="T('wnba','parlay')">PARLAY</button>
     <button class="nb" onclick="T('wnba','model')">MODEL</button>
     <button class="nb" onclick="T('wnba','config')">CONFIG</button>
+  </nav>
+  <nav id="mn8" style="display:none">
+    <button class="mb" onclick="T('wnba','games')"><span class="mbi"></span>TODAY</button>
+    <button class="mb" onclick="T('wnba','props')"><span class="mbi"></span>PROPS</button>
+    <button class="mb" onclick="T('wnba','parlay')"><span class="mbi"></span>PARLAY</button>
+    <button class="mb" onclick="T('wnba','model')"><span class="mbi"></span>MODEL</button>
+    <button class="mb" onclick="T('wnba','config')"><span class="mbi"></span>CONFIG</button>
   </nav>
   <div class="sa" id="wnba-sa">
     <div id="wnba-tab-games" class="tab act">
@@ -945,6 +946,7 @@ body{line-height:1.5}
         <div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:11px;color:var(--nc);letter-spacing:1px;margin-bottom:4px">ESPN WNBA API</div><div style="font-family:var(--mono);font-size:12px;color:var(--t2)">Live scores · today's games · odds · player props · schedule</div></div>
         <div class="card" style="padding:10px"><div style="font-family:var(--mono);font-size:11px;color:var(--nc);letter-spacing:1px;margin-bottom:4px">LINEMATE.IO/WNBA</div><div style="font-family:var(--mono);font-size:12px;color:var(--t2)">Player prop trends · recent form · L5/L10 hit rates · line movement</div></div>
       </div>
+      <div id="wnba-model-weights" style="margin-top:12px"></div>
     </div>
     <div id="wnba-tab-config" class="tab">
       <div class="sh"><span class="p"></span> WNBA ENGINE CONFIG</div>
@@ -8093,7 +8095,7 @@ function SS(s){
   if(s==='home'){_t(renderHomePage);}
   if(s==='mlb'){_t(renderR);_t(()=>renderMLBGames());_t(()=>renderMLBProps('all'));_t(renderBestBetsFromRemote.bind(null,(window.__CV_DATA?.bestBets||[])));_t(()=>T('mlb','games'));}
   if(s==='hk'){_t(()=>setSub('hk','nhl'));_t(()=>T('nhl','games'));_t(renderNHLGames);_t(renderNHLTonight);_t(renderGoalies);_t(renderMoneyPuck);}
-  if(s==='nba'){_t(()=>setSub('nba','nba'));_t(()=>T('nba','games'));_t(renderNBATonightGames);_t(renderNBAGames);_t(renderNBABracket);}
+  if(s==='nba'){_t(()=>{const ws=document.getElementById('nba-wnba');if(ws?.classList.contains('act')){setSub('nba','wnba');}else{setSub('nba','nba');}});_t(()=>{if(document.getElementById('nba-wnba')?.classList.contains('act')){renderWNBAGames();}else{T('nba','games');renderNBATonightGames();renderNBAGames();renderNBABracket();}});}
   if(s==='ten'){_t(()=>T('ten','today'));_t(renderTennisPicks);_t(renderTennisToday);}
   if(s==='f1'){_t(renderF1Schedule);_t(renderF1Drivers);}
   if(s==='live'){_t(()=>T('live','games'));_t(startNHLLive);_t(startNBALive);_t(startTennisLive);}
@@ -8143,7 +8145,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   document.querySelectorAll(`#${saId} .tab`).forEach(t=>t.classList.remove('act'));
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>b.classList.remove('act','ai','ap'));
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
-  const cls=(sport==='nhl'||sport==='nba')?'ai':'act';
+  const cls=(sport==='nhl'||sport==='nba'||sport==='wnba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
   if(sport==='mlb'){if(tabId==='games'){try{if(!ESPN_GAMES.length)loadGames();}catch(e){}}if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games'){renderNHLTonight();renderNHLGames();};if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props'){renderProps();renderNHLSCFProps();setTimeout(()=>renderNHLPropsLive(window._nhlPropFilter||'all'),50);}if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){
@@ -8224,7 +8226,9 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
     try{
       if(tabId==='games')renderWNBAGames();
       else if(tabId==='props')renderWNBAProps();
-      else if(tabId==='parlay')renderWNBAGames();
+      else if(tabId==='parlay'){renderWNBAGames();try{const pg=document.getElementById('wnba-parlay-games');if(pg&&pg.innerHTML.includes('LOAD TODAY'))renderWNBAGames();}catch(ex){}}
+      else if(tabId==='model'){try{renderModelWeights('wnba','wnba-model-weights');}catch(ex){}}
+      else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
   if(sport==='fut'){renderFuturesPanes(tabId);}
