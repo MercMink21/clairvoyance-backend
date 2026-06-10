@@ -1248,19 +1248,60 @@ body{line-height:1.5}
   </div>
   <div id="tracker-parlay" class="subp">
     <div class="sa" style="padding:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="sh" style="margin:0"><span class="p"></span> PARLAY TRACKER</div>
-        <div style="display:flex;gap:6px">
-          <select id="tracker-parlay-filter" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderParlayTracker()">
-            <option value="all">ALL PARLAYS</option>
-            <option value="pending">PENDING</option>
-            <option value="win">WINS</option>
-            <option value="loss">LOSSES</option>
-          </select>
-          <button class="btn btn-o btn-sm" onclick="renderParlayTracker()">↻</button>
+      <!-- CROSS-SPORT BUILDER -->
+      <div class="sh" style="margin:0 0 10px"><span class="p"></span> CROSS-SPORT PARLAY BUILDER</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px;letter-spacing:1.5px">MAX 8 LEGS · ANY SPORT · ANY BET TYPE · GAME/PROP BADGE</div>
+      <!-- Sport selector -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+        <button id="xp-sport-mlb" class="btn btn-p btn-sm" onclick="cvXParlaySetSport('mlb')">MLB</button>
+        <button id="xp-sport-nhl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nhl')">NHL</button>
+        <button id="xp-sport-nba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nba')">NBA</button>
+        <button id="xp-sport-wnba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('wnba')">WNBA</button>
+        <button id="xp-sport-ten" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('ten')">TENNIS</button>
+      </div>
+      <!-- View toggle -->
+      <div style="display:flex;gap:5px;margin-bottom:8px">
+        <button id="xp-view-games" class="btn btn-p btn-sm" onclick="cvXParlayToggle('games')">GAME LINES</button>
+        <button id="xp-view-props" class="btn btn-o btn-sm" onclick="cvXParlayToggle('props')">PLAYER PROPS</button>
+      </div>
+      <div class="g2">
+        <!-- Left: game/prop selection -->
+        <div>
+          <div id="xp-games-panel">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:5px">// GAME LINES — TAP TO ADD</div>
+            <div id="xp-games-list"><div class="loading"><span class="spi"></span></div></div>
+          </div>
+          <div id="xp-props-panel" style="display:none">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:5px">// PLAYER PROPS — TAP TO ADD</div>
+            <div id="xp-props-list"><div class="loading"><span class="spi"></span></div></div>
+          </div>
+        </div>
+        <!-- Right: legs + calc -->
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--pc);letter-spacing:2px;margin-bottom:6px">// PARLAY <span id="xp-par-count">(0)</span></div>
+          <div id="xp-par-legs" style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">NO LEGS ADDED</div></div>
+          <div id="xp-par-res"></div>
+          <input type="number" class="fi" id="xp-par-wager" value="100" placeholder="WAGER $" style="margin-bottom:7px" oninput="cvParlayCalc('xp')">
+          <button class="btn btn-p btn-fw" onclick="cvParlayCalc('xp')">CALCULATE</button>
+          <button class="btn btn-o btn-fw" style="margin-top:5px" onclick="window._cvPar['xp']=[];cvParlayRenderLegs('xp');cvParlayCalc('xp')">CLEAR</button>
         </div>
       </div>
-      <div id="tracker-parlay-list"><div class="empty">LOADING...</div></div>
+      <!-- Past parlays -->
+      <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px">// PARLAY HISTORY</div>
+          <div style="display:flex;gap:6px">
+            <select id="tracker-parlay-filter" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderParlayTracker()">
+              <option value="all">ALL PARLAYS</option>
+              <option value="pending">PENDING</option>
+              <option value="win">WINS</option>
+              <option value="loss">LOSSES</option>
+            </select>
+            <button class="btn btn-o btn-sm" onclick="renderParlayTracker()">↻</button>
+          </div>
+        </div>
+        <div id="tracker-parlay-list"><div class="empty">LOADING...</div></div>
+      </div>
     </div>
   </div>
 </div>
@@ -8360,7 +8401,7 @@ function setSub(sport,sub){
   if(sport==='mlb'&&sub==='ncaa'){try{renderNCAABaseballContent();renderNCAABaseballFull();}catch(e){}}
   if(sport==='hk'&&sub==='pwhl'){try{renderPWHL();}catch(e){}}
   if(sport==='tracker'&&sub==='locked'){try{renderLockedTracker();}catch(e){}}
-  if(sport==='tracker'&&sub==='parlay'){try{renderParlayTracker();}catch(e){}}
+  if(sport==='tracker'&&sub==='parlay'){try{renderParlayTracker();}catch(e){}try{cvXParlayInit();}catch(e){}}
   // Auto-jump to TODAY tab when switching to a live sub-league
   if(sport==='hk'&&sub==='nhl'){try{T('nhl','games');renderNHLTonight();renderNHLGames();}catch(e){}}
   if(sport==='nba'&&sub==='nba'){try{T('nba','games');}catch(e){}}
@@ -15391,15 +15432,42 @@ function cvParlayLoadGames(s){
       +'</div>';
   }).join('');
 }
+function _cvPropsForSport(s){
+  // Returns normalized prop objects [{player,stat,lineValue,ml,prob,matchup,over}] for sport s
+  var D=window.__CV_DATA||{};var props=[];
+  try{
+    if(s==='nhl'&&typeof NHL_PROPS_DATA!=='undefined'&&NHL_PROPS_DATA.length){
+      var activeTeams=((D.nhl&&D.nhl.today)||[]).flatMap(function(g){return[g.home||g.hA||'',g.away||g.awA||''];}).filter(Boolean);
+      var raw=activeTeams.length?NHL_PROPS_DATA.filter(function(p){return activeTeams.indexOf(p.t||p.team||'')>=0;}):NHL_PROPS_DATA;
+      props=raw.map(function(p){return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:p.ml||'-110',prob:(p.conf||55)/100,matchup:(p.opp?(p.t+' vs '+p.opp):(p.t||'')),over:p.over!==false};});
+    } else if(s==='nba'&&typeof NBA_PROPS_DATA!=='undefined'&&NBA_PROPS_DATA.length){
+      var activeTeams2=(typeof NBA_TONIGHT!=='undefined'?NBA_TONIGHT:[]).flatMap(function(g){return[g.h||'',g.a||''];}).filter(Boolean);
+      var raw2=activeTeams2.length?NBA_PROPS_DATA.filter(function(p){return activeTeams2.indexOf(p.t||p.team||'')>=0;}):NBA_PROPS_DATA;
+      props=raw2.map(function(p){return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:p.ml||'-110',prob:(p.conf||55)/100,matchup:(p.t||''),over:p.over!==false};});
+    } else if(s==='wnba'){
+      var gd=window._wnbaGameData||[];var plrs=(D.wnba&&D.wnba.players)||[];
+      gd.forEach(function(g){
+        var hab=g.hab,aab=g.aab;
+        var gPlrs=plrs.filter(function(p){var pk=p.team||p.abbr||'';return pk===hab||pk===aab;}).sort(function(a,b){return(b.pts||0)-(a.pts||0);}).slice(0,8);
+        gPlrs.forEach(function(pl){
+          var pts=parseFloat(pl.pts||pl.ppg||12);var reb=parseFloat(pl.reb||pl.rpg||3);var ast=parseFloat(pl.ast||pl.apg||2);
+          var ptsLine=(pts*0.82).toFixed(1);var rebLine=(reb*0.82).toFixed(1);var praLine=((pts+reb+ast)*0.82).toFixed(1);
+          var matchup=aab+'@'+hab;var nm=pl.name||pl.player||'PLAYER';var prob=0.56;
+          props.push({player:nm,stat:'PTS',lineValue:ptsLine,ml:'-115',prob:prob,matchup:matchup,over:true});
+          props.push({player:nm,stat:'REB',lineValue:rebLine,ml:'-110',prob:prob,matchup:matchup,over:true});
+          props.push({player:nm,stat:'PTS+REB+AST',lineValue:praLine,ml:'-115',prob:prob,matchup:matchup,over:true});
+        });
+      });
+    }
+  }catch(e){}
+  return props;
+}
 function cvParlayLoadProps(s){
   var el=document.getElementById(s+'-par-props-list');if(!el)return;
   var D=window.__CV_DATA||{};var props=[];
-  try{
-    if(s==='mlb')props=(D.mlb&&D.mlb.props)||[];
-    else if(s==='nhl')props=(D.nhl&&D.nhl.props)||[];
-    else if(s==='nba')props=(D.nba&&D.nba.props)||[];
-    else if(s==='wnba')props=(D.nba&&D.nba.wnba_props)||(D.wnba_props)||[];
-  }catch(e){}
+  // Use actual props tab data for nhl/nba/wnba
+  props=_cvPropsForSport(s);
+  if(!props.length&&s==='mlb')try{props=(D.mlb&&D.mlb.props)||[];}catch(e){}
   // Fallback: pull PROP-type best bets for this sport
   if(!props.length){
     try{
@@ -15466,6 +15534,104 @@ function cvParlayInit(s){
   cvParlayToggle(s,window._cvParV[s]||'games');
 }
 
+// ── CROSS-SPORT PARLAY BUILDER (Tracker > PARLAY tab) ────────────────────────
+window._cvXPSport='mlb';window._cvXPView='games';
+function cvXParlayInit(){
+  if(!window._cvPar)window._cvPar={};
+  if(!window._cvPar['xp'])window._cvPar['xp']=[];
+  cvParlayRenderLegs('xp');
+  cvXParlaySetSport(window._cvXPSport||'mlb');
+}
+function cvXParlaySetSport(s){
+  window._cvXPSport=s;
+  // Update sport button styles
+  ['mlb','nhl','nba','wnba','ten'].forEach(function(sp){
+    var b=document.getElementById('xp-sport-'+sp);
+    if(!b)return;
+    if(sp===s){b.classList.remove('btn-o');b.classList.add('btn-p');}
+    else{b.classList.remove('btn-p');b.classList.add('btn-o');}
+  });
+  cvXParlayToggle(window._cvXPView||'games');
+}
+function cvXParlayToggle(view){
+  window._cvXPView=view;
+  var gP=document.getElementById('xp-games-panel');
+  var pP=document.getElementById('xp-props-panel');
+  var gB=document.getElementById('xp-view-games');
+  var pB=document.getElementById('xp-view-props');
+  if(gP)gP.style.display=view==='games'?'block':'none';
+  if(pP)pP.style.display=view==='props'?'block':'none';
+  if(gB){gB.classList.toggle('btn-p',view==='games');gB.classList.toggle('btn-o',view!=='games');}
+  if(pB){pB.classList.toggle('btn-p',view==='props');pB.classList.toggle('btn-o',view!=='props');}
+  if(view==='props')cvXParlayLoadProps(window._cvXPSport||'mlb');
+  else cvXParlayLoadGames(window._cvXPSport||'mlb');
+}
+function cvXParlayLoadGames(s){
+  var el=document.getElementById('xp-games-list');if(!el)return;
+  var D=window.__CV_DATA||{};var games=[];
+  try{
+    if(s==='mlb')games=(D.mlb&&D.mlb.today)||[];
+    else if(s==='nhl')games=(D.nhl&&D.nhl.today)||[];
+    else if(s==='nba')games=(D.nba&&D.nba.today)||[];
+    else if(s==='wnba')games=((D.nba&&D.nba.wnba)||(D.wnba&&D.wnba.today)||[]);
+    else if(s==='ten')games=(D.tennis&&D.tennis.today)||[];
+  }catch(e){}
+  if(!games.length){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO '+s.toUpperCase()+' GAMES TODAY — RUN SYNC</div>';return;}
+  var spLabel=s.toUpperCase();
+  el.innerHTML=games.slice(0,12).map(function(g){
+    var hA=g.hA||g.home||g.homeTeam||'HOME';
+    var awA=g.awA||g.away||g.awayTeam||'AWAY';
+    var hP=g.ens?g.ens.p:(g.winProb||.5);var awP=1-hP;
+    var hML=g.homeML||p2ml(hP);var awML=g.awayML||p2ml(awP);
+    var total=parseFloat(g.total||(g.mc&&g.mc.avgT)||8.5);
+    var totStr=total.toFixed(1);
+    var matchup=spLabel+':'+awA+'@'+hA;
+    return '<div class="card" style="margin-bottom:6px;padding:8px;border:1px solid rgba(255,255,255,.07)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+      +'<span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc)">'+awA+' @ '+hA+'</span>'
+      +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid var(--pc);color:var(--pc);border-radius:2px">'+spLabel+'</span>'
+      +'</div>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' ML '+hA+'\',\''+hML+'\','+hP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+hA+' '+hML+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' ML '+awA+'\',\''+awML+'\','+awP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+awA+' '+awML+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' O'+totStr+'\',\'-110\',.52,\''+matchup+'\',\'GAME\')">O'+totStr+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' U'+totStr+'\',\'-110\',.48,\''+matchup+'\',\'GAME\')">U'+totStr+'</button>'
+      +'</div></div>';
+  }).join('');
+}
+function cvXParlayLoadProps(s){
+  var el=document.getElementById('xp-props-list');if(!el)return;
+  var props=_cvPropsForSport(s);
+  // Fallback to bestBets for sports without dedicated prop arrays
+  if(!props.length){
+    var D=window.__CV_DATA||{};var sp=s==='wnba'?'WNBA':s.toUpperCase();
+    var bb=(D.bestBets||[]).filter(function(b){return(b.type==='PROP'||b.betType==='PROP')&&(b.sport||'').toUpperCase()===sp;});
+    props=bb.slice(0,20).map(function(b){
+      return{player:b.player||b.betOn||'PLAYER',stat:b.line||b.betOn||'PROP',lineValue:b.lineValue||b.value||'',ml:b.ml||'-110',prob:b.winProb||.55,matchup:(b.awA||'')+(b.hA?'@'+b.hA:''),over:true};
+    });
+  }
+  if(!props.length){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO '+s.toUpperCase()+' PROP DATA TODAY — RUN SYNC</div>';return;}
+  var spLabel=s.toUpperCase();
+  el.innerHTML=props.slice(0,25).map(function(p){
+    var player=(p.player||'PLAYER').replace(/'/g,'');
+    var stat=p.stat||'PROP';var lv=p.lineValue||'';
+    var ml=p.ml||'-110';var prob=parseFloat(p.prob)||.55;
+    var over=p.over!==false;
+    var uML=ml==='-110'?'+100':(parseFloat(ml)<0?'+'+(Math.round(Math.abs(parseFloat(ml))*.85)):'-'+(Math.round(Math.abs(parseFloat(ml))*.85)));
+    var matchup=spLabel+':'+(p.matchup||'');
+    var overProb=over?prob:1-prob;var underProb=1-overProb;
+    return '<div class="card" style="margin-bottom:5px;padding:7px;border:1px solid rgba(0,240,255,.1)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">'
+      +'<div><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--nc)">'+player+'</span>'
+      +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">'+stat+(lv?' · Line: '+lv:'')+(p.matchup?' · '+p.matchup:'')+'</div></div>'
+      +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;background:rgba(0,240,255,.1);border:1px solid var(--nc);color:var(--nc);border-radius:2px;flex-shrink:0">'+spLabel+' PROP</span>'
+      +'</div>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
+      +'<button class="btn btn-n btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+player+' O'+lv+' '+stat+'\',\''+ml+'\','+overProb.toFixed(3)+',\''+matchup+'\',\'PROP\')">OVER '+lv+' '+ml+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+player+' U'+lv+' '+stat+'\',\''+uML+'\','+underProb.toFixed(3)+',\''+matchup+'\',\'PROP\')">UNDER '+lv+' '+uML+'</button>'
+      +'</div></div>';
+  }).join('');
+}
 // ── ANALYTICS VISUALS TAB ─────────────────────────────────────────────────────
 function renderAnalyticsVisuals(viewFilter){
   document.querySelectorAll('#visuals-filters button').forEach(b=>{b.classList.toggle('act',b.getAttribute('onclick')===`renderAnalyticsVisuals('${viewFilter}')`)});
