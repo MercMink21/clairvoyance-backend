@@ -11657,15 +11657,61 @@ function txnImplication(txn){
   if(t.includes('recall')||hl.includes('recall')||hl.includes('call up'))return'Recall from minors adds depth/upside. Monitor playing time before targeting props.';
   return'Roster move may shift depth chart. Verify starting role and expected usage before betting related lines.';
 }
+// ── News filter state + apply engine ─────────────────────────────────────────
+window._NF_SPORT_MAP={
+  Baseball:['MLB'],
+  Basketball:['NBA','WNBA'],
+  Football:['NFL','CFB'],
+  Hockey:['NHL','PWHL','CH','KHL','SHL','LIIGA'],
+  Soccer:['SOCCER','WC','WORLDCUP','MLS'],
+  Tennis:['TENNIS','ATP','WTA']
+};
+window._applyNewsFilter=function(bar){
+  const sport=bar.dataset.fSport||'ALL';
+  const league=bar.dataset.fLeague||'ALL';
+  const txt=(bar.dataset.fText||'').toLowerCase();
+  const sl=sport==='ALL'?null:(window._NF_SPORT_MAP[sport]||[sport]);
+  const tab=bar.closest('.tab')||bar.closest('.sa');
+  if(!tab)return;
+  tab.querySelectorAll('.nc').forEach(c=>{
+    const cs=c.dataset.sport||'';
+    const ms=!sl||sl.includes(cs);
+    const ml=league==='ALL'||cs===league;
+    const mt=!txt||(c.dataset.text||'').includes(txt);
+    c.style.display=ms&&ml&&mt?'':'none';
+  });
+};
 function newsFilterBar(tabId,col){
-  return`<div class="news-filters" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;padding:10px;background:rgba(0,0,0,.3);border:1px solid rgba(220,190,255,.1);border-radius:3px">
+  const SPORTS=['ALL','Baseball','Basketball','Football','Hockey','Soccer','Tennis'];
+  const LEAGUES=[
+    {k:'ALL',label:'ALL'},
+    {k:'MLB',label:'MLB'},{k:'NBA',label:'NBA'},{k:'WNBA',label:'WNBA'},
+    {k:'NFL',label:'NFL'},{k:'CFB',label:'CFB'},
+    {k:'NHL',label:'NHL'},{k:'PWHL',label:'PWHL'},{k:'CH',label:'C.HOCKEY'},
+    {k:'KHL',label:'KHL'},{k:'SHL',label:'SHL'},{k:'LIIGA',label:'LIIGA'},
+    {k:'WC',label:'WORLD CUP'},
+    {k:'ATP',label:'ATP'},{k:'WTA',label:'WTA'}
+  ];
+  const sportBtns=SPORTS.map(s=>{
+    const isAll=s==='ALL';
+    return`<button class="nf-sport${isAll?' nf-act':''}" data-val="${s}" onclick="(function(btn){const bar=btn.closest('.news-filters');bar.querySelectorAll('.nf-sport').forEach(b=>{b.style.background='transparent';b.style.color='rgba(220,190,255,.7)';b.style.borderColor='rgba(220,190,255,.2)'});btn.style.background='rgba(187,255,0,.12)';btn.style.color='#bbff00';btn.style.borderColor='rgba(187,255,0,.4)';bar.dataset.fSport=btn.dataset.val;window._applyNewsFilter(bar);})(this)" style="font-family:var(--mono);font-size:11px;padding:3px 11px;background:${isAll?'rgba(187,255,0,.12)':'transparent'};border:1px solid ${isAll?'rgba(187,255,0,.4)':'rgba(220,190,255,.2)'};color:${isAll?'#bbff00':'rgba(220,190,255,.7)'};border-radius:2px;cursor:pointer;transition:all .15s">${s}</button>`;
+  }).join('');
+  const leagueBtns=LEAGUES.map(({k,label})=>{
+    const isAll=k==='ALL';
+    return`<button class="nf-league${isAll?' nf-lact':''}" data-val="${k}" onclick="(function(btn){const bar=btn.closest('.news-filters');bar.querySelectorAll('.nf-league').forEach(b=>{b.style.background='transparent';b.style.color='rgba(220,190,255,.6)';b.style.borderColor='rgba(220,190,255,.15)'});btn.style.background='rgba(0,240,255,.12)';btn.style.color='#00f0ff';btn.style.borderColor='rgba(0,240,255,.35)';bar.dataset.fLeague=btn.dataset.val;window._applyNewsFilter(bar);})(this)" style="font-family:var(--mono);font-size:10px;padding:2px 9px;background:${isAll?'rgba(0,240,255,.12)':'transparent'};border:1px solid ${isAll?'rgba(0,240,255,.35)':'rgba(220,190,255,.15)'};color:${isAll?'#00f0ff':'rgba(220,190,255,.6)'};border-radius:2px;cursor:pointer;transition:all .15s">${label}</button>`;
+  }).join('');
+  return`<div class="news-filters" data-f-sport="ALL" data-f-league="ALL" data-f-text="" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,.35);border:1px solid rgba(220,190,255,.1);border-radius:3px">
     <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;margin-right:4px">SPORT:</span>
-      ${['ALL','MLB','NHL','NBA','NFL','WNBA','TENNIS'].map(s=>`<button class="nf-sport${s==='ALL'?' nf-act':''}" data-sport="${s}" onclick="(function(btn){btn.closest('.news-filters').querySelectorAll('.nf-sport').forEach(b=>{b.style.background='transparent';b.style.fontWeight='400'});btn.style.background='rgba(${s==='ALL'?'220,190,255':'0,240,255'},.12)';btn.style.fontWeight='700';const sp=btn.dataset.sport;const ti=btn.closest('[id^=news-tab]')||btn.closest('.sa');const txt=(ti.querySelector('.nf-search')||{}).value?.toLowerCase()||'';ti.querySelectorAll('.nc').forEach(c=>{const ms=sp==='ALL'||c.dataset.sport===sp;const mt=!txt||c.dataset.text?.includes(txt);c.style.display=ms&&mt?'':'none'});})(this)" style="font-family:var(--mono);font-size:11px;padding:3px 10px;background:${s==='ALL'?'rgba(220,190,255,.12)':'transparent'};border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.8);border-radius:2px;cursor:pointer;transition:background .15s">${s}</button>`).join('')}
+      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;margin-right:4px;white-space:nowrap">SPORT</span>
+      ${sportBtns}
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;margin-right:4px;white-space:nowrap">LEAGUE</span>
+      ${leagueBtns}
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;white-space:nowrap">SEARCH:</span>
-      <input class="nf-search" type="text" placeholder="TEAM · PLAYER · KEYWORD…" oninput="(function(inp){const sp=(inp.closest('.news-filters').querySelector('.nf-act')||{}).dataset?.sport||'ALL';const txt=inp.value.toLowerCase();const ti=inp.closest('[id^=news-tab]')||inp.closest('.sa');ti.querySelectorAll('.nc').forEach(c=>{const ms=sp==='ALL'||c.dataset.sport===sp;const mt=!txt||c.dataset.text?.includes(txt);c.style.display=ms&&mt?'':'none'});})(this)" style="flex:1;font-family:var(--mono);font-size:12px;padding:5px 10px;background:rgba(0,0,0,.4);border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.9);border-radius:2px;outline:none">
+      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;white-space:nowrap">SEARCH</span>
+      <input class="nf-search" type="text" placeholder="TEAM · PLAYER · SPORT · LEAGUE · KEYWORD…" oninput="(function(inp){const bar=inp.closest('.news-filters');bar.dataset.fText=inp.value;window._applyNewsFilter(bar);})(this)" style="flex:1;font-family:var(--mono);font-size:12px;padding:5px 10px;background:rgba(0,0,0,.45);border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.9);border-radius:2px;outline:none">
     </div>
   </div>`;
 }
