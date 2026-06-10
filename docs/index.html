@@ -6760,6 +6760,9 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     const st=p.outcome==='pending'?'⏳ PENDING':p.outcome==='push'?'PUSH':p.outcome?.toUpperCase()||'PENDING';
     const sc=sportColor[p.sport]||sportColor.default;
     const mu=(p.hA==='PARLAY'||p.hA==='NBA-PARLAY')?'PARLAY':(p.awA&&p.hA)?p.awA+' at '+p.hA:(p.hA||'');
+    // Strip "PrizePicks N-Pick Power Play [SPORT]: " prefix from display
+    const rawBetOn=p.betOn||'';
+    const displayBetOn=rawBetOn.replace(/^PrizePicks\s+\d+-Pick\s+Power Play\s+[^:]*:\s*/i,'').replace(/^PrizePicks\s+/i,'');
     return`<div class="card" style="margin-bottom:7px;border-left:2px solid ${oColor};padding:9px 10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
@@ -6767,7 +6770,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
             <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
             <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${mu}</span>
           </div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${p.betOn||''}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${displayBetOn}</div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.betType||''}${p.ml?' · '+p.ml:''}${p.winProb?' · '+(p.winProb*100).toFixed(0)+'%':''}</div>
           ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">FINAL: ${p.awA} ${p.aScore} – ${p.hScore} ${p.hA}</div>`:''}
         </div>
@@ -6835,31 +6838,79 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     </div>`;
   };
 
-  // ── Group archived bets by month → day ────────────────────────────────────
-  const _3d=3*24*60*60*1000;
-  const recentBets=all.filter(p=>_now-_pickTs(p)<_3d);
-  const archivedBets=all.filter(p=>_now-_pickTs(p)>=_3d);
-  const archByMonth={};
-  for(const p of archivedBets){
-    const dk=_pickDate(p)||'unknown';
-    const mk=dk.length>=7?dk.slice(0,7):'unknown';
-    if(!archByMonth[mk])archByMonth[mk]={bets:[],days:{}};
-    archByMonth[mk].bets.push(p);
-    if(!archByMonth[mk].days[dk])archByMonth[mk].days[dk]=[];
-    archByMonth[mk].days[dk].push(p);
+  // ── Year folder ────────────────────────────────────────────────────────────
+  const yearFolder=(yk,bets,months)=>{
+    const pr=perf(bets);
+    const fid='yfold_'+yk;
+    const monthHtml=Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,{bets:mb,days}])=>monthFolder(mk,mb,days)).join('');
+    return`<div style="margin-bottom:10px">
+      <div onclick="const c=document.getElementById('${fid}');const open=c.style.display!=='none';c.style.display=open?'none':'block';this.querySelector('.yfa').textContent=open?'▶':'▼'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px 13px;background:rgba(187,255,0,.04);border:1px solid rgba(187,255,0,.25);border-radius:3px;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span class="yfa" style="font-family:var(--mono);font-size:12px;color:rgba(187,255,0,.5)">▶</span>
+          <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--vc)">${yk}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35)">${bets.length} bet${bets.length!==1?'s':''} · ${Object.keys(months).length} month${Object.keys(months).length!==1?'s':''}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--nc)">${pr.w}W</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--hc)">${pr.l}L</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pctCol(pr.pct)}">${pr.pct!==null?(pr.pct*100).toFixed(0)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${uCol2(pr.u)}">${pr.u>=0?'+':''}${pr.u.toFixed(1)}u</span>
+        </div>
+      </div>
+      <div id="${fid}" style="display:none;padding:7px;border:1px solid rgba(187,255,0,.1);border-top:none;border-radius:0 0 3px 3px;background:rgba(0,8,0,.3)">${monthHtml}</div>
+    </div>`;
+  };
+
+  // ── Group by calendar date first, then classify recent vs archived ─────────
+  // Group ALL bets by calendar date (prevents same-day bets splitting across sections)
+  const _todayStr=today();
+  const _todayDate=new Date(_todayStr+'T12:00:00');
+  const allByDay={};
+  for(const p of all){const dk=_pickDate(p)||'unknown';if(!allByDay[dk])allByDay[dk]=[];allByDay[dk].push(p);}
+
+  // A day is "recent" if its date string is within 3 calendar days of today
+  const _isRecent=dk=>{
+    if(!dk||dk==='unknown')return true;
+    try{const d=new Date(dk+'T12:00:00');return(_todayDate-d)<3*24*60*60*1000;}catch(e){return false;}
+  };
+
+  const recentByDay={};const archByYear={};
+  for(const [dk,bets] of Object.entries(allByDay)){
+    if(_isRecent(dk)){
+      recentByDay[dk]=bets;
+    } else {
+      const yk=dk.length>=4?dk.slice(0,4):'unknown';
+      const mk=dk.length>=7?dk.slice(0,7):'unknown';
+      if(!archByYear[yk])archByYear[yk]={bets:[],months:{}};
+      archByYear[yk].bets.push(...bets);
+      if(!archByYear[yk].months[mk])archByYear[yk].months[mk]={bets:[],days:{}};
+      archByYear[yk].months[mk].bets.push(...bets);
+      if(!archByYear[yk].months[mk].days[dk])archByYear[yk].months[mk].days[dk]=[];
+      archByYear[yk].months[mk].days[dk].push(...bets);
+    }
   }
-  const recentByDay={};
-  for(const p of recentBets){const dk=_pickDate(p)||'unknown';if(!recentByDay[dk])recentByDay[dk]=[];recentByDay[dk].push(p);}
+
+  const recentBets=Object.values(recentByDay).flat();
+  const archivedBets=Object.values(archByYear).flatMap(y=>y.bets);
+
   const recentHtml=Object.entries(recentByDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,db])=>dayFolder(d,db,'r')).join('');
-  // Ensure current month + July 2026 always appear even with no bets
-  const _todayMk=today().slice(0,7);
-  ['2026-07',_todayMk].forEach(mk=>{if(!archByMonth[mk])archByMonth[mk]={bets:[],days:{}};});
-  const archHtml=Object.entries(archByMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,{bets,days}])=>monthFolder(mk,bets,days)).join('');
+
+  // Year filter state
+  const _activeYear=window._ovrHistYear||null;
+  const _allYears=Object.keys(archByYear).sort((a,b)=>b.localeCompare(a));
+  const _filteredYears=_activeYear?{[_activeYear]:archByYear[_activeYear]||{bets:[],months:{}}}:archByYear;
+  const yearFilterHtml=_allYears.length>1?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+    <button class="btn btn-sm" style="border:1px solid ${!_activeYear?'var(--vc)':'rgba(255,255,255,.18)'};color:${!_activeYear?'var(--vc)':'rgba(255,255,255,.55)'};background:${!_activeYear?'rgba(187,255,0,.06)':'transparent'};font-size:11px;padding:2px 9px" onclick="window._ovrHistYear=null;renderOverallHistory()">ALL YEARS</button>
+    ${_allYears.map(yk=>`<button class="btn btn-sm" style="border:1px solid ${_activeYear===yk?'var(--vc)':'rgba(255,255,255,.18)'};color:${_activeYear===yk?'var(--vc)':'rgba(255,255,255,.55)'};background:${_activeYear===yk?'rgba(187,255,0,.06)':'transparent'};font-size:11px;padding:2px 9px" onclick="window._ovrHistYear='${yk}';renderOverallHistory()">${yk}</button>`).join('')}
+  </div>`:'';
+
+  const archHtml=Object.entries(_filteredYears).sort((a,b)=>b[0].localeCompare(a[0])).map(([yk,{bets,months}])=>yearFolder(yk,bets,months)).join('');
+
   const totPr=perf(all);
   const summaryBar=totPr.n?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px">${all.length} total · <span style="color:var(--nc)">${totPr.w}W</span> <span style="color:var(--hc)">${totPr.l}L</span> · <span style="color:${pctCol(totPr.pct)};font-weight:700">${totPr.pct!==null?(totPr.pct*100).toFixed(1)+'%':''}</span> · <span style="color:${uCol2(totPr.u)}">${totPr.u>=0?'+':''}${totPr.u.toFixed(1)}u</span></div>`:'';
   el.innerHTML=filterHtml+summaryBar
     +(recentBets.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:2px;margin-bottom:5px">// RECENT — ${recentBets.length} BETS</div>`+recentHtml:'')
-    +(Object.keys(archByMonth).length?`<div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px;margin:10px 0 6px">// HISTORY ARCHIVE — ${Object.keys(archByMonth).length} MONTH${Object.keys(archByMonth).length!==1?'S':''}${archivedBets.length?' · '+archivedBets.length+' BETS':''}</div>`+archHtml:'')
+    +(_allYears.length?`<div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:2px;margin:10px 0 6px">// HISTORY ARCHIVE — ${archivedBets.length} BETS</div>`+yearFilterHtml+archHtml:'')
     +(!all.length?'<div class="empty">NO BETS FOR SELECTED FILTERS</div>':'');
 }
 
