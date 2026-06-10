@@ -1152,8 +1152,9 @@ body{line-height:1.5}
   <div id="analytics-ncaa" style="display:none"><div id="analytics-ncaa-content"></div></div>
   <div id="analytics-clvanalytics" style="display:none"><div id="analytics-clv-content"></div></div>
   <div id="analytics-atsanalysis" style="display:none"><div id="analytics-ats-content"></div></div>
+</div>
 
-<!-- SOCIAL -->
+<!-- SIMULATOR -->
 <div id="sp-sim" class="spane">
   <div class="sa" style="padding:14px">
     <div class="sh" style="margin-bottom:12px"><span class="p"></span> MONTE CARLO SIMULATOR <span style="font-family:var(--mono);font-size:12px;color:var(--t3);font-weight:400;margin-left:8px">ENGINE-GRADE PROBABILITY ENGINE</span></div>
@@ -8275,7 +8276,38 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   if(sport==='news'){if(tabId==='all')renderNewsAll();if(tabId==='injuries')renderNewsInjuries();if(tabId==='trades')renderNewsTrades();}
   if(sport==='live'){if(tabId==='games')renderGlobalLive();if(tabId==='bets')renderGlobalLiveBets();}
   document.getElementById(saId)?.scrollTo(0,0);
+  _t(()=>cvGuard());
 }
+
+// ═══ VISIBILITY GUARD ════════════════════════════════════════
+function cvGuard(){
+  // Fix active spanes: remove any inline display:none and ensure height
+  document.querySelectorAll('.spane.act').forEach(el=>{
+    if(el.style.display==='none')el.style.display='';
+    if(el.offsetHeight===0)el.style.cssText+=';display:flex!important';
+  });
+  // Fix active tabs: strip inline display:none and ensure they show
+  document.querySelectorAll('.tab.act').forEach(el=>{
+    if(el.style.display==='none')el.style.display='';
+    if(el.offsetHeight===0)el.style.cssText+=';display:block!important';
+  });
+  // Fix active subpanes
+  document.querySelectorAll('.subp.act').forEach(el=>{
+    if(el.style.display==='none')el.style.display='';
+    if(el.offsetHeight===0)el.style.cssText+=';display:flex!important';
+  });
+  // Ensure scroll areas inside active spanes are visible
+  document.querySelectorAll('.spane.act .sa').forEach(el=>{
+    if(el.offsetHeight===0)el.style.cssText+=';flex:1!important;overflow-y:auto!important';
+  });
+}
+// Patch SS and setSub to run guard after every navigation
+(function(){
+  const _oSS=window.SS;window.SS=function(s){_oSS(s);try{cvGuard();}catch(e){}};
+  const _oSub=window.setSub;window.setSub=function(a,b){_oSub(a,b);try{cvGuard();}catch(e){}};
+})();
+// Heartbeat: re-run guard every 3s in case async renders affect layout
+setInterval(()=>{try{cvGuard();}catch(e){}},3000);
 
 // ═══ SPLASH ═══════════════════════════════════════════════════
 let splashDone=false;
