@@ -1606,6 +1606,29 @@ body{line-height:1.5}
 
 
 <div id="toast"></div>
+
+<!-- Bet Lock / Settle Popup -->
+<div id="bet-popup" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,6,.82);align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">
+  <div id="bet-popup-inner" style="background:#010006;border-radius:4px;max-width:400px;width:100%;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(0,0,0,.8)">
+    <div id="bet-popup-glow" style="height:3px;width:100%;position:absolute;top:0;left:0"></div>
+    <div style="padding:22px 20px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div id="bet-popup-title" style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px"></div>
+        <button onclick="closeBetPopup()" style="background:none;border:none;color:rgba(220,190,255,.5);font-size:18px;cursor:pointer;padding:0;line-height:1;margin-left:12px;flex-shrink:0">✕</button>
+      </div>
+      <div id="bet-popup-bet" style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:#fff;line-height:1.5;margin-bottom:10px"></div>
+      <div id="bet-popup-meta" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:rgba(220,190,255,.65);line-height:1.9;margin-bottom:10px"></div>
+      <div id="bet-popup-result" style="display:none;border-radius:3px;padding:10px 14px;margin-bottom:12px;text-align:center">
+        <div id="bet-popup-result-text" style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;letter-spacing:4px"></div>
+        <div id="bet-popup-result-sub" style="font-family:'Share Tech Mono',monospace;font-size:11px;margin-top:4px;color:rgba(220,190,255,.7)"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeBetPopup()" style="font-family:'Share Tech Mono',monospace;font-size:12px;padding:7px 18px;background:transparent;border:1px solid rgba(220,190,255,.25);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;letter-spacing:1px">DISMISS</button>
+      </div>
+    </div>
+    <div style="height:2px;background:rgba(220,190,255,.06)"><div id="bet-popup-progress-fill" style="height:100%;width:100%;background:rgba(220,190,255,.2)"></div></div>
+  </div>
+</div>
 <!-- Pick Card Share Modal -->
 <div id="card-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:20px">
   <div style="background:#010006;border:1px solid #f000ff;border-radius:4px;padding:20px;max-width:420px;width:100%">
@@ -2280,7 +2303,7 @@ function autoSettleFromESPN(games){
       if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;
         // Update daily log
         const log=getDailyLog();if(log[p.date]){const rec=log[p.date].recs.find(r=>r.ha===p.hA&&r.awa===p.awA);if(rec)rec.outcome=outcome;saveDailyLog(log);}
-        toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){}}
+        toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){}try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'MLB',outcome,score:(p.hScore!=null&&p.aScore!=null)?`${p.hA} ${p.hScore} – ${p.awA} ${p.aScore}`:null});}catch(ex){}}
     }
   }
   if(changed){saveP(preds);updHdr();}
@@ -2310,7 +2333,7 @@ async function autoSettleNHL(){
           const total=hs+as;const ou=parseFloat(p.ou||5.5);
           outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';
         }
-        if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};}
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NHL',outcome});}catch(ex){}}
       }
     }
     if(changed){saveP(preds);updHdr();}
@@ -2628,7 +2651,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
       const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
       const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
-      saveDailyLog(log);updHdr();toast(`// LOCKED → API: ${betOn} ${ml}`);
+      saveDailyLog(log);updHdr();toast(`// LOCKED → API: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
       setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}},120);return;
     }
   }
@@ -2673,7 +2696,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
-  saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);
+  saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
   setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderTennisPendingBets();}catch(e){}},120);
 }
 function skipPick(hA,awA,lb,p){
@@ -2701,6 +2724,7 @@ function recR(id,outcome,hScore,aScore){
   rec.locked=true;
   saveDailyLog(log);
   updHdr();toast(`// RECORDED: ${outcome.toUpperCase()}`);try{notifySettlement(preds[i]?.betOn||'BET',outcome);}catch(e){}
+  try{const _sp=preds[i];window.showBetPopup({type:'settle',betOn:_sp?.betOn||'BET',sport:_sp?.sport||'',league:_sp?.league||_sp?.sport||'',betType:_sp?.betType||'',ml:_sp?.ml||'',prob:_sp?.winProb,decOdds:_sp?.decOdds,outcome,score:(_sp?.hScore!=null&&_sp?.aScore!=null)?`${_sp.hA} ${_sp.hScore} – ${_sp.awA} ${_sp.aScore}`:null});}catch(ex){}
   // Immediate re-render of ALL views — no tab-switch needed
   try{renderOverall();}catch(e){}
   try{renderOverallHistory();}catch(e){}
@@ -4087,6 +4111,52 @@ function doExp(fmt='csv'){
 function doImp(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const fr=new FileReader();fr.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.preds)saveP(d.preds);if(d.elo){ELO=d.elo;S.s('elo',ELO);}if(d.ens)ENS=d.ens;if(d.daily_log)saveDailyLog(d.daily_log);updHdr();renderR();toast('// IMPORTED');}catch{toast('// IMPORT FAILED');}};fr.readAsText(e.target.files[0]);};i.click();}
 function doReset(){['preds','elo','ens','last_upd','last_upd_date','last_nhl_upd','last_nhl_upd_date','daily_log','nhl_edge_date'].forEach(k=>S.d(k));ELO={};PAR=[];buildMLB();initELO();updHdr();renderR();toast('// SYSTEM RESET');}
 function toast(msg){const el=document.getElementById('toast');if(!el)return;el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);}
+
+let _bpTimer=null;
+window.showBetPopup=function(cfg){
+  const el=document.getElementById('bet-popup');if(!el)return;
+  if(_bpTimer){clearTimeout(_bpTimer);_bpTimer=null;}
+  const isLock=cfg.type==='lock';
+  const isWin=cfg.outcome==='win';const isLoss=cfg.outcome==='loss';
+  const col=isLock?'#00f0ff':isWin?'#bbff00':isLoss?'#ff2090':'#ff9000';
+  const title=isLock?'LOCKED':'SETTLED';
+  const icon=isLock?'🔒':isWin?'✓':isLoss?'✗':'⟳';
+  const inner=document.getElementById('bet-popup-inner');
+  if(inner){inner.style.border=`1px solid ${col}`;inner.style.boxShadow=`0 0 30px ${col}22,0 0 80px rgba(0,0,0,.8)`;}
+  const glow=document.getElementById('bet-popup-glow');if(glow){glow.style.background=col;glow.style.boxShadow=`0 0 10px ${col}`;}
+  const titleEl=document.getElementById('bet-popup-title');if(titleEl){titleEl.innerHTML=`<span style="margin-right:8px">${icon}</span>${title}`;titleEl.style.color=col;}
+  const betEl=document.getElementById('bet-popup-bet');if(betEl){betEl.textContent=cfg.betOn||'';betEl.style.color=isLock?'#fff':col;}
+  const sportCol={MLB:'#00f0ff',NHL:'#4d79ff',NBA:'#f000ff',NFL:'#ff9000',TEN:'#bbff00',TENNIS:'#bbff00',WNBA:'#ff7700'}[cfg.sport]||'rgba(220,190,255,.7)';
+  const prob=cfg.prob?(cfg.prob>1?cfg.prob.toFixed(1)+'%':(cfg.prob*100).toFixed(1)+'%'):null;
+  const ev=cfg.prob&&cfg.decOdds?((cfg.prob>1?cfg.prob/100:cfg.prob)*cfg.decOdds-1)*100:null;
+  let parts=[];
+  if(cfg.sport)parts.push(`<span style="color:${sportCol};font-weight:700">${cfg.sport}</span>`);
+  if(cfg.league&&cfg.league!==cfg.sport)parts.push(`<span style="color:${sportCol}">${cfg.league}</span>`);
+  if(cfg.betType)parts.push(cfg.betType);
+  if(cfg.ml)parts.push(`ODDS: ${String(cfg.ml).startsWith('-')||String(cfg.ml).startsWith('+')?cfg.ml:(Number(cfg.ml)>0?'+':'')+cfg.ml}`);
+  if(prob)parts.push(`MODEL: ${prob}`);
+  if(ev!==null)parts.push(`EV: ${ev>=0?'+':''}${ev.toFixed(1)}%`);
+  if(cfg.score)parts.push(`SCORE: ${cfg.score}`);
+  const metaEl=document.getElementById('bet-popup-meta');if(metaEl)metaEl.innerHTML=parts.join(' &nbsp;<span style="color:rgba(220,190,255,.25)">·</span>&nbsp; ');
+  const resEl=document.getElementById('bet-popup-result');
+  if(resEl){
+    if(!isLock){
+      resEl.style.display='block';resEl.style.background=isWin?'rgba(187,255,0,.07)':isLoss?'rgba(255,32,144,.07)':'rgba(255,144,0,.07)';
+      resEl.style.border=`1px solid ${col}33`;
+      const rtEl=document.getElementById('bet-popup-result-text');if(rtEl){rtEl.textContent=isWin?'WIN':isLoss?'LOSS':'PUSH';rtEl.style.color=col;}
+      const rsEl=document.getElementById('bet-popup-result-sub');if(rsEl)rsEl.textContent=cfg.score?`FINAL: ${cfg.score}`:cfg.note||'BET SETTLED';
+    }else{resEl.style.display='none';}
+  }
+  const fill=document.getElementById('bet-popup-progress-fill');
+  if(fill){fill.style.transition='none';fill.style.width='100%';fill.style.background=`${col}55`;}
+  el.style.display='flex';
+  if(fill)setTimeout(()=>{fill.style.transition='width 5s linear';fill.style.width='0%';},40);
+  _bpTimer=setTimeout(()=>window.closeBetPopup(),5000);
+};
+window.closeBetPopup=function(){
+  const el=document.getElementById('bet-popup');if(el)el.style.display='none';
+  if(_bpTimer){clearTimeout(_bpTimer);_bpTimer=null;}
+};
 
 // ═══ BACKEND ADMIN PANEL ═════════════════════════════════════
 async function updateAPIStatus(){
@@ -7239,7 +7309,7 @@ async function autoSettleNBA(){
         let outcome=null;
         if(p.betType==='ML'){if(p.betOn===hn)outcome=hs>as?'win':'loss';else if(p.betOn===an)outcome=as>hs?'win':'loss';}
         else if(p.betType==='OU'){const total=hs+as;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|\s/gi,''));if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
-        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`🏀 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};}
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`🏀 AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NBA',outcome,score:(p.hScore!=null&&p.aScore!=null)?`${p.hA} ${p.hScore} – ${p.awA} ${p.aScore}`:null});}catch(ex){}}
       }
     }
     if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
@@ -12523,7 +12593,7 @@ function renderGlobalLiveBets(){
   try{startLiveRefresh();}catch(e){console.warn('startLiveRefresh',e);}
   // Expose all render/utility functions defined inside INIT to global scope
   const _exp=[getStoredLines,saveStoredLines,storeOpeningLines,checkLineMovements,renderLineMovements,
-    showBetJournalModal,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,buildInjuryRoster,computeInjuryImpact,injFlagHTML,computeStreaks,renderHotHandTracker,
+    showBetJournalModal,showBetPopup,closeBetPopup,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,buildInjuryRoster,computeInjuryImpact,injFlagHTML,computeStreaks,renderHotHandTracker,
     notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,renderHotHandTracker,computeStreaks,
     renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
     simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,renderPickCard,sharePickCard,
