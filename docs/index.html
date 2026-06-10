@@ -1026,9 +1026,6 @@ body{line-height:1.5}
     <button class="nb act" onclick="T('news','all')">ALL NEWS</button>
     <button class="nb" onclick="T('news','injuries')">INJURIES</button>
     <button class="nb" onclick="T('news','trades')">TRANSACTIONS</button>
-    <button class="nb" onclick="T('news','mlb')">MLB</button>
-    <button class="nb" onclick="T('news','nhl')">NHL</button>
-    <button class="nb" onclick="T('news','nba')">NBA</button>
   </nav>
   <div class="sa" id="news-sa">
     <div id="news-tab-all" class="tab act">
@@ -1039,15 +1036,6 @@ body{line-height:1.5}
     </div>
     <div id="news-tab-trades" class="tab">
       <div id="news-trades-content"><div class="loading"><span class="spi"></span> LOADING TRANSACTIONS…</div></div>
-    </div>
-    <div id="news-tab-mlb" class="tab">
-      <div id="news-mlb-content"><div class="loading"><span class="spi"></span></div></div>
-    </div>
-    <div id="news-tab-nhl" class="tab">
-      <div id="news-nhl-content"><div class="loading"><span class="spi"></span></div></div>
-    </div>
-    <div id="news-tab-nba" class="tab">
-      <div id="news-nba-content"><div class="loading"><span class="spi"></span></div></div>
     </div>
   </div>
 </div>
@@ -1583,9 +1571,6 @@ body{line-height:1.5}
   </nav>
   <nav id="mn10" style="display:none">
     <button class="mb" onclick="T('news','all')"><span class="mbi"></span>ALL</button>
-    <button class="mb" onclick="T('news','mlb')"><span class="mbi"></span>MLB</button>
-    <button class="mb" onclick="T('news','nba')"><span class="mbi"></span>NBA</button>
-    <button class="mb" onclick="T('news','nhl')"><span class="mbi"></span>NHL</button>
     <button class="mb" onclick="T('news','injuries')"><span class="mbi"></span>INJURY</button>
     <button class="mb" onclick="T('news','trades')"><span class="mbi"></span>TRADES</button>
   </nav>
@@ -8161,7 +8146,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}
-  if(sport==='news'){if(tabId==='all')renderNewsAll();if(tabId==='injuries')renderNewsInjuries();if(tabId==='trades')renderNewsTrades();if(tabId==='mlb')renderNewsSport('mlb');if(tabId==='nhl')renderNewsSport('nhl');if(tabId==='nba')renderNewsSport('nba');}
+  if(sport==='news'){if(tabId==='all')renderNewsAll();if(tabId==='injuries')renderNewsInjuries();if(tabId==='trades')renderNewsTrades();}
   if(sport==='live'){if(tabId==='games')renderGlobalLive();if(tabId==='bets')renderGlobalLiveBets();}
   document.getElementById(saId)?.scrollTo(0,0);
 }
@@ -11551,44 +11536,58 @@ async function fetchESPNTransactions(league){
 
 // ── Build news card HTML ──────────────────────────────────────────────────
 function newsCard(article,showSport=true){
-  const pubDate=article.published?new Date(article.published).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-  const sportCol={MLB:'#00f0ff',NHL:'#4d79ff',NBA:'#f000ff',NFL:'#ff9000',TENNIS:'#bbff00'}[article.sport]||'#f000ff';
+  const d=article.published?new Date(article.published):null;
+  const pubDate=d?d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'';
+  const sportCol={MLB:'#00f0ff',NHL:'#4d79ff',NBA:'#f000ff',NFL:'#ff9000',TENNIS:'#bbff00',WNBA:'#ff7700'}[article.sport]||'#f000ff';
   const isInjury=article.type==='injury';const isTrade=article.type==='transaction';
   const tagCol=isInjury?'#ff2090':isTrade?'#bbff00':sportCol;
-  const tag=isInjury?'INJURY':isTrade?'TRANSACTION':(article.category||article.sport||'NEWS');
-  return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${tagCol}44;padding:10px">
-    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px;gap:8px">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        ${showSport?`<span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${sportCol}55;color:${sportCol};border-radius:2px">${article.sport}</span>`:''}
-        <span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${tagCol}44;color:${tagCol};border-radius:2px">${tag}</span>
+  const tag=isInjury?'INJURY':isTrade?'TRANSACTION':(article.category||'NEWS');
+  const impl=newsImplication(article);
+  const searchText=((article.headline||'')+' '+(article.description||'')+' '+(article.sport||'')+' '+(article.category||'')+' '+(article.team||'')+' '+(article.player||'')).toLowerCase();
+  return`<div class="nc" data-sport="${article.sport||'ALL'}" data-text="${searchText.replace(/"/g,'')}" style="margin-bottom:9px">
+    <div class="card" style="border-left:3px solid ${tagCol}55;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px;gap:8px">
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${sportCol}55;color:${sportCol};border-radius:2px;font-weight:700">${article.sport||'NEWS'}</span>
+          <span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${tagCol}44;color:${tagCol};border-radius:2px">${tag}</span>
+          ${article.team?`<span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);padding:2px 6px;border:1px solid rgba(220,190,255,.15);border-radius:2px">${article.team}</span>`:''}
+          ${article.player?`<span style="font-family:var(--mono);font-size:11px;color:rgba(255,221,0,.75);padding:2px 6px;border:1px solid rgba(255,221,0,.2);border-radius:2px">${article.player}</span>`:''}
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);white-space:nowrap;flex-shrink:0;text-align:right">${pubDate}</span>
       </div>
-      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);white-space:nowrap;flex-shrink:0">${pubDate}</span>
+      <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t);line-height:1.5;margin-bottom:5px">${article.headline}</div>
+      ${article.description?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.75);line-height:1.7;margin-bottom:6px">${article.description.slice(0,280)}${article.description.length>280?'…':''}</div>`:''}
+      ${impl?`<div style="background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:2px;padding:7px 10px;margin-top:6px"><span style="font-family:var(--mono);font-size:10px;color:rgba(0,240,255,.6);letter-spacing:2px;display:block;margin-bottom:3px">// IMPLICATIONS</span><span style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.85);line-height:1.7">${impl}</span></div>`:''}
+      ${article.link?`<a href="${article.link}" target="_blank" rel="noopener" style="font-family:var(--mono);font-size:11px;color:${sportCol};text-decoration:none;display:inline-block;margin-top:7px;padding:3px 10px;border:1px solid ${sportCol}33;border-radius:2px">READ MORE →</a>`:''}
     </div>
-    <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t);line-height:1.5;margin-bottom:5px">${article.headline}</div>
-    ${article.description?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.75);line-height:1.7">${article.description.slice(0,220)}${article.description.length>220?'…':''}</div>`:''}
-    ${article.link?`<a href="${article.link}" target="_blank" rel="noopener" style="font-family:var(--mono);font-size:11px;color:${sportCol};text-decoration:none;display:inline-block;margin-top:5px">READ MORE →</a>`:''}
   </div>`;
 }
 
 function injuryCard(inj){
-  const statusCol=inj.status.toLowerCase().includes('out')?'#ff2090':inj.status.toLowerCase().includes('doubt')||inj.status.toLowerCase().includes('question')?'#ff9000':inj.status.toLowerCase().includes('prob')?'#bbff00':'rgba(220,190,255,.6)';
-  return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${statusCol};padding:10px">
-    <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t)">${inj.player}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.55)">${inj.position} · ${inj.team}</span>
+  const statusCol=inj.status.toLowerCase().includes('out')||inj.status.toLowerCase().includes(' ir')||inj.status.toLowerCase().includes('injured reserve')?'#ff2090':inj.status.toLowerCase().includes('doubt')||inj.status.toLowerCase().includes('question')?'#ff9000':inj.status.toLowerCase().includes('prob')?'#bbff00':'rgba(220,190,255,.6)';
+  const impl=injuryImplication(inj);
+  const searchText=((inj.player||'')+' '+(inj.team||'')+' '+(inj.teamAbbr||'')+' '+(inj.sport||'')+' '+(inj.injuryType||'')+' '+(inj.detail||'')).toLowerCase();
+  return`<div class="nc" data-sport="${inj.sport||'ALL'}" data-text="${searchText.replace(/"/g,'')}" style="margin-bottom:8px">
+    <div class="card" style="border-left:3px solid ${statusCol};padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+            <span style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t)">${inj.player}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.55)">${inj.position}${inj.position?' · ':''}${inj.team}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
+            <span style="font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.6);border-radius:2px">${inj.sport}</span>
+            <span style="font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid ${statusCol};color:${statusCol};border-radius:2px;font-weight:700">${inj.status}</span>
+            ${inj.injuryType?`<span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.65)">${inj.injuryType}${inj.detail?' — '+inj.detail:''}</span>`:''}
+          </div>
+          ${inj.returnDate?`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-bottom:3px">EST. RETURN: ${new Date(inj.returnDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>`:''}
+          ${inj.fantasy?`<div style="font-family:var(--mono);font-size:11px;color:rgba(255,144,0,.7);margin-bottom:3px">${inj.fantasy}</div>`:''}
+          ${impl?`<div style="background:rgba(255,32,144,.04);border:1px solid rgba(255,32,144,.15);border-radius:2px;padding:6px 9px;margin-top:6px"><span style="font-family:var(--mono);font-size:10px;color:rgba(255,32,144,.6);letter-spacing:2px;display:block;margin-bottom:2px">// IMPLICATIONS</span><span style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.85);line-height:1.7">${impl}</span></div>`:''}
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
-          <span style="font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid ${statusCol};color:${statusCol};border-radius:2px;font-weight:700">${inj.status}</span>
-          ${inj.injuryType?`<span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.65)">${inj.injuryType}${inj.detail?' — '+inj.detail:''}</span>`:''}
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6)">${inj.sport}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);margin-top:2px">${inj.teamAbbr}</div>
         </div>
-        ${inj.returnDate?`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5)">EST. RETURN: ${new Date(inj.returnDate).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>`:''}
-        ${inj.fantasy?`<div style="font-family:var(--mono);font-size:11px;color:rgba(255,144,0,.7);margin-top:2px">${inj.fantasy}</div>`:''}
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6)">${inj.sport}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);margin-top:2px">${inj.teamAbbr}</div>
       </div>
     </div>
   </div>`;
@@ -11597,17 +11596,79 @@ function injuryCard(inj){
 function transactionCard(txn){
   const typeCol=txn.type?.toLowerCase().includes('trade')?'#bbff00':txn.type?.toLowerCase().includes('sign')?'#00f0ff':txn.type?.toLowerCase().includes('waiv')||txn.type?.toLowerCase().includes('releas')?'#ff2090':'rgba(220,190,255,.6)';
   const typeLabel=(txn.type||'TRANSACTION').toUpperCase().slice(0,15);
-  return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${typeCol}55;padding:10px">
-    <div style="display:flex;gap:7px;align-items:center;margin-bottom:5px;flex-wrap:wrap">
-      <span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${typeCol}55;color:${typeCol};border-radius:2px">${typeLabel}</span>
-      ${txn.sport?`<span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5)">${txn.sport}</span>`:''}
-      ${txn.date?`<span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4)">${new Date(txn.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>`:''}
+  const sportCol={MLB:'#00f0ff',NHL:'#4d79ff',NBA:'#f000ff',NFL:'#ff9000',TENNIS:'#bbff00',WNBA:'#ff7700'}[txn.sport]||'rgba(220,190,255,.5)';
+  const d=txn.date?new Date(txn.date):null;
+  const dateStr=d?d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'';
+  const impl=txnImplication(txn);
+  const searchText=((txn.headline||'')+' '+(txn.team||'')+' '+(txn.sport||'')+' '+(txn.type||'')).toLowerCase();
+  return`<div class="nc" data-sport="${txn.sport||'ALL'}" data-text="${searchText.replace(/"/g,'')}" style="margin-bottom:8px">
+    <div class="card" style="border-left:3px solid ${typeCol}55;padding:10px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${typeCol}55;color:${typeCol};border-radius:2px;font-weight:700">${typeLabel}</span>
+          ${txn.sport?`<span style="font-family:var(--mono);font-size:11px;padding:2px 7px;border:1px solid ${sportCol}44;color:${sportCol};border-radius:2px">${txn.sport}</span>`:''}
+          ${txn.team?`<span style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);padding:2px 6px;border:1px solid rgba(220,190,255,.15);border-radius:2px">${txn.team}</span>`:''}
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);white-space:nowrap;text-align:right">${dateStr}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t);line-height:1.6;margin-bottom:4px">${txn.headline}</div>
+      ${impl?`<div style="background:rgba(187,255,0,.04);border:1px solid rgba(187,255,0,.15);border-radius:2px;padding:6px 9px;margin-top:6px"><span style="font-family:var(--mono);font-size:10px;color:rgba(187,255,0,.6);letter-spacing:2px;display:block;margin-bottom:2px">// IMPLICATIONS</span><span style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.85);line-height:1.7">${impl}</span></div>`:''}
     </div>
-    <div style="font-family:var(--mono);font-size:13px;color:var(--t);line-height:1.6">${txn.headline}</div>
-    ${txn.team?`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:3px">${txn.team}</div>`:''}
   </div>`;
 }
 
+function newsImplication(a){
+  const hl=(a.headline||'').toLowerCase();const desc=(a.description||'').toLowerCase();
+  const txt=hl+' '+desc;
+  if(txt.includes('suspend')||txt.includes('ban'))return'Player unavailable — adjust lineup/prop expectations. Check line movement.';
+  if(txt.includes('trade'))return'Roster shift affects team chemistry, usage, and fantasy/prop lines. Monitor new role.';
+  if(txt.includes('sign')&&(txt.includes('contract')||txt.includes('deal')||txt.includes('extension')))return'Roster lock-in signals long-term starter role. Watch for prop line adjustment.';
+  if(txt.includes('injured')||txt.includes('injury')||txt.includes('hurt')||txt.includes('out for'))return'Injury impact on lineup depth and opposing team matchup. Check replacement starter odds.';
+  if(txt.includes('return')||txt.includes('activated')||txt.includes('reinstated'))return'Player returning boosts team win probability and alters prop market. Expect line movement.';
+  if(txt.includes('fire')||txt.includes('coach')||txt.includes('manag'))return'Coaching change creates system uncertainty — fade until new identity is established.';
+  if(txt.includes('clinch')||txt.includes('playoff')||txt.includes('elimina'))return'Playoff implications affect lineup motivation. Clinched teams may rest starters.';
+  if(txt.includes('rain')||txt.includes('weather')||txt.includes('postpone')||txt.includes('cancel'))return'Game weather or postponement impact — verify schedule before placing bets.';
+  if(txt.includes('streak')||txt.includes('hot')||txt.includes('slump'))return'Momentum factor — hot/cold streaks influence public betting and line movement.';
+  if(txt.includes('start')||txt.includes('lineup'))return'Starting lineup confirmed — validate against current prop/spread lines.';
+  return'Monitor for line movement and updated odds. May affect team win probability or player props.';
+}
+function injuryImplication(inj){
+  const s=inj.status.toLowerCase();const pos=(inj.position||'').toUpperCase();
+  if(s.includes('out')||s.includes('injured reserve')||s.includes(' ir')){
+    if(pos==='SP'||pos==='P')return'Starting pitcher unavailable — significant impact on runs total and team win probability. Check replacement SP ERA.';
+    if(pos==='QB')return'QB out is highest-impact NFL injury. Massive spread and total adjustment expected.';
+    if(pos==='C'||pos==='PG')return'Primary ball-handler out — affects pace, assist props, and team offensive efficiency.';
+    if(pos==='G'||pos==='SG'||pos==='SF')return'Scoring volume redistributed — monitor prop lines for teammates and fading the affected team.';
+    if(pos==='D'||pos==='LW'||pos==='RW'||pos==='C')return'Key forward missing reduces PP opportunity and xGF. May impact team totals.';
+    return'Player confirmed out — assess depth chart and expect prop/spread line movement.';
+  }
+  if(s.includes('doubtful'))return'Doubtful designation (~25% chance of playing) — monitor pre-game reports. Avoid props until status confirmed.';
+  if(s.includes('questionable'))return'Questionable (~50% chance) — high uncertainty. Wait for final injury report before betting props or lineup-dependent lines.';
+  if(s.includes('day-to-day'))return'Day-to-day status — check closer to game time. Props may be playable at reduced confidence.';
+  if(s.includes('probable'))return'Probable (>75% to play) — likely active. Props and team lines should reflect normal contribution.';
+  return'Monitor status updates. Confirmed availability needed before committing to related props.';
+}
+function txnImplication(txn){
+  const t=(txn.type||'').toLowerCase();const hl=(txn.headline||'').toLowerCase();
+  if(t.includes('trade')||hl.includes('trade'))return'Trade reshuffles depth chart on both teams. Fading the trading-away team short-term is historically profitable. New role establishes within 3-5 games.';
+  if(t.includes('sign')||hl.includes('sign'))return'Signing fills a roster need. Watch for immediate lineup insertion and resulting prop/spread adjustment.';
+  if(t.includes('waiv')||t.includes('releas')||hl.includes('designat')||hl.includes('dfa'))return'Player released — indicates team is moving on. Pickup candidate elsewhere; props for this player are void.';
+  if(t.includes('option')||hl.includes('option'))return'Option exercise signals team commitment. Player stable in role — props remain reliable.';
+  if(t.includes('recall')||hl.includes('recall')||hl.includes('call up'))return'Recall from minors adds depth/upside. Monitor playing time before targeting props.';
+  return'Roster move may shift depth chart. Verify starting role and expected usage before betting related lines.';
+}
+function newsFilterBar(tabId,col){
+  return`<div class="news-filters" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;padding:10px;background:rgba(0,0,0,.3);border:1px solid rgba(220,190,255,.1);border-radius:3px">
+    <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;margin-right:4px">SPORT:</span>
+      ${['ALL','MLB','NHL','NBA','NFL','WNBA','TENNIS'].map(s=>`<button class="nf-sport${s==='ALL'?' nf-act':''}" data-sport="${s}" onclick="(function(btn){btn.closest('.news-filters').querySelectorAll('.nf-sport').forEach(b=>{b.style.background='transparent';b.style.fontWeight='400'});btn.style.background='rgba(${s==='ALL'?'220,190,255':'0,240,255'},.12)';btn.style.fontWeight='700';const sp=btn.dataset.sport;const ti=btn.closest('[id^=news-tab]')||btn.closest('.sa');const txt=(ti.querySelector('.nf-search')||{}).value?.toLowerCase()||'';ti.querySelectorAll('.nc').forEach(c=>{const ms=sp==='ALL'||c.dataset.sport===sp;const mt=!txt||c.dataset.text?.includes(txt);c.style.display=ms&&mt?'':'none'});})(this)" style="font-family:var(--mono);font-size:11px;padding:3px 10px;background:${s==='ALL'?'rgba(220,190,255,.12)':'transparent'};border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.8);border-radius:2px;cursor:pointer;transition:background .15s">${s}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;white-space:nowrap">SEARCH:</span>
+      <input class="nf-search" type="text" placeholder="TEAM · PLAYER · KEYWORD…" oninput="(function(inp){const sp=(inp.closest('.news-filters').querySelector('.nf-act')||{}).dataset?.sport||'ALL';const txt=inp.value.toLowerCase();const ti=inp.closest('[id^=news-tab]')||inp.closest('.sa');ti.querySelectorAll('.nc').forEach(c=>{const ms=sp==='ALL'||c.dataset.sport===sp;const mt=!txt||c.dataset.text?.includes(txt);c.style.display=ms&&mt?'':'none'});})(this)" style="flex:1;font-family:var(--mono);font-size:12px;padding:5px 10px;background:rgba(0,0,0,.4);border:1px solid rgba(220,190,255,.2);color:rgba(220,190,255,.9);border-radius:2px;outline:none">
+    </div>
+  </div>`;
+}
 function newsSection(title,col,icon,items){
   if(!items.length)return'';
   return`<div style="font-family:var(--mono);font-size:12px;color:${col};letter-spacing:2px;margin:12px 0 8px">// ${icon} ${title} (${items.length})</div>${items}`;
@@ -11627,69 +11688,56 @@ function newsErrorState(sport){
 async function renderNewsAll(){
   const el=document.getElementById('news-all-content');if(!el)return;
   el.innerHTML=newsLoadingState('FETCHING ALL SPORTS NEWS…');
-  const [mlbNews,nhlNews,nbaNews,mlbInj,nhlInj,nbaInj,mlbTxn,nhlTxn,nbaTxn]=await Promise.all([
-    fetchESPNNews('sports','mlb',8),fetchESPNNews('sports','nhl',8),fetchESPNNews('sports','nba',8),
-    fetchESPNInjuries('mlb'),fetchESPNInjuries('nhl'),fetchESPNInjuries('nba'),
+  const now=new Date();
+  const [mlbNews,nhlNews,nbaNews,nflNews,mlbInj,nhlInj,nbaInj,nflInj,mlbTxn,nhlTxn,nbaTxn]=await Promise.all([
+    fetchESPNNews('sports','mlb',15),fetchESPNNews('sports','nhl',15),fetchESPNNews('sports','nba',15),fetchESPNNews('sports','nfl',10),
+    fetchESPNInjuries('mlb'),fetchESPNInjuries('nhl'),fetchESPNInjuries('nba'),fetchESPNInjuries('nfl'),
     fetchESPNTransactions('mlb'),fetchESPNTransactions('nhl'),fetchESPNTransactions('nba')
   ]);
-  const allNews=[...mlbNews,...nhlNews,...nbaNews].sort((a,b)=>new Date(b.published||0)-new Date(a.published||0));
-  const critInj=[...mlbInj,...nhlInj,...nbaInj].filter(i=>i.status.toLowerCase().includes('out')||i.status.toLowerCase().includes('ir')).slice(0,12);
-  const latestTxn=[...mlbTxn,...nhlTxn,...nbaTxn].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,8);
-  if(!allNews.length&&!critInj.length){el.innerHTML=newsErrorState('sports');return;}
+  const allNews=[...mlbNews,...nhlNews,...nbaNews,...nflNews].sort((a,b)=>new Date(b.published||0)-new Date(a.published||0));
+  const latestTxn=[...mlbTxn,...nhlTxn,...nbaTxn].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,10);
+  if(!allNews.length&&!latestTxn.length){el.innerHTML=newsErrorState('sports');return;}
+  const updStr=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
   let html='';
-  // Date strip  
-  html+=`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-bottom:12px;padding:6px 8px;background:rgba(240,0,255,.05);border-radius:2px">LAST UPDATED: ${new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})} · SOURCE: ESPN</div>`;
-  // Critical injuries banner
-  if(critInj.length){
-    html+=`<div style="background:rgba(255,32,144,.06);border:1px solid rgba(255,32,144,.3);border-radius:3px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-family:var(--mono);font-size:12px;color:#ff2090;letter-spacing:2px;margin-bottom:8px">// INJURY ALERT — ${critInj.length} PLAYERS OUT/IR</div>
-      ${critInj.slice(0,6).map(i=>`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.85);padding:3px 0;border-bottom:1px solid rgba(255,32,144,.08)">${i.sport} · <span style="color:#ff2090;font-weight:700">${i.player}</span> <span style="color:rgba(220,190,255,.55)">${i.team}</span> — <span style="color:rgba(255,144,0,.9)">${i.status}${i.injuryType?' ('+i.injuryType+')':''}</span></div>`).join('')}
-    </div>`;
-  }
-  // Latest transactions
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding:8px 12px;background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:3px">
+    <span style="font-family:var(--mono);font-size:11px;color:rgba(0,240,255,.7);letter-spacing:1px">LAST UPDATED: ${updStr} · ESPN LIVE</span>
+    <button onclick="['mlb','nhl','nba','nfl'].forEach(s=>{delete NEWS_CACHE['sports_'+s];delete NEWS_CACHE['injuries_'+s];delete NEWS_CACHE['transactions_'+s]});renderNewsAll()" style="font-family:var(--mono);font-size:11px;padding:4px 14px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.3);color:#00f0ff;border-radius:2px;cursor:pointer">↻ UPDATE ALL NEWS</button>
+  </div>`;
+  html+=newsFilterBar('news-tab-all','#f000ff');
   if(latestTxn.length){
-    html+=`<div style="font-family:var(--mono);font-size:12px;color:#bbff00;letter-spacing:2px;margin-bottom:8px">// LATEST TRANSACTIONS</div>`;
-    html+=latestTxn.slice(0,4).map(t=>transactionCard(t)).join('');
+    html+=`<div style="font-family:var(--mono);font-size:12px;color:#bbff00;letter-spacing:2px;margin:12px 0 8px">// LATEST TRANSACTIONS (${latestTxn.length})</div>`;
+    html+=latestTxn.map(t=>transactionCard(t)).join('');
   }
-  // Latest news
   if(allNews.length){
-    html+=`<div style="font-family:var(--mono);font-size:12px;color:rgba(240,0,255,.9);letter-spacing:2px;margin:12px 0 8px">// LATEST NEWS</div>`;
-    html+=allNews.slice(0,15).map(a=>newsCard(a,true)).join('');
+    html+=`<div style="font-family:var(--mono);font-size:12px;color:rgba(240,0,255,.9);letter-spacing:2px;margin:12px 0 8px">// ALL SPORTS NEWS (${allNews.length})</div>`;
+    html+=allNews.map(a=>newsCard(a,true)).join('');
   }
-  html+=`<div style="text-align:center;padding:12px"><button onclick="renderNewsAll()" style="font-family:var(--mono);font-size:12px;padding:7px 18px;background:rgba(240,0,255,.1);border:1px solid rgba(240,0,255,.35);color:#f000ff;border-radius:2px;cursor:pointer">↻ REFRESH NEWS</button></div>`;
   el.innerHTML=html;
 }
 
 async function renderNewsInjuries(){
   const el=document.getElementById('news-injuries-content');if(!el)return;
   el.innerHTML=newsLoadingState('FETCHING INJURY REPORTS…');
-  const [mlb,nhl,nba]=await Promise.all([fetchESPNInjuries('mlb'),fetchESPNInjuries('nhl'),fetchESPNInjuries('nba')]);
-  const all=[...mlb,...nhl,...nba];
+  const now=new Date();
+  const [mlb,nhl,nba,nfl]=await Promise.all([fetchESPNInjuries('mlb'),fetchESPNInjuries('nhl'),fetchESPNInjuries('nba'),fetchESPNInjuries('nfl')]);
+  const all=[...mlb,...nhl,...nba,...nfl];
   if(!all.length){el.innerHTML=newsErrorState('injury');return;}
-  // Group by status
-  const out=all.filter(i=>i.status.toLowerCase().includes('out')||i.status.toLowerCase().includes('ir')||i.status.toLowerCase().includes('injured reserve'));
+  const out=all.filter(i=>i.status.toLowerCase().includes('out')||i.status.toLowerCase().includes(' ir')||i.status.toLowerCase().includes('injured reserve'));
   const dtd=all.filter(i=>i.status.toLowerCase().includes('day-to-day')||i.status.toLowerCase().includes('doubtful')||i.status.toLowerCase().includes('questionable'));
   const prob=all.filter(i=>i.status.toLowerCase().includes('probable'));
-  const mkSection=(title,col,items)=>items.length?`<div style="font-family:var(--mono);font-size:12px;color:${col};letter-spacing:2px;margin:12px 0 8px">// ${title} (${items.length})</div>`+items.map(injuryCard).join(''):'';
-  let html='';
-  // By sport tabs
-  html+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    ${['ALL','MLB','NHL','NBA'].map(s=>`<button onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.style.background='');this.style.background='rgba(255,32,144,.15)';document.querySelectorAll('.inj-row').forEach(r=>{r.style.display=(r.dataset.sport===this.textContent||this.textContent==='ALL')?'':'none'})" style="font-family:var(--mono);font-size:12px;padding:4px 12px;background:${s==='ALL'?'rgba(255,32,144,.15)':'transparent'};border:1px solid rgba(255,32,144,.3);color:#ff2090;border-radius:2px;cursor:pointer">${s}</button>`).join('')}
-  </div>`;
-  html+=mkSection('OUT / INJURED RESERVE','#ff2090',out.map(i=>({...i,_html:`<div class="inj-row" data-sport="${i.sport}">${injuryCard(i)}</div>`}))).replace(/injuryCard\([^)]+\)/g,'');
-  // Rebuild without the fn calls
   const buildSection=(title,col,items)=>{
     if(!items.length)return'';
-    return`<div style="font-family:var(--mono);font-size:12px;color:${col};letter-spacing:2px;margin:12px 0 8px">// ${title} (${items.length})</div>`+
-      items.map(i=>`<div class="inj-row" data-sport="${i.sport}">${injuryCard(i)}</div>`).join('');
+    return`<div style="font-family:var(--mono);font-size:12px;color:${col};letter-spacing:2px;margin:12px 0 8px">// ${title} (${items.length})</div>`+items.map(injuryCard).join('');
   };
-  html=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    ${['ALL','MLB','NHL','NBA'].map(s=>`<button onclick="this.parentElement.querySelectorAll('button').forEach(b=>{b.style.background='transparent'});this.style.background='rgba(255,32,144,.15)';document.querySelectorAll('.inj-row').forEach(r=>{r.style.display=(this.textContent==='ALL'||r.dataset.sport===this.textContent)?'block':'none'})" style="font-family:var(--mono);font-size:12px;padding:4px 12px;background:${s==='ALL'?'rgba(255,32,144,.15)':'transparent'};border:1px solid rgba(255,32,144,.3);color:#ff2090;border-radius:2px;cursor:pointer">${s}</button>`).join('')}
-  </div>`+
-  buildSection('OUT / INJURED RESERVE','#ff2090',out)+
-  buildSection('DAY-TO-DAY / DOUBTFUL / QUESTIONABLE','#ff9000',dtd)+
-  buildSection('PROBABLE','#bbff00',prob)+
-  `<div style="text-align:center;padding:12px"><button onclick="NEWS_CACHE['injuries_mlb']=null;NEWS_CACHE['injuries_nhl']=null;NEWS_CACHE['injuries_nba']=null;renderNewsInjuries()" style="font-family:var(--mono);font-size:12px;padding:7px 18px;background:rgba(255,32,144,.08);border:1px solid rgba(255,32,144,.3);color:#ff2090;border-radius:2px;cursor:pointer">↻ REFRESH INJURIES</button></div>`;
+  const updStr=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding:8px 12px;background:rgba(255,32,144,.04);border:1px solid rgba(255,32,144,.15);border-radius:3px">
+    <span style="font-family:var(--mono);font-size:11px;color:rgba(255,32,144,.7);letter-spacing:1px">LAST UPDATED: ${updStr} · ESPN LIVE · ${all.length} PLAYERS</span>
+    <button onclick="['mlb','nhl','nba','nfl'].forEach(s=>delete NEWS_CACHE['injuries_'+s]);renderNewsInjuries()" style="font-family:var(--mono);font-size:11px;padding:4px 14px;background:rgba(255,32,144,.08);border:1px solid rgba(255,32,144,.3);color:#ff2090;border-radius:2px;cursor:pointer">↻ UPDATE INJURIES</button>
+  </div>`;
+  html+=newsFilterBar('news-tab-injuries','#ff2090');
+  html+=buildSection('OUT / INJURED RESERVE','#ff2090',out);
+  html+=buildSection('DAY-TO-DAY / DOUBTFUL / QUESTIONABLE','#ff9000',dtd);
+  html+=buildSection('PROBABLE','#bbff00',prob);
   if(!out.length&&!dtd.length&&!prob.length)html+='<div class="empty">NO INJURY DATA AVAILABLE — INJURY REPORT NOT YET PUBLISHED</div>';
   el.innerHTML=html;
 }
@@ -11697,17 +11745,23 @@ async function renderNewsInjuries(){
 async function renderNewsTrades(){
   const el=document.getElementById('news-trades-content');if(!el)return;
   el.innerHTML=newsLoadingState('FETCHING TRANSACTIONS…');
+  const now=new Date();
   const [mlb,nhl,nba]=await Promise.all([fetchESPNTransactions('mlb'),fetchESPNTransactions('nhl'),fetchESPNTransactions('nba')]);
   const all=[...mlb,...nhl,...nba].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   if(!all.length){el.innerHTML='<div class="empty">NO TRANSACTIONS AVAILABLE</div>';return;}
-  // Group by type
   const trades=all.filter(t=>(t.type||'').toLowerCase().includes('trade'));
   const signings=all.filter(t=>(t.type||'').toLowerCase().includes('sign'));
   const waived=all.filter(t=>(t.type||'').toLowerCase().includes('waiv')||(t.type||'').toLowerCase().includes('releas'));
   const other=all.filter(t=>!trades.find(x=>x===t)&&!signings.find(x=>x===t)&&!waived.find(x=>x===t));
   const sec=(title,col,items)=>items.length?`<div style="font-family:var(--mono);font-size:12px;color:${col};letter-spacing:2px;margin:12px 0 8px">// ${title} (${items.length})</div>`+items.map(transactionCard).join(''):'';
-  el.innerHTML=sec('TRADES','#bbff00',trades)+sec('SIGNINGS','#00f0ff',signings)+sec('WAIVERS / RELEASES','#ff2090',waived)+sec('OTHER MOVES','rgba(220,190,255,.7)',other)+
-    `<div style="text-align:center;padding:12px"><button onclick="['mlb','nhl','nba'].forEach(s=>{delete NEWS_CACHE['transactions_'+s]});renderNewsTrades()" style="font-family:var(--mono);font-size:12px;padding:7px 18px;background:rgba(187,255,0,.08);border:1px solid rgba(187,255,0,.3);color:#bbff00;border-radius:2px;cursor:pointer">↻ REFRESH TRANSACTIONS</button></div>`;
+  const updStr=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding:8px 12px;background:rgba(187,255,0,.04);border:1px solid rgba(187,255,0,.15);border-radius:3px">
+    <span style="font-family:var(--mono);font-size:11px;color:rgba(187,255,0,.7);letter-spacing:1px">LAST UPDATED: ${updStr} · ESPN LIVE · ${all.length} MOVES</span>
+    <button onclick="['mlb','nhl','nba'].forEach(s=>delete NEWS_CACHE['transactions_'+s]);renderNewsTrades()" style="font-family:var(--mono);font-size:11px;padding:4px 14px;background:rgba(187,255,0,.08);border:1px solid rgba(187,255,0,.3);color:#bbff00;border-radius:2px;cursor:pointer">↻ UPDATE TRANSACTIONS</button>
+  </div>`;
+  html+=newsFilterBar('news-tab-trades','#bbff00');
+  html+=sec('TRADES','#bbff00',trades)+sec('SIGNINGS','#00f0ff',signings)+sec('WAIVERS / RELEASES','#ff2090',waived)+sec('OTHER MOVES','rgba(220,190,255,.7)',other);
+  el.innerHTML=html;
 }
 
 async function renderNewsSport(sport){
