@@ -2699,6 +2699,20 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
   setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderTennisPendingBets();}catch(e){}},120);
 }
+function removePicksByDate(dateStr){
+  const preds=getP();
+  const toRemove=preds.filter(p=>(p.date||'').startsWith(dateStr));
+  if(!toRemove.length){toast('// NO BETS FOUND FOR '+dateStr);return;}
+  if(typeof window.confirm==='function'&&!confirm(`Remove ALL ${toRemove.length} bets from ${dateStr}? This cannot be undone.`))return;
+  const ids=new Set(toRemove.map(p=>p.id));
+  const cleaned=preds.filter(p=>!ids.has(p.id));
+  saveP(cleaned);
+  toRemove.forEach(p=>{try{if(API_ONLINE())api('DELETE',`/picks/${p.id}`).catch(()=>{});}catch(e){}});
+  try{updHdr();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderOverall();}catch(e){}
+  try{renderHomeLockedBets();}catch(e){}try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}
+  toast(`// REMOVED ${toRemove.length} BETS FROM ${dateStr}`);
+}
+window.removePicksByDate=removePicksByDate;
 function skipPick(hA,awA,lb,p){
   const log=getDailyLog();const d=today();if(!log[d])log[d]={recs:[],locked:[],assessed:false};
   const rec=log[d].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===lb);if(rec)rec.skipped=true;
@@ -6378,6 +6392,8 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">Settle with WIN / LOSS buttons</span>
           <button id="auto-settle-btn" class="btn btn-p btn-sm" onclick="autoSettleAll(this)" style="font-size:11px;padding:3px 10px">⚡ AUTO SETTLE ALL</button>
+          <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;color:#ff2090;border-color:#ff2090;background:rgba(255,32,144,.08)" onclick="(function(){const d=document.getElementById('wipe-date-inp');if(d&&d.value)removePicksByDate(d.value);else toast('// ENTER A DATE FIRST');})()" title="Remove all bets for the entered date">🗑 WIPE DATE</button>
+          <input id="wipe-date-inp" type="date" value="2026-06-10" style="font-family:var(--mono);font-size:11px;padding:3px 8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,32,144,.3);color:rgba(220,190,255,.8);border-radius:2px;width:130px">
         </div>
       </div>
       ${pHtml}
@@ -6484,11 +6500,11 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
         </div>
         <span style="font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid ${oColor};color:${oColor};border-radius:2px;white-space:nowrap;flex-shrink:0">${st}</span>
       </div>
-      ${p.outcome==='pending'?`<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
-        <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderOverallHistory()">✓ WIN</button>
-        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');renderOverallHistory()">✗ LOSS</button>
-        <button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:11px;padding:2px 7px" onclick="removePick('${p.id}');renderOverallHistory()">✕ REMOVE</button>
-      </div>`:''}
+      <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+        ${p.outcome==='pending'?`<button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderOverallHistory()">✓ WIN</button>
+        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');renderOverallHistory()">✗ LOSS</button>`:''}
+        <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:10px;padding:2px 7px" onclick="removePick('${p.id}');renderOverallHistory()" title="Remove this bet from record">× REMOVE</button>
+      </div>
     </div>`;
   };
 
