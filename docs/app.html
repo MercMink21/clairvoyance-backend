@@ -8343,7 +8343,7 @@ function renderNHLPropsLive(filter){
       <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:6px">${p.basis}</div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: ${p.src||'Linemate'} \u00b7 vs ${p.opp||'\u2014'}</span>
-        <button class="btn btn-o btn-sm" onclick="lockNHLProp('${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK PROP</button>
+        <button class="btn btn-o btn-sm" onclick="lockNHLProp('${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}',${p.line})">LOCK PROP</button>
       </div>
     </div>`;
   }).join('');
@@ -8366,27 +8366,29 @@ function lockProp(team,player,line,over,conf,ml){
   toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);
   renderPropsTracker();
 }
-function lockNHLProp(player,stat,dir,prob,ml){
-  // Lock an NHL player prop from Linemate trend data into history
+function lockNHLProp(player,stat,dir,prob,ml,line){
   const over=dir==='OVER';
-  const mlNum=parseInt(ml||'-110');
+  const mlNum=parseFloat(ml||'-110');
   const dec=mlNum>0?mlNum/100+1:100/Math.abs(mlNum)+1;
+  const mlLabel=mlNum>0?'+'+mlNum:String(mlNum);
+  const fullBet=line!=null
+    ?`${player} ${stat} ${dir} ${line} (${mlLabel})`
+    :`${player} ${stat} ${dir} (${mlLabel})`;
   const prop={
-    id:`nhl_prop_${Date.now()}`,player,team:'NHL',line:`${dir} ${stat}`,
+    id:`nhl_prop_${Date.now()}`,player,team:'NHL',
+    line:line!=null?String(line):`${dir} ${stat}`,
     over,conf:prob,ml:mlNum,lockedAt:Date.now(),outcome:'pending',date:today(),
     sport:'NHL',betType:'PROP',
-    betOn:`${player} ${dir} ${stat}`,
+    betOn:fullBet,
     propPlayer:player,propStat:stat,propDir:dir,
     winProb:prob,hA:'NHL',awA:'',decOdds:dec,wager:0,
-    src:'Linemate/trends',
+    src:'Linemate/SCF',
   };
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
-  toast(`// NHL PROP LOCKED: ${player} ${dir} ${stat}`);
-  renderPropsTracker();
-  // Refresh NHL props tracker section
-  try{const el=document.getElementById('nhl-props-tracker');if(el)renderPropsTracker();}catch(e){}
+  toast(`// LOCKED: ${fullBet}`);
+  try{renderPropsTracker();}catch(e){}
 }
 function renderPropsTracker(){const targets=['nhl-props-tracker','nba-props-tracker'];targets.forEach(id=>{const el=document.getElementById(id);if(!el)return;if(!LOCKED_PROPS.length){el.innerHTML='<div class="empty">NO LOCKED PROPS</div>';return;}el.innerHTML=LOCKED_PROPS.map((p,i)=>{const oc=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:15px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t2)">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} · ${p.team} · ${p.ml}</div></div><div style="display:flex;gap:4px;align-items:center"><span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${p.outcome.toUpperCase()}</span><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:18px;height:18px;cursor:pointer;font-size:13px" onclick="LOCKED_PROPS.splice(${i},1);localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));renderPropsTracker()">×</button></div></div></div>`;}).join('');});}
 async function refreshNBALive(){const D=window.__CV_DATA||{};
