@@ -5441,7 +5441,9 @@ function renderOverall(){
     const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};
   };
+  const _todStr=today();
   const _ydStr=yesterday();
+  const todPerf   = calcPerf(settled.filter(p=>p.date===_todStr));
   const ydPerf   = calcPerf(settled.filter(p=>p.date===_ydStr));
   const wk7Perf  = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
   const moPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
@@ -5684,9 +5686,12 @@ function renderOverall(){
 
   // Period Performance
   h+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc);margin:12px 0 6px">PERIOD PERFORMANCE</div>
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+    ${periodCard('TODAY',todPerf,'var(--gc)')}
     ${periodCard('YESTERDAY',ydPerf,'var(--ic)')}
     ${periodCard('ROLLING 7 DAYS',wk7Perf,'var(--nc)')}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
     ${periodCard('THIS MONTH',moPerf,'var(--pc)')}
     ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
   </div>`;
@@ -8026,7 +8031,7 @@ function SS(s){
   const _t=(fn)=>{try{fn();}catch(e){console.warn('SS render',e);}};
   if(s==='home'){_t(renderHomePage);}
   if(s==='mlb'){_t(renderR);_t(()=>renderMLBGames());_t(()=>renderMLBProps('all'));_t(renderBestBetsFromRemote.bind(null,(window.__CV_DATA?.bestBets||[])));_t(()=>T('mlb','games'));}
-  if(s==='hk'){_t(()=>setSub('hk','nhl'));_t(()=>T('hk','games'));_t(renderNHLGames);_t(renderNHLTonight);_t(renderGoalies);_t(renderMoneyPuck);}
+  if(s==='hk'){_t(()=>setSub('hk','nhl'));_t(()=>T('nhl','games'));_t(renderNHLGames);_t(renderNHLTonight);_t(renderGoalies);_t(renderMoneyPuck);}
   if(s==='nba'){_t(()=>setSub('nba','nba'));_t(()=>T('nba','games'));_t(renderNBATonightGames);_t(renderNBAGames);_t(renderNBABracket);}
   if(s==='ten'){_t(()=>T('ten','today'));_t(renderTennisPicks);_t(renderTennisToday);}
   if(s==='f1'){_t(renderF1Schedule);_t(renderF1Drivers);}
@@ -8064,9 +8069,9 @@ function setSub(sport,sub){
   if(sport==='tracker'&&sub==='locked'){try{renderLockedTracker();}catch(e){}}
   if(sport==='tracker'&&sub==='parlay'){try{renderParlayTracker();}catch(e){}}
   // Auto-jump to TODAY tab when switching to a live sub-league
-  if(sport==='hk'&&sub==='nhl'){try{T('hk','games');}catch(e){}}
+  if(sport==='hk'&&sub==='nhl'){try{T('nhl','games');renderNHLTonight();renderNHLGames();}catch(e){}}
   if(sport==='nba'&&sub==='nba'){try{T('nba','games');}catch(e){}}
-  if(sport==='nba'&&sub==='wnba'){try{T('wnba','games');}catch(e){}}
+  if(sport==='nba'&&sub==='wnba'){try{T('wnba','games');renderWNBAGames();}catch(e){}}
 }
 function T(sport,tabId){const D=window.__CV_DATA||{};
   const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa',wnba:'wnba-sa'};
