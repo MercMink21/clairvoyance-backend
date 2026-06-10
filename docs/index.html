@@ -889,7 +889,7 @@ body{line-height:1.5}
       <div id="wnba-tab-games" class="tab act">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div class="sh" style="margin:0"><span class="i"></span> TODAY'S GAMES <span id="wnba-games-date" style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-left:8px"></span></div>
-          <button class="btn btn-o btn-sm" onclick="renderWNBAGames()">&#8635;</button>
+          <button class="btn btn-o btn-sm" onclick="renderWNBAGames(true)">&#8635;</button>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:10px;font-family:var(--mono);font-size:11px;letter-spacing:1px">
           <span style="color:var(--t3);letter-spacing:1px;font-size:10px">KEY:</span>
@@ -8258,7 +8258,10 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
     try{
       if(tabId==='games')renderWNBAGames();
       else if(tabId==='props')renderWNBAProps();
-      else if(tabId==='parlay'){renderWNBAGames();renderWNBAProps();}
+      else if(tabId==='parlay'){
+        var now2=Date.now();
+        if(!_wnbaGamesCache||(now2-_wnbaCacheTs)>=_WNBA_TTL)renderWNBAGames();
+      }
       else if(tabId==='model'){try{renderModelWeights('wnba','wnba-model-weights');}catch(ex){}}
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
@@ -13426,14 +13429,9 @@ function wnbaMC(hA,awA){
   var hNet=(ht.net!==undefined?ht.net:(ht.ortg||100)-(ht.drtg||100))||0;
   var aNet=(at.net!==undefined?at.net:(at.ortg||100)-(at.drtg||100))||0;
   var hfa=0.028;
-  var hBase=Math.min(.88,Math.max(.12,0.5+(hNet-aNet)*0.012+hfa));
-  var wins=0,N=5000;
-  for(var i=0;i<N;i++){
-    var u1=Math.random(),u2=Math.random();
-    var z=Math.sqrt(-2*Math.log(u1+1e-12))*Math.cos(2*Math.PI*u2);
-    if(Math.random()<Math.min(.97,Math.max(.03,hBase+z*0.09)))wins++;
-  }
-  return{hP:wins/N,aP:1-wins/N,hNet:hNet,aNet:aNet};
+  // Direct analytical result — same math, instant (was 5000-iter sync loop)
+  var hP=Math.min(.88,Math.max(.12,0.5+(hNet-aNet)*0.012+hfa));
+  return{hP:hP,aP:1-hP,hNet:hNet,aNet:aNet};
 }
 function wnbaEns(hA,awA,espnOdds){
   var hk=_wnbaKey(hA),ak=_wnbaKey(awA);
@@ -13476,10 +13474,22 @@ function _wnbaGrade(p){
 function _wnbaML(p){var ml=p>=.5?-Math.round(p/(1-p)*100):Math.round((1-p)/p*100);return ml>0?'+'+ml:ml;}
 function _wnbaDec(ml){return ml<0?1+100/Math.abs(ml):1+ml/100;}
 
-async function renderWNBAGames(){
+async function renderWNBAGames(force){
+  if(_wnbaRendering&&!force)return;
+  _wnbaRendering=true;
   var el=document.getElementById('wnba-games-list');
   var dateEl=document.getElementById('wnba-games-date');
-  if(!el)return;
+  if(!el){_wnbaRendering=false;return;}
+  // Serve from cache if fresh (< 5 min) and not force-refresh
+  var now=Date.now();
+  if(!force&&_wnbaGamesCache&&(now-_wnbaCacheTs)<_WNBA_TTL){
+    el.innerHTML=_wnbaGamesCache.html;
+    window._wnbaGameData=_wnbaGamesCache.data;
+    var pgl=document.getElementById('wnba-parlay-games');
+    if(pgl)pgl.innerHTML=_wnbaGamesCache.parlayHtml||'';
+    if(dateEl)dateEl.textContent=_wnbaGamesCache.dateStr||'';
+    _wnbaRendering=false;return;
+  }
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING...</div>';
   var D=window.__CV_DATA||{};
   var todayStr=typeof today==='function'?today():new Date().toISOString().slice(0,10);
@@ -13589,6 +13599,9 @@ async function renderWNBAGames(){
 </div>`;
   }).join('');
   window._wnbaGameData=WPAR;
+  // Store in cache
+  _wnbaGamesCache={html:el.innerHTML,data:WPAR,dateStr:dateEl?dateEl.textContent:''};
+  _wnbaCacheTs=Date.now();
   var pgl=document.getElementById('wnba-parlay-games');
   if(pgl){
     pgl.innerHTML=WPAR.map(function(g){
@@ -13603,15 +13616,25 @@ async function renderWNBAGames(){
 <button class="btn btn-o btn-sm" style="font-size:11px" onclick="addWNBAGameLeg('${g.hab}','${g.aab}','OU','O/U ${g.ou} OVER',0.52,110,2.10,'${g.gameKey}')">O/U ${g.ou}</button>
 </div></div>`;
     }).join('');
+    if(_wnbaGamesCache)_wnbaGamesCache.parlayHtml=pgl.innerHTML;
   }
+  _wnbaRendering=false;
 }
 window.renderWNBAGames=renderWNBAGames;
 
+// cache keyed by "lam_n" — avoids recomputing same prop line twice
+var _pGeCache={};
 function _pGe(lam,n){
+  var k=lam.toFixed(2)+'_'+n;
+  if(_pGeCache[k]!==undefined)return _pGeCache[k];
   var e=Math.exp(-lam),cum=0,cur=e;
   for(var i=0;i<=n;i++){cum+=cur;if(i<n)cur*=lam/(i+1);}
-  return Math.max(.01,Math.min(.99,1-cum));
+  var r=Math.max(.01,Math.min(.99,1-cum));
+  _pGeCache[k]=r;return r;
 }
+// Game data result cache — 5-min TTL avoids re-fetching ESPN every tab switch
+var _wnbaGamesCache=null,_wnbaCacheTs=0,_WNBA_TTL=300000;
+var _wnbaRendering=false;
 async function renderWNBAProps(){
   var el=document.getElementById('wnba-props-list');
   if(!el)return;
@@ -13621,8 +13644,10 @@ async function renderWNBAProps(){
   var players=wnbaD.players||[];
   var ts=wnbaD.teamStats||{};
   var gameData=window._wnbaGameData||[];
-  if(!gameData.length){await renderWNBAGames();gameData=window._wnbaGameData||[];}
-  if(!gameData.length){el.innerHTML='<div class="empty">NO WNBA GAMES TODAY &mdash; PROPS UNAVAILABLE</div>';return;}
+  if(!gameData.length){
+    el.innerHTML='<div class="empty">NO GAME DATA &mdash; VIEW TODAY TAB FIRST</div>';
+    return;
+  }
   var parlayProps=[];
   el.innerHTML=gameData.map(function(g){
     var hab=g.hab,aab=g.aab;
