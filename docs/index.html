@@ -3930,7 +3930,7 @@ function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
 function clrP(){PAR=[];renderLegs();const _pr=document.getElementById('p-res');if(_pr)_pr.innerHTML='';const _lc=document.getElementById('lc');if(_lc)_lc.textContent='(0)';}
 function renderLegs(){const el=document.getElementById('p-legs');if(!el)return;const _lc2=document.getElementById('lc');if(_lc2)_lc2.textContent=`(${PAR.length})`;if(!PAR.length){el.innerHTML='<div class="empty" style="padding:8px">NO LEGS</div>';return;}el.innerHTML=PAR.map((l,i)=>`<div class="pleg"><div><div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--pc)">${l.name}</div><div class="mono" style="font-size:13px;color:var(--t3)">${l.matchup} · ${(l.prob*100).toFixed(1)}% · ${l.ml}</div></div><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:20px;height:20px;cursor:pointer;font-weight:700" onclick="removeLeg(${i})">×</button></div>`).join('');}
 function calcP(){const _pr2=document.getElementById('p-res');if(PAR.length<2){if(_pr2)_pr2.innerHTML='';return;}const w=parseFloat(document.getElementById('p-w')?.value||100)||100;const cP=PAR.reduce((p,l)=>p*l.prob,1);const cD=PAR.reduce((p,l)=>p*l.dec,1);const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);const cs=chipC(cP,e2);if(_pr2)_pr2.innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:28px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:16px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:14px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">// LOCK PARLAY</button></div>`;}
-function lockParlay(w,p,ml,d){const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:'MLB',betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:'MLB PARLAY',sport:'MLB',betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}}
+function lockParlay(w,p,ml,d,sport){const sp=sport||'MLB';const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:sp,betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:sp+' PARLAY',sport:sp,betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}}
 
 // ═══ LIVE TRACKER ═══════════════════════════════════════════
 function igWP(hs,as,inn,top,prior){const outs=(inn-1)*3+(top?0:1.5);const done=Math.min(outs/27,.95);const diff=hs-as;const sP=diff===0?.5:diff>0?.5+Math.min(.45,diff*.12*(1+done)):.5-Math.min(.45,Math.abs(diff)*.12*(1+done));return Math.min(.97,Math.max(.03,prior*(1-done)+sP*done));}
@@ -6635,7 +6635,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   // ── PENDING BETS — always shown at top regardless of filters ──────────────
   const pendingAll=all.filter(p=>p.outcome==='pending');
   if(pendingAll.length){
-    const sportColor2={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',default:'var(--t3)'};
+    const sportColor2={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',default:'var(--t3)'};
     const pHtml=pendingAll.map(p=>{
       const sc=sportColor2[p.sport]||sportColor2.default;
       const mu=p.hA==='PARLAY'?'PARLAY':p.awA+' at '+p.hA;
@@ -6707,7 +6707,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
 
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',TEN:'var(--mc)',PROP:'var(--gc)',default:'var(--t3)'};
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
   // Build filter controls
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
@@ -9070,7 +9070,7 @@ function renderHomeLockedBets(){
   const pending=bets.filter(b=>b.outcome==='pending');
   const won=bets.filter(b=>b.outcome==='win').length;
   const lost=bets.filter(b=>b.outcome==='loss').length;
-  const sportTag=s=>s==='TEN'?'TENNIS':s||'BET';
+  const _homeSportCol={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',default:'var(--t3)'};
   el.innerHTML=`
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <div class="card" style="flex:1;min-width:72px;padding:8px;text-align:center;border-color:rgba(0,255,136,.3)"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">PENDING</div><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--gc)">${pending.length}</div></div>
@@ -9081,12 +9081,20 @@ function renderHomeLockedBets(){
     ${bets.slice(0,20).map(b=>{
       const oc=b.outcome==='win'?'var(--nc)':b.outcome==='loss'?'var(--hc)':b.outcome==='push'?'var(--vc)':'var(--gc)';
       const st=b.outcome==='pending'?'PENDING':b.outcome?.toUpperCase()||'PENDING';
+      const sc=_homeSportCol[b.sport]||_homeSportCol.default;
+      const mu=b.hA==='PARLAY'||b.hA==='NBA-PARLAY'?'PARLAY':(b.awA&&b.hA)?b.awA+' at '+b.hA:(b.hA||'');
+      const rawBetOn=b.betOn||'';
+      const displayBetOn=rawBetOn.replace(/^PrizePicks\s+\d+-Pick\s+Power Play\s+[^:]*:\s*/i,'').replace(/^PrizePicks\s+/i,'');
       return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
-            <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px">${sportTag(b.sport)} · ${b.date||''}</div>
-            <div style="font-family:var(--orb);font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.betOn||''}</div>
-            <div style="font-family:var(--mono);font-size:13px;color:${oc}">${st}${b.ml?' · '+b.ml:''}</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
+              <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${b.sport||'BET'}</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${mu}</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${b.date||''}</span>
+            </div>
+            <div style="font-family:var(--orb);font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayBetOn}</div>
+            <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:1px">${b.betType||''}${b.ml?' · '+b.ml:''}</div>
           </div>
           ${b.outcome==='pending'?`<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap"><button class="btn btn-n btn-sm" style="padding:3px 7px;font-size:12px" onclick="recR('${b.id}','win');setTimeout(renderHomeLockedBets,100)">✓W</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc);padding:3px 7px;font-size:12px" onclick="recR('${b.id}','loss');setTimeout(renderHomeLockedBets,100)">✗L</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);padding:3px 7px;font-size:12px" onclick="removePick('${b.id}')">✕</button></div>`:`<span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px;flex-shrink:0">${st}</span>`}
         </div>
@@ -10848,7 +10856,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-09 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-10 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -13806,6 +13814,10 @@ async function renderWNBAGames(force){
   var el=document.getElementById('wnba-games-list');
   var dateEl=document.getElementById('wnba-games-date');
   if(!el){_wnbaRendering=false;return;}
+  try{ await _renderWNBAGamesInner(el,dateEl,force); }catch(e){console.warn('WNBA render err',e);if(el)el.innerHTML='<div class="empty">WNBA LOAD ERROR — TAP ↻ TO RETRY</div>';}
+  finally{_wnbaRendering=false;}
+}
+async function _renderWNBAGamesInner(el,dateEl,force){
   // Serve from cache if fresh (< 5 min) and not force-refresh
   var now=Date.now();
   if(!force&&_wnbaGamesCache&&(now-_wnbaCacheTs)<_WNBA_TTL){
@@ -13814,7 +13826,7 @@ async function renderWNBAGames(force){
     var pgl=document.getElementById('wnba-parlay-games');
     if(pgl)pgl.innerHTML=_wnbaGamesCache.parlayHtml||'';
     if(dateEl)dateEl.textContent=_wnbaGamesCache.dateStr||'';
-    _wnbaRendering=false;return;
+    return;
   }
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING...</div>';
   var D=window.__CV_DATA||{};
@@ -13944,7 +13956,6 @@ async function renderWNBAGames(force){
     }).join('');
     if(_wnbaGamesCache)_wnbaGamesCache.parlayHtml=pgl.innerHTML;
   }
-  _wnbaRendering=false;
 }
 window.renderWNBAGames=renderWNBAGames;
 
@@ -15358,7 +15369,7 @@ function calcNHLP(){
   const cP=PAR.reduce((p,l)=>p*l.prob,1);const cD=PAR.reduce((p,l)=>p*l.dec,1);
   const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);const cs=chipC(cP,e2);
   const r=document.getElementById('nhl-p-res');
-  if(r)r.innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:26px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:15px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:13px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">LOCK PARLAY</button></div>`;
+  if(r)r.innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:26px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:15px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:13px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)},'NHL')">LOCK PARLAY</button></div>`;
 }
 function clrNHLP(){
   PAR=[];
@@ -15373,8 +15384,6 @@ function _cvParGet(s){return window._cvPar[s]||(window._cvPar[s]=[]);}
 function cvParlayAddLeg(s,name,ml,prob,matchup,type){
   var legs=_cvParGet(s);
   if(legs.length>=8){toast('// MAX 8 LEGS');return;}
-  var same=legs.filter(function(l){return l.matchup===matchup;}).length;
-  if(same>=3){toast('// MAX 3 LEGS PER GAME');return;}
   legs.push({name:name,ml:ml,prob:parseFloat(prob),dec:ml2d(ml),matchup:matchup,type:type||'GAME'});
   cvParlayRenderLegs(s);cvParlayCalc(s);toast('// +LEG: '+name);
 }
@@ -15454,6 +15463,27 @@ function cvParlayToggle(s,view){
   if(pB){pB.classList.toggle('act',view==='props');pB.classList.toggle('btn-p',view==='props');pB.classList.toggle('btn-o',view!=='props');}
   if(view==='props')cvParlayLoadProps(s);else cvParlayLoadGames(s);
 }
+function _cvWNBAGamesToCards(s,el,games){
+  // Render WNBA WPAR objects (from _wnbaGameData) into parlay game buttons
+  el.innerHTML=games.slice(0,12).map(function(g){
+    var hA=g.hab||g.hA||g.home||'HOME';
+    var awA=g.aab||g.awA||g.away||'AWAY';
+    var hP=g.hP||.5;var awP=g.aP||(1-hP);
+    var hML=g.hML||g.homeML||parseInt(p2ml(hP));
+    var awML=g.aML||g.awayML||parseInt(p2ml(awP));
+    var hSign=hML>0?'+':'';var aSign=awML>0?'+':'';
+    var ou=g.ou||g.overUnder||'163.5';
+    var matchup=awA+'@'+hA;
+    return '<div class="card" style="margin-bottom:6px;padding:8px;border:1px solid rgba(187,255,0,.15)">'
+      +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--vc);margin-bottom:6px">'+awA+' @ '+hA+'</div>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'WNBA ML '+hA+'\',\''+hSign+hML+'\','+hP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+hA+' '+hSign+hML+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'WNBA ML '+awA+'\',\''+aSign+awML+'\','+awP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+awA+' '+aSign+awML+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'WNBA O'+ou+'\',\'-110\',.52,\''+matchup+'\',\'GAME\')">O '+ou+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'WNBA U'+ou+'\',\'-110\',.48,\''+matchup+'\',\'GAME\')">U '+ou+'</button>'
+      +'</div></div>';
+  }).join('');
+}
 function cvParlayLoadGames(s){
   var el=document.getElementById(s+'-par-games-list');if(!el)return;
   var D=window.__CV_DATA||{};var games=[];
@@ -15461,8 +15491,24 @@ function cvParlayLoadGames(s){
     if(s==='mlb')games=(D.mlb&&D.mlb.today)||[];
     else if(s==='nhl')games=(D.nhl&&D.nhl.today)||[];
     else if(s==='nba')games=(D.nba&&D.nba.today)||[];
-    else if(s==='wnba')games=((D.nba&&D.nba.wnba)||(D.wnba&&D.wnba.today)||[]);
+    else if(s==='wnba'){
+      // Use ESPN-fetched game data if available, otherwise fall back to data.json
+      var wd=window._wnbaGameData||[];
+      if(wd.length){_cvWNBAGamesToCards(s,el,wd);return;}
+      games=(D.nba&&D.nba.wnba)||(D.wnba&&D.wnba.today)||[];
+      if(!games.length){
+        // Trigger a load and retry
+        if(typeof renderWNBAGames==='function')renderWNBAGames().then(function(){
+          var wd2=window._wnbaGameData||[];
+          if(wd2.length)_cvWNBAGamesToCards(s,el,wd2);
+          else el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';
+        }).catch(function(){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';});
+        else el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">LOADING WNBA GAMES...</div>';
+        return;
+      }
+    }
   }catch(e){}
+  if(s==='wnba'){_cvWNBAGamesToCards(s,el,games);return;}
   if(!games.length){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO GAMES TODAY — RUN SYNC TO REFRESH</div>';return;}
   el.innerHTML=games.slice(0,12).map(function(g){
     var hA=g.hA||g.home||'HOME';var awA=g.awA||g.away||'AWAY';
@@ -15470,8 +15516,6 @@ function cvParlayLoadGames(s){
     var hML=g.homeML||p2ml(hP);var awML=g.awayML||p2ml(awP);
     var total=parseFloat(g.total||(g.mc&&g.mc.avgT)||8.5);
     var totStr=total.toFixed(1);var matchup=awA+'@'+hA;
-    var spread=hP>.52?(-((hP-.5)*20)).toFixed(1):('+'+((awP-.5)*20).toFixed(1));
-    var spreadML=hP>.52?'-115':'+115';
     return '<div class="card" style="margin-bottom:6px;padding:8px;border:1px solid rgba(255,255,255,.07)">'
       +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--pc);margin-bottom:6px">'+awA+' @ '+hA+'</div>'
       +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
@@ -15479,8 +15523,7 @@ function cvParlayLoadGames(s){
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'ML '+awA+'\',\''+awML+'\','+awP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+awA+' '+awML+'</button>'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'O'+totStr+'\',\'-110\',.52,\''+matchup+'\',\'GAME\')">O'+totStr+' -110</button>'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\''+s+'\',\'U'+totStr+'\',\'-110\',.48,\''+matchup+'\',\'GAME\')">U'+totStr+' -110</button>'
-      +'</div>'
-      +'</div>';
+      +'</div></div>';
   }).join('');
 }
 function _cvPropsForSport(s){
@@ -15620,11 +15663,25 @@ function cvXParlayToggle(view){
 function cvXParlayLoadGames(s){
   var el=document.getElementById('xp-games-list');if(!el)return;
   var D=window.__CV_DATA||{};var games=[];
+  // WNBA: use ESPN-fetched _wnbaGameData directly
+  if(s==='wnba'){
+    var wd=window._wnbaGameData||[];
+    if(wd.length){_cvWNBAGamesToCards('xp',el,wd);return;}
+    // Trigger ESPN fetch then retry
+    el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px"><span class="spi"></span> LOADING WNBA GAMES...</div>';
+    if(typeof renderWNBAGames==='function'){
+      renderWNBAGames().then(function(){
+        var wd2=window._wnbaGameData||[];
+        if(wd2.length)_cvWNBAGamesToCards('xp',el,wd2);
+        else el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';
+      }).catch(function(){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';});
+    }
+    return;
+  }
   try{
     if(s==='mlb')games=(D.mlb&&D.mlb.today)||[];
     else if(s==='nhl')games=(D.nhl&&D.nhl.today)||[];
     else if(s==='nba')games=(D.nba&&D.nba.today)||[];
-    else if(s==='wnba')games=((D.nba&&D.nba.wnba)||(D.wnba&&D.wnba.today)||[]);
     else if(s==='ten')games=(D.tennis&&D.tennis.today)||[];
   }catch(e){}
   if(!games.length){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO '+s.toUpperCase()+' GAMES TODAY — RUN SYNC</div>';return;}
