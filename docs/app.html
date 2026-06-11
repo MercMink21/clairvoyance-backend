@@ -1043,6 +1043,16 @@ body{line-height:1.5}
           <button class="btn btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="clearAllPending()">CLEAR PENDING</button>
         </div>
       </div>
+      <div style="background:rgba(255,32,144,.05);border:1px solid rgba(255,32,144,.25);border-radius:3px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-family:var(--orb);font-size:10px;color:rgba(255,32,144,.7);letter-spacing:2px;margin-bottom:8px">// REMOVE PICKS BY DATE OR MONTH</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="ovr-wipe-date" type="date" style="font-family:var(--mono);font-size:12px;padding:4px 8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,32,144,.3);color:rgba(220,190,255,.85);border-radius:2px">
+          <button class="btn btn-sm" style="color:#ff2090;border-color:#ff2090;background:rgba(255,32,144,.08);font-size:12px;padding:4px 12px" onclick="(function(){var d=document.getElementById('ovr-wipe-date');if(d&&d.value)removePicksByDate(d.value);else toast('// SELECT A DATE FIRST');})()">WIPE DAY</button>
+          <div style="width:1px;height:24px;background:rgba(255,32,144,.2)"></div>
+          <input id="ovr-wipe-month" type="month" style="font-family:var(--mono);font-size:12px;padding:4px 8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,32,144,.3);color:rgba(220,190,255,.85);border-radius:2px">
+          <button class="btn btn-sm" style="color:#ff2090;border-color:#ff2090;background:rgba(255,32,144,.08);font-size:12px;padding:4px 12px" onclick="(function(){var m=document.getElementById('ovr-wipe-month');if(m&&m.value)removePicksByMonth(m.value);else toast('// SELECT A MONTH FIRST');})()">WIPE MONTH</button>
+        </div>
+      </div>
       <div id="ovr-history-list"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="ovr-tab-adaptive" class="tab">
@@ -2988,11 +2998,36 @@ function removePicksByDate(dateStr){
   const cleaned=preds.filter(p=>!ids.has(p.id));
   saveP(cleaned);
   toRemove.forEach(p=>{try{if(API_ONLINE())api('DELETE',`/picks/${p.id}`).catch(()=>{});}catch(e){}});
-  try{updHdr();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderOverall();}catch(e){}
-  try{renderHomeLockedBets();}catch(e){}try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}
+  _refreshAllAfterRemove();
   toast(`// REMOVED ${toRemove.length} BETS FROM ${dateStr}`);
 }
 window.removePicksByDate=removePicksByDate;
+function removePicksByMonth(monthStr){
+  // monthStr is YYYY-MM
+  const preds=getP();
+  const toRemove=preds.filter(p=>(p.date||'').startsWith(monthStr));
+  if(!toRemove.length){toast('// NO BETS FOUND FOR '+monthStr);return;}
+  const d=new Date(monthStr+'-01');
+  const label=d.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  if(typeof window.confirm==='function'&&!confirm(`Remove ALL ${toRemove.length} bets from ${label}? This cannot be undone.`))return;
+  const ids=new Set(toRemove.map(p=>p.id));
+  const cleaned=preds.filter(p=>!ids.has(p.id));
+  saveP(cleaned);
+  toRemove.forEach(p=>{try{if(API_ONLINE())api('DELETE',`/picks/${p.id}`).catch(()=>{});}catch(e){}});
+  _refreshAllAfterRemove();
+  toast(`// REMOVED ${toRemove.length} BETS FROM ${label.toUpperCase()}`);
+}
+window.removePicksByMonth=removePicksByMonth;
+function _refreshAllAfterRemove(){
+  try{updHdr();}catch(e){}
+  try{renderOverallHistory();}catch(e){}
+  try{renderOverall();}catch(e){}
+  try{renderHomePage();}catch(e){}
+  try{renderHomeLockedBets();}catch(e){}
+  try{renderNHLLockedBets();}catch(e){}
+  try{renderNBALockedBets();}catch(e){}
+  try{renderTrackRecord();}catch(e){}
+}
 function skipPick(hA,awA,lb,p){
   const log=getDailyLog();const d=today();if(!log[d])log[d]={recs:[],locked:[],assessed:false};
   const rec=log[d].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===lb);if(rec)rec.skipped=true;
