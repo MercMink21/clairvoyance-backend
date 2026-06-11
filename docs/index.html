@@ -1113,6 +1113,7 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('tennis')">TENNIS</button>
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('football')">FOOTBALL</button>
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('soccer')">SOCCER</button>
+        <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('wnba')">WNBA</button>
       </div>
       <div id="bysport-league-row" style="display:none;gap:4px;flex-wrap:wrap;margin-bottom:6px;padding:4px 8px;background:rgba(10,0,24,.6);border-radius:2px;border:1px solid rgba(255,255,255,.07)"></div>
     </div>
@@ -15694,6 +15695,7 @@ function renderBySportAnalytics(key){
     tennis:   {label:'TENNIS',     codes:['TEN'],                          color:'var(--mc)', leagues:null},
     football: {label:'FOOTBALL',   codes:['NFL','CFB','FB'],               color:'var(--hc)', leagues:[{k:'NFL',label:'NFL'},{k:'CFB',label:'COLLEGE'}]},
     soccer:   {label:'SOCCER',     codes:['SOC'],                          color:'var(--gc)', leagues:[{k:'SOC',label:'WC 2026'}]},
+    wnba:     {label:'WNBA',       codes:['WNBA'],                         color:'var(--pc)', leagues:[{k:'ML',label:'ML'},{k:'PROP',label:'PROP'}]},
   };
 
   // If key is a league code (e.g. 'NBA'), find which sport it belongs to
@@ -15734,8 +15736,11 @@ function renderBySportAnalytics(key){
   const uC=u=>u>=0?'var(--nc)':'var(--hc)';
 
   // Determine bets to analyze
+  const isWNBABetType=activeSport==='wnba'&&activeLeague&&['ML','PROP'].includes(activeLeague);
   let bets;
-  if(activeLeague){
+  if(isWNBABetType){
+    bets=all.filter(p=>(p.sport||'').toUpperCase()==='WNBA'&&(p.betType||'').toUpperCase()===activeLeague);
+  } else if(activeLeague){
     bets=all.filter(p=>(p.sport||'').toUpperCase()===activeLeague);
   } else {
     bets=all.filter(p=>def.codes.some(c=>(p.sport||'').toUpperCase()===c));
@@ -15743,7 +15748,9 @@ function renderBySportAnalytics(key){
 
   // If ALL or multi-league sport without specific league, show per-league breakdown
   const showLeagueBreakdown=!activeLeague&&def.leagues&&def.leagues.length>1;
-  const leasuesToShow=showLeagueBreakdown?def.leagues.map(l=>({...l,bets:all.filter(p=>(p.sport||'').toUpperCase()===l.k)})).filter(l=>l.bets.length):[{k:activeLeague||def.codes[0],label:activeLeague||def.label,bets}];
+  const leasuesToShow=showLeagueBreakdown&&activeSport!=='wnba'
+    ?def.leagues.map(l=>({...l,bets:all.filter(p=>(p.sport||'').toUpperCase()===l.k)})).filter(l=>l.bets.length)
+    :[{k:activeLeague||def.codes[0],label:activeLeague||def.label,bets}];
 
   const makeCard=(label,color,cardBets,isLeague)=>{
     if(!cardBets.length)return'';
@@ -15775,15 +15782,27 @@ function renderBySportAnalytics(key){
   if(activeSport==='all'){
     const topGroups=[
       {key:'baseball',label:'BASEBALL',codes:['MLB'],color:'var(--vc)'},
-      {key:'basketball',label:'BASKETBALL',codes:['NBA','WNBA'],color:'var(--pc)'},
+      {key:'basketball',label:'BASKETBALL',codes:['NBA'],color:'var(--pc)'},
+      {key:'wnba',label:'WNBA',codes:['WNBA'],color:'var(--pc)'},
       {key:'hockey',label:'HOCKEY',codes:['NHL','PWHL','KHL','SHL','LIIGA'],color:'var(--ic)'},
       {key:'tennis',label:'TENNIS',codes:['TEN'],color:'var(--mc)'},
       {key:'football',label:'FOOTBALL',codes:['NFL','CFB','FB'],color:'var(--hc)'},
+      {key:'soccer',label:'SOCCER',codes:['SOC'],color:'var(--gc)'},
     ];
     for(const g of topGroups){
       const gb=all.filter(p=>g.codes.some(c=>(p.sport||'').toUpperCase()===c));
       h+=makeCard(g.label,g.color,gb,false);
     }
+  } else if(activeSport==='wnba'&&!activeLeague){
+    // WNBA overview: overall card + ML card + PROP card
+    const wnbaAll=all.filter(p=>(p.sport||'').toUpperCase()==='WNBA');
+    const wnbaML=wnbaAll.filter(p=>['ML','RL','PL','OU'].includes((p.betType||'').toUpperCase()));
+    const wnbaProp=wnbaAll.filter(p=>(p.betType||'').toUpperCase()==='PROP');
+    h+=makeCard('WNBA — ALL','var(--pc)',wnbaAll,false);
+    if(wnbaML.length)h+=makeCard('WNBA — ML / GAME LINES','var(--pc)',wnbaML,true);
+    if(wnbaProp.length)h+=makeCard('WNBA — PROPS','var(--mc)',wnbaProp,true);
+  } else if(isWNBABetType){
+    h+=makeCard('WNBA — '+activeLeague,activeLeague==='PROP'?'var(--mc)':'var(--pc)',bets,true);
   } else if(showLeagueBreakdown){
     // Sport selected, multiple leagues — show one card per league
     for(const l of leasuesToShow){h+=makeCard(l.label,def.color,l.bets,true);}
