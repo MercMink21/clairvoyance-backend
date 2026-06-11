@@ -12136,10 +12136,28 @@ function _glowText(ctx,txt,x,y,font,col,blur,align){
   ctx.shadowBlur=blur*.4||6;ctx.fillText(txt,x,y);
   ctx.restore();
 }
+// roundRect polyfill for older browsers
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    r=Math.min(r,w/2,h/2);
+    this.beginPath();
+    this.moveTo(x+r,y);this.lineTo(x+w-r,y);this.arcTo(x+w,y,x+w,y+r,r);
+    this.lineTo(x+w,y+h-r);this.arcTo(x+w,y+h,x+w-r,y+h,r);
+    this.lineTo(x+r,y+h);this.arcTo(x,y+h,x,y+h-r,r);
+    this.lineTo(x,y+r);this.arcTo(x,y,x+r,y,r);
+    this.closePath();return this;
+  };
+}
+function _genPerfGraphicByIdx(i){
+  const periods=window._cvPerfPeriods;
+  if(!periods||!periods[i])return;
+  const per=periods[i];
+  _genPerfGraphic(per.label,per.sub,per.perf);
+}
 async function _genPerfGraphic(periodLabel,sublabel,perf){
   const W=1080,H=1080;
-  // ensure font loaded
   try{await document.fonts.load('bold 72px Orbitron');}catch(e){}
+  try{await document.fonts.load('13px Orbitron');}catch(e){}
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');
   const P='rgb(240,0,255)',C='rgb(0,240,255)',WH='rgb(232,240,255)';
@@ -12265,6 +12283,8 @@ function renderTrackRecord(){
     {key:'ALL TIME',   label:'ALL TIME',    sub:'',            perf:cP(allBets)},
   ];
 
+  window._cvPerfPeriods=periods;
+
   const topColors={'TODAY':'rgba(255,32,0,.8)','YESTERDAY':'rgba(0,240,255,.8)','ROLLING 7D':'rgba(187,255,0,.7)','THIS MONTH':'rgba(0,240,255,.65)','LAST MONTH':'rgba(240,0,255,.7)','ALL TIME':'rgba(255,221,0,.9)'};
   const pC=p=>p===null?'rgba(220,190,255,.5)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
   const uC=u=>u>=0?'#00f0ff':'#ff2090';
@@ -12287,7 +12307,7 @@ function renderTrackRecord(){
       </div>`
       :`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.35);padding:10px 0 8px">NO BETS</div>`}
       <button class="btn btn-sm" style="width:100%;background:rgba(240,0,255,.1);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:10px;padding:5px 0"
-        onclick="_genPerfGraphic('${per.label}','${per.sub}',${JSON.stringify(p)})">⬇ EXPORT PNG</button>
+        onclick="_genPerfGraphicByIdx(${periods.indexOf(per)})">⬇ EXPORT PNG</button>
     </div>`;
   }).join('');
 
