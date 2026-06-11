@@ -2770,8 +2770,18 @@ function mlbCard(hA,awA,gt,date,espnGame){
   </div>`;
 }
 // ═══ PICK STORAGE — backend first, localStorage fallback ════
-function getP(){return S.g('preds',[])||[];}
-function saveP(a){S.s('preds',a);idbSavePicks(a);}// shadow to IndexedDB
+function getP(){
+  const raw=S.g('preds',[])||[];
+  const w=_getWipedIds();
+  if(!w.size)return raw;
+  const filtered=raw.filter(p=>!w.has(p.id));
+  if(filtered.length<raw.length)S.s('preds',filtered); // self-heal: remove any re-seeded wiped picks
+  return filtered;
+}
+function saveP(a){
+  const cleaned=_filterWiped(a);
+  S.s('preds',cleaned);idbSavePicks(cleaned);
+}// shadow to IndexedDB
 function getDailyLog(){return S.g('daily_log',{})||{};}
 function saveDailyLog(d){S.s('daily_log',d);idbSaveDailyLog(d);/* always expand, never reduce */}
 
