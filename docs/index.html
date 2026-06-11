@@ -2294,10 +2294,10 @@ function tier(p,e){if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'⭐ ELITE'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// LOCK'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
-function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
-function nDaysAgoET(n){return new Date(Date.now()-n*86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
-function getTomorrowET(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}).replace(/-/g,'');}
-function tomorrow(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'})}
+function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
+function nDaysAgoET(n){return new Date(Date.now()-n*86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
+function getTomorrowET(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}).replace(/-/g,'');}
+function tomorrow(){return new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'})}
 function fmtMST(){return new Date().toLocaleString('en-US',{timeZone:'America/Denver'})}
 function todayESPN(){return today().replace(/-/g,'')}
 function tomorrowESPN(){return tomorrow().replace(/-/g,'')}
@@ -2341,7 +2341,7 @@ function parseESPNGame(ev){
   if(aPP){aPit=aPP.athlete?.shortName||aPP.athlete?.displayName||aPit;aPitERA=aPP.statistics?.find(s=>s.name==='ERA')?.displayValue||aPitERA;}
   // Parse time
   const gameDate=new Date(ev.date||comp.date);
-  const gt=gameDate.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+'ET';
+  const gt=gameDate.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Denver'})+'MT';
   // Parse odds — use direct moneyLine fields first, fall back to details string
   let hML=null,aML=null,ou=odds.overUnder||null;
   if(odds.homeTeamOdds?.moneyLine)hML=parseInt(odds.homeTeamOdds.moneyLine);
@@ -2366,7 +2366,7 @@ function parseESPNGame(ev){
 async function _normalizeBackendGame(g) {
   // Convert backend MLBGame schema → same shape as parseESPNGame
   const gt = g.game_time_utc
-    ? new Date(g.game_time_utc).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+'ET'
+    ? new Date(g.game_time_utc).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Denver'})+'MT'
     : 'TBD';
   return {
     id: g.espn_id, hA: g.home_team, awA: g.away_team, gt,
@@ -3666,7 +3666,7 @@ async function renderNHLGames(day){
       const state=c.status?.type?.state||'pre';
       const live=state==='in';const pre=state==='pre';const post=state==='post';
       const statusDot=live?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--vc);margin-right:5px;animation:blink 1s infinite"></span>':'';
-      const statusTxt=post?`FINAL · ${an} ${as2} — ${hn} ${hs}`:live?`P${c.status?.period||'?'} ${c.status?.displayClock||''} · ${an} ${as2}–${hs} ${hn}`:(new Date(espnEv.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+'ET');
+      const statusTxt=post?`FINAL · ${an} ${as2} — ${hn} ${hs}`:live?`P${c.status?.period||'?'} ${c.status?.displayClock||''} · ${an} ${as2}–${hs} ${hn}`:(new Date(espnEv.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Denver'})+'MT');
       // Model ensemble from static NHL data
       const hNHL=NHL[hn]||{},aNHL=NHL[an]||{};
       let hP=0.50,aP=0.50,ens={mc:0.50,xgf:0.50,elo:0.50};
@@ -6797,7 +6797,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   };
   if(sf&&sf!=='ALL')all=all.filter(p=>_matchFilter(p,sf));
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
-  const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
+  const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}):'');
 
   const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
   // Build filter controls
@@ -6840,7 +6840,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const _now=Date.now();
-  const _pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/New_York'}):'');
+  const _pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}):'');
   const _pickTs=p=>p.lockedAt||new Date((_pickDate(p)||'2000-01-01')+'T12:00:00').getTime();
   const pctCol=pct=>pct===null?'var(--t3)':pct>=.62?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';
   const uCol2=u=>u>=0?'var(--nc)':'var(--hc)';
@@ -8132,7 +8132,7 @@ function showMidnightBanner(){
 function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});const log=getDailyLog();if(log[yd]&&!log[yd].assessed){log[yd].assessed=true;saveDailyLog(log);if(document.getElementById('hist-list')?.closest('.tab.act'))renderHistory();toast(`// DAY ${yd} ASSESSED`);}}
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
-function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});}
+function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
 function renderHomePage(){
   const allBets=getP();
   const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
@@ -8163,11 +8163,11 @@ function renderHomePage(){
     // Build last-7-days day-by-day breakdown
     const dayRows=[];
     for(let i=6;i>=0;i--){
-      const d=new Date(Date.now()-i*86400000).toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
+      const d=new Date(Date.now()-i*86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
       const db=settled.filter(p=>p.date===d);
       if(!db.length)continue;
       const dp=calcPerf(db);
-      const label=i===0?'TODAY':i===1?'YESTERDAY':new Date(Date.now()-i*86400000).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}).toUpperCase();
+      const label=i===0?'TODAY':i===1?'YESTERDAY':new Date(Date.now()-i*86400000).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/Denver'}).toUpperCase();
       dayRows.push({label,dp,d});
     }
 
@@ -10949,7 +10949,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-10 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-10 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
