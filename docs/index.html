@@ -4451,10 +4451,26 @@ window.showBetPopup=function(cfg){
   const el=document.getElementById('bet-popup');if(!el)return;
   if(_bpTimer){clearTimeout(_bpTimer);_bpTimer=null;}
   const isLock=cfg.type==='lock';
+  const isExport=cfg.type==='export';
   const isWin=cfg.outcome==='win';const isLoss=cfg.outcome==='loss';
-  const col=isLock?'#00f0ff':isWin?'#bbff00':isLoss?'#ff2090':'#ff9000';
-  const title=isLock?'LOCKED':'SETTLED';
-  const icon=isLock?'🔒':isWin?'✓':isLoss?'✗':'⟳';
+  const col=isExport?'#f000ff':isLock?'#00f0ff':isWin?'#bbff00':isLoss?'#ff2090':'#ff9000';
+  const title=isExport?'EXPORTED':isLock?'LOCKED':'SETTLED';
+  const icon=isExport?'⬇':isLock?'🔒':isWin?'✓':isLoss?'✗':'⟳';
+  if(isExport){
+    const inner=document.getElementById('bet-popup-inner');
+    if(inner){inner.style.border=`1px solid ${col}`;inner.style.boxShadow=`0 0 30px ${col}22,0 0 80px rgba(0,0,0,.8)`;}
+    const glow=document.getElementById('bet-popup-glow');if(glow){glow.style.background=col;glow.style.boxShadow=`0 0 10px ${col}`;}
+    const titleEl=document.getElementById('bet-popup-title');if(titleEl){titleEl.innerHTML=`<span style="margin-right:8px">${icon}</span>${title}`;titleEl.style.color=col;}
+    const betEl=document.getElementById('bet-popup-bet');if(betEl){betEl.textContent=cfg.betOn+' — GRAPHIC SAVED TO DESKTOP';betEl.style.color='#fff';}
+    const metaEl=document.getElementById('bet-popup-meta');if(metaEl)metaEl.innerHTML=`<span style="color:${col}">${cfg.fname||''}</span>`;
+    const resEl=document.getElementById('bet-popup-result');if(resEl)resEl.style.display='none';
+    const fill=document.getElementById('bet-popup-progress-fill');
+    if(fill){fill.style.transition='none';fill.style.width='100%';fill.style.background=`${col}55`;}
+    el.style.setProperty('display','flex','important');
+    if(fill)setTimeout(()=>{fill.style.transition='width 4s linear';fill.style.width='0%';},40);
+    _bpTimer=setTimeout(()=>window.closeBetPopup(),4000);
+    return;
+  }
   const inner=document.getElementById('bet-popup-inner');
   if(inner){inner.style.border=`1px solid ${col}`;inner.style.boxShadow=`0 0 30px ${col}22,0 0 80px rgba(0,0,0,.8)`;}
   const glow=document.getElementById('bet-popup-glow');if(glow){glow.style.background=col;glow.style.boxShadow=`0 0 10px ${col}`;}
@@ -12142,13 +12158,26 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
     this.closePath();return this;
   };
 }
-function _genPerfGraphicByIdx(i){
+async function _genPerfGraphicByIdx(i){
   const periods=window._cvPerfPeriods;
   if(!periods||!periods[i])return;
   const per=periods[i];
-  _genPerfGraphic(per.label,per.sub,per.perf);
+  const slug=per.label.toLowerCase().replace(/[\s/]+/g,'-');
+  const fname='clairvoyance-'+slug+'.png';
+  // Acquire file handle NOW — must be synchronous within user gesture
+  let fh=null;
+  if(window.showSaveFilePicker){
+    try{
+      fh=await window.showSaveFilePicker({
+        suggestedName:fname,
+        startIn:'desktop',
+        types:[{description:'PNG Image',accept:{'image/png':['.png']}}]
+      });
+    }catch(e){if(e.name==='AbortError')return;fh=null;}
+  }
+  await _genPerfGraphic(per.label,per.sub,per.perf,fh,fname);
 }
-async function _genPerfGraphic(periodLabel,sublabel,perf){
+async function _genPerfGraphic(periodLabel,sublabel,perf,fh,fname){
   const W=1080,H=1080;
   try{await document.fonts.load('bold 72px Orbitron');}catch(e){}
   try{await document.fonts.load('13px Orbitron');}catch(e){}
@@ -12239,31 +12268,25 @@ async function _genPerfGraphic(periodLabel,sublabel,perf){
   _glowText(ctx,'@ClairvoyanceEng  ·  @clairvoyanceengine',W-44,H-68,'15px Orbitron',C,8,'right');
   _glowText(ctx,'Model outputs are probabilistic projections. Not financial advice.',W/2,H-36,'12px Orbitron','rgba(220,190,255,.3)',3);
 
-  // ── DOWNLOAD ─────────────────────────────────────────────────────────────
+  // ── SAVE / DOWNLOAD ───────────────────────────────────────────────────────
   cv.toBlob(async function(blob){
-    const slug=periodLabel.toLowerCase().replace(/[\s/]+/g,'-');
-    const fname='clairvoyance-'+slug+'.png';
-    if(window.showSaveFilePicker){
+    const _fname=fname||('clairvoyance-'+periodLabel.toLowerCase().replace(/[\s/]+/g,'-')+'.png');
+    if(fh){
       try{
-        const fh=await window.showSaveFilePicker({
-          suggestedName:fname,
-          startIn:'desktop',
-          types:[{description:'PNG Image',accept:{'image/png':['.png']}}]
-        });
         const ws=await fh.createWritable();
         await ws.write(blob);
         await ws.close();
-        toast('// GRAPHIC SAVED — '+periodLabel);
+        try{window.showBetPopup({type:'export',betOn:periodLabel,fname:_fname});}catch(ex){}
         return;
-      }catch(e){if(e.name==='AbortError')return;}
+      }catch(e){console.warn('write failed',e);}
     }
-    // fallback for Safari / Firefox
+    // fallback (Safari / Firefox — no showSaveFilePicker)
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.download=fname;a.href=url;
+    a.download=_fname;a.href=url;
     document.body.appendChild(a);a.click();
     setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},500);
-    toast('// GRAPHIC EXPORTED — '+periodLabel);
+    try{window.showBetPopup({type:'export',betOn:periodLabel,fname:_fname});}catch(ex){}
   },'image/png');
 }
 
