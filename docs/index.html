@@ -5993,6 +5993,7 @@ function renderOverall(){
     {lbl:'BASKETBALL',codes:['NBA','WNBA']},
     {lbl:'HOCKEY',    codes:['NHL','PWHL']},
     {lbl:'TENNIS',    codes:['TEN','tennis']},
+    {lbl:'SOCCER',    codes:['SOC','WC']},
   ];
   const bySport=sportMap.map(sm=>{
     const sp=settled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
@@ -6019,6 +6020,7 @@ function renderOverall(){
     {lbl:'NBA',   codes:['NBA']},
     {lbl:'WNBA',  codes:['WNBA']},
     {lbl:'TEN',   codes:['TEN']},
+    {lbl:'WC',    codes:['SOC','WC']},
     {lbl:'NFL',   codes:['NFL','FB']},
     {lbl:'CFB',   codes:['CFB']},
     {lbl:'PWHL',  codes:['PWHL']},
@@ -6331,7 +6333,7 @@ function renderOverallVisuals(){
   </svg>`;
   // 2. Win Rate by Sport
   const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TEN:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff'};
-  const sData=['MLB','NHL','NBA','TEN','F1','WNBA'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
+  const sData=['MLB','NHL','NBA','TEN','F1','WNBA','SOC'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
   const barW=260,barH=sData.length*22+10;
   const barSVG=`<svg width="${barW}" height="${barH}">
     ${sData.map((d,i)=>{const bw=(d.pct||0)*(barW-80);const col=sportColors[d.s]||'var(--nc)';return`<g transform="translate(0,${i*22})">
@@ -6388,7 +6390,7 @@ function renderOverallAnalytics(filterUpdate){
     const cutoff=Date.now()-days*86400000;
     base=base.filter(p=>(p.lockedAt||0)>=cutoff);
   }
-  if(F.sport!=='ALL')base=base.filter(p=>p.sport===F.sport);
+  if(F.sport!=='ALL'){const _socMap={SOC:['SOC','WC'],WC:['SOC','WC']};const _sc=_socMap[F.sport]||[F.sport];base=base.filter(p=>_sc.includes((p.sport||'').toUpperCase()));}
   if(F.type!=='ALL')base=base.filter(p=>p.betType===F.type);
   const settled=base;
 
@@ -6428,7 +6430,7 @@ function renderOverallAnalytics(filterUpdate){
   if(N<3){el.innerHTML=`<div style="padding:10px">${buildAlyFilters(allRaw,F)}</div><div class="empty" style="font-family:var(--mono)">NOT ENOUGH DATA · LOCK MORE PICKS TO UNLOCK ANALYTICS</div>`;return;}
 
   // ── Filter strip ──────────────────────────────────────────────────────────
-  const sportChips=['ALL','MLB','NHL','NBA','TEN'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC'].map(s=>chip(s,'sport',s,F.sport)).join('');
   const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   const filtersHtml=`<div style="${glowBox('#f000ff')};border-radius:3px;padding:8px 10px;margin-bottom:10px">
@@ -6823,7 +6825,7 @@ function initAnalyticsExpand(){
 
 function buildAlyFilters(allRaw,F){
   const chip=(lbl,key,val,cur)=>{const a=cur===val;return`<button onclick="renderOverallAnalytics({${key}:'${val}'})" style="font-family:var(--mono);font-size:13px;padding:3px 8px;border-radius:2px;border:1px solid ${a?'#f000ff':'rgba(240,0,255,.2)'};background:${a?'rgba(240,0,255,.18)':'rgba(240,0,255,.04)'};color:${a?'#f000ff':'rgba(220,190,255,.88)'};cursor:pointer;white-space:nowrap">${lbl}</button>`;};
-  const sportChips=['ALL','MLB','NHL','NBA','TEN'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC'].map(s=>chip(s,'sport',s,F.sport)).join('');
   const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   return`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:3px;padding:8px 10px">
@@ -6895,6 +6897,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     FOOTBALL:  ['NFL','CFB','FB'],
     HOCKEY:    ['NHL','PWHL','NCAAH','KHL','SHL','LIIGA'],
     TENNIS:    ['WTA','ATP','TEN'],
+    SOCCER:    ['SOC','WC'],
   };
   // Normalize sport tags in bets to canonical league codes for matching
   const _normSport=s=>{
@@ -6915,7 +6918,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}):'');
 
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',default:'var(--t3)'};
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',SOC:'var(--nc)',WC:'var(--nc)',default:'var(--t3)'};
   // Build filter controls
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
@@ -6926,6 +6929,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     {key:'FOOTBALL',  label:'FOOTBALL',  color:'var(--hc)', leagues:[{key:'NFL',label:'NFL'},{key:'CFB',label:'COLLEGE'}]},
     {key:'HOCKEY',    label:'HOCKEY',    color:'var(--ic)', leagues:[{key:'NHL',label:'NHL'},{key:'PWHL',label:'PWHL'},{key:'NCAAH',label:'COLLEGE'},{key:'KHL',label:'KHL'},{key:'SHL',label:'SHL'},{key:'LIIGA',label:'LIIGA'}]},
     {key:'TENNIS',    label:'TENNIS',    color:'var(--mc)', leagues:[{key:'WTA',label:'WTA'},{key:'ATP',label:'ATP'}]},
+    {key:'SOCCER',    label:'SOCCER',    color:'var(--nc)', leagues:[{key:'SOC',label:'WORLD CUP'}]},
   ];
   // Determine active sport group (for sub-row display)
   const _activeSportGroup=_sportDefs.find(sd=>sd.key===sf||(sd.leagues||[]).some(l=>l.key===sf));
@@ -7827,7 +7831,8 @@ function renderEngineOps(){
       btn('MLB PROPS','opsRunProps(\'MLB\',this)','btn-p'),
       btn('NBA PROPS','opsRunProps(\'NBA\',this)','btn-p'),
       btn('WNBA PROPS','opsRunProps(\'WNBA\',this)','btn-p'),
-      btn('NHL PROPS','opsRunProps(\'NHL\',this)','btn-p')
+      btn('NHL PROPS','opsRunProps(\'NHL\',this)','btn-p'),
+      btn('WC PROPS','opsRunProps(\'WC\',this)','btn-p')
     )}
     <div style="margin-top:8px">
       ${btn('⚡ RUN ALL PROPS','opsRunProps(\'ALL\',this)','btn-n')}
@@ -7841,7 +7846,8 @@ function renderEngineOps(){
       btn('NBA STATS','opsRunStats(\'NBA\',this)','btn-p'),
       btn('WNBA STATS','opsRunStats(\'WNBA\',this)','btn-p'),
       btn('MLB STATS','opsRunStats(\'MLB\',this)','btn-p'),
-      btn('NHL STATS','opsRunStats(\'NHL\',this)','btn-p')
+      btn('NHL STATS','opsRunStats(\'NHL\',this)','btn-p'),
+      btn('WC STATS','opsRunStats(\'WC\',this)','btn-p')
     )}
     <div style="margin-top:8px">
       ${btn('↻ REFRESH ALL STATS','opsRunStats(\'ALL\',this)','btn-n')}
@@ -7905,7 +7911,7 @@ async function opsRunProps(sport,btn){
   const orig=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='⏳...';}
   const sectionId='ops-props';
-  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL']:[sport];
+  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','WC']:[sport];
   _opsLog(sectionId,`▶ PROP REFRESH — ${sport}`);
   for(const s of sports){
     try{
@@ -7914,6 +7920,7 @@ async function opsRunProps(sport,btn){
       else if(s==='WNBA'){await Promise.resolve(renderWNBAProps&&renderWNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
       else if(s==='MLB'){await Promise.resolve(renderProps&&renderProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
       else if(s==='NHL'){await Promise.resolve(renderNHLPropsLive&&renderNHLPropsLive());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
+      else if(s==='WC'){await Promise.resolve(renderWCProps&&renderWCProps());_opsLog(sectionId,`  · ${s}: ✓ WC props rendered`);}
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   try{
@@ -7929,7 +7936,7 @@ async function opsRunStats(sport,btn){
   const orig=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='⏳...';}
   const sectionId='ops-stats';
-  const sports=sport==='ALL'?['NBA','WNBA','MLB','NHL']:[sport];
+  const sports=sport==='ALL'?['NBA','WNBA','MLB','NHL','WC']:[sport];
   _opsLog(sectionId,`▶ STAT UPDATE — ${sport}`);
   for(const s of sports){
     try{
@@ -7938,6 +7945,7 @@ async function opsRunStats(sport,btn){
       else if(s==='WNBA'){renderWNBAProps&&renderWNBAProps();_opsLog(sectionId,`  · ${s}: ✓ WNBA stats refreshed`);}
       else if(s==='MLB'){renderMLBEnginePicks&&renderMLBEnginePicks();_opsLog(sectionId,`  · ${s}: ✓ MLB model picks refreshed`);}
       else if(s==='NHL'){renderNHLPropsLive&&renderNHLPropsLive();_opsLog(sectionId,`  · ${s}: ✓ NHL stats refreshed`);}
+      else if(s==='WC'){renderWCMatches&&renderWCMatches();renderWCGroups&&renderWCGroups();renderWCProps&&renderWCProps();_opsLog(sectionId,`  · ${s}: ✓ WC schedule + groups + props refreshed`);}
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   _opsLog(sectionId,'✓ STAT UPDATE COMPLETE');
