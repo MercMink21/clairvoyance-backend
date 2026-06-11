@@ -1247,28 +1247,60 @@ body{line-height:1.5}
 </div>
 
 <div id="sp-tracker" class="spane">
-  <div class="sa" style="padding:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div class="sh" style="margin:0"><span class="i"></span> LOCKED BETS TRACKER</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select id="tracker-filter-sport" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderLockedTracker()">
-          <option value="all">ALL SPORTS</option>
-          <option value="MLB">MLB</option>
-          <option value="NBA">NBA</option>
-          <option value="NHL">NHL</option>
-          <option value="TEN">TENNIS</option>
-          <option value="WNBA">WNBA</option>
-        </select>
-        <select id="tracker-filter-status" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderLockedTracker()">
-          <option value="all">ALL</option>
-          <option value="pending">PENDING</option>
-          <option value="win">WINS</option>
-          <option value="loss">LOSSES</option>
-        </select>
-        <button class="btn btn-o btn-sm" onclick="renderLockedTracker()">↻</button>
+  <nav class="snav">
+    <button class="sb2 act" id="tracker-tab-locked" onclick="setTrackerTab('locked')">LOCKED BETS</button>
+    <button class="sb2" id="tracker-tab-clv" onclick="setTrackerTab('clv')">CLV TRACKER</button>
+  </nav>
+  <div id="tracker-sub-locked" class="subp act">
+    <div class="sa" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="sh" style="margin:0"><span class="i"></span> LOCKED BETS TRACKER</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="tracker-filter-sport" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderLockedTracker()">
+            <option value="all">ALL SPORTS</option>
+            <option value="MLB">MLB</option>
+            <option value="NBA">NBA</option>
+            <option value="NHL">NHL</option>
+            <option value="TEN">TENNIS</option>
+            <option value="WNBA">WNBA</option>
+          </select>
+          <select id="tracker-filter-status" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderLockedTracker()">
+            <option value="all">ALL</option>
+            <option value="pending">PENDING</option>
+            <option value="win">WINS</option>
+            <option value="loss">LOSSES</option>
+          </select>
+          <button class="btn btn-o btn-sm" onclick="renderLockedTracker()">↻</button>
+        </div>
       </div>
+      <div id="tracker-locked-list"><div class="empty">LOADING...</div></div>
     </div>
-    <div id="tracker-locked-list"><div class="empty">LOADING...</div></div>
+  </div>
+  <div id="tracker-sub-clv" class="subp">
+    <div class="sa" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="sh" style="margin:0"><span class="p"></span> CLV TRACKER <span style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px">CLOSING LINE VALUE</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="clv-filter-sport" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderCLVTracker()">
+            <option value="all">ALL SPORTS</option>
+            <option value="MLB">MLB</option>
+            <option value="NBA">NBA</option>
+            <option value="NHL">NHL</option>
+            <option value="WNBA">WNBA</option>
+            <option value="TEN">TENNIS</option>
+          </select>
+          <select id="clv-filter-dir" class="fi" style="font-size:11px;padding:3px 6px" onchange="renderCLVTracker()">
+            <option value="all">ALL CLV</option>
+            <option value="pos">+CLV ONLY</option>
+            <option value="neg">-CLV ONLY</option>
+            <option value="new">NOT LOGGED</option>
+          </select>
+          <button class="btn btn-o btn-sm" onclick="renderCLVTracker()">↻</button>
+        </div>
+      </div>
+      <div id="clv-summary-bar" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+      <div id="clv-tracker-list"><div class="empty">Loading CLV data…</div></div>
+    </div>
   </div>
 </div>
 <div id="sp-parlay" class="spane">
@@ -2992,7 +3024,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
     WTA:'WTA',TEN:(typeof ATP_DB!=='undefined'&&ATP_DB[hA]?'ATP':typeof WTA_DB!=='undefined'&&WTA_DB[hA]?'WTA':'ATP')};
   const leagueTag=_leagueMap[sportTag]||sportTag;
   const _betTypeNorm=type==='PL'?'PL':type==='RL'?'RL':type==='OU'?'OU':type==='PROP'?'PROP':type==='SPREAD'?'SPREAD':'ML';
-  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null});saveP(preds);}
+  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now());}catch(e){}}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
@@ -4004,6 +4036,9 @@ function renderProps(){
 
   // ── 3. Hardcoded tonight NHL props fallback ──────────────────────────────
   if(typeof NHL_PROPS_DATA!=='undefined'&&NHL_PROPS_DATA.length){
+    const _nhlPropsDate=typeof NHL_PROPS_DATE!=='undefined'?NHL_PROPS_DATE:'';
+    const _todayKey=typeof today==='function'?today().replace(/-/g,''):'';
+    const _nhlStale=_nhlPropsDate&&_todayKey&&_nhlPropsDate!==_todayKey;
     const gradeC2={ELITE:'var(--vc)',LOCK:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
     const order={ELITE:0,LOCK:1,GOOD:2,FAIR:3,FADE:4};
     const sorted=[...NHL_PROPS_DATA].sort((a,b)=>(order[a.grade]||4)-(order[b.grade]||4)||b.conf-a.conf);
@@ -4011,7 +4046,8 @@ function renderProps(){
     const filt=activeTms.length?sorted.filter(p=>activeTms.includes(p.t)):sorted;
     if(filt.length){
       const gameCtx=TONIGHT.length?TONIGHT.map(g=>`${g.a} @ ${g.h} · G${g.gn} · ${g.ctx}`).join(' | '):'TONIGHT';
-      el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin-bottom:8px">CURATED PROPS — ${gameCtx} · LOCK TO ADD TO HISTORY</div>`+
+      const staleWarning=_nhlStale?`<div style="font-family:var(--mono);font-size:11px;color:var(--hc);background:rgba(255,0,68,.07);border:1px solid rgba(255,0,68,.3);border-radius:3px;padding:6px 10px;margin-bottom:8px">⚠ PROP DATA FROM ${_nhlPropsDate} — REFRESH FOR ${_todayKey}</div>`:'';
+      el.innerHTML=staleWarning+`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin-bottom:8px">CURATED PROPS — ${gameCtx} · LOCK TO ADD TO HISTORY</div>`+
       filt.map(p=>{
         const gc=gradeC2[p.grade]||'var(--t2)';
         const isOver=p.over;const dirC=isOver?'var(--nc)':'var(--pc)';
@@ -5630,6 +5666,7 @@ function renderNBAProps(){
 // LINEUPS: VGK — Carter Hart (G) | CAR — Brandon Bussi (G, first career PO start, Andersen scratched)
 // VGK scratched: Saad, R.Smith, Hutton, Korczak | CAR scratched: Andersen, Kotkaniemi, Deslauriers, M.Reilly
 // Source: Linemate.io/nhl · Sportsbettingdime · CBS Sports · NHL.com Game 4 Preview
+const NHL_PROPS_DATE='20260611';
 const NHL_PROPS_DATA=[
   // ── STANLEY CUP FINALS GAME 4 · JUN 11 · VGK @ CAR · PNC ARENA RALEIGH ──
   // ⭐ ELITE
@@ -8792,7 +8829,7 @@ function SS(s){
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
   if(s==='soc'){_t(()=>T('wc','matches'));_t(renderWCMatches);}
   if(s==='sim'){_t(simUpdateTeams);_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
-  if(s==='tracker'){_t(renderLockedTracker);}
+  if(s==='tracker'){_t(renderLockedTracker);_t(()=>{try{setTrackerTab('locked');}catch(e){}});}
   if(s==='parlay'){_t(renderParlayTracker);}
 }
 function setSub(sport,sub){
@@ -8818,6 +8855,7 @@ function setSub(sport,sub){
   if(sport==='hk'&&sub==='pwhl'){try{renderPWHL();}catch(e){}}
   if(sport==='tracker'&&sub==='locked'){try{renderLockedTracker();}catch(e){}}
   if(sport==='tracker'&&sub==='parlay'){try{renderParlayTracker();}catch(e){}try{cvXParlayInit();}catch(e){}}
+  if(sport==='tracker'&&sub==='clv'){try{renderCLVTracker();}catch(e){}}
   // Auto-jump to TODAY tab when switching to a live sub-league
   if(sport==='hk'&&sub==='nhl'){try{T('nhl','games');renderNHLTonight();renderNHLGames();}catch(e){}}
   if(sport==='nba'&&sub==='nba'){try{T('nba','games');}catch(e){}}
@@ -9192,6 +9230,7 @@ function lockProp(team,player,line,over,conf,ml){
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   // Also add to main picks store so it shows in bet history
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  try{_initCLVEntry(prop.id,ml,prop.betOn,sport,Date.now());}catch(e){}
   toast(`// PROP LOCKED: ${player} ${over?'OVER':'UNDER'} ${line}`);try{window.showBetPopup({type:'lock',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,sport,betType:'PROP',ml,prob:conf||0.60,decOdds:dec});}catch(ex){}
   renderPropsTracker();
 }
@@ -9216,6 +9255,7 @@ function lockNHLProp(player,stat,dir,prob,ml,line){
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
   const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  try{_initCLVEntry(prop.id,mlNum,fullBet,'NHL',Date.now());}catch(e){}
   toast(`// LOCKED: ${fullBet}`);try{window.showBetPopup({type:'lock',betOn:fullBet,sport:'NHL',league:'NHL',betType:'PROP',ml:mlNum,prob,decOdds:dec});}catch(ex){}
   try{renderPropsTracker();}catch(e){}
 }
@@ -14783,7 +14823,8 @@ function _pGe(lam,n){
 var _wnbaGamesCache=null,_wnbaCacheTs=0,_WNBA_TTL=300000;
 var _wnbaRendering=false;
 // Hardcoded WNBA player props for today's games (TOR/CON · SEA/LA)
-// Updated: June 10 2026 — based on 2026 season averages + matchup
+// Updated: June 11 2026 — based on 2026 season averages + matchup
+var WNBA_PROPS_DATE='20260611';
 var WNBA_PROPS_DATA=[
   // ── WNBA JUNE 11 2026 ──────────────────────────────────────
   // ── IND vs CHI ──────────────────────────────────────────────
@@ -14870,11 +14911,15 @@ async function renderWNBAProps(){
   }
   // ── Primary fallback: hardcoded WNBA_PROPS_DATA ─────────────────────────────
   if(typeof WNBA_PROPS_DATA!=='undefined'&&WNBA_PROPS_DATA.length>=3){
+    var _wnbaPropsDate=typeof WNBA_PROPS_DATE!=='undefined'?WNBA_PROPS_DATE:'';
+    var _todayKeyW=typeof today==='function'?today().replace(/-/g,''):'';
+    var _wnbaStale=_wnbaPropsDate&&_todayKeyW&&_wnbaPropsDate!==_todayKeyW;
     var parlayPropsHC=[];
     // Group by game
     var gameGroups={};
     WNBA_PROPS_DATA.forEach(function(p){var gk=p.game||p.team+'_'+p.opp;if(!gameGroups[gk])gameGroups[gk]=[];gameGroups[gk].push(p);});
-    var srcHdr='<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:12px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">WNBA PLAYER PROPS · '+WNBA_PROPS_DATA.length+' PROPS</div><div style="color:var(--t3);font-size:11px">Engine analysis · 2026 season stats + matchup · June 11</div></div>';
+    var _wStaleBanner=_wnbaStale?'<div style="font-family:var(--mono);font-size:11px;color:var(--hc);background:rgba(255,0,68,.07);border:1px solid rgba(255,0,68,.3);border-radius:3px;padding:6px 10px;margin-bottom:8px">⚠ PROP DATA FROM '+_wnbaPropsDate+' — REFRESH FOR '+_todayKeyW+'</div>':'';
+    var srcHdr=_wStaleBanner+'<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:12px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">WNBA PLAYER PROPS · '+WNBA_PROPS_DATA.length+' PROPS</div><div style="color:var(--t3);font-size:11px">Engine analysis · 2026 season stats + matchup · June 11</div></div>';
     var gameHtml=Object.keys(gameGroups).map(function(gk){
       var gProps=gameGroups[gk];
       var gHdr=gProps[0]?'<div style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--vc);padding:6px 8px;background:rgba(6,0,15,.9);border:1px solid rgba(187,255,0,.25);border-radius:2px;margin-bottom:8px">'+gk.replace('_',' vs ')+'</div>':'';
@@ -18116,6 +18161,233 @@ function renderParlayTracker() {
   el.innerHTML=html;
 }
 
+/* ================================================================
+   TRACKER — sub-tab switcher
+   ================================================================ */
+function setTrackerTab(tab){
+  ['locked','clv'].forEach(function(t){
+    var b=document.getElementById('tracker-tab-'+t);
+    var s=document.getElementById('tracker-sub-'+t);
+    if(b){b.className='sb2'+(t===tab?' act':'');}
+    if(s){s.className='subp'+(t===tab?' act':'');}
+  });
+  if(tab==='clv')try{renderCLVTracker();}catch(e){}
+  if(tab==='locked')try{renderLockedTracker();}catch(e){}
+}
+window.setTrackerTab=setTrackerTab;
+
+/* ================================================================
+   CLV — Closing Line Value helpers
+   ================================================================ */
+function _mlToImp(ml){
+  var m=parseFloat(String(ml).replace('+',''));
+  if(isNaN(m))return 0.5;
+  return m<0?Math.abs(m)/(Math.abs(m)+100):100/(m+100);
+}
+function _impToML(imp){
+  if(imp<=0||imp>=1)return -110;
+  return imp>=0.5?-Math.round(imp/(1-imp)*100):'+'+Math.round((1-imp)/imp*100);
+}
+function _calcCLV(lockedML,closeML){
+  /* positive = you beat the closing line (good); units = percentage points implied */
+  return (_mlToImp(closeML)-_mlToImp(lockedML))*100;
+}
+function _getCLVLog(){try{return JSON.parse(localStorage.getItem('cv_clv_log')||'{}');}catch(e){return {};}}
+function _saveCLVLog(log){localStorage.setItem('cv_clv_log',JSON.stringify(log));}
+function _initCLVEntry(betId,ml,betOn,sport,ts){
+  var log=_getCLVLog();
+  if(log[betId])return; /* already tracked */
+  var mlN=parseFloat(String(ml||'-110').replace('+',''));
+  if(isNaN(mlN))mlN=-110;
+  log[betId]={betOn:betOn||'',sport:sport||'',lockedML:mlN,lockedImp:+(_mlToImp(mlN)*100).toFixed(2),
+    lockedAt:ts||Date.now(),snapshots:[{ts:ts||Date.now(),ml:mlN,note:'LOCKED'}],
+    currentML:mlN,clv:0,closed:false};
+  _saveCLVLog(log);
+}
+function _addCLVSnapshot(betId,ml,note){
+  var log=_getCLVLog();
+  if(!log[betId])return;
+  var mlN=parseFloat(String(ml||'-110').replace('+',''));
+  if(isNaN(mlN))return;
+  var snap={ts:Date.now(),ml:mlN,note:note||'UPDATE'};
+  log[betId].snapshots.push(snap);
+  log[betId].currentML=mlN;
+  log[betId].clv=+(_calcCLV(log[betId].lockedML,mlN)).toFixed(2);
+  _saveCLVLog(log);
+  renderCLVTracker();
+}
+function _closeCLVEntry(betId,ml){
+  var log=_getCLVLog();
+  if(!log[betId])return;
+  var mlN=parseFloat(String(ml||log[betId].currentML).replace('+',''));
+  if(!isNaN(mlN)){
+    log[betId].snapshots.push({ts:Date.now(),ml:mlN,note:'CLOSE'});
+    log[betId].currentML=mlN;
+    log[betId].clv=+(_calcCLV(log[betId].lockedML,mlN)).toFixed(2);
+  }
+  log[betId].closed=true;
+  _saveCLVLog(log);
+  renderCLVTracker();
+}
+window._addCLVSnapshot=_addCLVSnapshot;
+window._closeCLVEntry=_closeCLVEntry;
+window._initCLVEntry=_initCLVEntry;
+
+/* ================================================================
+   CLV — main render
+   ================================================================ */
+function renderCLVTracker(){
+  var el=document.getElementById('clv-tracker-list');
+  var sb=document.getElementById('clv-summary-bar');
+  if(!el)return;
+
+  var clvLog=_getCLVLog();
+  var picks=typeof getP==='function'?getP():[];
+  var sportF=(document.getElementById('clv-filter-sport')||{}).value||'all';
+  var dirF=(document.getElementById('clv-filter-dir')||{}).value||'all';
+
+  /* Build entry list — picks that have a CLV log entry */
+  var entries=picks.map(function(p){
+    return {pick:p,clv:clvLog[p.id]||null};
+  });
+
+  /* Also add any CLV log entries not yet in picks (edge case) */
+  Object.keys(clvLog).forEach(function(id){
+    if(!entries.find(function(e){return e.pick.id===id;})){
+      entries.push({pick:{id:id,betOn:clvLog[id].betOn,sport:clvLog[id].sport,betType:'',ml:clvLog[id].lockedML,outcome:'pending'},clv:clvLog[id]});
+    }
+  });
+
+  /* Filter */
+  if(sportF!=='all') entries=entries.filter(function(e){return(e.pick.sport||'').toUpperCase()===sportF;});
+  if(dirF==='pos') entries=entries.filter(function(e){return e.clv&&e.clv.snapshots.length>1&&e.clv.clv>0;});
+  if(dirF==='neg') entries=entries.filter(function(e){return e.clv&&e.clv.snapshots.length>1&&e.clv.clv<0;});
+  if(dirF==='new') entries=entries.filter(function(e){return !e.clv||e.clv.snapshots.length<=1;});
+
+  /* Summary stats */
+  var allCLV=Object.values(clvLog);
+  var logged=allCLV.filter(function(c){return c.snapshots.length>1;});
+  var avgCLV=logged.length?logged.reduce(function(s,c){return s+c.clv;},0)/logged.length:0;
+  var posCLV=logged.filter(function(c){return c.clv>0;}).length;
+  var closedCLV=allCLV.filter(function(c){return c.closed;});
+  var avgClosedCLV=closedCLV.length?closedCLV.reduce(function(s,c){return s+c.clv;},0)/closedCLV.length:0;
+
+  if(sb){
+    var mkStat=function(label,val,col){
+      return '<div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:8px 10px;text-align:center">'
+        +'<div style="font-family:var(--orb);font-size:16px;font-weight:700;color:'+col+'">'+val+'</div>'
+        +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1.5px;margin-top:2px">'+label+'</div>'
+        +'</div>';
+    };
+    var avgC=avgCLV>0?'var(--gc)':avgCLV<0?'var(--hc)':'var(--t3)';
+    var closedC=avgClosedCLV>0?'var(--gc)':avgClosedCLV<0?'var(--hc)':'var(--t3)';
+    sb.innerHTML=
+      mkStat('TOTAL TRACKED',allCLV.length,'var(--nc)')+
+      mkStat('LINES LOGGED',logged.length,'var(--t)')+
+      mkStat('AVG CLV',(avgCLV>=0?'+':'')+avgCLV.toFixed(2)+'%',avgC)+
+      mkStat('+CLV RATE',logged.length?Math.round(posCLV/logged.length*100)+'%':'—',logged.length&&posCLV/logged.length>=0.5?'var(--gc)':'var(--t2)');
+  }
+
+  if(!entries.length){el.innerHTML='<div class="empty">No bets match this filter.<br><span style="font-size:12px;color:var(--t3)">Lock picks from any sport to start tracking CLV.</span></div>';return;}
+
+  /* Sort: updated first, then by lock time */
+  entries.sort(function(a,b){
+    var aS=a.clv?(a.clv.snapshots[a.clv.snapshots.length-1].ts):0;
+    var bS=b.clv?(b.clv.snapshots[b.clv.snapshots.length-1].ts):0;
+    return bS-aS;
+  });
+
+  var html='';
+  entries.forEach(function(entry){
+    var p=entry.pick;
+    var c=entry.clv;
+    var mlStr=p.ml?(parseFloat(String(p.ml).replace('+',''))>0?'+':'')+p.ml:'—';
+    var sport=(p.sport||'').toUpperCase()||'BET';
+    var betType=(p.betType||'').toUpperCase()||'PICK';
+
+    /* CLV display */
+    var clvVal=c?c.clv:0;
+    var hasData=c&&c.snapshots&&c.snapshots.length>1;
+    var isClosed=c&&c.closed;
+    var clvCol=!hasData?'var(--t3)':clvVal>0?'var(--gc)':clvVal<0?'var(--hc)':'var(--t3)';
+    var clvLabel=!hasData?'—':(clvVal>=0?'+':'')+clvVal.toFixed(2)+'%';
+    var clvArrow=!hasData?'':clvVal>0?'▲':clvVal<0?'▼':'→';
+
+    /* Current ML display */
+    var curML=c?c.currentML:parseFloat(String(p.ml||'-110').replace('+',''));
+    var curMLStr=(curML>0?'+':'')+curML;
+    var lockedMLStr=c?(c.lockedML>0?'+':'')+c.lockedML:mlStr;
+
+    /* Movement magnitude in implied % */
+    var moveMag=hasData?Math.abs(clvVal).toFixed(2):'0';
+
+    /* History snapshots */
+    var histId='clv-hist-'+p.id.replace(/[^a-z0-9]/gi,'_');
+    var histHtml='';
+    if(c&&c.snapshots&&c.snapshots.length){
+      histHtml='<div id="'+histId+'" style="display:none;margin-top:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:8px">';
+      histHtml+='<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:2px;margin-bottom:5px">LINE MOVEMENT LOG</div>';
+      c.snapshots.forEach(function(snap,idx){
+        var snapML=(snap.ml>0?'+':'')+snap.ml;
+        var snapImp=(_mlToImp(snap.ml)*100).toFixed(1);
+        var snapDate=new Date(snap.ts).toLocaleString();
+        var noteColor=snap.note==='LOCKED'?'var(--nc)':snap.note==='CLOSE'?'var(--gc)':'var(--t2)';
+        var prev=idx>0?c.snapshots[idx-1]:null;
+        var delta=prev?+(_calcCLV(prev.ml,snap.ml)).toFixed(2):0;
+        var deltaStr=idx===0?'':(delta>=0?'<span style="color:var(--gc)">▲ +'+delta+'%</span>':'<span style="color:var(--hc)">▼ '+delta+'%</span>');
+        histHtml+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);font-size:11px">'
+          +'<span style="color:'+noteColor+';font-size:10px;min-width:48px">'+snap.note+'</span>'
+          +'<span style="color:var(--t);font-weight:700">'+snapML+'</span>'
+          +'<span style="color:var(--t3)">'+snapImp+'% imp</span>'
+          +'<span style="flex:1">'+deltaStr+'</span>'
+          +'<span style="color:var(--t3);font-size:10px">'+snapDate+'</span>'
+          +'</div>';
+      });
+      histHtml+='</div>';
+    }
+
+    /* Outcome badge */
+    var outcome=p.outcome||'pending';
+    var ocCol=outcome==='win'?'var(--gc)':outcome==='loss'?'var(--hc)':outcome==='push'?'var(--t2)':'var(--nc)';
+    var inputId='clv-inp-'+p.id.replace(/[^a-z0-9]/gi,'_');
+
+    html+='<div class="gc" style="border-left:2px solid '+clvCol+';margin-bottom:8px">'
+      +'<div class="gch">'
+        +'<div style="flex:1">'
+          +'<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'
+            +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid rgba(255,255,255,.2);border-radius:2px;color:var(--t3)">'+sport+'</span>'
+            +(betType?'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid rgba(0,240,255,.25);border-radius:2px;color:var(--nc)">'+betType+'</span>':'')
+            +(isClosed?'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid var(--gc);border-radius:2px;color:var(--gc)">CLOSED</span>':'')
+            +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid '+ocCol+';border-radius:2px;color:'+ocCol+'">'+outcome.toUpperCase()+'</span>'
+          +'</div>'
+          +'<div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t)">'+p.betOn+'</div>'
+        +'</div>'
+        +'<div style="text-align:right;flex-shrink:0">'
+          +'<div style="font-family:var(--orb);font-size:20px;font-weight:900;color:'+clvCol+'">'+clvArrow+' '+clvLabel+'</div>'
+          +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">CLV</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="padding:8px 10px 10px">'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;font-family:var(--mono);font-size:11px">'
+          +'<div><div style="color:var(--t3);font-size:9px;letter-spacing:1px;margin-bottom:2px">LOCKED ODDS</div><div style="color:var(--t);font-weight:700">'+lockedMLStr+'</div><div style="color:var(--t3);font-size:10px">'+(_mlToImp(c?c.lockedML:curML)*100).toFixed(1)+'% imp</div></div>'
+          +'<div><div style="color:var(--t3);font-size:9px;letter-spacing:1px;margin-bottom:2px">CURRENT ODDS</div><div style="color:'+(hasData&&curML!=(c?c.lockedML:curML)?clvCol:'var(--t)')+';font-weight:700">'+curMLStr+'</div><div style="color:var(--t3);font-size:10px">'+(_mlToImp(curML)*100).toFixed(1)+'% imp</div></div>'
+          +'<div><div style="color:var(--t3);font-size:9px;letter-spacing:1px;margin-bottom:2px">LINE MOVE</div><div style="color:'+clvCol+';font-weight:700">'+(hasData?moveMag+'%':hasData?moveMag+'%':'NO DATA')+'</div><div style="color:var(--t3);font-size:10px">'+(c&&c.snapshots?c.snapshots.length+' snapshots':'0 logged')+'</div></div>'
+        +'</div>'
+        +'<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'
+          +'<input type="number" id="'+inputId+'" placeholder="Log odds (e.g. -125)" step="1" style="width:140px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:12px;padding:3px 7px;border-radius:2px">'
+          +'<button class="btn btn-n btn-sm" onclick="_addCLVSnapshot(\''+p.id+'\',document.getElementById(\''+inputId+'\').value,\'UPDATE\')">LOG LINE</button>'
+          +(isClosed?'':'<button class="btn btn-sm" style="border-color:var(--gc);color:var(--gc);font-size:10px" onclick="_closeCLVEntry(\''+p.id+'\',document.getElementById(\''+inputId+'\').value)">MARK CLOSE</button>')
+          +'<button class="btn btn-o btn-sm" style="margin-left:auto" onclick="var h=document.getElementById(\''+histId+'\');if(h)h.style.display=h.style.display===\'none\'?\'block\':\'none\'">HISTORY ('+( c&&c.snapshots?c.snapshots.length:0)+')</button>'
+        +'</div>'
+        +histHtml
+        +(c&&c.lockedAt?'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:6px">Locked: '+new Date(c.lockedAt).toLocaleString()+'</div>':'')
+      +'</div>'
+    +'</div>';
+  });
+  el.innerHTML=html;
+}
+window.renderCLVTracker=renderCLVTracker;
+
 function saveParlayToTracker(legs,sport){
   if(!legs||legs.length<2)return;
   var parlays=[];
@@ -18234,7 +18506,8 @@ function saveParlayToTracker(legs,sport){
   <button onclick="SS('analytics');setSub('analytics','trends');renderAnalyticsTrends();hideAllND()">Trends</button>
 </div>
 <div id="navd-tracker" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
-  <button onclick="SS('tracker');hideAllND()">Locked Bets</button>
+  <button onclick="SS('tracker');setTrackerTab('locked');hideAllND()">Locked Bets</button>
+  <button onclick="SS('tracker');setTrackerTab('clv');hideAllND()">CLV Tracker</button>
 </div>
 <div id="navd-parlay" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <button onclick="SS('parlay');hideAllND()">Parlay Builder</button>
