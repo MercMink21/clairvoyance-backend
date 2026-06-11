@@ -9151,6 +9151,24 @@ window.renderNHLPropsLive=renderNHLPropsLive;
 
 function renderNHLLiveBets(){const el=document.getElementById('nhl-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NHL'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NHL BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${p.awA} at ${p.hA}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
 function renderNBALiveBets(){const el=document.getElementById('nba-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NBA'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NBA BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${p.awA} at ${p.hA}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
+function _adjParLine(inputId,sport,player,stat,dir,ml,prob,matchup){
+  var inp=document.getElementById(inputId);
+  var line=inp?inp.value:'';
+  cvParlayAddLeg(sport,player+' '+dir+line+' '+stat,ml,prob,matchup,'PROP');
+}
+function _adjParLeg(inputId,sport,player,stat,over,ml,prob,matchup){
+  var inp=document.getElementById(inputId);
+  var line=inp?inp.value:'';
+  var dir=over?'O':'U';
+  cvParlayAddLeg(sport,player+' '+dir+line+' '+stat,ml,prob,matchup,'PROP');
+}
+function _adjWNBAPropLeg(inputId,player,stat,over,ml,prob,key){
+  var inp=document.getElementById(inputId);
+  var line=inp?inp.value:'';
+  var dir=over?'O':'U';
+  var label=player+' '+dir+line+' '+stat;
+  addWNBAPropLeg(label,ml,prob,key);
+}
 function _adjLock(inputId,team,player,stat,over,conf,ml){
   var inp=document.getElementById(inputId);
   var line=inp?parseFloat(inp.value):0;
@@ -14819,7 +14837,7 @@ async function renderWNBAProps(){
       var dirCol=p.over!==false?'var(--gc)':'var(--pc)';
       var conf=p.conf||55;
       var confCol=conf>=67?'var(--nc)':conf>=60?'var(--vc)':'var(--t2)';
-      parlayProps.push({label:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp,ml:mlNum,prob:prob,key:p.player.replace(/\s/g,'_')+'_'+p.stat});
+      parlayProps.push({label:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp,ml:mlNum,prob:prob,key:p.player.replace(/\s/g,'_')+'_'+p.stat,line:p.line,player:p.player,stat:statDisp,over:p.over!==false});
       return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+gc+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">'
         +'<div><span style="font-family:var(--orb);font-size:17px;font-weight:700">'+p.player+'</span>'
@@ -14846,7 +14864,7 @@ async function renderWNBAProps(){
     // Populate parlay props panel
     var pp=document.getElementById('wnba-par-props-list');
     if(pp&&parlayProps.length){
-      pp.innerHTML=parlayProps.map(function(p){var ms=p.ml>0?'+':'';return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">'+p.label+'</span><div style="display:flex;gap:5px;align-items:center"><span style="color:var(--vc)">'+ms+p.ml+'</span><span style="color:var(--t3)">'+Math.round(p.prob*100)+'%</span><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="cvParlayAddLeg(\'wnba\',\''+p.label.replace(/'/g,"\\'")+'\','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\',\'PROP\')">+PAR</button></div></div>';}).join('');
+      pp.innerHTML=parlayProps.map(function(p){var ms=p.ml>0?'+':'';var pid='ppar_wnbal_'+p.key;return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:11px"><span style="color:var(--t2)">'+p.label+'</span><div style="display:flex;gap:4px;align-items:center"><span style="color:var(--vc)">'+ms+p.ml+'</span><span style="color:var(--t3)">'+Math.round(p.prob*100)+'%</span><input type="number" step="0.5" value="'+(p.line||'')+'\" id="'+pid+'" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:11px;padding:1px 4px;border-radius:2px;text-align:center"><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="_adjParLeg(\''+pid+'\',\'wnba\',\''+p.player.replace(/'/g,"\\'")+'\ \',\''+p.stat+'\','+(p.over)+','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\')">+PAR</button></div></div>';}).join('');
     }
     return;
   }
@@ -14870,7 +14888,7 @@ async function renderWNBAProps(){
         var conf=p.conf||55;
         var confCol=conf>=67?'var(--nc)':conf>=60?'var(--vc)':'var(--t2)';
         var pKey=p.player.replace(/[\s']/g,'_')+'_'+p.stat;
-        parlayPropsHC.push({label:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,ml:mlNum,prob:prob,key:pKey});
+        parlayPropsHC.push({label:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,ml:mlNum,prob:prob,key:pKey,line:p.line,player:p.player,stat:p.stat,over:p.over!==false});
         return '<div class="card" style="margin-bottom:9px;border-left:3px solid '+gc+'">'
           +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">'
           +'<div><span style="font-family:var(--orb);font-size:17px;font-weight:700">'+p.player+'</span>'
@@ -14898,13 +14916,14 @@ async function renderWNBAProps(){
     var ppList=document.getElementById('wnba-par-props-list');
     if(ppList&&parlayPropsHC.length){
       ppList.innerHTML=parlayPropsHC.map(function(p){
-        var ms=p.ml>0?'+':'';
+        var ms=p.ml>0?'+':'';var pid='ppar_wnba_'+p.key;
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:11px">'
           +'<span style="color:var(--t2)">'+p.label+'</span>'
-          +'<div style="display:flex;gap:5px;align-items:center">'
+          +'<div style="display:flex;gap:4px;align-items:center">'
           +'<span style="color:var(--vc)">'+ms+p.ml+'</span>'
           +'<span style="color:var(--t3)">'+Math.round(p.prob*100)+'%</span>'
-          +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="cvParlayAddLeg(\'wnba\',\''+p.label.replace(/'/g,"\\'")+'\','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\',\'PROP\')">+PAR</button>'
+          +'<input type="number" step="0.5" value="'+(p.line||'')+'" id="'+pid+'" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:11px;padding:1px 4px;border-radius:2px;text-align:center">'
+          +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="_adjParLeg(\''+pid+'\',\'wnba\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.over+','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\')">+PAR</button>'
           +'</div></div>';
       }).join('');
     }
@@ -14959,7 +14978,7 @@ async function renderWNBAProps(){
       var pKey=(pTeam+'_'+pName).replace(/\s+/g,'_');
       var ptsGr=_wnbaGrade(ptsP);var ptsML=_wnbaML(ptsP);
       var ptsDec=_wnbaDec(parseInt(ptsML)).toFixed(2);
-      parlayProps.push({label:pName+' PTS O '+ptsLine,ml:parseInt(ptsML),prob:ptsP,key:pKey+'_pts'});
+      parlayProps.push({label:pName+' PTS O '+ptsLine,ml:parseInt(ptsML),prob:ptsP,key:pKey+'_pts',line:ptsLine,player:pName,stat:'PTS',over:true});
       var chips=`<div class="chip" style="border-color:${ptsGr.c};min-width:110px">
 <div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-bottom:1px">PTS O ${ptsLine}</div>
 <div style="font-family:var(--orb);font-size:13px;font-weight:700;color:${ptsGr.c}">${ptsML}</div>
@@ -15027,13 +15046,14 @@ async function renderWNBAProps(){
   var pp=document.getElementById('wnba-parlay-props');
   if(pp&&parlayProps.length){
     pp.innerHTML=parlayProps.map(function(p){
-      var ms=p.ml>0?'+':'';
+      var ms=p.ml>0?'+':'';var pid='ppar_wnbap_'+p.key;
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:11px">
-<span style="color:var(--t2)">${p.label}</span>
+<span style="color:var(--t2)">${p.player||p.label} ${p.stat||''}</span>
 <div style="display:flex;gap:5px;align-items:center">
+<input type="number" step="0.5" value="${p.line||''}" id="${pid}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 5px;border-radius:2px;text-align:center">
 <span style="color:var(--vc)">${ms}${p.ml}</span>
 <span style="color:var(--t3)">${Math.round(p.prob*100)}%</span>
-<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="addWNBAPropLeg('${p.label}',${p.ml},${p.prob.toFixed(4)},'${p.key}')">+PAR</button>
+<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 6px" onclick="_adjWNBAPropLeg('${pid}','${p.player||p.label}','${p.stat||'PTS'}',${p.over!==false},${p.ml},${p.prob.toFixed(4)},'${p.key}')">+PAR</button>
 </div></div>`;
     }).join('');
   }
@@ -17171,15 +17191,17 @@ function cvXParlayLoadProps(s){
     var uML=ml==='-110'?'+100':(parseFloat(ml)<0?'+'+(Math.round(Math.abs(parseFloat(ml))*.85)):'-'+(Math.round(Math.abs(parseFloat(ml))*.85)));
     var matchup=spLabel+':'+(p.matchup||'');
     var overProb=over?prob:1-prob;var underProb=1-overProb;
+    var xpid='ppar_xp_'+player.replace(/\W+/g,'_')+'_'+stat.replace(/\W+/g,'_');
     return '<div class="card" style="margin-bottom:5px;padding:7px;border:1px solid rgba(0,240,255,.1)">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">'
       +'<div><span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--nc)">'+player+'</span>'
       +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">'+stat+(lv?' · Line: '+lv:'')+(p.matchup?' · '+p.matchup:'')+'</div></div>'
       +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;background:rgba(0,240,255,.1);border:1px solid var(--nc);color:var(--nc);border-radius:2px;flex-shrink:0">'+spLabel+' PROP</span>'
       +'</div>'
-      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
-      +'<button class="btn btn-n btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+player+' O'+lv+' '+stat+'\',\''+ml+'\','+overProb.toFixed(3)+',\''+matchup+'\',\'PROP\')">OVER '+lv+' '+ml+'</button>'
-      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+player+' U'+lv+' '+stat+'\',\''+uML+'\','+underProb.toFixed(3)+',\''+matchup+'\',\'PROP\')">UNDER '+lv+' '+uML+'</button>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
+      +'<input type="number" step="0.5" value="'+lv+'" id="'+xpid+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
+      +'<button class="btn btn-n btn-sm" style="font-size:11px" onclick="_adjParLine(\''+xpid+'\',\'xp\',\''+player+'\',\''+stat+'\',\'O\',\''+ml+'\','+overProb.toFixed(3)+',\''+matchup+'\')">OVER '+ml+'</button>'
+      +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="_adjParLine(\''+xpid+'\',\'xp\',\''+player+'\',\''+stat+'\',\'U\',\''+uML+'\','+underProb.toFixed(3)+',\''+matchup+'\')">UNDER '+uML+'</button>'
       +'</div></div>';
   }).join('');
 }
