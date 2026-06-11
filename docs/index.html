@@ -769,11 +769,11 @@ body{line-height:1.5}
   </nav>
   <div id="soc-worldcup" class="subp act">
     <nav class="inav" id="wc-in">
-      <button class="nb act" onclick="T('wc','matches')">MATCHES</button>
-      <button class="nb" onclick="T('wc','groups')">GROUPS</button>
-      <button class="nb" onclick="T('wc','bracket')">BRACKET</button>
-      <button class="nb" onclick="T('wc','picks')">PICKS</button>
-      <button class="nb" onclick="T('wc','props')">PROPS</button>
+      <button class="nb act" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
+      <button class="nb" onclick="T('wc','groups');renderWCGroups()">GROUPS</button>
+      <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
+      <button class="nb" onclick="T('wc','picks');renderWCPicks()">PICKS</button>
+      <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
     </nav>
     <div class="sa" id="wc-sa">
       <div id="wc-tab-matches" class="tab act"><div id="wc-matches-list" style="padding:20px 0"></div></div>
@@ -1112,6 +1112,7 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('hockey')">HOCKEY</button>
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('tennis')">TENNIS</button>
         <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('football')">FOOTBALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderBySportAnalytics('soccer')">SOCCER</button>
       </div>
       <div id="bysport-league-row" style="display:none;gap:4px;flex-wrap:wrap;margin-bottom:6px;padding:4px 8px;background:rgba(10,0,24,.6);border-radius:2px;border:1px solid rgba(255,255,255,.07)"></div>
     </div>
@@ -1188,6 +1189,7 @@ body{line-height:1.5}
           <option value="nhl">NHL</option>
           <option value="wnba">WNBA</option>
           <option value="tennis">TENNIS</option>
+          <option value="wc">WORLD CUP</option>
         </select>
       </div>
       <!-- Home / P1 -->
@@ -1269,6 +1271,7 @@ body{line-height:1.5}
         <button id="xp-sport-nba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nba')">NBA</button>
         <button id="xp-sport-wnba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('wnba')">WNBA</button>
         <button id="xp-sport-ten" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('ten')">TENNIS</button>
+        <button id="xp-sport-wc" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('wc')">WC26 ⚽</button>
       </div>
       <!-- View toggle -->
       <div style="display:flex;gap:5px;margin-bottom:8px">
@@ -8518,7 +8521,7 @@ function SS(s){
   if(s==='analytics'){_t(renderBetAnalyticsLab);}
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
-  if(s==='soc'){_t(()=>T('wc','matches'));_t(renderWCMatches);}
+  if(s==='soc'){setTimeout(function(){try{T('wc','matches');}catch(e){}try{renderWCMatches();}catch(e){}},20);}
   if(s==='sim'){_t(simUpdateTeams);_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
   if(s==='tracker'){_t(renderLockedTracker);_t(renderParlayTracker);}
 }
@@ -8649,7 +8652,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
-  if(sport==='wc'){if(tabId==='matches')renderWCMatches();if(tabId==='groups')renderWCGroups();if(tabId==='bracket')renderWCBracket();if(tabId==='picks')renderWCPicks();if(tabId==='props')renderWCProps();}
+  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
@@ -15517,12 +15520,13 @@ function renderBySportAnalytics(key){
   if(!key)key='all';
   // Sport group definitions — leagues is null for single-league sports (no sub-filter shown)
   const SPORT_DEFS={
-    all:      {label:'ALL SPORTS', codes:['MLB','NHL','NBA','WNBA','TEN','NFL','CFB','FB','PWHL','KHL','SHL','LIIGA'], color:'var(--nc)', leagues:null},
+    all:      {label:'ALL SPORTS', codes:['MLB','NHL','NBA','WNBA','TEN','NFL','CFB','FB','PWHL','KHL','SHL','LIIGA','SOC'], color:'var(--nc)', leagues:null},
     baseball: {label:'BASEBALL',   codes:['MLB'],                          color:'var(--vc)', leagues:null},
     basketball:{label:'BASKETBALL',codes:['NBA','WNBA'],                   color:'var(--pc)', leagues:[{k:'NBA',label:'NBA'},{k:'WNBA',label:'WNBA'}]},
     hockey:   {label:'HOCKEY',     codes:['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'], color:'var(--ic)', leagues:[{k:'NHL',label:'NHL'},{k:'PWHL',label:'PWHL'},{k:'KHL',label:'KHL'},{k:'SHL',label:'SHL'},{k:'LIIGA',label:'LIIGA'}]},
     tennis:   {label:'TENNIS',     codes:['TEN'],                          color:'var(--mc)', leagues:null},
     football: {label:'FOOTBALL',   codes:['NFL','CFB','FB'],               color:'var(--hc)', leagues:[{k:'NFL',label:'NFL'},{k:'CFB',label:'COLLEGE'}]},
+    soccer:   {label:'SOCCER',     codes:['SOC'],                          color:'var(--gc)', leagues:[{k:'SOC',label:'WC 2026'}]},
   };
 
   // If key is a league code (e.g. 'NBA'), find which sport it belongs to
@@ -16158,6 +16162,13 @@ function _cvPropsForSport(s){
           props.push({player:nm,stat:'PTS+REB+AST',lineValue:praLine,ml:'-115',prob:prob,matchup:matchup,over:true});
         });
       });
+    } else if(s==='wc'&&typeof WC26_PROPS!=='undefined'&&WC26_PROPS.length){
+      return WC26_PROPS.map(function(p){
+        var prob=Math.min(.99,Math.max(.01,(p.conf||54)/100));
+        var mlNum=prob>=.5?-Math.round(prob/(1-prob)*100):Math.round((1-prob)/prob*100);
+        return{player:p.player,stat:p.stat,lineValue:String(p.line||''),ml:mlNum,prob:prob,
+               matchup:(p.team||'')+(p.opp?' vs '+p.opp:'WC26'),over:p.over!==false};
+      });
     }
   }catch(e){}
   return props;
@@ -16245,7 +16256,7 @@ function cvXParlayInit(){
 function cvXParlaySetSport(s){
   window._cvXPSport=s;
   // Update sport button styles
-  ['mlb','nhl','nba','wnba','ten'].forEach(function(sp){
+  ['mlb','nhl','nba','wnba','ten','wc'].forEach(function(sp){
     var b=document.getElementById('xp-sport-'+sp);
     if(!b)return;
     if(sp===s){b.classList.remove('btn-o');b.classList.add('btn-p');}
@@ -16282,6 +16293,28 @@ function cvXParlayLoadGames(s){
         else el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';
       }).catch(function(){el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px">NO WNBA GAMES TODAY</div>';});
     }
+    return;
+  }
+  if(s==='wc'&&typeof WC26_SCHEDULE!=='undefined'){
+    var todayStr=typeof today==='function'?today():new Date().toISOString().slice(0,10);
+    var wcGames=WC26_SCHEDULE.filter(function(m){return m.date>=todayStr;}).slice(0,12);
+    if(!wcGames.length)wcGames=WC26_SCHEDULE.slice(0,12);
+    el.innerHTML=wcGames.map(function(m){
+      var o=_wcOut(m.he,m.ae);
+      var hML=_wcML(o.h),aML=_wcML(o.a),dML=_wcML(o.d);
+      var matchup='WC26:'+m.away+'@'+m.home;
+      return'<div class="card" style="margin-bottom:6px;padding:8px;border:1px solid rgba(255,200,0,.15)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+        +'<span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc)">'+m.hf+' '+m.home+' vs '+m.away+' '+m.af+'</span>'
+        +'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid var(--gc);color:var(--gc);border-radius:2px">GRP '+m.group+'</span>'
+        +'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:5px">'+m.date+' · '+m.time+'</div>'
+        +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
+        +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.home+'\',\''+hML+'\','+o.h.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.hf+' '+m.home+' '+hML+'</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.away+'\',\''+aML+'\','+o.a.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+m.away+' '+aML+'</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:11px;color:var(--t3)" onclick="cvParlayAddLeg(\'xp\',\'WC26 DRAW '+m.home+'/'+m.away+'\',\''+dML+'\','+o.d.toFixed(3)+',\''+matchup+'\',\'GAME\')">DRAW '+dML+'</button>'
+        +'</div></div>';
+    }).join('');
     return;
   }
   try{
@@ -16784,7 +16817,7 @@ var SIM_FB = {
   mlb:['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN'],
   nba:['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTA','WAS'],
   nhl:['ANA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH'],
-  wnba:['ATL','CHI','CON','DAL','IND','LA','LV','MIN','NY','PHX','SEA','WSH'],
+  wnba:['ATL','CHI','CON','DAL','GS','IND','LA','LV','MIN','NY','PHX','SEA','TOR','WSH'],
   tennis:['Alcaraz','Andreeva','Djokovic','Fritz','Gauff','Hurkacz','Keys','Medvedev','Rune','Rybakina','Sabalenka','Sinner','Swiatek','Zverev']
 };
 
@@ -16812,6 +16845,9 @@ function simUpdateTeams() {
       var wta = Object.keys(typeof WTA_DB !== 'undefined' ? WTA_DB : {}).slice(0,40);
       var seen = {};
       teams = atp.concat(wta).filter(function(v){ if(seen[v])return false; seen[v]=true; return true; });
+    }
+    else if (sport === 'wc') {
+      teams = (typeof WC26_GROUPS !== 'undefined' ? WC26_GROUPS : []).flatMap(function(g){ return g.teams.map(function(t){ return t.n; }); });
     }
   } catch(e) {}
   if (teams.length < 2) teams = SIM_FB[sport] || SIM_FB.mlb;
@@ -16855,6 +16891,12 @@ function _simRun(sport,home,away,N,flags){
     if(sport==='nhl' &&typeof nhlEns==='function'){var e=nhlEns(home,away); if(e&&e.p)baseHP=e.p;}
     if(sport==='wnba'){var D=window.__CV_DATA||{},ts=(D.wnba&&D.wnba.teamStats)||{},hn=ts[home],an=ts[away];
       if(hn&&an){var diff=((hn.ortg||100)-(hn.drtg||100))-((an.ortg||100)-(an.drtg||100));baseHP=1/(1+Math.exp(-diff/12));}}
+    if(sport==='wc'&&typeof WC26_GROUPS!=='undefined'){
+      var _allWCT=WC26_GROUPS.flatMap(function(g){return g.teams;});
+      var _wt1=_allWCT.find(function(t){return t.n===home;});
+      var _wt2=_allWCT.find(function(t){return t.n===away;});
+      if(_wt1&&_wt2)baseHP=1/(1+Math.pow(10,(_wt2.e-_wt1.e)/400));
+    }
     if(sport==='tennis'&&typeof tennisMatchWinProbFull==='function'){
       var db=(typeof ATP_DB!=='undefined'&&ATP_DB[home])?ATP_DB:(typeof WTA_DB!=='undefined'?WTA_DB:{});
       var d1=db[home],d2=db[away]; if(d1&&d2)baseHP=tennisMatchWinProbFull(d1,d2,'hard',false);}
@@ -16866,7 +16908,7 @@ function _simRun(sport,home,away,N,flags){
   adjHP=Math.min(.88,Math.max(.12,adjHP));
   var SP={mlb:{muH:4.5,muA:4.2,sdH:1.8,sdA:1.7,ou:8.5},nba:{muH:111,muA:108,sdH:10,sdA:10,ou:220},
     nhl:{muH:3.0,muA:2.7,sdH:1.2,sdA:1.1,ou:5.5},wnba:{muH:82,muA:80,sdH:8,sdA:8,ou:162},
-    tennis:{muH:2.1,muA:1.8,sdH:.8,sdA:.7,ou:3.8}};
+    tennis:{muH:2.1,muA:1.8,sdH:.8,sdA:.7,ou:3.8},wc:{muH:1.7,muA:1.4,sdH:.9,sdA:.85,ou:2.5}};
   var sp=SP[sport]||SP.mlb;
   var hWins=0,aWins=0,hSc=[],aSc=[],tots=[],marg=[];
   for(var i=0;i<N;i++){
@@ -16911,10 +16953,10 @@ function _simRender(el,sport,home,away,N,r){
   var favTeam=r.hP>=r.aP?home:away,favP=Math.max(r.hP,r.aP),favEV=r.hP>=r.aP?hEV:aEV;
   var tier=favP>=.67&&favEV>=.05?'ELITE':favP>=.62&&favEV>=.03?'LOCK':favP>=.55?'LEAN':'EDGE';
   var tierCol=tier==='ELITE'?'var(--gc)':tier==='LOCK'?'var(--nc)':tier==='LEAN'?'var(--ic)':'var(--t3)';
-  var unit={mlb:'runs',nba:'pts',nhl:'goals',wnba:'pts',tennis:'sets'}[sport]||'pts';
+  var unit={mlb:'runs',nba:'pts',nhl:'goals',wnba:'pts',tennis:'sets',wc:'goals'}[sport]||'pts';
   var tMin=Math.min.apply(null,r.trend),tMax=Math.max.apply(null,r.trend),tOK=(tMax-tMin)<.09;
   /* League tag for sim header */
-  var simLeague={mlb:'MLB',nba:'NBA',nhl:'NHL',wnba:'WNBA',tennis:'ATP'}[sport]||sport.toUpperCase();
+  var simLeague={mlb:'MLB',nba:'NBA',nhl:'NHL',wnba:'WNBA',tennis:'ATP',wc:'WC26'}[sport]||sport.toUpperCase();
   function bars(dist,col){return dist.bins.map(function(b,i){
     var lo=(dist.mn+i*dist.bw).toFixed(1),h=Math.round(b/Math.max.apply(null,dist.bins)*60)+4;
     return'<div title="'+lo+': '+((b/r.N)*100).toFixed(1)+'%" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">'
