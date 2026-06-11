@@ -8193,17 +8193,27 @@ function renderHomePage(){
   const recEl=document.getElementById('home-engine-record');
   if(recEl){
     const nowD=new Date();
+    const wk7ts=now-7*86400000;
     const firstOfMonth=new Date(nowD.getFullYear(),nowD.getMonth(),1);
     const firstOfLastMonth=new Date(nowD.getFullYear(),nowD.getMonth()-1,1);
     const thisMonthLbl=nowD.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
     const lastMonthLbl=firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
 
-    const rtd  = calcPerf(settled.filter(p=>p.date===todayStr));
-    const ry   = calcPerf(settled.filter(p=>p.date===yd));
-    const r7   = calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-7*86400000));
-    const rMo  = calcPerf(settled.filter(p=>(p.lockedAt||0)>=firstOfMonth.getTime()));
-    const rLMo = calcPerf(settled.filter(p=>(p.lockedAt||0)>=firstOfLastMonth.getTime()&&(p.lockedAt||0)<firstOfMonth.getTime()));
-    const rAll = calcPerf(settled);
+    // Match Overall tab calcPerf exactly: filter pending inside, require truthy lockedAt for time filters
+    const hCalc=bets=>{
+      const s=bets.filter(p=>p.outcome!=='pending');
+      const w=s.filter(p=>p.outcome==='win').length;
+      const l=s.filter(p=>p.outcome==='loss').length;
+      const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+      return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
+    };
+
+    const rtd  = hCalc(allBets.filter(p=>p.date===todayStr));
+    const ry   = hCalc(allBets.filter(p=>p.date===yd));
+    const r7   = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts));
+    const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
+    const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
+    const rAll = hCalc(allBets);
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;
@@ -8219,7 +8229,7 @@ function renderHomePage(){
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${perf.n} bet${perf.n===1?'':'s'}</span>
         </div>
         <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
-          <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px;transition:width .4s"></div>
+          <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pc}">${pct!==null?(pct*100).toFixed(1)+'%':'--'}</span>
@@ -8232,15 +8242,15 @@ function renderHomePage(){
     recEl.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc)">// ENGINE PERFORMANCE</span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${allBets.length} BETS TOTAL · ${settled.length} SETTLED</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${allBets.length} LOCKED · ${settled.length} SETTLED</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      ${perfCard('TODAY','rgba(255,32,0,.9)',rtd)}
-      ${perfCard('YESTERDAY','rgba(0,240,255,.8)',ry)}
-      ${perfCard('ROLLING 7D','rgba(187,255,0,.8)',r7)}
-      ${perfCard('THIS MONTH','rgba(0,240,255,.7)',rMo,thisMonthLbl)}
-      ${perfCard('LAST MONTH','rgba(240,0,255,.7)',rLMo,lastMonthLbl)}
-      ${perfCard('ALL TIME','rgba(255,221,0,.9)',rAll)}
+      ${perfCard('TODAY',rtd,'rgba(255,32,0,.9)')}
+      ${perfCard('YESTERDAY',ry,'rgba(0,240,255,.8)')}
+      ${perfCard('ROLLING 7D',r7,'rgba(187,255,0,.8)')}
+      ${perfCard('THIS MONTH',rMo,'rgba(0,240,255,.7)',thisMonthLbl)}
+      ${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}
+      ${perfCard('ALL TIME',rAll,'rgba(255,221,0,.9)')}
     </div>`;
   }
 
