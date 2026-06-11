@@ -2780,8 +2780,10 @@ async function syncPicksFromBackend(){
   if(!API_ONLINE())return;
   const picks=await api('GET','/picks/');
   if(!picks?.length)return;
+  const wiped=_getWipedIds();
   const local=getP();const localIds=new Set(local.map(p=>p.id||p._id));
   for(const bp of picks){
+    if(wiped.has(`api_${bp.id}`)||wiped.has(String(bp.id)))continue;
     const id=`api_${bp.id}`;if(localIds.has(id))continue;
     local.push({id,_backendId:bp.id,date:bp.game_date||today(),hA:bp.home_team||'',awA:bp.away_team||'',
       sport:bp.sport?.toUpperCase()||'MLB',betType:bp.bet_type?.toUpperCase()||'ML',
@@ -2989,38 +2991,46 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
   setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderTennisPendingBets();}catch(e){}},120);
 }
+// ── Wipe blocklist — IDs permanently deleted, never restored by any sync ──
+function _getWipedIds(){try{return new Set(JSON.parse(localStorage.getItem('cv_wiped_ids')||'[]'));}catch(e){return new Set();}}
+function _addWipedIds(ids){const s=_getWipedIds();ids.forEach(id=>s.add(id));localStorage.setItem('cv_wiped_ids',JSON.stringify([...s]));}
+function _filterWiped(arr){const w=_getWipedIds();return arr.filter(p=>!w.has(p.id));}
+
 function removePicksByDate(dateStr){
   const preds=getP();
   const toRemove=preds.filter(p=>(p.date||'').startsWith(dateStr));
   if(!toRemove.length){toast('// NO BETS FOUND FOR '+dateStr);return;}
   if(typeof window.confirm==='function'&&!confirm(`Remove ALL ${toRemove.length} bets from ${dateStr}? This cannot be undone.`))return;
-  const ids=new Set(toRemove.map(p=>p.id));
-  const cleaned=preds.filter(p=>!ids.has(p.id));
+  const ids=toRemove.map(p=>p.id);
+  _addWipedIds(ids);
+  const cleaned=preds.filter(p=>!ids.includes(p.id));
   saveP(cleaned);
   toRemove.forEach(p=>{try{if(API_ONLINE())api('DELETE',`/picks/${p.id}`).catch(()=>{});}catch(e){}});
-  _refreshAllAfterRemove();
+  _refreshAllAfterRemove(cleaned);
   toast(`// REMOVED ${toRemove.length} BETS FROM ${dateStr}`);
 }
 window.removePicksByDate=removePicksByDate;
 function removePicksByMonth(monthStr){
-  // monthStr is YYYY-MM
   const preds=getP();
   const toRemove=preds.filter(p=>(p.date||'').startsWith(monthStr));
   if(!toRemove.length){toast('// NO BETS FOUND FOR '+monthStr);return;}
   const d=new Date(monthStr+'-01');
   const label=d.toLocaleDateString('en-US',{month:'long',year:'numeric'});
   if(typeof window.confirm==='function'&&!confirm(`Remove ALL ${toRemove.length} bets from ${label}? This cannot be undone.`))return;
-  const ids=new Set(toRemove.map(p=>p.id));
-  const cleaned=preds.filter(p=>!ids.has(p.id));
+  const ids=toRemove.map(p=>p.id);
+  _addWipedIds(ids);
+  const cleaned=preds.filter(p=>!ids.includes(p.id));
   saveP(cleaned);
   toRemove.forEach(p=>{try{if(API_ONLINE())api('DELETE',`/picks/${p.id}`).catch(()=>{});}catch(e){}});
-  _refreshAllAfterRemove();
+  _refreshAllAfterRemove(cleaned);
   toast(`// REMOVED ${toRemove.length} BETS FROM ${label.toUpperCase()}`);
 }
 window.removePicksByMonth=removePicksByMonth;
-function _refreshAllAfterRemove(){
-  // Persist removal to GitHub so loadPicksFromGitHub() on reload doesn't restore wiped picks
-  try{savePicksToGitHub(getP());}catch(e){}
+function _refreshAllAfterRemove(cleaned){
+  // Push cleaned list to GitHub picks.json so it doesn't restore on next load
+  try{savePicksToGitHub(cleaned||getP());}catch(e){}
+  // Also clear from IndexedDB
+  try{idbSavePicks(cleaned||getP());}catch(e){}
   try{updHdr();}catch(e){}
   try{renderOverallHistory();}catch(e){}
   try{renderOverall();}catch(e){}
@@ -10775,14 +10785,11 @@ async function idbLoadPicks(){
   }catch(e){return[];}
 }
 async function idbRecoverPicks(){
-  const idbPicks=await idbLoadPicks();if(!idbPicks.length)return;
+  const idbPicks=_filterWiped(await idbLoadPicks());if(!idbPicks.length)return;
   const local=getP();const ids=new Set(local.map(p=>p.id));
-  // Only add IDB entries that aren't already in localStorage
-  // Never downgrade a settled (win/loss) entry back to pending
   let added=0;
   for(const p of idbPicks){
     if(!ids.has(p.id)){local.push(p);added++;}
-    // If IDB has a settled version of something still pending locally, upgrade it
     else{
       const li=local.findIndex(x=>x.id===p.id);
       if(li>=0&&local[li].outcome==='pending'&&p.outcome!=='pending'){
@@ -13597,9 +13604,11 @@ async function loadPicksFromGitHub(){
     const content=JSON.parse(atob(meta.content.replace(/\n/g,'')));
     if(!Array.isArray(content)||!content.length)return;
     window._gh_picks_sha=meta.sha;
-    const local=getP();const ghIds=new Set(content.map(p=>p.id));
-    const localOnly=local.filter(p=>!ghIds.has(p.id));
-    const merged=[...content,...localOnly];
+    const local=getP();
+    const filtered=_filterWiped(content);
+    const ghIds=new Set(filtered.map(p=>p.id));
+    const localOnly=local.filter(p=>!ghIds.has(p.id)&&!_getWipedIds().has(p.id));
+    const merged=[...filtered,...localOnly];
     S.s('preds',merged);
     if(localOnly.length)savePicksToGitHub(merged);
     try{renderOverallHistory();}catch(e){}
