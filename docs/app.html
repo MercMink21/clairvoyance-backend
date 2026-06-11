@@ -767,11 +767,22 @@ body{line-height:1.5}
   <nav class="snav">
     <button class="sb2 act" onclick="setSub('soc','worldcup')">WORLD CUP</button>
   </nav>
-  <div id="soc-worldcup" class="subp act"><div class="sa"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center">
-    <div style="font-family:var(--orb);font-size:22px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">WORLD CUP 2026 MODULE</div>
-    <div style="font-family:var(--mono);font-size:11px;letter-spacing:3px;color:var(--t3);margin-bottom:12px">// COMING SOON · JUNE-JULY 2026</div>
-    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);max-width:340px;line-height:1.7">Full match picks, ELO ratings for all 48 national teams, group stage odds, knockout bracket, player props, and xG model — built for the 2026 FIFA World Cup hosted across USA, Canada, and Mexico.</div>
-  </div></div></div>
+  <div id="soc-worldcup" class="subp act">
+    <nav class="inav" id="wc-in">
+      <button class="nb act" onclick="T('wc','matches')">MATCHES</button>
+      <button class="nb" onclick="T('wc','groups')">GROUPS</button>
+      <button class="nb" onclick="T('wc','bracket')">BRACKET</button>
+      <button class="nb" onclick="T('wc','picks')">PICKS</button>
+      <button class="nb" onclick="T('wc','props')">PROPS</button>
+    </nav>
+    <div class="sa" id="wc-sa">
+      <div id="wc-tab-matches" class="tab act"><div id="wc-matches-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-groups" class="tab"><div id="wc-groups-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-picks" class="tab"><div id="wc-picks-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-props" class="tab"><div id="wc-props-list" style="padding:20px 0"></div></div>
+    </div>
+  </div>
       </div>
 <div id="sp-nba" class="spane">
   <nav class="snav"><button class="sb2 act" onclick="setSub('nba','nba')">NBA</button><button class="sb2" onclick="setSub('nba','wnba')">WNBA</button><button class="btn btn-sm btn-p" onclick="doUpdate()" style="float:right;margin:3px 6px">↻ SYNC</button></nav>
@@ -8507,7 +8518,7 @@ function SS(s){
   if(s==='analytics'){_t(renderBetAnalyticsLab);}
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
-  if(s==='soc'){/* soccer coming soon — no render needed */}
+  if(s==='soc'){_t(()=>T('wc','matches'));_t(renderWCMatches);}
   if(s==='sim'){_t(simUpdateTeams);_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
   if(s==='tracker'){_t(renderLockedTracker);_t(renderParlayTracker);}
 }
@@ -8540,8 +8551,8 @@ function setSub(sport,sub){
   if(sport==='nba'&&sub==='wnba'){try{T('wnba','games');if(typeof renderWNBAGames==='function')renderWNBAGames();}catch(e){}}
 }
 function T(sport,tabId){const D=window.__CV_DATA||{};
-  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa',wnba:'wnba-sa'};
-  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in',hk:'nhl-in',fb:'mlb-in',wnba:'wnba-in'};
+  const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa',wnba:'wnba-sa',wc:'wc-sa'};
+  const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in',hk:'nhl-in',fb:'mlb-in',wnba:'wnba-in',wc:'wc-in'};
   const saId=saMap[sport]||'mlb-sa';
   const navId=navMap[sport]||'mlb-in';
   const mnId=sport==='nhl'?'mn2':sport==='nba'?'mn3':sport==='ovr'?'mn4':sport==='ten'?'mn5':sport==='live'?'mn7':sport==='wnba'?'mn8':'mn';
@@ -8638,6 +8649,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
+  if(sport==='wc'){if(tabId==='matches')renderWCMatches();if(tabId==='groups')renderWCGroups();if(tabId==='bracket')renderWCBracket();if(tabId==='picks')renderWCPicks();if(tabId==='props')renderWCProps();}
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
@@ -14489,6 +14501,263 @@ window.addWNBALeg=addWNBALeg;
 window.addWNBAPropLeg=addWNBAPropLeg;
 window.calcWNBAP=calcWNBAP;
 window._wnbaRenderLegs=_wnbaRenderLegs;
+
+// ── WORLD CUP 2026 MODULE ────────────────────────────────────────────────────
+var WC26_GROUPS=[
+  {id:'A',teams:[{n:'Mexico',c:'MEX',f:'🇲🇽',e:1935},{n:'Ecuador',c:'ECU',f:'🇪🇨',e:1860},{n:'Jamaica',c:'JAM',f:'🇯🇲',e:1760},{n:'Venezuela',c:'VEN',f:'🇻🇪',e:1730}]},
+  {id:'B',teams:[{n:'USA',c:'USA',f:'🇺🇸',e:1940},{n:'Panama',c:'PAN',f:'🇵🇦',e:1755},{n:'Bolivia',c:'BOL',f:'🇧🇴',e:1740},{n:'New Zealand',c:'NZL',f:'🇳🇿',e:1720}]},
+  {id:'C',teams:[{n:'Canada',c:'CAN',f:'🇨🇦',e:1835},{n:'Serbia',c:'SER',f:'🇷🇸',e:1895},{n:'Algeria',c:'ALG',f:'🇩🇿',e:1820},{n:'Honduras',c:'HON',f:'🇭🇳',e:1770}]},
+  {id:'D',teams:[{n:'Argentina',c:'ARG',f:'🇦🇷',e:2090},{n:'Japan',c:'JPN',f:'🇯🇵',e:1915},{n:'Chile',c:'CHI',f:'🇨🇱',e:1835},{n:'Peru',c:'PER',f:'🇵🇪',e:1855}]},
+  {id:'E',teams:[{n:'Spain',c:'ESP',f:'🇪🇸',e:2025},{n:'Uruguay',c:'URU',f:'🇺🇾',e:1975},{n:'Cameroon',c:'CMR',f:'🇨🇲',e:1805},{n:'Saudi Arabia',c:'KSA',f:'🇸🇦',e:1810}]},
+  {id:'F',teams:[{n:'Brazil',c:'BRA',f:'🇧🇷',e:2035},{n:'Colombia',c:'COL',f:'🇨🇴',e:1900},{n:'Ghana',c:'GHA',f:'🇬🇭',e:1845},{n:'Qatar',c:'QAT',f:'🇶🇦',e:1735}]},
+  {id:'G',teams:[{n:'France',c:'FRA',f:'🇫🇷',e:2065},{n:'Morocco',c:'MAR',f:'🇲🇦',e:1920},{n:'Poland',c:'POL',f:'🇵🇱',e:1885},{n:'Tunisia',c:'TUN',f:'🇹🇳',e:1820}]},
+  {id:'H',teams:[{n:'Germany',c:'GER',f:'🇩🇪',e:2000},{n:'Turkey',c:'TUR',f:'🇹🇷',e:1865},{n:'Egypt',c:'EGY',f:'🇪🇬',e:1795},{n:'Ivory Coast',c:'CIV',f:'🇨🇮',e:1840}]},
+  {id:'I',teams:[{n:'England',c:'ENG',f:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',e:2040},{n:'Netherlands',c:'NED',f:'🇳🇱',e:1985},{n:'South Korea',c:'KOR',f:'🇰🇷',e:1870},{n:'Nigeria',c:'NGA',f:'🇳🇬',e:1840}]},
+  {id:'J',teams:[{n:'Italy',c:'ITA',f:'🇮🇹',e:1945},{n:'Belgium',c:'BEL',f:'🇧🇪',e:1960},{n:'Denmark',c:'DEN',f:'🇩🇰',e:1905},{n:'South Africa',c:'RSA',f:'🇿🇦',e:1795}]},
+  {id:'K',teams:[{n:'Portugal',c:'POR',f:'🇵🇹',e:2010},{n:'Croatia',c:'CRO',f:'🇭🇷',e:1950},{n:'Iran',c:'IRN',f:'🇮🇷',e:1800},{n:'Indonesia',c:'IDN',f:'🇮🇩',e:1710}]},
+  {id:'L',teams:[{n:'Austria',c:'AUT',f:'🇦🇹',e:1875},{n:'Switzerland',c:'SUI',f:'🇨🇭',e:1880},{n:'Senegal',c:'SEN',f:'🇸🇳',e:1925},{n:'Uzbekistan',c:'UZB',f:'🇺🇿',e:1790}]}
+];
+var WC26_SCHEDULE=[
+  // June 11 — Opening Day
+  {date:'2026-06-11',time:'5:00 PM ET',home:'Mexico',hc:'MEX',hf:'🇲🇽',he:1935,away:'Venezuela',ac:'VEN',af:'🇻🇪',ae:1730,group:'A',venue:'Estadio Azteca · Mexico City'},
+  {date:'2026-06-11',time:'7:00 PM ET',home:'Canada',hc:'CAN',hf:'🇨🇦',he:1835,away:'Honduras',ac:'HON',af:'🇭🇳',ae:1770,group:'C',venue:'BMO Field · Toronto'},
+  {date:'2026-06-11',time:'10:00 PM ET',home:'USA',hc:'USA',hf:'🇺🇸',he:1940,away:'Bolivia',ac:'BOL',af:'🇧🇴',ae:1740,group:'B',venue:'SoFi Stadium · Los Angeles'},
+  // June 12
+  {date:'2026-06-12',time:'12:00 PM ET',home:'Ecuador',hc:'ECU',hf:'🇪🇨',he:1860,away:'Jamaica',ac:'JAM',af:'🇯🇲',ae:1760,group:'A',venue:'Rose Bowl · Pasadena'},
+  {date:'2026-06-12',time:'3:00 PM ET',home:'Japan',hc:'JPN',hf:'🇯🇵',he:1915,away:'Chile',ac:'CHI',af:'🇨🇱',ae:1835,group:'D',venue:'MetLife Stadium · New Jersey'},
+  {date:'2026-06-12',time:'6:00 PM ET',home:'Panama',hc:'PAN',hf:'🇵🇦',he:1755,away:'New Zealand',ac:'NZL',af:'🇳🇿',ae:1720,group:'B',venue:'AT&T Stadium · Dallas'},
+  {date:'2026-06-12',time:'9:00 PM ET',home:'Serbia',hc:'SER',hf:'🇷🇸',he:1895,away:'Algeria',ac:'ALG',af:'🇩🇿',ae:1820,group:'C',venue:'Arrowhead Stadium · Kansas City'},
+  // June 13
+  {date:'2026-06-13',time:'12:00 PM ET',home:'Argentina',hc:'ARG',hf:'🇦🇷',he:2090,away:'Peru',ac:'PER',af:'🇵🇪',ae:1855,group:'D',venue:'Levi\'s Stadium · San Francisco'},
+  {date:'2026-06-13',time:'3:00 PM ET',home:'Spain',hc:'ESP',hf:'🇪🇸',he:2025,away:'Cameroon',ac:'CMR',af:'🇨🇲',ae:1805,group:'E',venue:'Hard Rock Stadium · Miami'},
+  {date:'2026-06-13',time:'6:00 PM ET',home:'Brazil',hc:'BRA',hf:'🇧🇷',he:2035,away:'Qatar',ac:'QAT',af:'🇶🇦',ae:1735,group:'F',venue:'SoFi Stadium · Los Angeles'},
+  {date:'2026-06-13',time:'9:00 PM ET',home:'Uruguay',hc:'URU',hf:'🇺🇾',he:1975,away:'Saudi Arabia',ac:'KSA',af:'🇸🇦',ae:1810,group:'E',venue:'Rose Bowl · Pasadena'},
+  // June 14
+  {date:'2026-06-14',time:'12:00 PM ET',home:'France',hc:'FRA',hf:'🇫🇷',he:2065,away:'Tunisia',ac:'TUN',af:'🇹🇳',ae:1820,group:'G',venue:'Mercedes-Benz Stadium · Atlanta'},
+  {date:'2026-06-14',time:'3:00 PM ET',home:'Germany',hc:'GER',hf:'🇩🇪',he:2000,away:'Egypt',ac:'EGY',af:'🇪🇬',ae:1795,group:'H',venue:'AT&T Stadium · Dallas'},
+  {date:'2026-06-14',time:'6:00 PM ET',home:'Colombia',hc:'COL',hf:'🇨🇴',he:1900,away:'Ghana',ac:'GHA',af:'🇬🇭',ae:1845,group:'F',venue:'Gillette Stadium · Boston'},
+  {date:'2026-06-14',time:'9:00 PM ET',home:'Morocco',hc:'MAR',hf:'🇲🇦',he:1920,away:'Poland',ac:'POL',af:'🇵🇱',ae:1885,group:'G',venue:'Levi\'s Stadium · San Francisco'},
+  // June 15
+  {date:'2026-06-15',time:'12:00 PM ET',home:'England',hc:'ENG',hf:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',he:2040,away:'South Korea',ac:'KOR',af:'🇰🇷',ae:1870,group:'I',venue:'MetLife Stadium · New Jersey'},
+  {date:'2026-06-15',time:'3:00 PM ET',home:'Turkey',hc:'TUR',hf:'🇹🇷',he:1865,away:'Ivory Coast',ac:'CIV',af:'🇨🇮',ae:1840,group:'H',venue:'Allegiant Stadium · Las Vegas'},
+  {date:'2026-06-15',time:'6:00 PM ET',home:'Italy',hc:'ITA',hf:'🇮🇹',he:1945,away:'South Africa',ac:'RSA',af:'🇿🇦',ae:1795,group:'J',venue:'Hard Rock Stadium · Miami'},
+  {date:'2026-06-15',time:'9:00 PM ET',home:'Netherlands',hc:'NED',hf:'🇳🇱',he:1985,away:'Nigeria',ac:'NGA',af:'🇳🇬',ae:1840,group:'I',venue:'Lincoln Financial Field · Philadelphia'},
+  // June 16
+  {date:'2026-06-16',time:'12:00 PM ET',home:'Belgium',hc:'BEL',hf:'🇧🇪',he:1960,away:'Denmark',ac:'DEN',af:'🇩🇰',ae:1905,group:'J',venue:'Arrowhead Stadium · Kansas City'},
+  {date:'2026-06-16',time:'3:00 PM ET',home:'Portugal',hc:'POR',hf:'🇵🇹',he:2010,away:'Indonesia',ac:'IDN',af:'🇮🇩',ae:1710,group:'K',venue:'BC Place · Vancouver'},
+  {date:'2026-06-16',time:'6:00 PM ET',home:'Croatia',hc:'CRO',hf:'🇭🇷',he:1950,away:'Iran',ac:'IRN',af:'🇮🇷',ae:1800,group:'K',venue:'Lumen Field · Seattle'},
+  {date:'2026-06-16',time:'9:00 PM ET',home:'Senegal',hc:'SEN',hf:'🇸🇳',he:1925,away:'Uzbekistan',ac:'UZB',af:'🇺🇿',ae:1790,group:'L',venue:'Commonwealth Stadium · Edmonton'},
+  // June 17
+  {date:'2026-06-17',time:'12:00 PM ET',home:'Austria',hc:'AUT',hf:'🇦🇹',he:1875,away:'Switzerland',ac:'SUI',af:'🇨🇭',ae:1880,group:'L',venue:'BMO Field · Toronto'}
+];
+var WC26_PROPS=[
+  {player:'Lionel Messi',team:'ARG',opp:'PER',match:'ARG_PER',stat:'SHOTS',line:3.5,over:true,ml:'-130',conf:70,grade:'ELITE',hitRate:'3.4 shots/90 at Copa · vs CONMEBOL',basis:'Messi leads ARG attack vs Peru — expect 4+ shots on net'},
+  {player:'Lionel Messi',team:'ARG',opp:'PER',match:'ARG_PER',stat:'GOAL+AST',line:0.5,over:true,ml:'-145',conf:73,grade:'LOCK',hitRate:'0.82 xA/90 in qualifying',basis:'Messi involved in virtually every ARG goal at major tourneys'},
+  {player:'Julian Alvarez',team:'ARG',opp:'PER',match:'ARG_PER',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:65,grade:'ELITE',hitRate:'2.8 shots/90 at WC22',basis:'Alvarez leads line vs Peru — 3+ shots projected'},
+  {player:'Lamine Yamal',team:'ESP',opp:'CMR',match:'ESP_CMR',stat:'SHOTS',line:2.5,over:true,ml:'-125',conf:68,grade:'ELITE',hitRate:'Euro 24: 3.1 shots/90 avg',basis:'Yamal vs Cameroon — elite dribbler creates high-value chances from right'},
+  {player:'Rodri',team:'ESP',opp:'CMR',match:'ESP_CMR',stat:'PASSES',line:75.5,over:true,ml:'-135',conf:71,grade:'LOCK',hitRate:'84 passes/90 in qualifiers',basis:'Rodri dictates possession — Spain dominates Cameroon midfield'},
+  {player:'Pedri',team:'ESP',opp:'CMR',match:'ESP_CMR',stat:'KEY PASSES',line:1.5,over:true,ml:'-115',conf:63,grade:'LEAN',hitRate:'2.1 key passes/90 in La Liga',basis:'Pedri creates vs low-block defensive teams like Cameroon'},
+  {player:'Vinicius Jr.',team:'BRA',opp:'QAT',match:'BRA_QAT',stat:'SHOTS',line:3.5,over:true,ml:'-120',conf:69,grade:'ELITE',hitRate:'4.1 shots/90 at Real Madrid 25/26',basis:'Vinicius vs Qatar — dominates on left wing all match'},
+  {player:'Rodrygo',team:'BRA',opp:'QAT',match:'BRA_QAT',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:65,grade:'ELITE',hitRate:'2.9 shots/90 in qualifiers',basis:'Rodrygo thrives in space vs defensive teams'},
+  {player:'Kylian Mbappé',team:'FRA',opp:'TUN',match:'FRA_TUN',stat:'SHOTS',line:4.5,over:true,ml:'-130',conf:69,grade:'ELITE',hitRate:'4.8 shots/90 at Euro 24',basis:'Mbappé off the left vs Tunisia — heavy shot volume expected'},
+  {player:'Kylian Mbappé',team:'FRA',opp:'TUN',match:'FRA_TUN',stat:'GOAL+AST',line:0.5,over:true,ml:'-140',conf:72,grade:'LOCK',hitRate:'0.72 G+A/90 in qualifiers',basis:'Mbappé directly involved in FRA goals vs low-tier opponents'},
+  {player:'Antoine Griezmann',team:'FRA',opp:'TUN',match:'FRA_TUN',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:63,grade:'LEAN',hitRate:'2.4 shots/90 at WC22',basis:'Griezmann in pocket position vs Tunisia 5-4-1 shape'},
+  {player:'Florian Wirtz',team:'GER',opp:'EGY',match:'GER_EGY',stat:'SHOTS',line:2.5,over:true,ml:'-125',conf:66,grade:'ELITE',hitRate:'2.8 shots/90 in Bundesliga 25/26',basis:'Wirtz leads Germany — Egypt sits deep giving long-range looks'},
+  {player:'Jamal Musiala',team:'GER',opp:'EGY',match:'GER_EGY',stat:'DRIBBLES',line:2.5,over:true,ml:'-115',conf:64,grade:'ELITE',hitRate:'3.1 dribbles/90 avg',basis:'Musiala dribbles into Egypt block to create shooting lanes'},
+  {player:'Jude Bellingham',team:'ENG',opp:'KOR',match:'ENG_KOR',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:64,grade:'ELITE',hitRate:'2.6 shots/90 at Euro 24',basis:'Bellingham box-to-box arriving late vs Korea back four'},
+  {player:'Bukayo Saka',team:'ENG',opp:'KOR',match:'ENG_KOR',stat:'SHOTS',line:2.5,over:true,ml:'-120',conf:65,grade:'ELITE',hitRate:'2.9 shots/90 in qualifiers',basis:'Saka on right wing — will get right-footed shots from channel'},
+  {player:'Phil Foden',team:'ENG',opp:'KOR',match:'ENG_KOR',stat:'KEY PASSES',line:1.5,over:true,ml:'-115',conf:63,grade:'LEAN',hitRate:'2.0 key passes/90 last 8 ENG matches',basis:'Foden in advanced role vs Korea midfield'},
+  {player:'Christian Pulisic',team:'USA',opp:'BOL',match:'USA_BOL',stat:'SHOTS',line:2.5,over:true,ml:'-120',conf:67,grade:'ELITE',hitRate:'2.7 shots/90 at AC Milan 25/26',basis:'Pulisic opening game — carries USA attack vs Bolivia'},
+  {player:'Folarin Balogun',team:'USA',opp:'BOL',match:'USA_BOL',stat:'SHOTS',line:2.5,over:true,ml:'-110',conf:62,grade:'LEAN',hitRate:'2.3 shots/90 in qualifiers',basis:'Balogun leads USA forward line vs Bolivia at SoFi'},
+  {player:'Santiago Gimenez',team:'MEX',opp:'VEN',match:'MEX_VEN',stat:'SHOTS',line:3.5,over:true,ml:'-125',conf:68,grade:'ELITE',hitRate:'4.1 shots/90 at Feyenoord 25/26',basis:'Gimenez as striker at Azteca — VEN conceded 2.1 SOT/g in qualifiers'},
+  {player:'Hirving Lozano',team:'MEX',opp:'VEN',match:'MEX_VEN',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:64,grade:'ELITE',hitRate:'2.6 shots/90 in CONCACAF qualifiers',basis:'Chucky vs Venezuela at Azteca — home crowd energy factor'},
+  {player:'Alphonso Davies',team:'CAN',opp:'HON',match:'CAN_HON',stat:'DRIBBLES',line:2.5,over:true,ml:'-125',conf:67,grade:'ELITE',hitRate:'3.4 dribbles/90 at Bayern 25/26',basis:'Davies on left — Honduras right side vulnerable to pace'},
+  {player:'Jonathan David',team:'CAN',opp:'HON',match:'CAN_HON',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:65,grade:'ELITE',hitRate:'3.2 shots/90 at Lille 25/26',basis:'David leads CAN forward line at BMO Field home opener'},
+  {player:'Bruno Fernandes',team:'POR',opp:'IDN',match:'POR_IDN',stat:'SHOTS',line:3.5,over:true,ml:'-135',conf:71,grade:'LOCK',hitRate:'3.8 shots/90 in qualifiers',basis:'Fernandes leads POR vs Indonesia — heavy shot ownership expected'},
+  {player:'Rafael Leão',team:'POR',opp:'IDN',match:'POR_IDN',stat:'SHOTS',line:2.5,over:true,ml:'-120',conf:67,grade:'ELITE',hitRate:'2.9 shots/90 at AC Milan 25/26',basis:'Leão on left wing vs Indonesia — will dominate defensively outmatched team'},
+  {player:'Cody Gakpo',team:'NED',opp:'NGA',match:'NED_NGA',stat:'SHOTS',line:2.5,over:true,ml:'-115',conf:64,grade:'ELITE',hitRate:'2.8 shots/90 at Liverpool 25/26',basis:'Gakpo as Netherlands number 9 — Nigeria high-line opens space'},
+  {player:'Memphis Depay',team:'NED',opp:'NGA',match:'NED_NGA',stat:'GOAL+AST',line:0.5,over:true,ml:'-125',conf:66,grade:'ELITE',hitRate:'0.69 G+A/90 in qualifiers',basis:'Depay as supersub or starter — direct contribution vs Nigeria'}
+];
+function _wcP(eH,eA){return 1/(1+Math.pow(10,(eA-eH)/400));}
+function _wcOut(eH,eA){
+  var p=_wcP(eH,eA),diff=Math.abs(eH-eA);
+  var draw=Math.max(0.14,Math.min(0.30,0.28-diff*0.00008));
+  var hw=p*(1-draw),aw=(1-p)*(1-draw);
+  var tot=hw+draw+aw;
+  return{h:hw/tot,d:draw/tot,a:aw/tot};
+}
+function _wcML(p){if(p>=0.5)return'-'+Math.round(p/(1-p)*100);return'+'+Math.round((1-p)/p*100);}
+function _wcGrade(p){if(p>0.68)return'LOCK';if(p>0.58)return'ELITE';if(p>0.52)return'LEAN';return'EVEN';}
+function _wcGradeColor(g){return g==='LOCK'?'var(--gc)':g==='ELITE'?'var(--nc)':g==='LEAN'?'var(--mc)':'var(--t3)';}
+function _wcFmtDate(d){var parts=d.split('-');var mo=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];return mo[parseInt(parts[1])-1]+' '+parseInt(parts[2]);}
+function renderWCMatches(){
+  var el=document.getElementById('wc-matches-list');if(!el)return;
+  var today=new Date().toISOString().slice(0,10);
+  // group by date
+  var byDate={};
+  WC26_SCHEDULE.forEach(function(m){if(!byDate[m.date])byDate[m.date]=[];byDate[m.date].push(m);});
+  var dates=Object.keys(byDate).sort();
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px;padding:0 12px">⚽ FIFA WORLD CUP 2026 · GROUP STAGE</div>';
+  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:14px;padding:0 12px">HOSTS: USA · CANADA · MEXICO · JUNE 11 – JULY 19</div>';
+  dates.forEach(function(d){
+    var isToday=d===today,isTomorrow=d===new Date(Date.now()+86400000).toISOString().slice(0,10);
+    var badge=isToday?'<span style="background:var(--hc);color:#000;font-size:9px;padding:2px 5px;border-radius:1px;margin-left:6px">TODAY</span>'
+      :isTomorrow?'<span style="background:var(--gc);color:#000;font-size:9px;padding:2px 5px;border-radius:1px;margin-left:6px">TOMORROW</span>':'';
+    html+='<div style="font-family:var(--mono);font-size:12px;color:var(--gc);letter-spacing:2px;padding:10px 12px 6px;border-top:1px solid rgba(255,200,0,.15)">'+_wcFmtDate(d)+badge+'</div>';
+    byDate[d].forEach(function(m){
+      var o=_wcOut(m.he,m.ae);
+      var pick=o.h>o.a?m.home:o.a>o.h?m.away:'DRAW';
+      var pickProb=o.h>o.a?o.h:o.a>o.h?o.a:o.d;
+      var ml=_wcML(pickProb);
+      var grade=_wcGrade(pickProb);
+      var gradeClr=_wcGradeColor(grade);
+      html+='<div class="card" style="margin:0 8px 6px;border-left:2px solid rgba(255,200,0,.3)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">GROUP '+m.group+' · '+m.time+'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">'+m.venue+'</div>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        +'<div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--t1)">'+m.hf+' '+m.home+'</div>'
+        +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3)">vs</div>'
+        +'<div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--t1)">'+m.away+' '+m.af+'</div>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        +'<div style="display:flex;gap:6px">'
+        +'<span style="font-family:var(--mono);font-size:11px;color:var(--nc)">H '+Math.round(o.h*100)+'%</span>'
+        +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">D '+Math.round(o.d*100)+'%</span>'
+        +'<span style="font-family:var(--mono);font-size:11px;color:var(--mc)">A '+Math.round(o.a*100)+'%</span>'
+        +'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px">'
+        +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+gradeClr+'">'+grade+'</span>'
+        +'<span style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+ml+'</span>'
+        +'</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<button class="btn btn-p btn-sm" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.home+'\','+o.h.toFixed(3)+','+(_wcML(o.h))+',\'Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK '+m.hf+' '+m.home+'</button>'
+        +'<button class="btn btn-o btn-sm" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.away+'\','+o.a.toFixed(3)+','+(_wcML(o.a))+',\'Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK '+m.af+' '+m.away+'</button>'
+        +'<button class="btn btn-sm" style="background:rgba(255,255,255,.06);color:var(--t2)" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'DRAW\','+o.d.toFixed(3)+','+(_wcML(o.d))+',\'Group '+m.group+' · '+m.home+' vs '+m.away+' · DRAW\',\''+m.date+'\')">+DRAW</button>'
+        +'</div>'
+        +'</div>';
+    });
+  });
+  el.innerHTML=html;
+}
+function renderWCGroups(){
+  var el=document.getElementById('wc-groups-list');if(!el)return;
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px;padding:0 12px">GROUP STAGE · 12 GROUPS · 48 TEAMS</div>';
+  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:14px;padding:0 12px">ELO-PROJECTED STANDINGS · TOP 2 ADVANCE AUTOMATICALLY</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 8px">';
+  WC26_GROUPS.forEach(function(g){
+    var sorted=[...g.teams].sort(function(a,b){return b.e-a.e;});
+    html+='<div class="card" style="border-top:2px solid var(--gc);padding:10px">'
+      +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc);letter-spacing:2px;margin-bottom:8px">GROUP '+g.id+'</div>';
+    sorted.forEach(function(t,i){
+      var adv=i<2;
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;'+(i<2?'border-bottom:1px solid rgba(255,200,0,.08)':'')+'">'
+        +'<div style="display:flex;align-items:center;gap:5px">'
+        +'<span style="font-size:14px">'+t.f+'</span>'
+        +'<span style="font-family:var(--mono);font-size:11px;color:'+(adv?'var(--t1)':'var(--t3)')+'">'+t.n+'</span>'
+        +(adv?'<span style="background:rgba(255,200,0,.2);color:var(--gc);font-size:8px;padding:1px 3px;border-radius:1px">ADV</span>':'')
+        +'</div>'
+        +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">'+t.e+'</span>'
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
+function renderWCBracket(){
+  var el=document.getElementById('wc-bracket-list');if(!el)return;
+  var sl='style="font-family:var(--mono);font-size:11px;color:var(--t3);border:1px solid rgba(255,255,255,.08);border-radius:2px;padding:4px 8px;text-align:center;min-width:80px"';
+  var tbd='<div '+sl+'>TBD</div>';
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px;padding:0 12px">KNOCKOUT BRACKET</div>';
+  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:14px;padding:0 12px">ROUND OF 32 → R16 → QF → SF → FINAL · LOCKS AFTER GROUP STAGE</div>';
+  var rounds=[
+    {label:'ROUND OF 32',slots:16},
+    {label:'ROUND OF 16',slots:8},
+    {label:'QUARTER-FINALS',slots:4},
+    {label:'SEMI-FINALS',slots:2},
+    {label:'FINAL',slots:1}
+  ];
+  html+='<div style="overflow-x:auto;padding:0 8px"><div style="display:flex;gap:12px;min-width:600px;align-items:flex-start">';
+  rounds.forEach(function(r){
+    html+='<div style="flex:1">'
+      +'<div style="font-family:var(--mono);font-size:9px;color:var(--gc);letter-spacing:2px;text-align:center;margin-bottom:8px">'+r.label+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:4px">';
+    for(var i=0;i<r.slots;i++){html+=tbd;}
+    html+='</div></div>';
+  });
+  html+='</div></div>';
+  html+='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:20px 12px;text-align:center">Bracket populates after group stage concludes · June 24-25 2026</div>';
+  el.innerHTML=html;
+}
+function renderWCPicks(){
+  var el=document.getElementById('wc-picks-list');if(!el)return;
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px;padding:0 12px">MODEL PICKS · ELO-WEIGHTED</div>';
+  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:14px;padding:0 12px">'+WC26_SCHEDULE.length+' MATCHES · OPENING WEEK JUNE 11–17</div>';
+  WC26_SCHEDULE.forEach(function(m){
+    var o=_wcOut(m.he,m.ae);
+    var hPickBetter=o.h>o.a;
+    var pick=hPickBetter?m.home:m.away;
+    var pickF=hPickBetter?m.hf:m.af;
+    var prob=hPickBetter?o.h:o.a;
+    var ml=_wcML(prob);
+    var grade=_wcGrade(prob);
+    var gradeClr=_wcGradeColor(grade);
+    var pickCode=hPickBetter?m.hc:m.ac;
+    html+='<div class="card" style="margin:0 8px 6px;display:flex;justify-content:space-between;align-items:center">'
+      +'<div>'
+      +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px;margin-bottom:3px">GROUP '+m.group+' · '+_wcFmtDate(m.date)+'</div>'
+      +'<div style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--t1)">'+pickF+' '+pick+'</div>'
+      +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px">'+m.home+' vs '+m.away+'</div>'
+      +'</div>'
+      +'<div style="text-align:right">'
+      +'<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:'+gradeClr+';margin-bottom:3px">'+grade+'</div>'
+      +'<div style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+Math.round(prob*100)+'% · '+ml+'</div>'
+      +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+pick+'\','+prob.toFixed(3)+','+ml+',\'WC26 Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK</button>'
+      +'</div>'
+      +'</div>';
+  });
+  el.innerHTML=html;
+}
+function renderWCProps(){
+  var el=document.getElementById('wc-props-list');if(!el)return;
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px;padding:0 12px">PLAYER PROPS · WC26 OPENING WEEK</div>';
+  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:14px;padding:0 12px">'+WC26_PROPS.length+' PROPS · SHOTS · ASSISTS · DRIBBLES · GOAL+AST</div>';
+  var byMatch={};
+  WC26_PROPS.forEach(function(p){if(!byMatch[p.match])byMatch[p.match]=[];byMatch[p.match].push(p);});
+  Object.keys(byMatch).forEach(function(mk){
+    var props=byMatch[mk];
+    var m=props[0];
+    html+='<div style="font-family:var(--mono);font-size:11px;color:var(--gc);letter-spacing:2px;padding:10px 12px 5px;border-top:1px solid rgba(255,200,0,.12)">'+m.team+' vs '+m.opp+'</div>';
+    props.forEach(function(p){
+      var gradeClr=_wcGradeColor(p.grade);
+      var dir=p.over?'OVER':'UNDER';
+      var dirClr=p.over?'var(--nc)':'var(--mc)';
+      html+='<div class="card" style="margin:0 8px 5px;border-left:2px solid '+gradeClr+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        +'<div>'
+        +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--t1);margin-bottom:2px">'+p.player+'</div>'
+        +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">'+p.stat+' <span style="color:'+dirClr+'">'+dir+' '+p.line+'</span></div>'
+        +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:3px">'+p.hitRate+'</div>'
+        +'</div>'
+        +'<div style="text-align:right">'
+        +'<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+gradeClr+'">'+p.grade+'</div>'
+        +'<div style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+p.conf+'% · '+p.ml+'</div>'
+        +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+p.team+'\',\''+p.opp+'\',\'SOC\',\''+p.player+' '+dir+' '+p.line+' '+p.stat+'\','+(p.conf/100).toFixed(2)+','+p.ml+',\'WC26 PROP · '+p.player+' '+p.stat+' '+dir+' '+p.line+'\',\'2026-06-13\')">+PICK</button>'
+        +'</div>'
+        +'</div>'
+        +'</div>';
+    });
+  });
+  el.innerHTML=html;
+}
+window.renderWCMatches=renderWCMatches;
+window.renderWCGroups=renderWCGroups;
+window.renderWCBracket=renderWCBracket;
+window.renderWCPicks=renderWCPicks;
+window.renderWCProps=renderWCProps;
 
 function renderWNBAContent(){
   const D=window.__CV_DATA||{};
