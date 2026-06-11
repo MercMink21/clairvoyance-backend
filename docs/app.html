@@ -12240,16 +12240,30 @@ async function _genPerfGraphic(periodLabel,sublabel,perf){
   _glowText(ctx,'Model outputs are probabilistic projections. Not financial advice.',W/2,H-36,'12px Orbitron','rgba(220,190,255,.3)',3);
 
   // ── DOWNLOAD ─────────────────────────────────────────────────────────────
-  cv.toBlob(function(blob){
+  cv.toBlob(async function(blob){
+    const slug=periodLabel.toLowerCase().replace(/[\s/]+/g,'-');
+    const fname='clairvoyance-'+slug+'.png';
+    if(window.showSaveFilePicker){
+      try{
+        const fh=await window.showSaveFilePicker({
+          suggestedName:fname,
+          startIn:'desktop',
+          types:[{description:'PNG Image',accept:{'image/png':['.png']}}]
+        });
+        const ws=await fh.createWritable();
+        await ws.write(blob);
+        await ws.close();
+        toast('// GRAPHIC SAVED — '+periodLabel);
+        return;
+      }catch(e){if(e.name==='AbortError')return;}
+    }
+    // fallback for Safari / Firefox
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    const slug=periodLabel.toLowerCase().replace(/[\s/]+/g,'-');
-    a.download='social posts/clairvoyance-'+slug+'.png';
-    a.href=url;
-    document.body.appendChild(a);
-    a.click();
+    a.download=fname;a.href=url;
+    document.body.appendChild(a);a.click();
     setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},500);
-    toast('// GRAPHIC EXPORTED — '+periodLabel+' — check Downloads/social posts');
+    toast('// GRAPHIC EXPORTED — '+periodLabel);
   },'image/png');
 }
 
