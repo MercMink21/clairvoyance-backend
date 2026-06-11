@@ -12076,18 +12076,235 @@ function downloadPickCard(i){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PERFORMANCE GRAPHIC EXPORT — Canvas 1080×1080
+// ═══════════════════════════════════════════════════════════════════════════
+function _cfBg(ctx,W,H){
+  ctx.fillStyle='rgb(16,16,16)';ctx.fillRect(0,0,W,H);
+  const S=14;
+  for(let row=0;row<Math.ceil(H/(S/2))+2;row++){
+    for(let col=0;col<Math.ceil(W/S)+2;col++){
+      const x=col*S-S,y=row*(S/2)-(S/2);
+      const ox=(row%2===1)?S/2:0;
+      const g=ctx.createLinearGradient(x+ox,y,x+ox+S,y+S/2);
+      g.addColorStop(0,'rgba(10,10,10,.95)');g.addColorStop(0.35,'rgba(32,32,32,.8)');
+      g.addColorStop(0.5,'rgba(50,50,51,1)');g.addColorStop(0.65,'rgba(32,32,32,.8)');
+      g.addColorStop(1,'rgba(10,10,10,.95)');
+      ctx.fillStyle=g;ctx.fillRect(x+ox,y,S,S/2);
+    }
+  }
+  ctx.save();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=.5;
+  for(let x=0;x<W;x+=S){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=S/2){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+  const v=ctx.createRadialGradient(W/2,H/2,W*.15,W/2,H/2,W*.75);
+  v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.55)');
+  ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+}
+function _hudCorners(ctx,W,H){
+  const ARM=54,IN=22,LW=2.5,C='rgb(0,215,240)';
+  ctx.save();ctx.strokeStyle=C;ctx.lineWidth=LW;ctx.shadowColor=C;ctx.shadowBlur=10;
+  [[IN,IN,1,1],[W-IN,IN,-1,1],[IN,H-IN,1,-1],[W-IN,H-IN,-1,-1]].forEach(([x,y,dx,dy])=>{
+    ctx.beginPath();ctx.moveTo(x+dx*ARM,y);ctx.lineTo(x,y);ctx.lineTo(x,y+dy*ARM);ctx.stroke();
+  });
+  ctx.restore();
+}
+function _eyeLogo(ctx,cx,cy){
+  const P='rgb(240,0,255)',C='rgb(0,240,255)';
+  ctx.save();
+  // outer ring
+  ctx.strokeStyle=P;ctx.lineWidth=2.5;ctx.shadowColor=P;ctx.shadowBlur=18;
+  ctx.beginPath();ctx.arc(cx,cy,44,0,Math.PI*2);ctx.stroke();
+  // mid ring
+  ctx.strokeStyle=C;ctx.lineWidth=1.5;ctx.shadowColor=C;ctx.shadowBlur=12;
+  ctx.beginPath();ctx.arc(cx,cy,30,0,Math.PI*2);ctx.stroke();
+  // core
+  const rad=ctx.createRadialGradient(cx,cy,0,cx,cy,14);
+  rad.addColorStop(0,'rgb(255,120,255)');rad.addColorStop(1,'rgb(240,0,255)');
+  ctx.fillStyle=rad;ctx.shadowColor=P;ctx.shadowBlur=25;
+  ctx.beginPath();ctx.arc(cx,cy,10,0,Math.PI*2);ctx.fill();
+  // crosshairs
+  ctx.strokeStyle=C;ctx.lineWidth=1.2;ctx.shadowColor=C;ctx.shadowBlur=8;
+  [[cx,cy-30,cx,cy-50],[cx,cy+30,cx,cy+50],[cx-30,cy,cx-50,cy],[cx+30,cy,cx+50,cy]].forEach(([x1,y1,x2,y2])=>{
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  });
+  ctx.restore();
+}
+function _glowText(ctx,txt,x,y,font,col,blur,align){
+  ctx.save();ctx.font=font;ctx.textAlign=align||'center';ctx.textBaseline='middle';
+  ctx.shadowColor=col;ctx.shadowBlur=blur||16;
+  ctx.fillStyle=col;ctx.fillText(txt,x,y);
+  ctx.shadowBlur=blur*.4||6;ctx.fillText(txt,x,y);
+  ctx.restore();
+}
+async function _genPerfGraphic(periodLabel,sublabel,perf){
+  const W=1080,H=1080;
+  // ensure font loaded
+  try{await document.fonts.load('bold 72px Orbitron');}catch(e){}
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  const P='rgb(240,0,255)',C='rgb(0,240,255)',WH='rgb(232,240,255)';
+  const pct=perf.pct;
+  const pctCol=pct===null?WH:pct>=.62?C:pct>=.50?'rgb(187,255,0)':'rgb(255,32,144)';
+  const uCol=perf.units>=0?C:'rgb(255,32,144)';
+  const dateStr=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+
+  // ── BACKGROUND ──────────────────────────────────────────────────────────
+  _cfBg(ctx,W,H);
+
+  // ── HUD CORNERS ──────────────────────────────────────────────────────────
+  _hudCorners(ctx,W,H);
+
+  // ── DATE top-right ────────────────────────────────────────────────────
+  _glowText(ctx,dateStr,W-44,44,'14px Orbitron',C,8,'right');
+
+  // ── EYE LOGO ──────────────────────────────────────────────────────────────
+  _eyeLogo(ctx,W/2,128);
+
+  // ── TITLE ────────────────────────────────────────────────────────────────
+  _glowText(ctx,'CLAIRVOYANCE',W/2,228,'bold 72px Orbitron',P,22);
+  _glowText(ctx,'PREDICTIVE SPORTS INTELLIGENCE ENGINE',W/2,276,'15px Orbitron',C,10);
+  _glowText(ctx,'SEE WHAT OTHERS CANNOT',W/2,302,'13px Orbitron','rgba(0,240,255,.55)',6);
+
+  // ── RULE 1 ────────────────────────────────────────────────────────────────
+  ctx.save();ctx.strokeStyle=C;ctx.lineWidth=1;ctx.globalAlpha=.45;
+  ctx.beginPath();ctx.moveTo(44,328);ctx.lineTo(W-44,328);ctx.stroke();ctx.restore();
+
+  // ── SECTION LABEL ─────────────────────────────────────────────────────
+  _glowText(ctx,'// ENGINE PERFORMANCE',W/2,362,'13px Orbitron','rgba(220,190,255,.55)',4);
+
+  // ── PERIOD ───────────────────────────────────────────────────────────────
+  _glowText(ctx,periodLabel,W/2,420,'bold 52px Orbitron',C,18);
+  if(sublabel)_glowText(ctx,sublabel,W/2,462,'18px Orbitron','rgba(0,240,255,.5)',6);
+
+  if(perf.n>0){
+    // ── RECORD ────────────────────────────────────────────────────────────
+    const recY=sublabel?540:530;
+    _glowText(ctx,`${perf.w}W  —  ${perf.l}L`,W/2,recY,'bold 88px Orbitron',WH,10);
+    _glowText(ctx,`${perf.n} SETTLED BETS`,W/2,recY+58,'15px Orbitron','rgba(220,190,255,.45)',4);
+
+    // ── STATS ROW ─────────────────────────────────────────────────────────
+    const sy=recY+140;
+    // Win %
+    _glowText(ctx,pct!==null?(pct*100).toFixed(1)+'%':'--',W/2-210,sy,'bold 58px Orbitron',pctCol,18);
+    _glowText(ctx,'WIN RATE',W/2-210,sy+44,'13px Orbitron','rgba(220,190,255,.5)',4);
+    // Units
+    _glowText(ctx,(perf.units>=0?'+':'')+perf.units.toFixed(1)+'u',W/2+210,sy,'bold 58px Orbitron',uCol,18);
+    _glowText(ctx,'NET UNITS',W/2+210,sy+44,'13px Orbitron','rgba(220,190,255,.5)',4);
+
+    // ── PROGRESS BAR ──────────────────────────────────────────────────────
+    const bY=sy+82,bX=80,bW=W-160,bH=10;
+    ctx.save();
+    ctx.fillStyle='rgba(255,255,255,.08)';
+    ctx.beginPath();ctx.roundRect(bX,bY,bW,bH,5);ctx.fill();
+    const fill=Math.round((pct||0)*bW);
+    if(fill>0){
+      ctx.shadowColor=pctCol;ctx.shadowBlur=12;ctx.fillStyle=pctCol;
+      ctx.beginPath();ctx.roundRect(bX,bY,fill,bH,5);ctx.fill();
+    }
+    ctx.restore();
+  } else {
+    _glowText(ctx,'NO BETS IN PERIOD',W/2,560,'32px Orbitron','rgba(220,190,255,.4)',6);
+  }
+
+  // ── RULE 2 ────────────────────────────────────────────────────────────────
+  ctx.save();ctx.strokeStyle=C;ctx.lineWidth=1;ctx.globalAlpha=.35;
+  ctx.beginPath();ctx.moveTo(44,H-140);ctx.lineTo(W-44,H-140);ctx.stroke();ctx.restore();
+
+  // ── RECORD TRACKING ACTIVE bar ─────────────────────────────────────────
+  ctx.save();ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(44,H-128,W-88,28);
+  ctx.strokeStyle='rgba(0,240,255,.2)';ctx.lineWidth=1;
+  ctx.strokeRect(44,H-128,W-88,28);ctx.restore();
+  const dotX=56,dotY=H-114;
+  ctx.save();ctx.fillStyle=C;ctx.shadowColor=C;ctx.shadowBlur=8;
+  ctx.beginPath();ctx.arc(dotX,dotY,4,0,Math.PI*2);ctx.fill();ctx.restore();
+  _glowText(ctx,'RECORD TRACKING ACTIVE — sample accumulating',W/2,H-114,'11px Orbitron','rgba(0,240,255,.65)',4);
+
+  // ── FOOTER ───────────────────────────────────────────────────────────────
+  ctx.save();ctx.fillStyle='rgba(10,0,24,.7)';ctx.fillRect(0,H-100,W,100);ctx.restore();
+  ctx.save();ctx.strokeStyle='rgba(240,0,255,.2)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,H-100);ctx.lineTo(W,H-100);ctx.stroke();ctx.restore();
+  _glowText(ctx,'CLAIRVOYANCE ENGINE',130,H-68,'bold 16px Orbitron',P,10,'left');
+  _glowText(ctx,'@ClairvoyanceEng  ·  @clairvoyanceengine',W-44,H-68,'15px Orbitron',C,8,'right');
+  _glowText(ctx,'Model outputs are probabilistic projections. Not financial advice.',W/2,H-36,'12px Orbitron','rgba(220,190,255,.3)',3);
+
+  // ── DOWNLOAD ─────────────────────────────────────────────────────────────
+  const a=document.createElement('a');
+  a.download='clairvoyance-'+periodLabel.toLowerCase().replace(/[\s/]+/g,'-')+'.png';
+  a.href=cv.toDataURL('image/png');a.click();
+  toast('// GRAPHIC EXPORTED — '+periodLabel);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TRACK RECORD PUBLIC VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 function renderTrackRecord(){
   const el=document.getElementById('social-record-content');if(!el)return;
-  const all=getP().filter(p=>p.outcome!=='pending');
-  const W=all.filter(p=>p.outcome==='win').length,L=all.filter(p=>p.outcome==='loss').length;
-  const N=all.length;const acc=N?W/N:null;
-  const totalU=all.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
-  // Best wins
-  const bestWins=all.filter(p=>p.outcome==='win').sort((a,b)=>(b.decOdds||2)-(a.decOdds||2)).slice(0,5);
+  const allBets=getP();
+  const now=Date.now();
+  const nowD=new Date();
+  const todayStr=today(),ydStr=yesterday();
+  const wk7=now-7*86400000;
+  const firstOfMonth=new Date(nowD.getFullYear(),nowD.getMonth(),1);
+  const firstOfLastMonth=new Date(nowD.getFullYear(),nowD.getMonth()-1,1);
+  const thisMonthLbl=nowD.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
+  const lastMonthLbl=firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
+
+  // same calcPerf as Overall dashboard
+  const cP=bets=>{
+    const s=bets.filter(p=>p.outcome!=='pending');
+    const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;
+    const u=s.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0);
+    return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
+  };
+  const periods=[
+    {key:'TODAY',      label:'TODAY',       sub:'',            perf:cP(allBets.filter(p=>p.date===todayStr))},
+    {key:'YESTERDAY',  label:'YESTERDAY',   sub:'',            perf:cP(allBets.filter(p=>p.date===ydStr))},
+    {key:'ROLLING 7D', label:'ROLLING 7D',  sub:'',            perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
+    {key:'THIS MONTH', label:'THIS MONTH',  sub:thisMonthLbl,  perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
+    {key:'LAST MONTH', label:'LAST MONTH',  sub:lastMonthLbl,  perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
+    {key:'ALL TIME',   label:'ALL TIME',    sub:'',            perf:cP(allBets)},
+  ];
+
+  const topColors={'TODAY':'rgba(255,32,0,.8)','YESTERDAY':'rgba(0,240,255,.8)','ROLLING 7D':'rgba(187,255,0,.7)','THIS MONTH':'rgba(0,240,255,.65)','LAST MONTH':'rgba(240,0,255,.7)','ALL TIME':'rgba(255,221,0,.9)'};
+  const pC=p=>p===null?'rgba(220,190,255,.5)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
+  const uC=u=>u>=0?'#00f0ff':'#ff2090';
+
+  // export cards grid
+  const exportCards=periods.map(per=>{
+    const p=per.perf,tc=topColors[per.key]||'rgba(0,240,255,.7)';
+    const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'--';
+    const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+    return`<div class="card" style="padding:11px 12px;border-top:2px solid ${tc};min-width:0">
+      <div style="font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:${tc};margin-bottom:7px">${per.label}${per.sub?'<span style="color:rgba(220,190,255,.4);margin-left:4px;font-size:8px">'+per.sub+'</span>':''}</div>
+      ${p.n>0?`
+      <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgb(232,240,255);margin-bottom:5px">${p.w}W-${p.l}L</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:${pC(p.pct)}">${pctStr}</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:${uC(p.units)}">${unitStr}</span>
+      </div>
+      <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:8px">
+        <div style="width:${Math.round((p.pct||0)*100)}%;height:100%;background:${pC(p.pct)};border-radius:2px"></div>
+      </div>`
+      :`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.35);padding:10px 0 8px">NO BETS</div>`}
+      <button class="btn btn-sm" style="width:100%;background:rgba(240,0,255,.1);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:10px;padding:5px 0"
+        onclick="_genPerfGraphic('${per.label}','${per.sub}',${JSON.stringify(p)})">⬇ EXPORT PNG</button>
+    </div>`;
+  }).join('');
+
+  // existing track record section
+  const settled=allBets.filter(p=>p.outcome!=='pending');
+  const W2=settled.filter(p=>p.outcome==='win').length,L2=settled.filter(p=>p.outcome==='loss').length;
+  const acc=settled.length?W2/settled.length:null;
+  const totalU=settled.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
+  const bestWins=settled.filter(p=>p.outcome==='win').sort((a,b)=>(b.decOdds||2)-(a.decOdds||2)).slice(0,5);
   const shareUrl=location.origin+location.pathname;
-  el.innerHTML=`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:14px;line-height:1.8">Your public track record. Share this link to show your verified betting record.<br><a href="${shareUrl}" style="color:#00f0ff">${shareUrl}</a></div>
+
+  el.innerHTML=`
+  <div style="font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// PERFORMANCE GRAPHICS EXPORT</div>
+  <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-bottom:12px">1080×1080 PNG · Carbon fiber · Orbitron · Tap EXPORT PNG to download</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">${exportCards}</div>
+  <div style="height:1px;background:rgba(240,0,255,.2);margin-bottom:14px"></div>
+  <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:14px;line-height:1.8">Your public track record.<br><a href="${shareUrl}" style="color:#00f0ff">${shareUrl}</a></div>
   <div style="background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:2px solid rgba(240,0,255,.35);border-radius:4px;padding:16px;margin-bottom:14px;box-shadow:0 0 30px rgba(240,0,255,.1)">
     <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:3px;margin-bottom:12px;text-shadow:0 0 8px #f000ff">CLAIRVOYANCE · TRACK RECORD</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -12096,7 +12313,7 @@ function renderTrackRecord(){
         <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">WIN RATE</div>
       </div>
       <div style="text-align:center;padding:10px;background:rgba(240,0,255,.06);border:1px solid rgba(240,0,255,.2);border-radius:2px">
-        <div style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:#f000ff">${W}-${L}</div>
+        <div style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:#f000ff">${W2}-${L2}</div>
         <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">RECORD</div>
       </div>
       <div style="text-align:center;padding:10px;background:rgba(${totalU>=0?'0,240,255':'255,32,144'},.06);border:1px solid rgba(${totalU>=0?'0,240,255':'255,32,144'},.2);border-radius:2px">
@@ -12104,10 +12321,9 @@ function renderTrackRecord(){
         <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);margin-top:2px">NET UNITS</div>
       </div>
     </div>
-    ${bestWins.length?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:8px">BEST WINS</div>`+
-    bestWins.map(b=>`<div style="font-family:var(--mono);font-size:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(220,190,255,.8)">${b.sport} · ${b.betOn} · <span style="color:#00f0ff">${b.ml}</span> · ${b.date||''}</div>`).join(''):''}
+    ${bestWins.length?'<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:8px">BEST WINS</div>'+bestWins.map(b=>`<div style="font-family:var(--mono);font-size:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(220,190,255,.8)">${b.sport} · ${b.betOn} · <span style="color:#00f0ff">${b.ml}</span> · ${b.date||''}</div>`).join(''):''}
   </div>
-  <button onclick="navigator.share&&navigator.share({title:'My Betting Record — Clairvoyance',text:'${W}W-${L}L ${acc!=null?(acc*100).toFixed(1)+'%':''}  · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · Verified by Clairvoyance Engine',url:'${shareUrl}'}).catch(()=>{});!navigator.share&&navigator.clipboard?.writeText('${W}W-${L}L · ${acc!=null?(acc*100).toFixed(1)+'%':''} · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · ${shareUrl}').then(()=>toast('// COPIED RECORD TO CLIPBOARD'))" style="width:100%;padding:12px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.45);color:#f000ff;font-family:var(--mono);font-size:13px;border-radius:2px;cursor:pointer">SHARE MY RECORD</button>`;
+  <button onclick="navigator.share&&navigator.share({title:'My Betting Record — Clairvoyance',text:'${W2}W-${L2}L ${acc!=null?(acc*100).toFixed(1)+'%':''}  · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · Verified by Clairvoyance Engine',url:'${shareUrl}'}).catch(()=>{});!navigator.share&&navigator.clipboard?.writeText('${W2}W-${L2}L · ${acc!=null?(acc*100).toFixed(1)+'%':''} · ${totalU>=0?'+':''}${totalU.toFixed(1)}u · ${shareUrl}').then(()=>toast('// COPIED RECORD TO CLIPBOARD'))" style="width:100%;padding:12px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.45);color:#f000ff;font-family:var(--mono);font-size:13px;border-radius:2px;cursor:pointer">SHARE MY RECORD</button>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
