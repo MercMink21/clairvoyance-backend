@@ -1019,6 +1019,7 @@ body{line-height:1.5}
     <button class="nb" onclick="T('ovr','history')">ALL BETS</button>
     <button class="nb" onclick="T('ovr','adaptive')">ADAPTIVE</button>
     <button class="nb" onclick="T('ovr','sync')">SYNC</button>
+    <button class="nb" onclick="T('ovr','ops');renderEngineOps()">ENGINE OPS</button>
   </nav>
   <div class="sa" id="ovr-sa">
     <div id="ovr-tab-dash" class="tab act">
@@ -1053,6 +1054,10 @@ body{line-height:1.5}
     <div id="ovr-tab-sync" class="tab">
       <div class="sh"><span class="gc"></span> CROSS-DEVICE SYNC</div>
       <div id="ovr-sync"><div class="loading"><span class="spi"></span></div></div>
+    </div>
+    <div id="ovr-tab-ops" class="tab">
+      <div class="sh"><span class="gc"></span> ENGINE OPS</div>
+      <div id="ovr-ops-content"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <!-- Analytics/CLV moved to Analytics tab -->
     <div id="ovr-analytics-content" style="display:none"></div>
@@ -7721,6 +7726,171 @@ function renderAdaptiveLearning(){
   el.innerHTML=html;
 }
 
+// ── ENGINE OPS ───────────────────────────────────────────────────────────────
+function renderEngineOps(){
+  const el=document.getElementById('ovr-ops-content');if(!el)return;
+  const _log=[];
+  const opsLog=JSON.parse(localStorage.getItem('ops_log')||'[]');
+
+  const sec=(title,color,id,body)=>`
+    <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;border-top:2px solid ${color}">
+      <div style="padding:10px 12px;background:rgba(10,0,24,.8)">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:${color};margin-bottom:8px">${title}</div>
+        ${body}
+      </div>
+      <div id="${id}-log" style="background:rgba(4,0,12,.6);padding:8px 12px;min-height:36px;display:none">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">// OUTPUT</div>
+        <div id="${id}-log-lines" style="font-family:var(--mono);font-size:11px;line-height:1.7;color:var(--t2)"></div>
+      </div>
+    </div>`;
+
+  const btnRow=(...btns)=>`<div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div>`;
+  const btn=(label,onclick,style='btn-p')=>`<button class="btn ${style} btn-sm" onclick="${onclick}">${label}</button>`;
+
+  // ── PROP REFRESH ──────────────────────────────────────────────────────────
+  const propSection=sec('⚡ PLAYER PROP REFRESH','var(--nc)','ops-props',`
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:10px">Re-fetch player prop lines and settle pending props via ESPN box scores.</div>
+    ${btnRow(
+      btn('MLB PROPS','opsRunProps(\'MLB\',this)','btn-p'),
+      btn('NBA PROPS','opsRunProps(\'NBA\',this)','btn-p'),
+      btn('WNBA PROPS','opsRunProps(\'WNBA\',this)','btn-p'),
+      btn('NHL PROPS','opsRunProps(\'NHL\',this)','btn-p')
+    )}
+    <div style="margin-top:8px">
+      ${btn('⚡ RUN ALL PROPS','opsRunProps(\'ALL\',this)','btn-n')}
+      ${btn('AUTO-SETTLE PROPS','autoSettlePropsESPN().then(()=>{opsLog(\'ops-props\',\'✓ props settled\');renderOverallHistory()})','btn-o')}
+    </div>`);
+
+  // ── STAT REINTEGRATION ───────────────────────────────────────────────────
+  const statSection=sec('📊 STAT REINTEGRATION','var(--pc)','ops-stats',`
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:10px">Pull latest player stats into engine model layers for each sport.</div>
+    ${btnRow(
+      btn('NBA STATS','opsRunStats(\'NBA\',this)','btn-p'),
+      btn('WNBA STATS','opsRunStats(\'WNBA\',this)','btn-p'),
+      btn('MLB STATS','opsRunStats(\'MLB\',this)','btn-p'),
+      btn('NHL STATS','opsRunStats(\'NHL\',this)','btn-p')
+    )}
+    <div style="margin-top:8px">
+      ${btn('↻ REFRESH ALL STATS','opsRunStats(\'ALL\',this)','btn-n')}
+    </div>`);
+
+  // ── SCHEDULE CHECK ────────────────────────────────────────────────────────
+  const schedSection=sec('📅 SCHEDULE CHECK / REFRESH','var(--gc)','ops-sched',`
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:10px">Verify and reload today\'s game schedules for each sport from ESPN.</div>
+    ${btnRow(
+      btn('MLB','opsRunSched(\'MLB\',this)','btn-p'),
+      btn('NBA','opsRunSched(\'NBA\',this)','btn-p'),
+      btn('WNBA','opsRunSched(\'WNBA\',this)','btn-p'),
+      btn('NHL','opsRunSched(\'NHL\',this)','btn-p'),
+      btn('SOCCER','opsRunSched(\'SOC\',this)','btn-p')
+    )}
+    <div style="margin-top:8px">
+      ${btn('↻ REFRESH ALL SCHEDULES','opsRunSched(\'ALL\',this)','btn-n')}
+    </div>`);
+
+  // ── OPS LOG ───────────────────────────────────────────────────────────────
+  const logRows=opsLog.slice(-20).reverse().map(e=>{
+    const col=e.status==='ok'?'var(--nc)':e.status==='err'?'var(--hc)':'var(--t3)';
+    return`<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap;min-width:80px">${e.time}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:${col};flex:1">${e.msg}</span>
+    </div>`;
+  }).join('');
+
+  const histSection=`<div class="card" style="padding:10px 12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--t3)">// OPS HISTORY</span>
+      <button class="btn btn-sm" style="color:var(--hc);border-color:var(--hc);font-size:10px" onclick="localStorage.removeItem('ops_log');renderEngineOps()">CLEAR LOG</button>
+    </div>
+    ${logRows||'<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">NO OPS RUN YET</div>'}
+  </div>`;
+
+  el.innerHTML=propSection+statSection+schedSection+histSection;
+}
+
+// ── OPS HELPERS ───────────────────────────────────────────────────────────────
+function _opsLog(sectionId,msg,status){
+  const logBox=document.getElementById(sectionId+'-log');
+  const logLines=document.getElementById(sectionId+'-log-lines');
+  if(logBox)logBox.style.display='block';
+  if(logLines){
+    const ts=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    logLines.innerHTML+=`<div><span style="color:var(--t3)">${ts}</span> ${msg}</div>`;
+    logBox.scrollTop=logBox.scrollHeight;
+  }
+  // persist to ops_log
+  try{
+    const log=JSON.parse(localStorage.getItem('ops_log')||'[]');
+    const ts2=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    log.push({time:ts2,msg,status:status||'ok'});
+    if(log.length>100)log.splice(0,log.length-100);
+    localStorage.setItem('ops_log',JSON.stringify(log));
+  }catch(e){}
+}
+
+async function opsRunProps(sport,btn){
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳...';}
+  const sectionId='ops-props';
+  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL']:[sport];
+  _opsLog(sectionId,`▶ PROP REFRESH — ${sport}`);
+  for(const s of sports){
+    try{
+      _opsLog(sectionId,`  · ${s}: fetching props...`);
+      if(s==='NBA'){await Promise.resolve(renderNBAProps&&renderNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
+      else if(s==='WNBA'){await Promise.resolve(renderWNBAProps&&renderWNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
+      else if(s==='MLB'){await Promise.resolve(renderProps&&renderProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
+      else if(s==='NHL'){await Promise.resolve(renderNHLPropsLive&&renderNHLPropsLive());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
+    }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
+  }
+  try{
+    _opsLog(sectionId,'  · settling pending props via ESPN box scores...');
+    await autoSettlePropsESPN();
+    renderOverallHistory();
+    _opsLog(sectionId,'✓ PROP REFRESH COMPLETE');
+  }catch(e){_opsLog(sectionId,'✗ settle error: '+e.message,'err');}
+  if(btn){btn.disabled=false;btn.textContent=orig;}
+}
+
+async function opsRunStats(sport,btn){
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳...';}
+  const sectionId='ops-stats';
+  const sports=sport==='ALL'?['NBA','WNBA','MLB','NHL']:[sport];
+  _opsLog(sectionId,`▶ STAT UPDATE — ${sport}`);
+  for(const s of sports){
+    try{
+      _opsLog(sectionId,`  · ${s}: pulling stats...`);
+      if(s==='NBA'){renderNBAStats&&renderNBAStats();renderNBAPlayers&&renderNBAPlayers();_opsLog(sectionId,`  · ${s}: ✓ stats updated`);}
+      else if(s==='WNBA'){renderWNBAProps&&renderWNBAProps();_opsLog(sectionId,`  · ${s}: ✓ WNBA stats refreshed`);}
+      else if(s==='MLB'){renderMLBEnginePicks&&renderMLBEnginePicks();_opsLog(sectionId,`  · ${s}: ✓ MLB model picks refreshed`);}
+      else if(s==='NHL'){renderNHLPropsLive&&renderNHLPropsLive();_opsLog(sectionId,`  · ${s}: ✓ NHL stats refreshed`);}
+    }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
+  }
+  _opsLog(sectionId,'✓ STAT UPDATE COMPLETE');
+  if(btn){btn.disabled=false;btn.textContent=orig;}
+}
+
+async function opsRunSched(sport,btn){
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳...';}
+  const sectionId='ops-sched';
+  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','SOC']:[sport];
+  _opsLog(sectionId,`▶ SCHEDULE REFRESH — ${sport}`);
+  for(const s of sports){
+    try{
+      _opsLog(sectionId,`  · ${s}: checking schedule...`);
+      if(s==='MLB'){await loadGames&&loadGames();_opsLog(sectionId,`  · MLB: ✓ ${(ESPN_GAMES||[]).length} games loaded`);}
+      else if(s==='NBA'){renderNBAGames&&renderNBAGames();_opsLog(sectionId,'  · NBA: ✓ schedule refreshed');}
+      else if(s==='WNBA'){renderWNBAGames&&renderWNBAGames(true);_opsLog(sectionId,'  · WNBA: ✓ schedule refreshed');}
+      else if(s==='NHL'){renderNHLGames&&renderNHLGames();_opsLog(sectionId,'  · NHL: ✓ schedule refreshed');}
+      else if(s==='SOC'){renderWCMatches&&renderWCMatches();_opsLog(sectionId,'  · WC26: ✓ matches refreshed');}
+    }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
+  }
+  _opsLog(sectionId,'✓ SCHEDULE REFRESH COMPLETE');
+  if(btn){btn.disabled=false;btn.textContent=orig;}
+}
+
 function renderCrossDeviceSync(){
   const el=document.getElementById('ovr-sync');if(!el)return;
   const preds=getP();
@@ -8662,7 +8832,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   }
   if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
   if(sport==='fut'){renderFuturesPanes(tabId);}
-  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();}
+  if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();if(tabId==='ops')renderEngineOps();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();if(tabId==='monte')renderMonteCarloUI();}
