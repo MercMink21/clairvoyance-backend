@@ -3093,7 +3093,7 @@ function recRFromLog(date,recId,outcome){
 }
 function renderStatusBar(){
   const el=document.getElementById('hdr-status-bar');if(!el)return;
-  const dateStr=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+  const dateStr=getMSTNow().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();
   const syncTs=S.g('last_sync_time')||(window.__CV_DATA?.fetchedAt);
   const refreshStr=syncTs?new Date(syncTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):(window.LAST_AUTO_UPDATE||'--');
   const pending=typeof getPendingUploads==='function'?getPendingUploads().length:0;
@@ -5966,8 +5966,8 @@ function renderOverall(){
   // Period helpers
   const now=Date.now();
   const wk7=now-7*86400000;
-  const d=new Date();const firstOfMonth=new Date(d.getFullYear(),d.getMonth(),1);
-  const firstOfLastMonth=new Date(d.getFullYear(),d.getMonth()-1,1);
+  const _mn=getMSTNow();const firstOfMonth=mstFirstOfMonth(_mn);
+  const firstOfLastMonth=mstFirstOfMonth(new Date(_mn.getFullYear(),_mn.getMonth()-1,1));
   const calcPerf=(bets)=>{
     const s=bets.filter(p=>p.outcome!=='pending');
     const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;
@@ -6699,8 +6699,8 @@ function renderOverallAnalytics(filterUpdate){
   </div>`;
 
   // ── MONTHLY TREND (area chart) ────────────────────────────────────────────
-  const now=new Date();const mData=[];
-  for(let m=5;m>=0;m--){const dt=new Date(now.getFullYear(),now.getMonth()-m,1);const lbl=dt.toLocaleString('en-US',{month:'short',year:'2-digit'});const yrM=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;const mb=settled.filter(p=>{if(!p.lockedAt)return false;const dd=new Date(p.lockedAt);return`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}`===yrM;});const mw=mb.filter(p=>p.outcome==='win').length,ml=mb.filter(p=>p.outcome==='loss').length,mu=mb.reduce((a,p)=>a+pnl(p),0);mData.push({lbl,n:mb.length,w:mw,l:ml,acc:mb.length?mw/mb.length:null,units:mu});}
+  const now=getMSTNow();const mData=[];
+  for(let m=5;m>=0;m--){const dt=new Date(now.getFullYear(),now.getMonth()-m,1);const lbl=dt.toLocaleString('en-US',{month:'short',year:'2-digit'});const yrM=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;const mb=settled.filter(p=>{if(!p.lockedAt)return false;return mstMonthKey(p.lockedAt)===yrM;});const mw=mb.filter(p=>p.outcome==='win').length,ml=mb.filter(p=>p.outcome==='loss').length,mu=mb.reduce((a,p)=>a+pnl(p),0);mData.push({lbl,n:mb.length,w:mw,l:ml,acc:mb.length?mw/mb.length:null,units:mu});}
   const maxMU=Math.max(...mData.map(d=>Math.abs(d.units)),.1);
   const mRows=mData.map(({lbl,n,w,l,acc,units})=>{const col=acc===null?'rgba(200,160,255,.3)':neonCol(acc);const uc=units>=0?'#00f0ff':'#ff2090';const bpct=n?barW(Math.abs(units),maxMU):0;
     return`<tr style="border-bottom:1px solid rgba(240,0,255,.05)"><td style="padding:4px 6px;font-family:var(--mono);font-size:13px;color:rgba(220,180,255,.85)">${lbl}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:13px;color:rgba(220,180,255,.92)">${n}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:13px;color:#00f0ff55">${w}</td><td style="text-align:center;padding:4px 6px;font-family:var(--mono);font-size:13px;color:#ff209055">${l}</td><td style="padding:4px 6px"><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:rgba(240,0,255,.06);border-radius:1px;height:4px;min-width:30px"><div style="width:${n?barW(acc||0,1):0}%;height:100%;background:${col};box-shadow:0 0 4px ${col}55;border-radius:1px"></div></div><span style="font-family:var(--mono);font-size:13px;color:${col}">${pfmt(acc)}</span></div></td><td style="text-align:right;padding:4px 6px"><div style="display:flex;align-items:center;justify-content:flex-end;gap:3px"><div style="width:${bpct}%;height:4px;background:${uc};box-shadow:0 0 4px ${uc}55;border-radius:1px;max-width:36px"></div><span style="font-family:var(--mono);font-size:13px;color:${uc}">${units>=0?'+':''}${units.toFixed(1)}u</span></div></td></tr>`;
@@ -8326,6 +8326,10 @@ function renderHotHandTracker(){
 
 // ═══ MIDNIGHT MST SCHEDULER ══════════════════════════════════
 function getMSTNow(){return new Date(new Date().toLocaleString('en-US',{timeZone:'America/Denver'}));}
+function tsToMST(ts){return new Date(new Date(ts).toLocaleString('en-US',{timeZone:'America/Denver'}));}
+function mstFirstOfMonth(d){const m=d||getMSTNow();return new Date(m.getFullYear(),m.getMonth(),1);}
+function mstMonthKey(ts){const d=tsToMST(ts);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function mstDateLabel(ts,opts){return tsToMST(ts).toLocaleDateString('en-US',{...opts,timeZone:undefined});}
 function getMSTDate(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
 let lastMidDate=null,lastTenDate=null;
 // ─── MIDNIGHT AUTO-REFRESH ────────────────────────────────────────────────────
@@ -8431,10 +8435,10 @@ function renderHomePage(){
   // ── ENGINE PERFORMANCE ──────────────────────────────────────────────────────
   const recEl=document.getElementById('home-engine-record');
   if(recEl){
-    const nowD=new Date();
+    const nowD=getMSTNow();
     const wk7ts=now-7*86400000;
-    const firstOfMonth=new Date(nowD.getFullYear(),nowD.getMonth(),1);
-    const firstOfLastMonth=new Date(nowD.getFullYear(),nowD.getMonth()-1,1);
+    const firstOfMonth=mstFirstOfMonth(nowD);
+    const firstOfLastMonth=mstFirstOfMonth(new Date(nowD.getFullYear(),nowD.getMonth()-1,1));
     const thisMonthLbl=nowD.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
     const lastMonthLbl=firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
 
@@ -8696,7 +8700,7 @@ function renderPerformanceSection(containerId){
   };
   const now=Date.now();const wkAgo=now-7*86400000;
   // Last full calendar month
-  const d=new Date();const firstOfMonth=new Date(d.getFullYear(),d.getMonth(),1);const firstOfLastMonth=new Date(d.getFullYear(),d.getMonth()-1,1);
+  const _mn2=getMSTNow();const firstOfMonth=mstFirstOfMonth(_mn2);const firstOfLastMonth=mstFirstOfMonth(new Date(_mn2.getFullYear(),_mn2.getMonth()-1,1));
   const wkBets=all.filter(p=>p.lockedAt&&p.lockedAt>=wkAgo);
   const moBets=all.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime());
   const wkP=calcPerf(wkBets),moP=calcPerf(moBets),allP=calcPerf(all);
@@ -11513,7 +11517,7 @@ function renderHomeBestBets(){
 
   // Update date display
   const hdd=document.getElementById('home-date-display');
-  if(hdd)hdd.textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  if(hdd)hdd.textContent=getMSTNow().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
   // Locked picks tracker
   renderHomeLockedBets();
@@ -12243,7 +12247,7 @@ async function _genPerfGraphic(periodLabel,sublabel,perf,fh,fname){
   const pct=perf.pct;
   const pctCol=pct===null?WH:pct>=.62?C:pct>=.50?'rgb(187,255,0)':'rgb(255,32,144)';
   const uCol=perf.units>=0?C:'rgb(255,32,144)';
-  const dateStr=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+  const dateStr=getMSTNow().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
 
   // ── BACKGROUND ──────────────────────────────────────────────────────────
   _cfBg(ctx,W,H);
@@ -12353,11 +12357,11 @@ function renderTrackRecord(){
   const el=document.getElementById('social-record-content');if(!el)return;
   const allBets=getP();
   const now=Date.now();
-  const nowD=new Date();
+  const nowD=getMSTNow();
   const todayStr=today(),ydStr=yesterday();
   const wk7=now-7*86400000;
-  const firstOfMonth=new Date(nowD.getFullYear(),nowD.getMonth(),1);
-  const firstOfLastMonth=new Date(nowD.getFullYear(),nowD.getMonth()-1,1);
+  const firstOfMonth=mstFirstOfMonth(nowD);
+  const firstOfLastMonth=mstFirstOfMonth(new Date(nowD.getFullYear(),nowD.getMonth()-1,1));
   const thisMonthLbl=nowD.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
   const lastMonthLbl=firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
 
@@ -17098,7 +17102,7 @@ function renderAnalyticsVisuals(viewFilter){
     const rPath=r10.length>=2?r10.map((v,i)=>`${i===0?'M':'L'}${(rP+i*(rW-2*rP)/(r10.length-1)).toFixed(1)},${(rP+(1-v)*(rH-2*rP)).toFixed(1)}`).join(' '):'';
     const t55=rP+(1-.55)*(rH-2*rP);
     out+=vcrd('ROLLING 10-BET WIN RATE','var(--vc)',`<svg width="${rW}" height="${rH}"><line x1="${rP}" y1="${t55.toFixed(1)}" x2="${rW-rP}" y2="${t55.toFixed(1)}" stroke="#ffdd00" stroke-width="1" stroke-dasharray="3,3" opacity=".6"/>${rPath?`<path d="${rPath}" fill="none" stroke="#bbff00" stroke-width="2"/>`:'<text x="40" y="35" font-family="Share Tech Mono" font-size="11" fill="rgba(200,180,255,.4)">NEED 10+ BETS</text>'}<text x="${rW-rP-2}" y="${t55-4}" font-family="Share Tech Mono" font-size="8" fill="#ffdd00" text-anchor="end">55%</text></svg>`,'YELLOW=55% THRESHOLD · RED=50% BREAKEVEN');
-    const months={};settled.forEach(p=>{const dt=p.lockedAt?new Date(p.lockedAt):new Date((p.date||'2000-01')+'T12:00:00');const k=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;if(!months[k])months[k]={w:0,l:0};if(p.outcome==='win')months[k].w++;else months[k].l++;});
+    const months={};settled.forEach(p=>{const k=p.lockedAt?mstMonthKey(p.lockedAt):(p.date||'2000-01').slice(0,7);if(!months[k])months[k]={w:0,l:0};if(p.outcome==='win')months[k].w++;else months[k].l++;});
     const mKeys=Object.keys(months).sort().slice(-8);
     if(mKeys.length>=2){const mH=mKeys.length*22+8,mW=300;out+=vcrd('MONTHLY WIN RATE','var(--ic)',`<svg width="${mW}" height="${mH}">${mKeys.map((k,i)=>{const m=months[k];const a=m.w+m.l?m.w/(m.w+m.l):0;const bw=Math.round(a*(mW-120));const col=pC(a);return`<g transform="translate(0,${i*22})"><text x="58" y="15" font-family="Share Tech Mono" font-size="10" fill="rgba(200,180,255,.6)" text-anchor="end">${k}</text><rect x="62" y="4" width="${bw}" height="14" fill="${col}" opacity=".8" rx="1"/><text x="${62+bw+4}" y="15" font-family="Share Tech Mono" font-size="10" fill="${col}">${(a*100).toFixed(0)}% ${m.w}W-${m.l}L</text></g>`;}).join('')}</svg>`);}
   }
@@ -17325,7 +17329,7 @@ function renderOvrAnalytics(filter){
     dayData.forEach(d=>{const h=(d.pct||0)*40;const col=d.pct===null?'rgba(255,255,255,.1)':d.pct>=.56?'#00f0ff':d.pct>=.50?'#ffdd00':'#ff2090';out+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:8px;color:${col}">${d.pct!==null?(d.pct*100).toFixed(0)+'%':''}</div><div style="width:100%;background:${col};height:${h.toFixed(0)}px;border-radius:1px 1px 0 0;opacity:.8"></div><div style="font-family:var(--mono);font-size:8px;color:var(--t3)">${d.d}</div></div>`;});
     out+=`</div></div>`;
     // Monthly trend
-    const months={};settled.forEach(p=>{if(!p.lockedAt)return;const dt=new Date(p.lockedAt);const k=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;if(!months[k])months[k]={w:0,l:0};if(p.outcome==='win')months[k].w++;else months[k].l++;});
+    const months={};settled.forEach(p=>{if(!p.lockedAt)return;const k=mstMonthKey(p.lockedAt);if(!months[k])months[k]={w:0,l:0};if(p.outcome==='win')months[k].w++;else months[k].l++;});
     const mKeys=Object.keys(months).sort().slice(-6);
     if(mKeys.length>0){
       out+=`<div class="card" style="margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:6px">MONTHLY WIN RATE (LAST 6)</div>`;
