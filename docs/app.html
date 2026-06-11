@@ -5558,10 +5558,12 @@ function renderNBAProps(){
             <div style="width:${Math.min(100,conf)}%;height:100%;background:${confCol};border-radius:1px;transition:width .4s"></div>
           </div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
           <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: Linemate.io</span>
-          <div style="display:flex;gap:5px">
-            <button class="btn btn-p btn-sm" onclick="lockProp('${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp} ${p.over!==false?'O':'U'}${p.line}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">LOCK PROP</button>
+          <div style="display:flex;gap:5px;align-items:center">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
+            <input type="number" step="0.5" value="${p.line}" id="padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+            <button class="btn btn-p btn-sm" onclick="_adjLock('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}','${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">LOCK</button>
             <button class="btn btn-o btn-sm" onclick="cvParlayAddLeg('nba','${p.player.replace(/'/g,"\\'")} ${p.over!==false?'O':'U'}${p.line} ${statDisp}',${mlNum},${prob.toFixed(3)},'${p.team||'NBA'} PROP','PROP')">+PAR</button>
           </div>
         </div>
@@ -5608,9 +5610,13 @@ function renderNBAProps(){
         </div>
       </div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:6px">${p.basis}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
         <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: ${p.src||'Model'}</span>
-        <button class="btn btn-o btn-sm" onclick="lockProp('${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat} ${p.over?'O':'U'}${p.line}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK PROP</button>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
+          <input type="number" step="0.5" value="${p.line}" id="padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+          <button class="btn btn-o btn-sm" onclick="_adjLock('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -9129,9 +9135,13 @@ function renderNHLPropsLive(filter){
         </div>
       </div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:6px">${p.basis}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
         <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: ${p.src||'Linemate'} \u00b7 vs ${p.opp||'\u2014'}</span>
-        <button class="btn btn-o btn-sm" onclick="lockNHLProp('${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}',${p.line})">LOCK PROP</button>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
+          <input type="number" step="0.5" value="${p.line}" id="padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+          <button class="btn btn-o btn-sm" onclick="_adjLockNHL('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -9141,6 +9151,19 @@ window.renderNHLPropsLive=renderNHLPropsLive;
 
 function renderNHLLiveBets(){const el=document.getElementById('nhl-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NHL'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NHL BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${p.awA} at ${p.hA}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
 function renderNBALiveBets(){const el=document.getElementById('nba-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NBA'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NBA BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${p.awA} at ${p.hA}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
+function _adjLock(inputId,team,player,stat,over,conf,ml){
+  var inp=document.getElementById(inputId);
+  var line=inp?parseFloat(inp.value):0;
+  if(isNaN(line))line=0;
+  var dir=over?'O':'U';
+  lockProp(team,player,stat+' '+dir+line,over,conf,ml);
+}
+function _adjLockNHL(inputId,player,stat,dir,conf,ml){
+  var inp=document.getElementById(inputId);
+  var line=inp?parseFloat(inp.value):0;
+  if(isNaN(line))line=0;
+  lockNHLProp(player,stat,dir,conf,ml,line);
+}
 function lockProp(team,player,line,over,conf,ml){
   const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'NBA');
   const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
@@ -14811,10 +14834,12 @@ async function renderWNBAProps(){
         +'<div style="font-family:var(--orb);font-size:20px;font-weight:700;color:'+confCol+'">'+conf+'%</div>'
         +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden">'
         +'<div style="width:'+Math.min(100,conf)+'%;height:100%;background:'+confCol+';border-radius:1px;transition:width .4s"></div></div></div>'
-        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
         +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">SRC: Linemate.io/wnba</span>'
-        +'<div style="display:flex;gap:5px">'
-        +'<button class="btn btn-p btn-sm" onclick="lockProp(\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'  \',\''+statDisp+' '+(p.over!==false?'O':'U')+p.line+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK PROP</button>'
+        +'<div style="display:flex;gap:5px;align-items:center">'
+        +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>'
+        +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
+        +'<button class="btn btn-p btn-sm" onclick="_adjLock(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK</button>'
         +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
         +'</div></div></div>';
     }).join('');
@@ -14860,8 +14885,10 @@ async function renderWNBAProps(){
           +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden">'
           +'<div style="width:'+Math.min(100,conf)+'%;height:100%;background:'+confCol+';border-radius:1px;transition:width .4s"></div></div></div>'
           +(p.basis?'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:6px">'+p.basis+'</div>':'')
-          +'<div style="display:flex;justify-content:flex-end;gap:5px">'
-          +'<button class="btn btn-p btn-sm" onclick="lockProp(\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+' '+(p.over!==false?'O':'U')+p.line+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK PROP</button>'
+          +'<div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;flex-wrap:wrap">'
+          +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>'
+          +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnba_'+pKey+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
+          +'<button class="btn btn-p btn-sm" onclick="_adjLock(\'padj_wnba_'+pKey+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK</button>'
           +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
           +'</div></div>';
       }).join('');
