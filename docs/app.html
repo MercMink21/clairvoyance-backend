@@ -8192,92 +8192,55 @@ function renderHomePage(){
   // ── ENGINE PERFORMANCE ──────────────────────────────────────────────────────
   const recEl=document.getElementById('home-engine-record');
   if(recEl){
-    const pa=calcPerf(settled);
-    const r7=calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-7*86400000));
-    const r30=calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-30*86400000));
-    const ry=calcPerf(settled.filter(p=>p.date===yd));
-    const rtd=calcPerf(settled.filter(p=>p.date===todayStr));
+    const nowD=new Date();
+    const firstOfMonth=new Date(nowD.getFullYear(),nowD.getMonth(),1);
+    const firstOfLastMonth=new Date(nowD.getFullYear(),nowD.getMonth()-1,1);
+    const thisMonthLbl=nowD.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
+    const lastMonthLbl=firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
 
-    // Build last-7-days day-by-day breakdown
-    const dayRows=[];
-    for(let i=6;i>=0;i--){
-      const d=new Date(Date.now()-i*86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
-      const db=settled.filter(p=>p.date===d);
-      if(!db.length)continue;
-      const dp=calcPerf(db);
-      const label=i===0?'TODAY':i===1?'YESTERDAY':new Date(Date.now()-i*86400000).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/Denver'}).toUpperCase();
-      dayRows.push({label,dp,d});
-    }
+    const rtd  = calcPerf(settled.filter(p=>p.date===todayStr));
+    const ry   = calcPerf(settled.filter(p=>p.date===yd));
+    const r7   = calcPerf(settled.filter(p=>(p.lockedAt||0)>=now-7*86400000));
+    const rMo  = calcPerf(settled.filter(p=>(p.lockedAt||0)>=firstOfMonth.getTime()));
+    const rLMo = calcPerf(settled.filter(p=>(p.lockedAt||0)>=firstOfLastMonth.getTime()&&(p.lockedAt||0)<firstOfMonth.getTime()));
+    const rAll = calcPerf(settled);
 
-    // By-sport breakdown for the details panel
-    const sports=['MLB','NBA','NHL','TEN'];
-    const sportRows=sports.map(s=>{
-      const sb=settled.filter(p=>p.sport===s);const sp=calcPerf(sb);if(!sp.n)return'';
-      const c=sportColor[s]||'var(--t2)';
-      const bar=Math.min(100,Math.max(0,(sp.pct||0)*100));
-      const bc=pCol(sp.pct);
-      // type breakdown — MLB: no player props; NHL: includes PROP + PL
-      const sportTypes={MLB:['ML','RL'],NHL:['ML','PROP','RL'],NBA:['ML','PROP'],TEN:['ML']}[s]||['ML','PROP','RL'];
-      const typeRows=sportTypes.map(t=>{
-        const tb=sb.filter(p=>p.betType===t||(t==='RL'&&p.betType==='PL'));const tp=calcPerf(tb);if(!tp.n)return'';
-        return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 16px;border-top:1px solid rgba(255,255,255,.04)">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${t==='RL'?'SPREAD':t}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${tp.w}W-${tp.l}L</span>
-          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pCol(tp.pct)}">${tp.pct!==null?(tp.pct*100).toFixed(0)+'%':'--'}</span>
-          <span style="font-family:var(--mono);font-size:10px;color:${uCol(tp.units)}">${tp.units>=0?'+':''}${tp.units.toFixed(1)}u</span>
-        </div>`;
-      }).filter(Boolean).join('');
-      return`<div style="border-top:1px solid rgba(255,255,255,.06)">
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px">
-          <span style="font-family:var(--mono);font-size:12px;color:${c};min-width:38px">${s}</span>
-          <div style="flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px"><div style="width:${bar}%;height:100%;background:${bc};border-radius:2px"></div></div>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--t2);min-width:55px;text-align:right">${sp.w}W-${sp.l}L</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${bc};min-width:38px;text-align:right">${sp.pct!==null?(sp.pct*100).toFixed(1)+'%':'--'}</span>
+    const perfCard=(lbl,perf,topColor,sublabel)=>{
+      const hasData=perf.n>0;
+      const pct=perf.pct;
+      const pc=pCol(pct);
+      const uc=uCol(perf.units);
+      const barW=hasData?Math.round((pct||0)*100):0;
+      return`<div class="card" style="padding:11px 12px;border-top:2px solid ${topColor};min-width:0">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:${topColor};margin-bottom:8px;white-space:nowrap">${lbl}${sublabel?'<span style="color:var(--t3);margin-left:4px">'+sublabel+'</span>':''}</div>
+        ${hasData?`
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+          <span style="font-family:var(--orb);font-size:18px;font-weight:900;color:var(--t1)">${perf.w}W<span style="color:var(--t3);font-size:14px">-</span>${perf.l}L</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${perf.n} bet${perf.n===1?'':'s'}</span>
         </div>
-        ${typeRows}
+        <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
+          <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px;transition:width .4s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pc}">${pct!==null?(pct*100).toFixed(1)+'%':'--'}</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${uc}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}u</span>
+        </div>`
+        :`<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:12px 0;text-align:center">NO BETS</div>`}
       </div>`;
-    }).filter(Boolean).join('');
-
-    const detailsId='home-perf-details';
-    const day7Html=dayRows.length?dayRows.map(r=>{
-      const bc=pCol(r.dp.pct);
-      return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--t3);min-width:110px">${r.label}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${r.dp.w}W-${r.dp.l}L</span>
-        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${bc}">${r.dp.pct!==null?(r.dp.pct*100).toFixed(0)+'%':'--'}</span>
-        <span style="font-family:var(--mono);font-size:10px;color:${uCol(r.dp.units)}">${r.dp.units>=0?'+':''}${r.dp.units.toFixed(1)}u</span>
-      </div>`;
-    }).join(''):'<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:8px 0">NO SETTLED BETS IN LAST 7 DAYS</div>';
-
-    // Summary stat chips
-    const chip=(lbl,val,accent)=>`<div style="flex:1;min-width:0;text-align:center;padding:10px 6px;background:rgba(10,0,24,.85);border:1px solid ${accent};border-radius:3px">
-      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:5px;white-space:nowrap">${lbl}</div>
-      <div style="font-family:var(--orb);font-size:15px;font-weight:900;color:var(--t)">${val.wl}</div>
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${pCol(val.pct)}">${val.pct!==null?(val.pct*100).toFixed(1)+'%':'--'}</div>
-      <div style="font-family:var(--mono);font-size:10px;color:${uCol(val.units)};margin-top:1px">${val.units>=0?'+':''}${val.units.toFixed(1)}u</div>
-    </div>`;
-    const fmt=d=>({wl:`${d.w}W–${d.l}L`,pct:d.pct,units:d.units});
+    };
 
     recEl.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--nc)">// ENGINE PERFORMANCE</span>
-      <button onclick="const d=document.getElementById('${detailsId}');const open=d.style.display!=='none';d.style.display=open?'none':'block';this.textContent=open?'▼ MORE':'▲ LESS'" style="font-family:var(--mono);font-size:11px;padding:2px 10px;background:transparent;border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">▼ MORE</button>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${allBets.length} BETS TOTAL · ${settled.length} SETTLED</span>
     </div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
-      ${chip('TODAY',fmt(rtd),'rgba(255,221,0,.25)')}
-      ${chip('YESTERDAY',fmt(ry),'rgba(0,240,255,.2)')}
-      ${chip('ROLLING 7D',fmt(r7),'rgba(187,255,0,.18)')}
-      ${chip('ALL TIME',fmt(pa),'rgba(240,0,255,.22)')}
-    </div>
-    <div id="${detailsId}" style="display:none;border:1px solid rgba(0,240,255,.15);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.7)">
-      <div style="padding:10px 12px;border-bottom:1px solid rgba(0,240,255,.12)">
-        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--nc);margin-bottom:8px">// LAST 7 DAYS</div>
-        ${day7Html}
-      </div>
-      <div style="padding:10px 12px">
-        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3);margin-bottom:6px">// BY SPORT</div>
-        ${sportRows||'<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">NO DATA</div>'}
-      </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${perfCard('TODAY','rgba(255,32,0,.9)',rtd)}
+      ${perfCard('YESTERDAY','rgba(0,240,255,.8)',ry)}
+      ${perfCard('ROLLING 7D','rgba(187,255,0,.8)',r7)}
+      ${perfCard('THIS MONTH','rgba(0,240,255,.7)',rMo,thisMonthLbl)}
+      ${perfCard('LAST MONTH','rgba(240,0,255,.7)',rLMo,lastMonthLbl)}
+      ${perfCard('ALL TIME','rgba(255,221,0,.9)',rAll)}
     </div>`;
   }
 
