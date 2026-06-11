@@ -14710,16 +14710,20 @@ function _renderWCMatchCard(m,liveScore){
 }
 function _buildWCMatchesHTML(schedule,liveMap){
   var todayStr=new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+  var tomorrowStr=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
   var byDate={};
   schedule.forEach(function(m){if(!byDate[m.date])byDate[m.date]=[];byDate[m.date].push(m);});
-  var dates=Object.keys(byDate).sort();
+  // sort dates: today first, then ascending
+  var dates=Object.keys(byDate).sort(function(a,b){
+    if(a===todayStr)return -1;if(b===todayStr)return 1;return a<b?-1:1;
+  });
   var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;padding:0 12px">⚽ FIFA WORLD CUP 2026 · GROUP STAGE</div>';
   html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:12px;padding:0 12px">HOSTS: USA · CANADA · MEXICO · JUNE 11 – JULY 19</div>';
   dates.forEach(function(d){
-    var isTod=d===todayStr,isTom=d===new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    var isTod=d===todayStr,isTom=d===tomorrowStr;
     var badge=isTod?'<span style="background:var(--hc);color:#000;font-size:9px;padding:2px 5px;border-radius:1px;margin-left:6px">TODAY</span>'
       :isTom?'<span style="background:var(--gc);color:#000;font-size:9px;padding:2px 5px;border-radius:1px;margin-left:6px">TOMORROW</span>':'';
-    html+='<div style="font-family:var(--mono);font-size:12px;color:var(--gc);letter-spacing:2px;padding:10px 12px 6px;border-top:1px solid rgba(255,200,0,.15)">'+_wcFmtDate(d)+badge+'</div>';
+    html+='<div style="font-family:var(--mono);font-size:12px;color:'+(isTod?'var(--hc)':'var(--gc)')+';letter-spacing:2px;padding:10px 12px 6px;border-top:1px solid rgba(255,200,0,.15)">'+_wcFmtDate(d)+badge+'</div>';
     byDate[d].forEach(function(m){
       var key=(m.hc+'_'+m.ac).toUpperCase();
       html+=_renderWCMatchCard(m,liveMap&&liveMap[key]);
@@ -14727,35 +14731,52 @@ function _buildWCMatchesHTML(schedule,liveMap){
   });
   return html;
 }
+function _wcParseLiveMap(data){
+  var liveMap={};
+  try{
+    (data.events||[]).forEach(function(ev){
+      var comp=ev.competitions&&ev.competitions[0];if(!comp)return;
+      var hTeam=comp.competitors.find(function(c){return c.homeAway==='home';})||comp.competitors[0];
+      var aTeam=comp.competitors.find(function(c){return c.homeAway==='away';})||comp.competitors[1];
+      if(!hTeam||!aTeam)return;
+      var st=comp.status&&comp.status.type;
+      var key=((hTeam.team&&hTeam.team.abbreviation)||'').toUpperCase()+'_'+((aTeam.team&&aTeam.team.abbreviation)||'').toUpperCase();
+      // extract real DK odds if available
+      var odds=comp.odds&&comp.odds[0];
+      var hML=odds&&odds.moneyline&&odds.moneyline.home&&odds.moneyline.home.close&&odds.moneyline.home.close.odds;
+      var aML=odds&&odds.moneyline&&odds.moneyline.away&&odds.moneyline.away.close&&odds.moneyline.away.close.odds;
+      var dML=odds&&odds.drawOdds&&odds.drawOdds.moneyLine;
+      liveMap[key]={
+        state:(st&&st.state)||'pre',
+        hs:hTeam.score||'0',
+        as:aTeam.score||'0',
+        clock:(comp.status&&comp.status.displayClock)||'',
+        detail:(st&&(st.shortDetail||st.detail))||'',
+        hML:hML||null,
+        aML:aML||null,
+        dML:dML?'+'+dML:null
+      };
+    });
+  }catch(e){}
+  return liveMap;
+}
 function renderWCMatches(){
   var el=document.getElementById('wc-matches-list');if(!el)return;
-  el.innerHTML='<div style="padding:20px 12px;font-family:var(--mono);font-size:12px;color:var(--t3);display:flex;align-items:center;gap:8px"><span class="spi"></span> LOADING ESPN DATA…</div>';
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard')
+  // Render immediately from static data — no waiting
+  el.innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,null);
+  // Background fetch for live scores/odds — update silently if it returns
+  var ctrl=window.AbortController?new AbortController():null;
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard',ctrl?{signal:ctrl.signal}:{})
     .then(function(r){return r.json();})
     .then(function(data){
-      var liveMap={};
-      try{
-        (data.events||[]).forEach(function(ev){
-          var comp=ev.competitions&&ev.competitions[0];if(!comp)return;
-          var hTeam=comp.competitors.find(function(c){return c.homeAway==='home';})||comp.competitors[0];
-          var aTeam=comp.competitors.find(function(c){return c.homeAway==='away';})||comp.competitors[1];
-          if(!hTeam||!aTeam)return;
-          var st=comp.status&&comp.status.type;
-          var key=((hTeam.team&&hTeam.team.abbreviation)||'').toUpperCase()+'_'+((aTeam.team&&aTeam.team.abbreviation)||'').toUpperCase();
-          liveMap[key]={
-            state:(st&&st.state)||'pre',
-            hs:hTeam.score||'0',
-            as:aTeam.score||'0',
-            clock:(comp.status&&comp.status.displayClock)||'',
-            detail:(st&&(st.shortDetail||st.detail))||''
-          };
-        });
-      }catch(e){}
-      el.innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,liveMap);
+      clearTimeout(tid);
+      var liveMap=_wcParseLiveMap(data);
+      if(Object.keys(liveMap).length&&document.getElementById('wc-matches-list')){
+        document.getElementById('wc-matches-list').innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,liveMap);
+      }
     })
-    .catch(function(){
-      el.innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,null);
-    });
+    .catch(function(){clearTimeout(tid);});
 }
 // ── ESPN live fetch for GROUPS ────────────────────────────────────────────────
 function _buildWCGroupsHTML(groupData){
@@ -14806,46 +14827,56 @@ function _buildWCGroupsHTML(groupData){
   html+='</div>';
   return html;
 }
+function _wcParseStandings(data){
+  var groupData=[];
+  try{
+    var children=(data.children)||(data.standings&&data.standings.children)||[];
+    if(!children.length&&data.standings)children=[data.standings];
+    children.forEach(function(grp){
+      var gName=(grp.name||grp.abbreviation||'').replace(/Group\s*/i,'').trim()||grp.id;
+      var entries=(grp.standings&&grp.standings.entries)||grp.entries||[];
+      var parsed=[];
+      entries.forEach(function(e){
+        var stats={};
+        (e.stats||[]).forEach(function(s){stats[s.name]=s.value;});
+        var tName=(e.team&&e.team.displayName)||'';
+        parsed.push({
+          name:tName,
+          flag:_wcFlagByName(tName),
+          gp:+(stats.gamesPlayed||stats.gp||0),
+          w:+(stats.wins||0),
+          d:+(stats.ties||stats.draws||0),
+          l:+(stats.losses||0),
+          gf:+(stats.pointsFor||stats.goalsFor||0),
+          ga:+(stats.pointsAgainst||stats.goalsAgainst||0),
+          gd:+(stats.pointDifferential||0),
+          pts:+(stats.points||0)
+        });
+      });
+      parsed.sort(function(a,b){return b.pts-a.pts||b.gd-a.gd||b.gf-a.gf;});
+      groupData.push({name:gName,entries:parsed});
+    });
+  }catch(e){}
+  return groupData;
+}
 function renderWCGroups(){
   var el=document.getElementById('wc-groups-list');if(!el)return;
-  el.innerHTML='<div style="padding:20px 12px;font-family:var(--mono);font-size:12px;color:var(--t3);display:flex;align-items:center;gap:8px"><span class="spi"></span> LOADING ESPN STANDINGS…</div>';
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings')
+  // Render immediately from static ELO data
+  el.innerHTML=_buildWCGroupsHTML([]);
+  // Background fetch ESPN standings — update if real game data exists
+  var ctrl=window.AbortController?new AbortController():null;
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings',ctrl?{signal:ctrl.signal}:{})
     .then(function(r){return r.json();})
     .then(function(data){
-      var groupData=[];
-      try{
-        var children=(data.children)||(data.standings&&data.standings.children)||[];
-        if(!children.length&&data.standings)children=[data.standings];
-        children.forEach(function(grp){
-          var gName=(grp.name||grp.abbreviation||'').replace(/Group\s*/i,'').trim()||grp.id;
-          var entries=(grp.standings&&grp.standings.entries)||grp.entries||[];
-          var parsed=[];
-          entries.forEach(function(e){
-            var stats={};
-            (e.stats||[]).forEach(function(s){stats[s.name]=s.value;});
-            var tName=(e.team&&e.team.displayName)||'';
-            parsed.push({
-              name:tName,
-              flag:_wcFlagByName(tName),
-              gp:stats.gamesPlayed||stats.gp||0,
-              w:stats.wins||0,
-              d:stats.ties||stats.draws||0,
-              l:stats.losses||0,
-              gf:stats.pointsFor||stats.goalsFor||0,
-              ga:stats.pointsAgainst||stats.goalsAgainst||0,
-              gd:stats.pointDifferential||0,
-              pts:stats.points||0
-            });
-          });
-          parsed.sort(function(a,b){return b.pts-a.pts||b.gd-a.gd||b.gf-a.gf;});
-          groupData.push({name:gName,entries:parsed});
-        });
-      }catch(e){}
-      el.innerHTML=_buildWCGroupsHTML(groupData);
+      clearTimeout(tid);
+      var groupData=_wcParseStandings(data);
+      var hasGames=groupData.length&&groupData[0].entries.length&&groupData[0].entries.some(function(e){return e.gp>0;});
+      if(hasGames&&document.getElementById('wc-groups-list')){
+        document.getElementById('wc-groups-list').innerHTML=_buildWCGroupsHTML(groupData);
+      }
     })
-    .catch(function(){
-      el.innerHTML=_buildWCGroupsHTML([]);
-    });
+    .catch(function(){clearTimeout(tid);});
 }
 function renderWCBracket(){
   var el=document.getElementById('wc-bracket-list');if(!el)return;
