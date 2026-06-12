@@ -2752,6 +2752,15 @@ function _ouAdj(hA,awA,date,baseOverP,ouL,delta){
   var dir=np>=.5?'OVER':'UNDER';
   lockPick(hA,awA,'OU',dir+' '+nl,np,'-110',1.91,date||today());
 }
+function _ouLockDir(hA,awA,date,baseOverP,baseL,inputId,dir){
+  var inp=document.getElementById(inputId);
+  var nl=inp?parseFloat(inp.value):parseFloat(baseL);
+  if(isNaN(nl))nl=parseFloat(baseL);
+  var delta=nl-parseFloat(baseL);
+  var np=Math.min(.78,Math.max(.22,baseOverP-delta*0.07));
+  var lockP=dir==='OVER'?np:1-np;
+  lockPick(hA,awA,'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
+}
 function mlbEns(hA,awA,espnGame){
   const ouLine=parseFloat(espnGame?.ou||8.5);
   const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
@@ -2845,7 +2854,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${hA}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${hA}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
       <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${awA}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${awA}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
       <div class="${rlCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','RL','${hP>=.5?hA:awA} -1.5',${rlP.toFixed(3)},'-115',1.87,'${date||today()}')"><div class="cht">${hP>=.5?hA:awA} -1.5</div><div class="cho">-115</div><div class="chp">${(rlP*100).toFixed(1)}%</div></div>
-      <div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',1.91,'${date||today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
+      <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${ouL}" id="ouinp_mlb_${hA}_${awA}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
     <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -3699,7 +3708,7 @@ function renderNHLTonight(){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${plCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','PL','${hP>=.5?g.h:g.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?g.h:g.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div>
-    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
+    <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${g.ou}" id="ouinp_nhl2_${g.h}_${g.a}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}','ouinp_nhl2_${g.h}_${g.a}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}','ouinp_nhl2_${g.h}_${g.a}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
   </div>
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -3959,7 +3968,7 @@ function renderNHLGamesOffline(){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${plCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','PL','${hP>=.5?g.h:g.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?g.h:g.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div>
-    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
+    <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${g.ou}" id="ouinp_nhl3_${g.h}_${g.a}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}','ouinp_nhl3_${g.h}_${g.a}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}','ouinp_nhl3_${g.h}_${g.a}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
   </div>
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -4128,7 +4137,7 @@ function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)r
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:17px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:16px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(240,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:16px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
-function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=(r.mc?.avgT||8.5).toFixed(1);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><button class="btn btn-o btn-sm" onclick="addLeg('O${ouL}','-110',.52,'${r.hA}v${r.awA}')">O${ouL}</button><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj('${r.hA}','${r.awA}',null,.52,'${ouL}',-0.5)">-½</button><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj('${r.hA}','${r.awA}',null,.52,'${ouL}',0.5)">+½</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
+function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=(r.mc?.avgT||8.5).toFixed(1);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><input type="number" step="0.5" value="${ouL}" id="ouinp_parlaymlb_${r.hA}_${r.awA}" style="width:46px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:2px;text-align:center"><button class="btn btn-n btn-sm" style="font-size:10px;color:var(--nc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','OVER')">▲O</button><button class="btn btn-o btn-sm" style="font-size:10px;color:var(--hc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','UNDER')">▼U</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
 function addLeg(name,ml,prob,matchup){if(PAR.length>=8){toast('// MAX 8 LEGS');return;}const legCount=PAR.filter(l=>l.matchup===matchup).length;if(legCount>=3){toast('// MAX 3 LEGS PER GAME');return;}PAR.push({name,ml,prob:parseFloat(prob),matchup,dec:ml2d(ml)});renderLegs();calcP();toast(`// +LEG: ${name}`);}
 function addLeg2(hA,awA){T('mlb','parlay');toast(`// SELECT BET FOR ${awA} at ${hA}`);}
 function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
@@ -5157,7 +5166,7 @@ async function renderNBAGames(day){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${an}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${today()}')"><div class="cht">ML ${an}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${sprdCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','SPREAD','${sprdLbl}',${sprdP.toFixed(3)},'-115',${sprdD.toFixed(3)},'${today()}')"><div class="cht">${sprdLbl}</div><div class="cho">-115</div><div class="chp">${(sprdP*100).toFixed(1)}%</div></div>
-    ${ouL?`<div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',${ouD.toFixed(3)},'${today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>`:''}
+    ${ouL?`<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${ouL}" id="ouinp_nba_${hn}_${an}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}','ouinp_nba_${hn}_${an}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}','ouinp_nba_${hn}_${an}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>`:''}
   </div>`:''}
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -5664,7 +5673,7 @@ function renderNBAProps(){
             <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
             <input type="number" step="0.5" value="${p.line}" id="padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
             <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">-½</button>
-            <button class="btn btn-p btn-sm" onclick="_adjLock('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}','${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">LOCK</button>
+            <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}','${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${prob.toFixed(3)},'${mlStr}')">▲O</button><button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}','${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${prob.toFixed(3)},'${mlStr}')">▼U</button>
             <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">+½</button>
             <button class="btn btn-o btn-sm" onclick="cvParlayAddLeg('nba','${p.player.replace(/'/g,"\\'")} ${p.over!==false?'O':'U'}${p.line} ${statDisp}',${mlNum},${prob.toFixed(3)},'${p.team||'NBA'} PROP','PROP')">+PAR</button>
           </div>
@@ -5718,7 +5727,7 @@ function renderNBAProps(){
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
           <input type="number" step="0.5" value="${p.line}" id="padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
           <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">-½</button>
-          <button class="btn btn-o btn-sm" onclick="_adjLock('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+          <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▲O</button><button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▼U</button>
           <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">+½</button>
         </div>
       </div>
@@ -9285,7 +9294,7 @@ function renderNHLPropsLive(filter){
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
           <input type="number" step="0.5" value="${p.line}" id="padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
           <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockNHLDelta('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">-½</button>
-          <button class="btn btn-o btn-sm" onclick="_adjLockNHL('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+          <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockNHLO('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▲O</button><button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockNHLU('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▼U</button>
           <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockNHLDelta('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">+½</button>
         </div>
       </div>
@@ -9338,6 +9347,10 @@ function _adjLockNHLDelta(inputId,delta,player,stat,dir,conf,ml){
   if(inp)inp.value=(parseFloat(inp.value)+delta).toFixed(1);
   _adjLockNHL(inputId,player,stat,dir,conf,ml);
 }
+function _adjLockO(inputId,team,player,stat,conf,ml){_adjLock(inputId,team,player,stat,true,conf,ml);}
+function _adjLockU(inputId,team,player,stat,conf,ml){_adjLock(inputId,team,player,stat,false,conf,ml);}
+function _adjLockNHLO(inputId,player,stat,conf,ml){_adjLockNHL(inputId,player,stat,'OVER',conf,ml);}
+function _adjLockNHLU(inputId,player,stat,conf,ml){_adjLockNHL(inputId,player,stat,'UNDER',conf,ml);}
 function lockProp(team,player,line,over,conf,ml){
   const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'NBA');
   const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
@@ -11426,7 +11439,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-11 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-12 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -14885,13 +14898,12 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'<div class="cho">-115</div>'
         +'<div class="chp">'+Math.round(hP*100)+'%</div>'
         +'</div>'
-        +'<div class="'+csOU.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\'O\/U '+ouStr+' OVER\',0.52,-110,1.91,typeof today===\'function\'?today():\'\')">'
-        +'<div class="cht">O/U '+ouStr+'</div>'
-        +'<div class="cho">-110</div>'
-        +'<div class="chp">LINE</div>'
-        +'<div style="display:flex;gap:3px;justify-content:center;margin-top:3px">'
-        +'<button onclick="event.stopPropagation();_ouAdj(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button>'
-        +'<button onclick="event.stopPropagation();_ouAdj(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button>'
+        +'<div style="flex:2;background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
+        +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
+        +'<input type="number" step="0.5" value="'+ouStr+'" id="ouinp_wnba_'+hab+'_'+aab+'" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center">'
+        +'<div style="display:flex;gap:3px">'
+        +'<button onclick="event.stopPropagation();_ouLockDir(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',\'ouinp_wnba_'+hab+'_'+aab+'\',\'OVER\')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button>'
+        +'<button onclick="event.stopPropagation();_ouLockDir(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',\'ouinp_wnba_'+hab+'_'+aab+'\',\'UNDER\')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button>'
         +'</div>'
         +'</div>'
         +'</div>'
@@ -15025,7 +15037,8 @@ async function renderWNBAProps(){
         +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>'
         +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
         +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',-0.5,\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">-½</button>'
-        +'<button class="btn btn-p btn-sm" onclick="_adjLock(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK</button>'
+        +'<button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+prob.toFixed(3)+',\''+mlStr+'\')">▲O</button>'
+        +'<button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+prob.toFixed(3)+',\''+mlStr+'\')">▼U</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',0.5,\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">+½</button>'
         +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
         +'</div></div></div>';
@@ -15079,7 +15092,8 @@ async function renderWNBAProps(){
           +'<div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;flex-wrap:wrap">'
           +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>'
           +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnba_'+pKey+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
-          +'<button class="btn btn-p btn-sm" onclick="_adjLock(\'padj_wnba_'+pKey+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK</button>'
+          +'<button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO(\'padj_wnba_'+pKey+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+prob.toFixed(3)+',\''+mlStr+'\')">▲O</button>'
+          +'<button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU(\'padj_wnba_'+pKey+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+prob.toFixed(3)+',\''+mlStr+'\')">▼U</button>'
           +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
           +'</div></div>';
       }).join('');
@@ -15334,36 +15348,36 @@ var WC26_GROUPS=[
 ];
 var WC26_SCHEDULE=[
   // June 11 — Opening Day
-  {date:'2026-06-11',time:'3:00 PM MT',home:'Mexico',hc:'MEX',hf:'🇲🇽',he:1935,away:'South Africa',ac:'RSA',af:'🇿🇦',ae:1795,group:'A',venue:'Estadio Banorte · Mexico City',ou:2.5},
-  {date:'2026-06-11',time:'10:00 PM MT',home:'South Korea',hc:'KOR',hf:'🇰🇷',he:1870,away:'Czechia',ac:'CZE',af:'🇨🇿',ae:1855,group:'A',venue:'Estadio Akron · Guadalajara',ou:2.5},
+  {date:'2026-06-11',time:'1:00 PM MT',home:'Mexico',hc:'MEX',hf:'🇲🇽',he:1935,away:'South Africa',ac:'RSA',af:'🇿🇦',ae:1795,group:'A',venue:'Estadio Banorte · Mexico City',ou:2.5},
+  {date:'2026-06-11',time:'8:00 PM MT',home:'South Korea',hc:'KOR',hf:'🇰🇷',he:1870,away:'Czechia',ac:'CZE',af:'🇨🇿',ae:1855,group:'A',venue:'Estadio Akron · Guadalajara',ou:2.5},
   // June 12
-  {date:'2026-06-12',time:'3:00 PM MT',home:'Canada',hc:'CAN',hf:'🇨🇦',he:1835,away:'Bosnia-Herzegovina',ac:'BIH',af:'🇧🇦',ae:1820,group:'B',venue:'BMO Field · Toronto',ou:2.5},
-  {date:'2026-06-12',time:'9:00 PM MT',home:'United States',hc:'USA',hf:'🇺🇸',he:1940,away:'Paraguay',ac:'PAR',af:'🇵🇾',ae:1800,group:'D',venue:'SoFi Stadium · Inglewood',ou:2.5},
+  {date:'2026-06-12',time:'1:00 PM MT',home:'Canada',hc:'CAN',hf:'🇨🇦',he:1835,away:'Bosnia-Herzegovina',ac:'BIH',af:'🇧🇦',ae:1820,group:'B',venue:'BMO Field · Toronto',ou:2.5},
+  {date:'2026-06-12',time:'7:00 PM MT',home:'United States',hc:'USA',hf:'🇺🇸',he:1940,away:'Paraguay',ac:'PAR',af:'🇵🇾',ae:1800,group:'D',venue:'SoFi Stadium · Inglewood',ou:2.5},
   // June 13
-  {date:'2026-06-13',time:'3:00 PM MT',home:'Qatar',hc:'QAT',hf:'🇶🇦',he:1735,away:'Switzerland',ac:'SUI',af:'🇨🇭',ae:1880,group:'B',venue:"Levi's Stadium · Santa Clara",ou:2.5},
-  {date:'2026-06-13',time:'6:00 PM MT',home:'Brazil',hc:'BRA',hf:'🇧🇷',he:2035,away:'Morocco',ac:'MAR',af:'🇲🇦',ae:1920,group:'C',venue:'MetLife Stadium · East Rutherford',ou:2.5},
-  {date:'2026-06-13',time:'9:00 PM MT',home:'Haiti',hc:'HAI',hf:'🇭🇹',he:1650,away:'Scotland',ac:'SCO',af:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',ae:1820,group:'C',venue:'Gillette Stadium · Foxborough',ou:2.5},
+  {date:'2026-06-13',time:'1:00 PM MT',home:'Qatar',hc:'QAT',hf:'🇶🇦',he:1735,away:'Switzerland',ac:'SUI',af:'🇨🇭',ae:1880,group:'B',venue:"Levi's Stadium · Santa Clara",ou:2.5},
+  {date:'2026-06-13',time:'4:00 PM MT',home:'Brazil',hc:'BRA',hf:'🇧🇷',he:2035,away:'Morocco',ac:'MAR',af:'🇲🇦',ae:1920,group:'C',venue:'MetLife Stadium · East Rutherford',ou:2.5},
+  {date:'2026-06-13',time:'7:00 PM MT',home:'Haiti',hc:'HAI',hf:'🇭🇹',he:1650,away:'Scotland',ac:'SCO',af:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',ae:1820,group:'C',venue:'Gillette Stadium · Foxborough',ou:2.5},
   // June 14
-  {date:'2026-06-14',time:'12:00 AM MT',home:'Australia',hc:'AUS',hf:'🇦🇺',he:1845,away:'Türkiye',ac:'TUR',af:'🇹🇷',ae:1865,group:'D',venue:'BC Place · Vancouver',ou:2.5},
-  {date:'2026-06-14',time:'1:00 PM MT',home:'Germany',hc:'GER',hf:'🇩🇪',he:2000,away:'Curaçao',ac:'CUW',af:'🇨🇼',ae:1620,group:'E',venue:'NRG Stadium · Houston',ou:3.5},
-  {date:'2026-06-14',time:'4:00 PM MT',home:'Netherlands',hc:'NED',hf:'🇳🇱',he:1985,away:'Japan',ac:'JPN',af:'🇯🇵',ae:1915,group:'F',venue:'AT&T Stadium · Arlington',ou:2.5},
-  {date:'2026-06-14',time:'7:00 PM MT',home:'Ivory Coast',hc:'CIV',hf:'🇨🇮',he:1840,away:'Ecuador',ac:'ECU',af:'🇪🇨',ae:1860,group:'E',venue:'Lincoln Financial Field · Philadelphia',ou:2.5},
-  {date:'2026-06-14',time:'10:00 PM MT',home:'Sweden',hc:'SWE',hf:'🇸🇪',he:1900,away:'Tunisia',ac:'TUN',af:'🇹🇳',ae:1820,group:'F',venue:'Estadio BBVA · Guadalupe',ou:2.5},
+  {date:'2026-06-14',time:'10:00 PM MT',home:'Australia',hc:'AUS',hf:'🇦🇺',he:1845,away:'Türkiye',ac:'TUR',af:'🇹🇷',ae:1865,group:'D',venue:'BC Place · Vancouver',ou:2.5},
+  {date:'2026-06-14',time:'11:00 AM MT',home:'Germany',hc:'GER',hf:'🇩🇪',he:2000,away:'Curaçao',ac:'CUW',af:'🇨🇼',ae:1620,group:'E',venue:'NRG Stadium · Houston',ou:3.5},
+  {date:'2026-06-14',time:'2:00 PM MT',home:'Netherlands',hc:'NED',hf:'🇳🇱',he:1985,away:'Japan',ac:'JPN',af:'🇯🇵',ae:1915,group:'F',venue:'AT&T Stadium · Arlington',ou:2.5},
+  {date:'2026-06-14',time:'5:00 PM MT',home:'Ivory Coast',hc:'CIV',hf:'🇨🇮',he:1840,away:'Ecuador',ac:'ECU',af:'🇪🇨',ae:1860,group:'E',venue:'Lincoln Financial Field · Philadelphia',ou:2.5},
+  {date:'2026-06-14',time:'8:00 PM MT',home:'Sweden',hc:'SWE',hf:'🇸🇪',he:1900,away:'Tunisia',ac:'TUN',af:'🇹🇳',ae:1820,group:'F',venue:'Estadio BBVA · Guadalupe',ou:2.5},
   // June 15
-  {date:'2026-06-15',time:'12:00 PM MT',home:'Spain',hc:'ESP',hf:'🇪🇸',he:2025,away:'Cape Verde',ac:'CPV',af:'🇨🇻',ae:1710,group:'H',venue:'Mercedes-Benz Stadium · Atlanta',ou:3.5},
-  {date:'2026-06-15',time:'3:00 PM MT',home:'Belgium',hc:'BEL',hf:'🇧🇪',he:1960,away:'Egypt',ac:'EGY',af:'🇪🇬',ae:1795,group:'G',venue:'Lumen Field · Seattle',ou:2.5},
-  {date:'2026-06-15',time:'6:00 PM MT',home:'Saudi Arabia',hc:'KSA',hf:'🇸🇦',he:1810,away:'Uruguay',ac:'URU',af:'🇺🇾',ae:1975,group:'H',venue:'Hard Rock Stadium · Miami Gardens',ou:2.5},
-  {date:'2026-06-15',time:'9:00 PM MT',home:'Iran',hc:'IRN',hf:'🇮🇷',he:1800,away:'New Zealand',ac:'NZL',af:'🇳🇿',ae:1720,group:'G',venue:'SoFi Stadium · Inglewood',ou:2.5},
+  {date:'2026-06-15',time:'10:00 AM MT',home:'Spain',hc:'ESP',hf:'🇪🇸',he:2025,away:'Cape Verde',ac:'CPV',af:'🇨🇻',ae:1710,group:'H',venue:'Mercedes-Benz Stadium · Atlanta',ou:3.5},
+  {date:'2026-06-15',time:'1:00 PM MT',home:'Belgium',hc:'BEL',hf:'🇧🇪',he:1960,away:'Egypt',ac:'EGY',af:'🇪🇬',ae:1795,group:'G',venue:'Lumen Field · Seattle',ou:2.5},
+  {date:'2026-06-15',time:'4:00 PM MT',home:'Saudi Arabia',hc:'KSA',hf:'🇸🇦',he:1810,away:'Uruguay',ac:'URU',af:'🇺🇾',ae:1975,group:'H',venue:'Hard Rock Stadium · Miami Gardens',ou:2.5},
+  {date:'2026-06-15',time:'7:00 PM MT',home:'Iran',hc:'IRN',hf:'🇮🇷',he:1800,away:'New Zealand',ac:'NZL',af:'🇳🇿',ae:1720,group:'G',venue:'SoFi Stadium · Inglewood',ou:2.5},
   // June 16
-  {date:'2026-06-16',time:'3:00 PM MT',home:'France',hc:'FRA',hf:'🇫🇷',he:2065,away:'Senegal',ac:'SEN',af:'🇸🇳',ae:1925,group:'I',venue:'MetLife Stadium · East Rutherford',ou:2.5},
-  {date:'2026-06-16',time:'6:00 PM MT',home:'Iraq',hc:'IRQ',hf:'🇮🇶',he:1745,away:'Norway',ac:'NOR',af:'🇳🇴',ae:1875,group:'I',venue:'Gillette Stadium · Foxborough',ou:2.5},
-  {date:'2026-06-16',time:'9:00 PM MT',home:'Argentina',hc:'ARG',hf:'🇦🇷',he:2090,away:'Algeria',ac:'ALG',af:'🇩🇿',ae:1820,group:'J',venue:'GEHA Field at Arrowhead · Kansas City',ou:2.5},
+  {date:'2026-06-16',time:'1:00 PM MT',home:'France',hc:'FRA',hf:'🇫🇷',he:2065,away:'Senegal',ac:'SEN',af:'🇸🇳',ae:1925,group:'I',venue:'MetLife Stadium · East Rutherford',ou:2.5},
+  {date:'2026-06-16',time:'4:00 PM MT',home:'Iraq',hc:'IRQ',hf:'🇮🇶',he:1745,away:'Norway',ac:'NOR',af:'🇳🇴',ae:1875,group:'I',venue:'Gillette Stadium · Foxborough',ou:2.5},
+  {date:'2026-06-16',time:'7:00 PM MT',home:'Argentina',hc:'ARG',hf:'🇦🇷',he:2090,away:'Algeria',ac:'ALG',af:'🇩🇿',ae:1820,group:'J',venue:'GEHA Field at Arrowhead · Kansas City',ou:2.5},
   // June 17
-  {date:'2026-06-17',time:'12:00 AM MT',home:'Austria',hc:'AUT',hf:'🇦🇹',he:1875,away:'Jordan',ac:'JOR',af:'🇯🇴',ae:1720,group:'J',venue:"Levi's Stadium · Santa Clara",ou:2.5},
-  {date:'2026-06-17',time:'1:00 PM MT',home:'Portugal',hc:'POR',hf:'🇵🇹',he:2010,away:'Congo DR',ac:'COD',af:'🇨🇩',ae:1750,group:'K',venue:'NRG Stadium · Houston',ou:3.5},
-  {date:'2026-06-17',time:'4:00 PM MT',home:'England',hc:'ENG',hf:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',he:2040,away:'Croatia',ac:'CRO',af:'🇭🇷',ae:1950,group:'L',venue:'AT&T Stadium · Arlington',ou:2.5},
-  {date:'2026-06-17',time:'7:00 PM MT',home:'Ghana',hc:'GHA',hf:'🇬🇭',he:1845,away:'Panama',ac:'PAN',af:'🇵🇦',ae:1755,group:'L',venue:'BMO Field · Toronto',ou:2.5},
-  {date:'2026-06-17',time:'10:00 PM MT',home:'Uzbekistan',hc:'UZB',hf:'🇺🇿',he:1790,away:'Colombia',ac:'COL',af:'🇨🇴',ae:1900,group:'K',venue:'Estadio Banorte · Mexico City',ou:2.5}
+  {date:'2026-06-17',time:'10:00 PM MT',home:'Austria',hc:'AUT',hf:'🇦🇹',he:1875,away:'Jordan',ac:'JOR',af:'🇯🇴',ae:1720,group:'J',venue:"Levi's Stadium · Santa Clara",ou:2.5},
+  {date:'2026-06-17',time:'11:00 AM MT',home:'Portugal',hc:'POR',hf:'🇵🇹',he:2010,away:'Congo DR',ac:'COD',af:'🇨🇩',ae:1750,group:'K',venue:'NRG Stadium · Houston',ou:3.5},
+  {date:'2026-06-17',time:'2:00 PM MT',home:'England',hc:'ENG',hf:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',he:2040,away:'Croatia',ac:'CRO',af:'🇭🇷',ae:1950,group:'L',venue:'AT&T Stadium · Arlington',ou:2.5},
+  {date:'2026-06-17',time:'5:00 PM MT',home:'Ghana',hc:'GHA',hf:'🇬🇭',he:1845,away:'Panama',ac:'PAN',af:'🇵🇦',ae:1755,group:'L',venue:'BMO Field · Toronto',ou:2.5},
+  {date:'2026-06-17',time:'8:00 PM MT',home:'Uzbekistan',hc:'UZB',hf:'🇺🇿',he:1790,away:'Colombia',ac:'COL',af:'🇨🇴',ae:1900,group:'K',venue:'Estadio Banorte · Mexico City',ou:2.5}
 ];
 var WC26_PROPS=[
   // ARG vs Algeria (Group J — Jun 16)
@@ -17760,9 +17774,9 @@ function cvXParlayLoadGames(s){
         +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.home+'\',\''+hML+'\','+o.h.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.hf+' '+m.home+' '+hML+'</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.away+'\',\''+aML+'\','+o.a.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+m.away+' '+aML+'</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:11px;color:var(--t3)" onclick="cvParlayAddLeg(\'xp\',\'WC26 DRAW '+m.home+'/'+m.away+'\',\''+dML+'\','+o.d.toFixed(3)+',\''+matchup+'\',\'GAME\')">DRAW '+dML+'</button>'
-        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',-0.5)">O2.0 -½</button>'
-        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',0)">O2.5</button>'
-        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',0.5)">O3.0 +½</button>'
+        +'<input type="number" step="0.5" value="2.5" id="ouinp_wc_'+m.hc+'_'+m.ac+'" style="width:40px;background:rgba(0,0,0,.5);border:1px solid rgba(255,200,0,.3);color:var(--t);font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:2px;text-align:center">'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--nc)" onclick="_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'OVER\')">▲ OVER</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc)" onclick="_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'UNDER\')">▼ UNDER</button>'
         +'</div></div>';
     }).join('');
     return;
