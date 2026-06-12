@@ -7069,30 +7069,69 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const uCol2=u=>u>=0?'var(--nc)':'var(--hc)';
   const perf=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
 
+  // ── Parlay leg W/L parser ──────────────────────────────────────────────────
+  const _parlayLegs=(p)=>{
+    if(p.betType!=='PARLAY')return null;
+    const ci=p.betOn.indexOf(': ');
+    const legsStr=(ci===-1?p.betOn:p.betOn.slice(ci+2)).replace(/\s+—\s+\S.*$/,'').trim();
+    const legs=legsStr.split(' / ').map(s=>s.trim()).filter(Boolean);
+    if(legs.length<2)return null;
+    if(p.outcome==='win')return legs.map(l=>({leg:l,w:true}));
+    if(p.outcome!=='loss')return legs.map(l=>({leg:l,w:null}));
+    // Extract miss names from note
+    const note=p.note||'';
+    const miss=new Set();
+    // Pattern: "misses (Name1, Name2)"
+    const pm=note.match(/misses\s*\(([^)]+)\)/i);
+    if(pm)pm[1].split(',').forEach(s=>miss.add(s.trim().toLowerCase()));
+    // Pattern: "Name ... MISS" (word before MISS with preceding content)
+    [...note.matchAll(/\b([A-Za-z][A-Za-z'.]*)\s[\d.]+[^.]*?\bMISS\b/gi)].forEach(m=>miss.add(m[1].toLowerCase()));
+    // Pattern: "Name NNN & Name NNN both missed"
+    [...note.matchAll(/\b([A-Z][A-Za-z.]+)\s+[\d]+\s+\w+(?:\s+\w+)?\s+(?:&|and)\s+([A-Z][A-Za-z.]+)\s+[\d]+\s+\w+(?:\s+\w+)?\s+both\s+miss/gi)].forEach(m=>{miss.add(m[1].toLowerCase());miss.add(m[2].toLowerCase());});
+    // Pattern: "Name ... killed slip"
+    const pk=note.match(/\b([A-Za-z][A-Za-z'.]+)\s+\d[\d.]*\s+\w+(?:\s+\w+)?\s+vs\s+[\d.]+[^.]*?killed\s+slip/i);
+    if(pk)miss.add(pk[1].toLowerCase());
+    return legs.map(leg=>{
+      const legL=leg.toLowerCase();
+      const tok=legL.split(/\s+/)[0].replace(/\./g,'');
+      const hit=[...miss].some(mn=>{const mc=mn.replace(/\./g,'');return mc===tok||mc.startsWith(tok)||tok.startsWith(mc)||legL.includes(mn);});
+      return{leg,w:!hit};
+    });
+  };
+
   // ── Bet card ───────────────────────────────────────────────────────────────
   const betCard=(p)=>{
     const oColor=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':p.outcome==='push'?'var(--vc)':'var(--pc)';
-    const st=p.outcome==='pending'?'⏳ PENDING':p.outcome==='push'?'PUSH':p.outcome?.toUpperCase()||'PENDING';
+    const st=p.outcome==='pending'?'PENDING':p.outcome==='push'?'PUSH':p.outcome?.toUpperCase()||'PENDING';
     const sc=sportColor[p.sport]||sportColor.default;
     const mu=(p.hA==='PARLAY'||p.hA==='NBA-PARLAY')?'PARLAY':(p.awA&&p.hA)?p.awA+' at '+p.hA:(p.hA||'');
     const rawBetOn=p.betOn||'';
-    const displayBetOn=rawBetOn;
+    const parlayLegs=_parlayLegs(p);
+    const legHtml=parlayLegs
+      ?parlayLegs.map(({leg,w})=>{
+          const lc=w===true?'var(--nc)':w===false?'var(--hc)':'var(--t3)';
+          const lb=w===true?'W':w===false?'L':'·';
+          return`<div style="display:flex;align-items:center;gap:5px;padding:2px 0"><span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${lc};min-width:12px">${lb}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${leg}</span></div>`;
+        }).join('')
+      :`<div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${rawBetOn}</div>`;
+    // Parlay header (e.g. "4-Pick WNBA") extracted from prefix before ":"
+    const parlayHeader=parlayLegs?(p.betOn.includes(': ')?p.betOn.split(': ')[0]:'PARLAY'):null;
     return`<div class="card" style="margin-bottom:7px;border-left:2px solid ${oColor};padding:9px 10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
             <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
-            <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${mu}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${parlayHeader||mu}</span>
           </div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${displayBetOn}</div>
+          <div style="margin-bottom:2px">${legHtml}</div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.betType||''}${p.ml?' · '+p.ml:''}${p.winProb?' · '+(p.winProb*100).toFixed(0)+'%':''}</div>
           ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">FINAL: ${p.awA} ${p.aScore} – ${p.hScore} ${p.hA}</div>`:''}
         </div>
         <span style="font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid ${oColor};color:${oColor};border-radius:2px;white-space:nowrap;flex-shrink:0">${st}</span>
       </div>
       <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
-        ${p.outcome==='pending'?`<button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderOverallHistory()">✓ WIN</button>
-        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');renderOverallHistory()">✗ LOSS</button>`:''}
+        ${p.outcome==='pending'?`<button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');renderOverallHistory()">WIN</button>
+        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');renderOverallHistory()">LOSS</button>`:''}
         <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:10px;padding:2px 7px" onclick="removePick('${p.id}');renderOverallHistory()" title="Remove this bet from record">× REMOVE</button>
       </div>
     </div>`;
