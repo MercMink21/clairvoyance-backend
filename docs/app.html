@@ -776,6 +776,7 @@ body{line-height:1.5}
       <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
       <button class="nb" onclick="T('wc','picks');renderWCPicks()">PICKS</button>
       <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
+      <button class="nb" onclick="T('wc','parlay');renderWCParlay()">PARLAY</button>
     </nav>
     <div class="sa" id="wc-sa">
       <div id="wc-tab-matches" class="tab act"><div id="wc-matches-list" style="padding:20px 0"></div></div>
@@ -784,6 +785,7 @@ body{line-height:1.5}
       <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-picks" class="tab"><div id="wc-picks-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-props" class="tab"><div id="wc-props-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-parlay" class="tab"><div id="wc-parlay-list" style="padding:12px 0"></div></div>
     </div>
   </div>
       </div>
@@ -2761,6 +2763,17 @@ function _ouLockDir(hA,awA,date,baseOverP,baseL,inputId,dir){
   var lockP=dir==='OVER'?np:1-np;
   lockPick(hA,awA,'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
 }
+function _ouParlayDir(hA,awA,date,baseOverP,baseL,inputId,dir,sport){
+  var inp=document.getElementById(inputId);
+  var nl=inp?parseFloat(inp.value):parseFloat(baseL);
+  if(isNaN(nl))nl=parseFloat(baseL);
+  var delta=nl-parseFloat(baseL);
+  var np=Math.min(.78,Math.max(.22,baseOverP-delta*0.07));
+  var lockP=dir==='OVER'?np:1-np;
+  var matchup=(sport||'').toUpperCase()+':'+hA+'v'+awA;
+  if(typeof cvParlayAddLeg==='function')cvParlayAddLeg(sport||'xp',(sport?sport.toUpperCase()+' ':'')+dir+' '+nl.toFixed(1),'-110',lockP,matchup,'GAME');
+  else lockPick(hA,awA,'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
+}
 function mlbEns(hA,awA,espnGame){
   const ouLine=parseFloat(espnGame?.ou||8.5);
   const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
@@ -3657,7 +3670,7 @@ function renderNHLTonight(){
       else if(topTier===2)explanation=`${topTeam} ML rated LOCK (${(topP*100).toFixed(1)}%, EV +${evPct}%) — ensemble signals are aligned and the line offers value. ${_gsaxStr} tilts puck-stopping quality toward ${topTeam}, reinforcing the model's win probability. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% consensus supports standard-unit sizing.`;
       else if(topTier===1)explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model finds a modest positive-EV opportunity but components are not fully aligned. ${_gsaxStr} provides a real but incremental edge. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — proceed with half-unit sizing.`;
       else explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). Monitor line movement before ${gh.time}.`;
-      html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div class="${plCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','PL','${hP>=.5?gh.h:gh.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?gh.h:gh.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div><div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${gh.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${gh.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:12px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
+      html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div class="${plCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','PL','${hP>=.5?gh.h:gh.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?gh.h:gh.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div><div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${gh.ou}" id="ouinp_nhl1_${gh.h}_${gh.a}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:12px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
     }
     el.innerHTML=html||'<div class="empty">NO NHL GAMES TONIGHT</div>';
     return;
@@ -5128,7 +5141,7 @@ async function renderNBAGames(day){
       // Spread chip (NBA: -5.5 default, or derive from moneylines)
       const sprdP=hP>=aP?Math.max(0.38,hP-0.08):Math.max(0.38,aP-0.08);
       const sprdD=ml2d('-115');const sprdCS=chipC(sprdP,ev(sprdP,sprdD));
-      const sprdLbl=hP>=aP?`${hn} -5.5`:`${an} -5.5`;
+      const espnSprdDetails=espnOdds?.details||'';const espnSprdNum=espnSprdDetails?parseFloat(espnSprdDetails.replace(/^[A-Z\s]+/,'')):(function(){var d=Math.round(Math.log((hP>=aP?hP:aP)/((hP>=aP?aP:hP)))*14*2)/2;return hP>=aP?-d:d;})();const sprdFav=hP>=aP?hn:an;const sprdLbl=sprdFav+' '+(espnSprdNum>0?'+':'')+espnSprdNum;
       // O/U chip — use MC overP when available, pass ESPN line to ensemble
       let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
       const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
@@ -9075,7 +9088,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
-  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='standings')renderWCStandings();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
+  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='standings')renderWCStandings();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();else if(tabId==='parlay')renderWCParlay();}catch(e){console.warn('WC tab',tabId,e);}}
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();if(tabId==='ops')renderEngineOps();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
@@ -11483,17 +11496,19 @@ async function loadRemoteData(force=false){
 }
 
 function mergeSeededBets(seeded){
-  // Called every time data.json loads (network-first — always fresh).
-  // Strips any existing entries with matching IDs then inserts the fresh seeded versions.
-  // This guarantees win/loss outcomes update regardless of SW cache or localStorage state.
+  // Called every time data.json loads. Never downgrades a locally-settled bet back to pending.
   try{
     const ids=new Set(seeded.map(h=>h.id));
     const existing=JSON.parse(localStorage.getItem('preds')||'[]');
+    const settledLocally=new Map(existing.filter(p=>ids.has(p.id)&&p.outcome&&p.outcome!=='pending').map(p=>[p.id,p]));
     const clean=existing.filter(p=>!ids.has(p.id));
-    seeded.forEach(h=>clean.push(h));
+    seeded.forEach(h=>{
+      // If the local version is already settled, keep local outcome — never re-pending a settled bet
+      if(settledLocally.has(h.id))clean.push(settledLocally.get(h.id));
+      else clean.push(h);
+    });
     localStorage.setItem('preds',JSON.stringify(clean));
     try{S.s('preds',clean);}catch(e){}
-    // Re-render dashboard + history whenever seeded bets change
     try{renderOverall();}catch(e){}
     try{renderOverallHistory();}catch(e){}
     try{renderNBAHistory();}catch(e){}
@@ -14962,31 +14977,39 @@ var _wnbaGamesCache=null,_wnbaCacheTs=0,_WNBA_TTL=300000;
 var _wnbaRendering=false;
 // Hardcoded WNBA player props for today's games (TOR/CON · SEA/LA)
 // Updated: June 11 2026 — based on 2026 season averages + matchup
-var WNBA_PROPS_DATE='20260611';
+var WNBA_PROPS_DATE='20260612';
 var WNBA_PROPS_DATA=[
-  // ── WNBA JUNE 11 2026 ──────────────────────────────────────
-  // ── IND vs CHI ──────────────────────────────────────────────
-  {player:'Caitlin Clark',team:'IND',opp:'CHI',game:'IND_CHI',stat:'AST',line:7.5,over:true,ml:'-132',conf:72,grade:'ELITE',hitRate:'8.9 apg leads WNBA · 4-for-last-5 OVER',basis:'Elite playmaker vs CHI allow most AST in WNBA · home Gainbridge Fieldhouse crowd · line movement from -118 to -132 = sharp action'},
-  {player:'Caitlin Clark',team:'IND',opp:'CHI',game:'IND_CHI',stat:'PTS',line:19.5,over:true,ml:'-118',conf:66,grade:'ELITE',hitRate:'20.4 ppg season avg · 3-for-last-4 OVER',basis:'Scoring up in June (22.1 ppg last 8) · CHI DRtg 101.2 — below average perimeter D · home court advantage'},
-  {player:'Caitlin Clark',team:'IND',opp:'CHI',game:'IND_CHI',stat:'3PM',line:2.5,over:true,ml:'-122',conf:68,grade:'ELITE',hitRate:'3.1 3PM/game · 43.2% from 3 · 5-for-last-6 OVER',basis:'CHI allows 3rd-most 3PM in WNBA · Clark gets to spots freely at home · line sharp vs public'},
-  {player:'Aliyah Boston',team:'IND',opp:'CHI',game:'IND_CHI',stat:'REB',line:7.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'8.4 rpg season · 4-for-last-5 OVER',basis:'Interior dominance vs CHI undersized frontcourt · IND home game = extended minutes · Poole and Boston controlling glass'},
-  {player:'Aliyah Boston',team:'IND',opp:'CHI',game:'IND_CHI',stat:'PTS',line:13.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'14.8 ppg · 57.3% FG season',basis:'High-efficiency post scorer · CHI frontcourt mismatch · Clark feeds her in the paint consistently'},
-  {player:'Aliyah Boston',team:'IND',opp:'CHI',game:'IND_CHI',stat:'PRA',line:24.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'26.1 PRA avg this season',basis:'Double-double machine · IND home game amplifies usage'},
-  {player:'Kelsey Mitchell',team:'IND',opp:'CHI',game:'IND_CHI',stat:'PTS',line:16.5,over:true,ml:'-122',conf:67,grade:'ELITE',hitRate:'18.2 ppg · 5-for-last-6 OVER · career-best season',basis:'Breakout 2026 season · CHI perimeter D 28th-ranked · Gainbridge home crowd lifts Mitchell'},
-  {player:'Angel Reese',team:'CHI',opp:'IND',game:'IND_CHI',stat:'REB',line:10.5,over:true,ml:'-128',conf:70,grade:'ELITE',hitRate:'11.8 rpg leads WNBA · 5-for-last-5 OVER',basis:'Elite rebounder regardless of venue · IND physical interior play elevates contest rate · Reese hits 10+ in 70% of road games'},
-  {player:'Angel Reese',team:'CHI',opp:'IND',game:'IND_CHI',stat:'PTS',line:13.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'14.6 ppg season avg · post presence',basis:'Interior scorer vs Boston — physical matchup produces points both ways · CHI needs Reese at 15+'},
-  {player:'Angel Reese',team:'CHI',opp:'IND',game:'IND_CHI',stat:'PRA',line:25.5,over:true,ml:'-122',conf:67,grade:'ELITE',hitRate:'27.3 PRA avg · double-double every game',basis:'Combined stat leader · blocks and steals push PRA ceiling even in losses'},
-  {player:'Chennedy Carter',team:'CHI',opp:'IND',game:'IND_CHI',stat:'PTS',line:14.5,over:true,ml:'-115',conf:63,grade:'LOCK',hitRate:'15.9 ppg · shooting well in June · 3-for-last-4 OVER',basis:'Slashing guard gets to line · IND perimeter D focused on help side for Clark — Carter exploits'},
-  // ── LV vs MIN ────────────────────────────────────────────────
-  {player:'A\'ja Wilson',team:'LV',opp:'MIN',game:'LV_MIN',stat:'PTS',line:24.5,over:true,ml:'-138',conf:73,grade:'ELITE',hitRate:'27.1 ppg · WNBA MVP pace · 5-for-last-5 OVER',basis:'Best player in WNBA. MIN DRtg 99.8 below average. Michelob Ultra Arena home court. Line jumped from -125 = heavy sharp action. Wilson going for 25+ in 70%+ of home games.'},
-  {player:'A\'ja Wilson',team:'LV',opp:'MIN',game:'LV_MIN',stat:'REB',line:9.5,over:true,ml:'-122',conf:68,grade:'ELITE',hitRate:'10.8 rpg · 4-for-last-5 OVER',basis:'Dominant interior rebounder vs MIN undersized 4/5. LV home court amplifies usage. MIN cannot match her physically.'},
-  {player:'A\'ja Wilson',team:'LV',opp:'MIN',game:'LV_MIN',stat:'PRA',line:36.5,over:true,ml:'-128',conf:70,grade:'ELITE',hitRate:'38.6 PRA avg · best PRA in WNBA',basis:'Elite combined stat producer. Wilson adding blocks and AST to make PRA enormous.'},
-  {player:'Jackie Young',team:'LV',opp:'MIN',game:'LV_MIN',stat:'PTS',line:14.5,over:true,ml:'-118',conf:65,grade:'LOCK',hitRate:'16.2 ppg · 3-for-last-4 OVER',basis:'LV secondary scorer thriving alongside Wilson. MIN perimeter D gives up mid-range. Home advantage.'},
-  {player:'Jackie Young',team:'LV',opp:'MIN',game:'LV_MIN',stat:'AST',line:4.5,over:true,ml:'-112',conf:63,grade:'LOCK',hitRate:'5.1 apg season · playmaking guard',basis:'Primary facilitator for LV. MIN allow high AST rate. Wilson drawing doubles creates easy buckets.'},
-  {player:'Napheesa Collier',team:'MIN',opp:'LV',game:'LV_MIN',stat:'PTS',line:19.5,over:true,ml:'-122',conf:67,grade:'ELITE',hitRate:'21.4 ppg · road warrior · 4-for-5 OVER away',basis:'Elite scorer who produces anywhere. LV home crowd pressure not a factor for Collier. LV give up 22+ to opposing stars consistently.'},
-  {player:'Napheesa Collier',team:'MIN',opp:'LV',game:'LV_MIN',stat:'REB',line:8.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'9.2 rpg · physical rebounder',basis:'Strong boards even in road losses. LV game pace elevated = more rebound opportunities.'},
-  {player:'Napheesa Collier',team:'MIN',opp:'LV',game:'LV_MIN',stat:'PRA',line:29.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'31.8 PRA avg this season',basis:'Combined stat leader for MIN. AST and blocks push PRA above raw scoring.'},
-  {player:'Courtney Williams',team:'MIN',opp:'LV',game:'LV_MIN',stat:'AST',line:5.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'6.3 apg · WNBA top-5 distributor',basis:'Elite playmaker role for MIN. LV defend the paint, leave perimeter open — Williams finds cutters.'},
+  // ── WNBA JUNE 12 2026 ──────────────────────────────────────
+  // ── SEA vs NY ────────────────────────────────────────────────
+  {player:'Breanna Stewart',team:'NY',opp:'SEA',game:'SEA_NY',stat:'PTS',line:21.5,over:true,ml:'-128',conf:70,grade:'ELITE',hitRate:'23.8 ppg · 4-for-last-5 OVER · MVP-caliber form',basis:'Stewart dominating in June (24.6 ppg last 6). SEA DRtg 102.1 — below avg perimeter D on road. Barclays Center crowd advantage for NYL.'},
+  {player:'Breanna Stewart',team:'NY',opp:'SEA',game:'SEA_NY',stat:'REB',line:8.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'9.3 rpg · 4-for-last-5 OVER',basis:'Elite rebounding big. SEA undersized frontcourt matchup. Stewart getting offensive boards in transition-heavy NY offense.'},
+  {player:'Breanna Stewart',team:'NY',opp:'SEA',game:'SEA_NY',stat:'PRA',line:31.5,over:true,ml:'-122',conf:68,grade:'ELITE',hitRate:'33.8 PRA avg · assists up in June',basis:'Combined stat monster. 3+ AST in 5 straight = PRA ceiling elevated. NY home court boosts usage.'},
+  {player:'Sabrina Ionescu',team:'NY',opp:'SEA',game:'SEA_NY',stat:'PTS',line:17.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'19.2 ppg · 3-for-last-4 OVER',basis:'Elite scorer & playmaker. SEA leaves mid-range open — Ionescu automatic from 15-18 ft. Home crowd lifts her.'},
+  {player:'Sabrina Ionescu',team:'NY',opp:'SEA',game:'SEA_NY',stat:'AST',line:5.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'6.4 apg · top-3 WNBA distributor',basis:'Pass-first tendencies amplified at home. SEA allow high AST rate in transition. Ionescu finding cutters off Stewart gravity.'},
+  {player:'Nneka Ogwumike',team:'SEA',opp:'NY',game:'SEA_NY',stat:'PTS',line:14.5,over:true,ml:'-112',conf:63,grade:'LOCK',hitRate:'15.8 ppg · road scoring leader for SEA',basis:'Veteran interior scorer. NY focused on stopping Stewart perimeter — Ogwumike exploits post mismatches. SEA needs her at 15+ on road.'},
+  {player:'Jewell Loyd',team:'SEA',opp:'NY',game:'SEA_NY',stat:'PTS',line:18.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'20.1 ppg · 3-for-last-5 OVER',basis:'Elite scorer who elevates in marquee road games. NY perimeter D spread thin by Stewart — Loyd gets clean looks.'},
+  // ── CON vs MIN ───────────────────────────────────────────────
+  {player:'Napheesa Collier',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PTS',line:20.5,over:true,ml:'-125',conf:69,grade:'ELITE',hitRate:'21.4 ppg · 4-for-last-5 OVER · road warrior',basis:'Elite scorer anywhere. CON DRtg 100.8 — below avg vs physical bigs. Collier attacking paint relentlessly. Line at -125 = sharp movement.'},
+  {player:'Napheesa Collier',team:'MIN',opp:'CON',game:'CON_MIN',stat:'REB',line:8.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'9.2 rpg · strong boards on road',basis:'Physical rebounder wins glass battles vs CON frontcourt. MIN needs Collier double-double to win away.'},
+  {player:'Napheesa Collier',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PRA',line:30.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'32.1 PRA avg · AST elevated vs zone',basis:'Combined stat leader. CON run zone = more AST opportunities for Collier as hub. PRA ceiling 35+.'},
+  {player:'Courtney Williams',team:'MIN',opp:'CON',game:'CON_MIN',stat:'AST',line:5.5,over:true,ml:'-112',conf:63,grade:'LOCK',hitRate:'6.3 apg · 4-for-5 OVER away',basis:'Elite playmaker. CON zone leaves drive-and-kick open. Williams finding Collier and Brunson in rhythm.'},
+  {player:'DeWanna Bonner',team:'CON',opp:'MIN',game:'CON_MIN',stat:'PTS',line:15.5,over:true,ml:'-118',conf:65,grade:'LOCK',hitRate:'17.2 ppg home · 4-for-last-5 OVER at Mohegan Sun',basis:'Veteran star at home arena. MIN focused on containing Williams — Bonner gets space. Home crowd veteran advantage.'},
+  {player:'Alyssa Thomas',team:'CON',opp:'MIN',game:'CON_MIN',stat:'AST',line:6.5,over:true,ml:'-122',conf:67,grade:'ELITE',hitRate:'7.8 apg · WNBA top distributor · 5-for-last-5 OVER',basis:'Elite playmaker at home. MIN pressure defense creates outlets for Thomas. Line sharp from -112 = public and sharp aligned.'},
+  {player:'Alyssa Thomas',team:'CON',opp:'MIN',game:'CON_MIN',stat:'PRA',line:22.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'24.1 PRA avg · rebounding elevated at home',basis:'Triple-double threat. CON home court + MIN physical matchup = Thomas getting boards and assists in bundles.'},
+  // ── ATL vs LV ────────────────────────────────────────────────
+  {player:'A\'ja Wilson',team:'LV',opp:'ATL',game:'ATL_LV',stat:'PTS',line:25.5,over:true,ml:'-138',conf:73,grade:'ELITE',hitRate:'27.1 ppg · WNBA MVP pace · 5-for-last-5 OVER',basis:'Best player in WNBA. ATL DRtg 103.2 — worst in WNBA vs elite bigs. Michelob Ultra Arena home court. Wilson unstoppable vs Dream.'},
+  {player:'A\'ja Wilson',team:'LV',opp:'ATL',game:'ATL_LV',stat:'REB',line:9.5,over:true,ml:'-125',conf:69,grade:'ELITE',hitRate:'10.8 rpg · 4-for-last-5 OVER',basis:'ATL frontcourt outmatched by Wilson physically. Home game = extended minutes. Dominant on both glass.'},
+  {player:'A\'ja Wilson',team:'LV',opp:'ATL',game:'ATL_LV',stat:'PRA',line:37.5,over:true,ml:'-130',conf:71,grade:'ELITE',hitRate:'38.6 PRA avg · highest PRA in WNBA',basis:'Peak combined stat form. ATL cannot stop Wilson anywhere on court. AST up as LV has shooters around her.'},
+  {player:'Jackie Young',team:'LV',opp:'ATL',game:'ATL_LV',stat:'PTS',line:15.5,over:true,ml:'-118',conf:65,grade:'LOCK',hitRate:'16.2 ppg · 3-for-last-4 OVER',basis:'LV secondary scorer. ATL perimeter D vulnerable to drives. Young thriving in LV home games alongside Wilson.'},
+  {player:'Rhyne Howard',team:'ATL',opp:'LV',game:'ATL_LV',stat:'PTS',line:16.5,over:true,ml:'-115',conf:64,grade:'LOCK',hitRate:'18.0 ppg · 4-for-last-5 OVER · breakout season',basis:'ATL star scorer needs big game on road. LV spread thin by Wilson — Howard gets clean 3-pt looks. Road environment suits her aggression.'},
+  {player:'Allisha Gray',team:'ATL',opp:'LV',game:'ATL_LV',stat:'PTS',line:13.5,over:true,ml:'-112',conf:63,grade:'LOCK',hitRate:'14.8 ppg road avg · 3-for-last-5 OVER',basis:'ATL secondary scorer. LV defense collapses on Howard drives, Gray gets kickout 3s. Road pace elevated = more possessions.'},
+  // ── IND vs DAL ───────────────────────────────────────────────
+  {player:'Caitlin Clark',team:'IND',opp:'DAL',game:'IND_DAL',stat:'AST',line:8.5,over:true,ml:'-128',conf:70,grade:'ELITE',hitRate:'8.9 apg · 5-for-last-5 OVER vs weaker D',basis:'Clark shreds DAL defense which allows most AST in WNBA. Home Gainbridge Fieldhouse. DAL scramble defense creates passing lanes.'},
+  {player:'Caitlin Clark',team:'IND',opp:'DAL',game:'IND_DAL',stat:'PTS',line:21.5,over:true,ml:'-122',conf:68,grade:'ELITE',hitRate:'22.1 ppg last 8 games · scoring in June',basis:'Scoring surge in June. DAL 28th-ranked perimeter D. Clark hitting 45%+ from field in home games. Line moved from -112 = sharp action.'},
+  {player:'Caitlin Clark',team:'IND',opp:'DAL',game:'IND_DAL',stat:'3PM',line:2.5,over:true,ml:'-125',conf:69,grade:'ELITE',hitRate:'3.1 3PM/game · 43.2% from 3 · 5-for-last-6 OVER',basis:'DAL allows 2nd-most 3PM in WNBA. Clark gets open catch-and-shoot looks at home. Crowd lifts her 3-pt rhythm.'},
+  {player:'Aliyah Boston',team:'IND',opp:'DAL',game:'IND_DAL',stat:'PRA',line:25.5,over:true,ml:'-118',conf:66,grade:'LOCK',hitRate:'26.1 PRA avg · home double-double machine',basis:'Interior dominance vs DAL undersized 4/5. Clark feeds her in post consistently. IND home game = extended minutes.'},
+  {player:'Arike Ogunbowale',team:'DAL',opp:'IND',game:'IND_DAL',stat:'PTS',line:21.5,over:true,ml:'-118',conf:65,grade:'LOCK',hitRate:'23.4 ppg · elite scorer away · 4-for-last-5 OVER',basis:'DAL star needs 20+ to compete with IND. Goes for big road scoring games. IND perimeter D spread by Clark — Arike gets iso shots.'},
+  {player:'Arike Ogunbowale',team:'DAL',opp:'IND',game:'IND_DAL',stat:'3PM',line:2.5,over:true,ml:'-112',conf:63,grade:'LOCK',hitRate:'2.8 3PM/game · hot streak from 3',basis:'Elite mid-range and 3PT scorer. IND defense focused on Clark help — Ogunbowale gets clean corner looks.'},
 ];
 async function renderWNBAProps(){
   var el=document.getElementById('wnba-props-list');
@@ -15429,6 +15452,7 @@ function _wcOut(eH,eA){
 function _wcML(p){if(p>=0.5)return'-'+Math.round(p/(1-p)*100);return'+'+Math.round((1-p)/p*100);}
 function _wcGrade(p){if(p>0.68)return'LOCK';if(p>0.58)return'ELITE';if(p>0.52)return'LEAN';return'EVEN';}
 function _wcGradeColor(g){return g==='LOCK'?'var(--gc)':g==='ELITE'?'var(--nc)':g==='LEAN'?'var(--mc)':'var(--t3)';}
+function _wcAH(eH,eA){var d=eH-eA;if(Math.abs(d)<50)return 0;if(Math.abs(d)<120)return d>0?-0.5:0.5;if(Math.abs(d)<200)return d>0?-1:1;return d>0?-1.5:1.5;}
 function _wcFmtDate(d){var parts=d.split('-');var mo=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];return mo[parseInt(parts[1])-1]+' '+parseInt(parts[2]);}
 function _wcEloByName(name){
   var found=null;
@@ -15496,6 +15520,7 @@ function _renderWCMatchCard(m,liveScore){
     +'<button class="btn btn-o btn-sm" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.away+'\','+o.a.toFixed(3)+',\''+_wcML(o.a)+'\',\'Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK '+m.af+' '+m.away+'</button>'
     +'<button class="btn btn-sm" style="background:rgba(255,255,255,.06);color:var(--t2)" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'DRAW\','+o.d.toFixed(3)+',\''+_wcML(o.d)+'\',\'Group '+m.group+' · '+m.home+' vs '+m.away+' · DRAW\',\''+m.date+'\')">+DRAW</button>'
     +'</div>'
+    +(function(){var ah=_wcAH(m.he,m.ae);if(ah===0)return'';var hAH=ah<0?m.home+' '+ah:m.away+' +'+(Math.abs(ah));var aAH=ah<0?m.away+' +'+(Math.abs(ah)):m.home+' '+(-Math.abs(ah));var hAHP=ah<0?o.h/(o.h+o.a):o.a/(o.h+o.a);var aAHP=1-hAHP;return'<div style="display:flex;gap:6px;margin-top:5px;align-items:center;flex-wrap:wrap"><span style="font-family:var(--mono);font-size:9px;color:var(--gc)">AH</span><button class="btn btn-sm" style="background:rgba(255,200,0,.08);color:var(--gc);border-color:rgba(255,200,0,.4);font-size:11px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+hAH+'\','+hAHP.toFixed(3)+',\'-110\',1.91,\''+m.date+'\')">'+m.hf+' '+hAH+'</button><button class="btn btn-sm" style="background:rgba(255,200,0,.05);color:var(--gc);border-color:rgba(255,200,0,.25);font-size:11px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+aAH+'\','+aAHP.toFixed(3)+',\'-110\',1.91,\''+m.date+'\')">'+m.af+' '+aAH+'</button></div>';})()
     +'<div style="display:flex;gap:6px;margin-top:5px;align-items:center;flex-wrap:wrap">'
     +'<span style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U</span>'
     +'<input type="number" step="0.5" value="'+m.ou+'" id="ouinp_wc_'+m.hc+'_'+m.ac+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,200,0,.3);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center">'
@@ -15850,6 +15875,47 @@ function renderWCBracket(){
   html+='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:20px 12px;text-align:center">Bracket populates after group stage concludes · July 2026</div>';
   el.innerHTML=html;
 }
+function renderWCParlay(){
+  var el=document.getElementById('wc-parlay-list');if(!el)return;
+  var todayStr=typeof today==='function'?today():new Date().toISOString().slice(0,10);
+  var games=WC26_SCHEDULE.filter(function(m){return m.date>=todayStr;}).slice(0,20);
+  if(!games.length)games=WC26_SCHEDULE.slice(0,20);
+  el.innerHTML='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;padding:0 12px">⚽ WC26 PARLAY BUILDER</div>'
+    +games.map(function(m){
+      var o=_wcOut(m.he,m.ae);
+      var hML=_wcML(o.h),aML=_wcML(o.a),dML=_wcML(o.d);
+      var ah=_wcAH(m.he,m.ae);
+      var hAHLbl=ah<0?m.home+' '+ah:m.away+' +'+(Math.abs(ah));
+      var aAHLbl=ah<0?m.away+' +'+(Math.abs(ah)):m.home+' '+(-Math.abs(ah));
+      var hAHP=ah===0?0.5:ah<0?o.h/(o.h+o.a):o.a/(o.h+o.a);
+      var matchup='WC26:'+m.away+'@'+m.home;
+      var ouId='ouinp_wcp_'+m.hc+'_'+m.ac;
+      return '<div class="card" style="margin:0 8px 6px;border:1px solid rgba(255,200,0,.2);padding:10px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+        +'<span style="font-family:var(--orb);font-size:14px;font-weight:700;color:var(--gc)">'+m.hf+' '+m.home+' vs '+m.away+' '+m.af+'</span>'
+        +'<span style="font-family:var(--mono);font-size:9px;color:var(--gc);border:1px solid rgba(255,200,0,.4);padding:1px 5px;border-radius:2px">GRP '+m.group+'</span>'
+        +'</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:7px">'+m.date+' · '+m.time+'</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px">'
+        +'<button class="btn btn-p btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC '+m.hf+' '+m.home+' ML\',\''+hML+'\','+o.h.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.hf+' '+m.home+' '+hML+'</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC '+m.af+' '+m.away+' ML\',\''+aML+'\','+o.a.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+m.away+' '+aML+'</button>'
+        +'<button class="btn btn-sm" style="font-size:11px;background:rgba(255,255,255,.06);color:var(--t2)" onclick="cvParlayAddLeg(\'xp\',\'WC DRAW '+m.home+'/'+m.away+'\',\''+dML+'\','+o.d.toFixed(3)+',\''+matchup+'\',\'GAME\')">DRAW '+dML+'</button>'
+        +'</div>'
+        +(ah!==0?'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px;align-items:center">'
+        +'<span style="font-family:var(--mono);font-size:9px;color:var(--gc)">AH</span>'
+        +'<button class="btn btn-sm" style="font-size:11px;background:rgba(255,200,0,.08);color:var(--gc);border-color:rgba(255,200,0,.4)" onclick="cvParlayAddLeg(\'xp\',\'WC AH '+hAHLbl+'\',\'-110\','+hAHP.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.hf+' '+hAHLbl+'</button>'
+        +'<button class="btn btn-sm" style="font-size:11px;background:rgba(255,200,0,.05);color:var(--gc);border-color:rgba(255,200,0,.25)" onclick="cvParlayAddLeg(\'xp\',\'WC AH '+aAHLbl+'\',\'-110\',' +(1-hAHP).toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+aAHLbl+'</button>'
+        +'</div>':'')
+        +'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">'
+        +'<span style="font-family:var(--mono);font-size:9px;color:var(--t3)">O/U</span>'
+        +'<input type="number" step="0.5" value="'+m.ou+'" id="'+ouId+'" style="width:40px;background:rgba(0,0,0,.5);border:1px solid rgba(255,200,0,.3);color:var(--t);font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:2px;text-align:center">'
+        +'<button class="btn btn-sm" style="font-size:11px;background:rgba(0,240,255,.08);color:var(--nc);border-color:rgba(0,240,255,.4)" onclick="_ouParlayDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.5,\''+m.ou+'\',\''+ouId+'\',\'OVER\',\'wc\')">▲ OVER ⚽</button>'
+        +'<button class="btn btn-sm" style="font-size:11px;background:rgba(255,80,0,.08);color:var(--hc);border-color:rgba(255,80,0,.4)" onclick="_ouParlayDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.5,\''+m.ou+'\',\''+ouId+'\',\'UNDER\',\'wc\')">▼ UNDER ⚽</button>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+}
+window.renderWCParlay=renderWCParlay;
 function renderWCPicks(){
   var el=document.getElementById('wc-picks-list');if(!el)return;
   var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px;padding:0 12px">MODEL PICKS · ELO-WEIGHTED</div>';
@@ -17777,8 +17843,8 @@ function cvXParlayLoadGames(s){
         +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.away+'\',\''+aML+'\','+o.a.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+m.away+' '+aML+'</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:11px;color:var(--t3)" onclick="cvParlayAddLeg(\'xp\',\'WC26 DRAW '+m.home+'/'+m.away+'\',\''+dML+'\','+o.d.toFixed(3)+',\''+matchup+'\',\'GAME\')">DRAW '+dML+'</button>'
         +'<input type="number" step="0.5" value="2.5" id="ouinp_wc_'+m.hc+'_'+m.ac+'" style="width:40px;background:rgba(0,0,0,.5);border:1px solid rgba(255,200,0,.3);color:var(--t);font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:2px;text-align:center">'
-        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--nc)" onclick="_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'OVER\')">▲ OVER</button>'
-        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc)" onclick="_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'UNDER\')">▼ UNDER</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--nc)" onclick="_ouParlayDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'OVER\',\'wc\')">▲ OVER</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc)" onclick="_ouParlayDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'UNDER\',\'wc\')">▼ UNDER</button>'
         +'</div></div>';
     }).join('');
     return;
@@ -17807,6 +17873,7 @@ function cvXParlayLoadGames(s){
       +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' ML '+hA+'\',\''+hML+'\','+hP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+hA+' '+hML+'</button>'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' ML '+awA+'\',\''+awML+'\','+awP.toFixed(3)+',\''+matchup+'\',\'GAME\')">ML '+awA+' '+awML+'</button>'
+      +'<button class="btn btn-sm" style="font-size:11px;background:rgba(255,200,0,.08);color:var(--gc);border-color:rgba(255,200,0,.4)" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' '+(hP>=awP?hA:awA)+' -1.5\',\'-115\','+(hP>=awP?Math.max(.36,hP-.10):Math.max(.36,awP-.10)).toFixed(3)+',\''+matchup+'\',\'GAME\')">'+(hP>=awP?hA:awA)+' -1.5</button>'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' O'+totStr+'\',\'-110\',.52,\''+matchup+'\',\'GAME\')">O'+totStr+'</button>'
       +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\''+spLabel+' U'+totStr+'\',\'-110\',.48,\''+matchup+'\',\'GAME\')">U'+totStr+'</button>'
       +'</div></div>';
