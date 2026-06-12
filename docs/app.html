@@ -1271,6 +1271,7 @@ body{line-height:1.5}
             <option value="loss">LOSSES</option>
           </select>
           <button class="btn btn-o btn-sm" onclick="renderLockedTracker()">↻</button>
+          <button class="btn btn-sm" style="background:rgba(0,229,255,.1);border-color:var(--nc);color:var(--nc);font-size:10px" onclick="exportBetsCSV()">EXPORT CSV</button>
         </div>
       </div>
       <div id="tracker-locked-list"><div class="empty">LOADING...</div></div>
@@ -18267,6 +18268,90 @@ function _simRender(el,sport,home,away,N,r){
 /* ================================================================
    TRACKER — Locked Bets
    ================================================================ */
+function exportBetsCSV(){
+  var bets=(typeof getP==='function'?getP():[]).slice();
+  if(!bets.length){toast('// NO BETS TO EXPORT');return;}
+
+  /* Sort chronologically */
+  bets.sort(function(a,b){return (a.lockedAt||0)-(b.lockedAt||0);});
+
+  /* Build CSV rows */
+  var headers=['Date','Locked At','Sport','Matchup','Bet Type','Bet On','ML','Dec Odds','Model %','Wager ($)','Outcome','P/L (units)','Running Units','ROI %','Note'];
+  var rows=[headers];
+  var runningUnits=0;
+  var totalWagered=0;
+
+  bets.forEach(function(p){
+    var dec=parseFloat(p.decOdds)||2;
+    var wager=parseFloat(p.wager)||1;
+    var pl=0;
+    if(p.outcome==='win')pl=+(( (dec-1)*wager ).toFixed(2));
+    else if(p.outcome==='loss')pl=-wager;
+    else if(p.outcome==='push')pl=0;
+    else pl=null; /* pending */
+
+    if(pl!==null){
+      runningUnits=+(runningUnits+pl).toFixed(2);
+      if(p.outcome!=='push')totalWagered=+(totalWagered+wager).toFixed(2);
+    }
+
+    var roi=totalWagered>0?(runningUnits/totalWagered*100).toFixed(1)+'%':'--';
+    var lockedStr=p.lockedAt?new Date(p.lockedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'';
+    var matchup=(p.awA&&p.hA)?(p.awA+' @ '+p.hA):(p.hA||p.awA||'');
+
+    rows.push([
+      p.date||'',
+      lockedStr,
+      p.sport||'',
+      matchup,
+      p.betType||'ML',
+      p.betOn||'',
+      p.ml||'',
+      dec.toFixed(3),
+      p.winProb?Math.round(parseFloat(p.winProb)*100)+'%':'',
+      wager.toFixed(2),
+      p.outcome||'PENDING',
+      pl!==null?(pl>=0?'+':'')+pl:'--',
+      pl!==null?(runningUnits>=0?'+':'')+runningUnits:'--',
+      pl!==null?roi:'--',
+      (p.note||'').replace(/,/g,';')
+    ]);
+  });
+
+  /* Summary rows */
+  var settled=bets.filter(function(p){return p.outcome&&p.outcome!=='pending';});
+  var wins=settled.filter(function(p){return p.outcome==='win';}).length;
+  var losses=settled.filter(function(p){return p.outcome==='loss';}).length;
+  var finalROI=totalWagered>0?(runningUnits/totalWagered*100).toFixed(1)+'%':'--';
+  rows.push([]);
+  rows.push(['SUMMARY','','','','','','','','','','','','','','']);
+  rows.push(['Total Bets',bets.length,'','Settled',settled.length,'','W',wins,'L',losses,'','Total Units',(runningUnits>=0?'+':'')+runningUnits,'ROI',finalROI]);
+  rows.push(['Exported',new Date().toLocaleString(),'','','','','','','','','','','','','Clairvoyance Engine']);
+
+  /* Encode CSV */
+  var csv=rows.map(function(r){
+    return r.map(function(v){
+      var s=String(v==null?'':v);
+      if(s.indexOf(',')>-1||s.indexOf('"')>-1||s.indexOf('\n')>-1)s='"'+s.replace(/"/g,'""')+'"';
+      return s;
+    }).join(',');
+  }).join('\r\n');
+
+  /* Download */
+  var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  var dt=new Date().toISOString().slice(0,10);
+  a.download='clairvoyance_bets_'+dt+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('// CSV EXPORTED · '+bets.length+' BETS · '+dt);
+}
+window.exportBetsCSV=exportBetsCSV;
+
 function renderLockedTracker() {
   var el = document.getElementById('tracker-locked-list');
   if (!el) return;
