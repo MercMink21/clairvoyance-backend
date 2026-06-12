@@ -15443,40 +15443,61 @@ function renderWCMatches(){
     .catch(function(){clearTimeout(tid);});
 }
 // ── ESPN live fetch for GROUPS ────────────────────────────────────────────────
-function _buildWCGroupsHTML(groupData){
-  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;padding:0 12px">GROUP STAGE · 12 GROUPS · 48 TEAMS</div>';
-  var isLive=groupData&&groupData.length&&groupData[0].entries&&groupData[0].entries.length&&(groupData[0].entries[0].gp||0)>0;
-  html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:12px;padding:0 12px">'+(isLive?'LIVE ESPN STANDINGS · TOP 2 ADVANCE':'ELO-PROJECTED STANDINGS · TOP 2 ADVANCE AUTOMATICALLY')+'</div>';
+function _buildWCGroupsHTML(groupData,updatedAt){
+  var html='<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px;padding:0 12px">GROUP STAGE · 12 GROUPS · 48 TEAMS</div>';
+  var isLive=groupData&&groupData.length&&groupData[0].entries&&groupData[0].entries.length&&groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+  var statusLine=isLive?'LIVE STANDINGS · TOP 2 ADVANCE AUTOMATICALLY':'ELO-PROJECTED ORDER · TOP 2 ADVANCE · STANDINGS POPULATE ONCE MATCHES START';
+  if(isLive&&updatedAt){var d=new Date(updatedAt);statusLine+=' · UPDATED '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+  html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:0 12px;margin-bottom:10px">'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1.5px">'+statusLine+'</div>'
+    +(isLive?'<button class="btn btn-sm" style="font-size:9px;padding:2px 8px" onclick="renderWCGroups()">REFRESH</button>':'')
+    +'</div>';
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 8px">';
   if(isLive){
     groupData.forEach(function(g){
-      html+='<div class="card" style="border-top:2px solid var(--gc);padding:10px">'
-        +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc);letter-spacing:2px;margin-bottom:6px">GROUP '+g.name+'</div>'
-        +'<div style="display:grid;grid-template-columns:auto 1fr repeat(5,20px);gap:2px;font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px;margin-bottom:4px;padding:0 2px">'
-        +'<span></span><span></span><span style="text-align:center">W</span><span style="text-align:center">D</span><span style="text-align:center">L</span><span style="text-align:center">GD</span><span style="text-align:center">P</span>'
-        +'</div>';
+      var hasGames=g.entries.some(function(e){return e.gp>0;});
+      html+='<div class="card" style="border-top:2px solid var(--gc);padding:10px;overflow-x:auto">'
+        +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc);letter-spacing:2px;margin-bottom:7px">GROUP '+g.name+'</div>'
+        +'<table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:9px">'
+        +'<thead><tr style="color:var(--t3);letter-spacing:1px">'
+        +'<th style="text-align:left;padding-bottom:4px;font-weight:400" colspan="2">TEAM</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">GP</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">W</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">D</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">L</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">GF</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400">GA</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:400;color:var(--nc)">GD</th>'
+        +'<th style="text-align:center;padding:0 3px;font-weight:700;color:var(--gc)">PTS</th>'
+        +'</tr></thead><tbody>';
       g.entries.forEach(function(t,i){
         var adv=i<2;
-        html+='<div style="display:grid;grid-template-columns:auto 1fr repeat(5,20px);align-items:center;gap:2px;padding:3px 2px;'+(i<3?'border-bottom:1px solid rgba(255,255,255,.04)':'')+'">'
-          +'<span style="font-size:13px;margin-right:3px">'+t.flag+'</span>'
-          +'<span style="font-family:var(--mono);font-size:11px;color:'+(adv?'var(--t1)':'var(--t3)')+'">'+t.name+(adv?'<span style="margin-left:3px;background:rgba(255,200,0,.2);color:var(--gc);font-size:7px;padding:1px 3px;border-radius:1px;vertical-align:middle">ADV</span>':'')+'</span>'
-          +'<span style="font-family:var(--mono);font-size:10px;color:var(--t2);text-align:center">'+t.w+'</span>'
-          +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-align:center">'+t.d+'</span>'
-          +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-align:center">'+t.l+'</span>'
-          +'<span style="font-family:var(--mono);font-size:10px;color:'+(t.gd>0?'var(--nc)':t.gd<0?'var(--hc)':'var(--t3)')+';text-align:center">'+(t.gd>0?'+':'')+t.gd+'</span>'
-          +'<span style="font-family:var(--orb);font-size:11px;font-weight:700;color:'+(adv?'var(--gc)':'var(--t2)')+';text-align:center">'+t.pts+'</span>'
-          +'</div>';
+        var gdCol=t.gd>0?'var(--nc)':t.gd<0?'var(--hc)':'var(--t3)';
+        var rowBorder=i<g.entries.length-1?'border-bottom:1px solid rgba(255,255,255,.04)':'';
+        var advBg=adv&&hasGames?'background:rgba(255,200,0,.04);':'';
+        html+='<tr style="'+rowBorder+';'+advBg+'">'
+          +'<td style="padding:3px 2px 3px 0;font-size:13px;line-height:1">'+t.flag+'</td>'
+          +'<td style="padding:3px 4px 3px 0;font-size:10px;color:'+(adv&&hasGames?'var(--t1)':'var(--t3)')+(adv&&hasGames?';font-weight:700':'')+'">'+t.name+(adv&&hasGames?'&nbsp;<span style="background:rgba(255,200,0,.25);color:var(--gc);font-size:7px;padding:1px 3px;border-radius:1px">ADV</span>':'')+'</td>'
+          +'<td style="text-align:center;color:var(--t3);padding:3px">'+t.gp+'</td>'
+          +'<td style="text-align:center;color:var(--t2);padding:3px">'+t.w+'</td>'
+          +'<td style="text-align:center;color:var(--t3);padding:3px">'+t.d+'</td>'
+          +'<td style="text-align:center;color:var(--t3);padding:3px">'+t.l+'</td>'
+          +'<td style="text-align:center;color:var(--t2);padding:3px">'+t.gf+'</td>'
+          +'<td style="text-align:center;color:var(--t3);padding:3px">'+t.ga+'</td>'
+          +'<td style="text-align:center;color:'+gdCol+';padding:3px;font-weight:700">'+(t.gd>0?'+':'')+t.gd+'</td>'
+          +'<td style="text-align:center;color:'+(adv&&hasGames?'var(--gc)':'var(--t2)')+';font-weight:700;font-family:var(--orb);font-size:10px;padding:3px">'+t.pts+'</td>'
+          +'</tr>';
       });
-      html+='</div>';
+      html+='</tbody></table></div>';
     });
   } else {
     WC26_GROUPS.forEach(function(g){
       var sorted=g.teams.slice().sort(function(a,b){return b.e-a.e;});
-      html+='<div class="card" style="border-top:2px solid var(--gc);padding:10px">'
+      html+='<div class="card" style="border-top:2px solid rgba(255,200,0,.4);padding:10px">'
         +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc);letter-spacing:2px;margin-bottom:8px">GROUP '+g.id+'</div>';
       sorted.forEach(function(t,i){
         var adv=i<2;
-        html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;'+(i<2?'border-bottom:1px solid rgba(255,200,0,.08)':'')+'">'
+        html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;'+(i<3?'border-bottom:1px solid rgba(255,255,255,.04)':'')+'">'
           +'<div style="display:flex;align-items:center;gap:5px">'
           +'<span style="font-size:14px">'+t.f+'</span>'
           +'<span style="font-family:var(--mono);font-size:11px;color:'+(adv?'var(--t1)':'var(--t3)')+'">'+t.n+'</span>'
@@ -15523,24 +15544,42 @@ function _wcParseStandings(data){
   }catch(e){}
   return groupData;
 }
+function _wcStandingsCache(){
+  try{return JSON.parse(localStorage.getItem('cv_wc26_standings')||'null');}catch(e){return null;}
+}
+function _wcStandingsSave(groupData){
+  try{localStorage.setItem('cv_wc26_standings',JSON.stringify({groupData:groupData,ts:Date.now()}));}catch(e){}
+}
 function renderWCGroups(){
   var el=document.getElementById('wc-groups-list');if(!el)return;
-  // Render immediately from static ELO data
-  el.innerHTML=_buildWCGroupsHTML([]);
-  // Background fetch ESPN standings — update if real game data exists
-  var ctrl=window.AbortController?new AbortController():null;
-  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings',ctrl?{signal:ctrl.signal}:{})
-    .then(function(r){return r.json();})
-    .then(function(data){
-      clearTimeout(tid);
-      var groupData=_wcParseStandings(data);
-      var hasGames=groupData.length&&groupData[0].entries.length&&groupData[0].entries.some(function(e){return e.gp>0;});
-      if(hasGames&&document.getElementById('wc-groups-list')){
-        document.getElementById('wc-groups-list').innerHTML=_buildWCGroupsHTML(groupData);
-      }
-    })
-    .catch(function(){clearTimeout(tid);});
+  /* Show cached standings immediately if available and less than 24h old */
+  var cache=_wcStandingsCache();
+  var cacheAge=cache?(Date.now()-cache.ts):Infinity;
+  var cacheHasGames=cache&&cache.groupData&&cache.groupData.length&&cache.groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+  if(cacheHasGames){
+    el.innerHTML=_buildWCGroupsHTML(cache.groupData,cache.ts);
+  } else {
+    el.innerHTML=_buildWCGroupsHTML([]);
+  }
+  /* Fetch fresh data if cache is stale (>2h) or has no game data yet */
+  if(cacheAge>2*3600*1000||!cacheHasGames){
+    var ctrl=window.AbortController?new AbortController():null;
+    var tid=setTimeout(function(){ctrl&&ctrl.abort();},6000);
+    fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings',ctrl?{signal:ctrl.signal}:{})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        clearTimeout(tid);
+        var groupData=_wcParseStandings(data);
+        var hasGames=groupData.length&&groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+        if(hasGames){
+          _wcStandingsSave(groupData);
+          if(document.getElementById('wc-groups-list')){
+            document.getElementById('wc-groups-list').innerHTML=_buildWCGroupsHTML(groupData,Date.now());
+          }
+        }
+      })
+      .catch(function(){clearTimeout(tid);});
+  }
 }
 function renderWCBracket(){
   var el=document.getElementById('wc-bracket-list');if(!el)return;
