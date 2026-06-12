@@ -4126,7 +4126,7 @@ function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)r
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:17px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:16px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(240,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:16px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
-function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=(r.mc?.avgT||8.5).toFixed(1);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><button class="btn btn-o btn-sm" onclick="addLeg('O${ouL}','-110',.52,'${r.hA}v${r.awA}')">O${ouL}</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
+function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=(r.mc?.avgT||8.5).toFixed(1);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><button class="btn btn-o btn-sm" onclick="addLeg('O${ouL}','-110',.52,'${r.hA}v${r.awA}')">O${ouL}</button><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj('${r.hA}','${r.awA}',null,.52,'${ouL}',-0.5)">-½</button><button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj('${r.hA}','${r.awA}',null,.52,'${ouL}',0.5)">+½</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
 function addLeg(name,ml,prob,matchup){if(PAR.length>=8){toast('// MAX 8 LEGS');return;}const legCount=PAR.filter(l=>l.matchup===matchup).length;if(legCount>=3){toast('// MAX 3 LEGS PER GAME');return;}PAR.push({name,ml,prob:parseFloat(prob),matchup,dec:ml2d(ml)});renderLegs();calcP();toast(`// +LEG: ${name}`);}
 function addLeg2(hA,awA){T('mlb','parlay');toast(`// SELECT BET FOR ${awA} at ${hA}`);}
 function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
@@ -5661,7 +5661,9 @@ function renderNBAProps(){
           <div style="display:flex;gap:5px;align-items:center">
             <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
             <input type="number" step="0.5" value="${p.line}" id="padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+            <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">-½</button>
             <button class="btn btn-p btn-sm" onclick="_adjLock('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}','${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">LOCK</button>
+            <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${(p.team||'NBA').replace(/'/g,"\\'")}','${p.player.replace(/'/g,"\\'")}','${statDisp}',${p.over!==false?'true':'false'},${prob.toFixed(3)},'${mlStr}')">+½</button>
             <button class="btn btn-o btn-sm" onclick="cvParlayAddLeg('nba','${p.player.replace(/'/g,"\\'")} ${p.over!==false?'O':'U'}${p.line} ${statDisp}',${mlNum},${prob.toFixed(3)},'${p.team||'NBA'} PROP','PROP')">+PAR</button>
           </div>
         </div>
@@ -5713,7 +5715,9 @@ function renderNBAProps(){
         <div style="display:flex;gap:5px;align-items:center">
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
           <input type="number" step="0.5" value="${p.line}" id="padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">-½</button>
           <button class="btn btn-o btn-sm" onclick="_adjLock('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">+½</button>
         </div>
       </div>
     </div>`;
@@ -9278,7 +9282,9 @@ function renderNHLPropsLive(filter){
         <div style="display:flex;gap:5px;align-items:center">
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
           <input type="number" step="0.5" value="${p.line}" id="padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockNHLDelta('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">-½</button>
           <button class="btn btn-o btn-sm" onclick="_adjLockNHL('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">LOCK</button>
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockNHLDelta('padj_nhll_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.player.replace(/'/g,"\\'")}','${p.stat}','${p.over?'OVER':'UNDER'}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">+½</button>
         </div>
       </div>
     </div>`;
@@ -9319,6 +9325,16 @@ function _adjLockNHL(inputId,player,stat,dir,conf,ml){
   var line=inp?parseFloat(inp.value):0;
   if(isNaN(line))line=0;
   lockNHLProp(player,stat,dir,conf,ml,line);
+}
+function _adjLockDelta(inputId,delta,team,player,stat,over,conf,ml){
+  var inp=document.getElementById(inputId);
+  if(inp)inp.value=(parseFloat(inp.value)+delta).toFixed(1);
+  _adjLock(inputId,team,player,stat,over,conf,ml);
+}
+function _adjLockNHLDelta(inputId,delta,player,stat,dir,conf,ml){
+  var inp=document.getElementById(inputId);
+  if(inp)inp.value=(parseFloat(inp.value)+delta).toFixed(1);
+  _adjLockNHL(inputId,player,stat,dir,conf,ml);
 }
 function lockProp(team,player,line,over,conf,ml){
   const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'NBA');
@@ -14871,6 +14887,10 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'<div class="cht">O/U '+ouStr+'</div>'
         +'<div class="cho">-110</div>'
         +'<div class="chp">LINE</div>'
+        +'<div style="display:flex;gap:3px;justify-content:center;margin-top:3px">'
+        +'<button onclick="event.stopPropagation();_ouAdj(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button>'
+        +'<button onclick="event.stopPropagation();_ouAdj(\''+hab+'\',\''+aab+'\',null,0.52,\''+ouStr+'\',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button>'
+        +'</div>'
         +'</div>'
         +'</div>'
         +'<div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">'
@@ -15002,7 +15022,9 @@ async function renderWNBAProps(){
         +'<div style="display:flex;gap:5px;align-items:center">'
         +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>'
         +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',-0.5,\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">-½</button>'
         +'<button class="btn btn-p btn-sm" onclick="_adjLock(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">LOCK</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta(\'padj_wnbal_'+p.player.replace(/\W+/g,'_')+'_'+p.stat+'\',0.5,\''+(p.team||'WNBA')+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+statDisp+'\','+(p.over!==false)+','+prob.toFixed(3)+',\''+mlStr+'\')">+½</button>'
         +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(p.over!==false?'O':'U')+p.line+' '+statDisp+'\','+mlNum+','+prob.toFixed(3)+',\''+(p.team||'WNBA')+' PROP\',\'PROP\')">+PAR</button>'
         +'</div></div></div>';
     }).join('');
@@ -17616,6 +17638,9 @@ function cvXParlayLoadGames(s){
         +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.home+'\',\''+hML+'\','+o.h.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.hf+' '+m.home+' '+hML+'</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:11px" onclick="cvParlayAddLeg(\'xp\',\'WC26 ML '+m.away+'\',\''+aML+'\','+o.a.toFixed(3)+',\''+matchup+'\',\'GAME\')">'+m.af+' '+m.away+' '+aML+'</button>'
         +'<button class="btn btn-o btn-sm" style="font-size:11px;color:var(--t3)" onclick="cvParlayAddLeg(\'xp\',\'WC26 DRAW '+m.home+'/'+m.away+'\',\''+dML+'\','+o.d.toFixed(3)+',\''+matchup+'\',\'GAME\')">DRAW '+dML+'</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',-0.5)">O2.0 -½</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',0)">O2.5</button>'
+        +'<button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_ouAdj(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.52,\'2.5\',0.5)">O3.0 +½</button>'
         +'</div></div>';
     }).join('');
     return;
