@@ -1305,6 +1305,14 @@ body{line-height:1.5}
 </div>
 <div id="sp-parlay" class="spane">
   <div id="tracker-parlay" class="subp act">
+    <!-- ENGINE RECOMMENDED PARLAYS -->
+    <div class="sa" style="padding:14px;border-bottom:2px solid rgba(187,255,0,.12)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="sh" style="margin:0"><span class="e"></span> ENGINE RECOMMENDED PARLAYS <span style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">CROSS-SPORT · GAME + PROP</span></div>
+        <button class="btn btn-o btn-sm" onclick="renderEngineParlays()">↻ REFRESH</button>
+      </div>
+      <div id="xp-engine-parlays"><div class="loading"><span class="spi"></span></div></div>
+    </div>
     <div class="sa" style="padding:14px">
       <!-- CROSS-SPORT BUILDER -->
       <div class="sh" style="margin:0 0 10px"><span class="p"></span> CROSS-SPORT PARLAY BUILDER</div>
@@ -8830,7 +8838,7 @@ function SS(s){
   if(s==='soc'){_t(()=>T('wc','matches'));_t(renderWCMatches);}
   if(s==='sim'){_t(simUpdateTeams);_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
   if(s==='tracker'){_t(renderLockedTracker);_t(()=>{try{setTrackerTab('locked');}catch(e){}});}
-  if(s==='parlay'){_t(renderParlayTracker);}
+  if(s==='parlay'){_t(renderParlayTracker);_t(()=>{try{cvXParlayInit();}catch(e){}});}
 }
 function setSub(sport,sub){
   document.querySelectorAll(`#sp-${sport} .subp`).forEach(p=>{p.classList.remove('act');p.style.display='';});
@@ -17114,6 +17122,219 @@ function cvParlayInit(s){
   cvParlayToggle(s,window._cvParV[s]||'games');
 }
 
+/* ================================================================
+   ENGINE RECOMMENDED PARLAYS
+   Generates 5 pre-built slates from bestBets + prop datasets.
+   Each slate can be loaded into the builder with one click.
+   ================================================================ */
+function _epML(ml){var m=parseFloat(String(ml||'-110').replace('+',''));return isNaN(m)?-110:m;}
+function _epDec(ml){var m=_epML(ml);return m>0?m/100+1:100/Math.abs(m)+1;}
+function _epImp(ml){var m=_epML(ml);return m<0?Math.abs(m)/(Math.abs(m)+100):100/(m+100);}
+function _epMLStr(ml){var m=_epML(ml);return(m>0?'+':'')+m;}
+function _epEV(prob,dec){return+(prob*dec-1);}
+
+function _epGatherLegs(){
+  var D=window.__CV_DATA||{};
+  var legs=[];
+
+  /* ── Game picks from bestBets ─────────────────────────────── */
+  var bb=(D.bestBets||[]).filter(function(b){
+    return b.ml&&b.winProb&&parseFloat(b.winProb)>0.52&&(b.outcome||'pending')==='pending'&&b.betType!=='PROP';
+  });
+  bb.sort(function(a,b){return parseFloat(b.winProb)-parseFloat(a.winProb);});
+  bb.slice(0,12).forEach(function(b){
+    var prob=parseFloat(b.winProb)||0.55;
+    var dec=_epDec(b.ml);
+    legs.push({name:b.betOn||b.selection||'ML',ml:b.ml,prob:prob,dec:dec,
+      ev:_epEV(prob,dec),matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),
+      sport:(b.sport||'MLB').toUpperCase(),type:'GAME',
+      grade:prob>=0.67?'ELITE':prob>=0.60?'LOCK':prob>=0.55?'GOOD':'FAIR'});
+  });
+
+  /* ── NHL props ─────────────────────────────────────────────── */
+  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
+    .filter(function(p){return p.grade==='ELITE'||p.grade==='LOCK';})
+    .slice(0,8).forEach(function(p){
+      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,
+        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+        matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade});
+    });
+
+  /* ── WNBA props ────────────────────────────────────────────── */
+  (typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[])
+    .filter(function(p){return p.grade==='ELITE'||p.grade==='LOCK';})
+    .slice(0,8).forEach(function(p){
+      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,
+        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+        matchup:(p.team||'WNBA')+' vs '+(p.opp||''),sport:'WNBA',type:'PROP',grade:p.grade});
+    });
+
+  /* ── NBA props from bestBets ───────────────────────────────── */
+  (D.bestBets||[]).filter(function(b){
+    return b.betType==='PROP'&&b.sport==='NBA'&&parseFloat(b.winProb)>=0.62;
+  }).slice(0,6).forEach(function(b){
+    var prob=parseFloat(b.winProb)||0.62;var dec=_epDec(b.ml);
+    legs.push({name:b.betOn||b.selection,ml:b.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+      matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),sport:'NBA',type:'PROP',
+      grade:prob>=0.67?'ELITE':'LOCK'});
+  });
+
+  return legs;
+}
+
+function renderEngineParlays(){
+  var el=document.getElementById('xp-engine-parlays');
+  if(!el)return;
+  el.innerHTML='<div class="loading"><span class="spi"></span></div>';
+
+  setTimeout(function(){
+    var allLegs=_epGatherLegs();
+    if(!allLegs.length){
+      el.innerHTML='<div class="empty" style="padding:14px">No engine data yet — sync data or lock picks first.</div>';
+      return;
+    }
+
+    /* Sort pools */
+    var byProb=[].concat(allLegs).sort(function(a,b){return b.prob-a.prob;});
+    var byEV=[].concat(allLegs).sort(function(a,b){return b.ev-a.ev;});
+    var games=allLegs.filter(function(l){return l.type==='GAME';}).sort(function(a,b){return b.prob-a.prob;});
+    var props=allLegs.filter(function(l){return l.type==='PROP';}).sort(function(a,b){return b.prob-a.prob;});
+    var elite=allLegs.filter(function(l){return l.grade==='ELITE'||l.grade==='LOCK';}).sort(function(a,b){return b.prob-a.prob;});
+
+    /* ── Pick N unique legs from pool avoiding duplicates ── */
+    function pick(pool,n){
+      var seen=new Set();var out=[];
+      for(var i=0;i<pool.length&&out.length<n;i++){
+        var k=pool[i].name+'|'+pool[i].sport;
+        if(!seen.has(k)){seen.add(k);out.push(pool[i]);}
+      }
+      return out;
+    }
+
+    /* ── Cross-sport diversity pick ── */
+    function pickDiverse(pool,n){
+      var usedSports=new Set();var out=[];
+      /* First pass: one per sport */
+      pool.forEach(function(l){
+        if(out.length<n&&!usedSports.has(l.sport)){out.push(l);usedSports.add(l.sport);}
+      });
+      /* Fill remainder from any sport */
+      if(out.length<n)pick(pool,n-out.length+out.length).forEach(function(l){
+        if(out.length<n&&!out.includes(l))out.push(l);
+      });
+      return out.slice(0,n);
+    }
+
+    /* ── Build slates ─────────────────────────────────────── */
+    var slates=[];
+
+    /* 1. ELITE LOCK — top 2 elite/lock picks regardless of type */
+    var s1legs=pick(elite,2);
+    if(s1legs.length===2)slates.push({name:'ELITE LOCK',emoji:'🔒',
+      desc:'2 highest-confidence engine picks',color:'var(--vc)',legs:s1legs});
+
+    /* 2. PROP SPECIAL — 3 highest-prob props, cross-sport */
+    var s2legs=pick(props,3);
+    if(s2legs.length>=2)slates.push({name:'PROP SPECIAL',emoji:'📊',
+      desc:'Top-graded player props — ELITE/LOCK only',color:'var(--nc)',legs:s2legs});
+
+    /* 3. POWER MIX — 2 game lines + 1 prop, different sports */
+    var s3gl=pick(games,2);var s3p=pick(props.filter(function(p){
+      return !s3gl.find(function(g){return g.sport===p.sport;});
+    }),1);
+    var s3legs=s3gl.concat(s3p);
+    if(s3legs.length>=2)slates.push({name:'POWER MIX',emoji:'⚡',
+      desc:'2 game lines + 1 prop — cross-sport blend',color:'var(--pc)',legs:s3legs});
+
+    /* 4. MAX EV DOUBLE — 2 best EV picks, any type */
+    var s4legs=pick(byEV,2);
+    if(s4legs.length===2)slates.push({name:'MAX EV DOUBLE',emoji:'💎',
+      desc:'Best expected value 2-legger across all markets',color:'var(--gc)',legs:s4legs});
+
+    /* 5. TONIGHT'S SPECIAL — 4-leg max diversity across sports */
+    var s5legs=pickDiverse(byProb,4);
+    if(s5legs.length>=3)slates.push({name:"TONIGHT'S SPECIAL",emoji:'🎯',
+      desc:'4-leg cross-sport max diversity parlay',color:'#bbff00',legs:s5legs});
+
+    if(!slates.length){
+      el.innerHTML='<div class="empty" style="padding:14px">Not enough data for recommendations — sync more picks.</div>';
+      return;
+    }
+
+    window._engineParlaySlates=slates;
+
+    /* ── Render ─────────────────────────────────────────────── */
+    function sportColor(sp){
+      return sp==='NHL'?'var(--vc)':sp==='WNBA'?'var(--gc)':sp==='NBA'?'var(--nc)':sp==='MLB'?'var(--ic)':'var(--t2)';
+    }
+    el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px">'+
+      slates.map(function(slate,si){
+        var cP=slate.legs.reduce(function(a,l){return a*l.prob;},1);
+        var cD=slate.legs.reduce(function(a,l){return a*l.dec;},1);
+        var cEV=_epEV(cP,cD);
+        var cs=chipC(cP,cEV);
+        var cML=cP>=0.5?'-'+Math.round(cP/(1-cP)*100):'+'+Math.round((1-cP)/cP*100);
+        var evCol=cEV>=0?'var(--gc)':'var(--hc)';
+        var mixHasGame=slate.legs.some(function(l){return l.type==='GAME';});
+        var mixHasProp=slate.legs.some(function(l){return l.type==='PROP';});
+        var sports=[...new Set(slate.legs.map(function(l){return l.sport;}))];
+
+        return '<div class="gc" style="border-left:3px solid '+slate.color+';display:flex;flex-direction:column">'
+          +'<div style="padding:10px 12px 8px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
+              +'<div>'
+                +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:'+slate.color+'">'+slate.emoji+' '+slate.name+'</div>'
+                +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:2px">'+slate.desc+'</div>'
+              +'</div>'
+              +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">'
+                +'<span class="pill '+cs.pl+'">'+cs.lb+'</span>'
+                +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">'+sports.join(' · ')+'</div>'
+              +'</div>'
+            +'</div>'
+            +slate.legs.map(function(leg){
+              var lc=sportColor(leg.sport);
+              var mlStr=_epMLStr(leg.ml);
+              return '<div style="display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+                +'<span style="font-family:var(--mono);font-size:9px;padding:1px 4px;border:1px solid '+lc+';color:'+lc+';border-radius:2px;flex-shrink:0">'+leg.sport+'</span>'
+                +(leg.type==='PROP'?'<span style="font-family:var(--mono);font-size:9px;padding:1px 4px;border:1px solid var(--nc);color:var(--nc);border-radius:2px;flex-shrink:0">PROP</span>':'')
+                +'<span style="font-family:var(--mono);font-size:11px;color:var(--t);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+leg.name+'">'+leg.name+'</span>'
+                +'<span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex-shrink:0">'+mlStr+'</span>'
+                +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0">'+Math.round(leg.prob*100)+'%</span>'
+                +'</div>';
+            }).join('')
+          +'</div>'
+          +'<div style="padding:6px 12px 10px;border-top:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center;margin-top:auto">'
+            +'<div style="font-family:var(--mono);font-size:11px">'
+              +'<span style="color:var(--t3)">ML </span><span style="color:var(--t);font-weight:700">'+cML+'</span>'
+              +'<span style="color:var(--t3);margin-left:8px">'+( cP*100).toFixed(1)+'%</span>'
+              +'<span style="color:var(--t3);margin-left:8px">EV </span><span style="color:'+evCol+'">'+(cEV>=0?'+':'')+(cEV*100).toFixed(1)+'%</span>'
+            +'</div>'
+            +(mixHasGame&&mixHasProp?'<span style="font-family:var(--mono);font-size:9px;padding:1px 5px;border:1px solid rgba(255,255,255,.2);border-radius:2px;color:var(--t3);margin-right:4px">MIX</span>':'')
+            +'<button class="btn btn-p btn-sm" style="font-size:11px" onclick="_loadEngineParlayToBuilder('+si+')">LOAD ➜</button>'
+          +'</div>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+  },50);
+}
+
+function _loadEngineParlayToBuilder(idx){
+  var slates=window._engineParlaySlates||[];
+  var slate=slates[idx];if(!slate)return;
+  window._cvPar=window._cvPar||{};window._cvPar['xp']=[];
+  slate.legs.forEach(function(leg){
+    cvParlayAddLeg('xp',leg.name,leg.ml,leg.prob,leg.matchup||(leg.sport+' · ENGINE'),leg.type||'GAME');
+  });
+  cvParlayCalc('xp');
+  /* Scroll to builder */
+  try{var b=document.querySelector('#sp-parlay .g2');if(b)b.scrollIntoView({behavior:'smooth'});}catch(e){}
+  toast('// '+slate.emoji+' '+slate.name+' → '+slate.legs.length+' LEGS LOADED');
+}
+window.renderEngineParlays=renderEngineParlays;
+window._loadEngineParlayToBuilder=_loadEngineParlayToBuilder;
+
 // ── CROSS-SPORT PARLAY BUILDER (Tracker > PARLAY tab) ────────────────────────
 window._cvXPSport='mlb';window._cvXPView='games';
 function cvXParlayInit(){
@@ -17121,6 +17342,7 @@ function cvXParlayInit(){
   if(!window._cvPar['xp'])window._cvPar['xp']=[];
   cvParlayRenderLegs('xp');
   cvXParlaySetSport(window._cvXPSport||'mlb');
+  setTimeout(renderEngineParlays,200);
 }
 function cvXParlaySetSport(s){
   window._cvXPSport=s;
