@@ -2515,7 +2515,7 @@ async function loadGames(dateStr){
     const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;
     const hML=g.hML||p2ml(ens.p),hD=ml2d(hML),hEV=ev(ens.p,hD);
     const awML=g.aML||p2ml(1-ens.p),awD=ml2d(awML),awEV=ev(1-ens.p,awD);
-    const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc&&mc.avgT>parseFloat(ouL)?.52:.48;
+    const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
     const evT=(+document.getElementById('s-evt')?.value||2)/100;
     [[ens.p,String(hML),hD,hEV,`ML ${g.hA}`,g.hA,g.awA],
      [1-ens.p,String(awML),awD,awEV,`ML ${g.awA}`,g.hA,g.awA],
@@ -2703,16 +2703,23 @@ function eloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400))}
 function getBayes(a){const t=TEAMS[a];if(!t)return{m:.5};let al=t.s.W+1,bl=t.s.L+1;for(const p of getP()){if(p.outcome==='pending'||p.sport==='NHL')continue;const iH=p.hA===a,iA=p.awA===a;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}return{m:al/(al+bl)};}
 function pAdj(sp){if(!sp)return 1;const e=Math.max(.7,Math.min(1.3,(4.5-sp.era)/4.5+1));const w=Math.max(.8,Math.min(1.2,(1.35-(sp.whip||1.35))/1.35+1));return(e+w)/2;}
 function adjLam(oT,dT,pf,home,spA){return Math.max(.5,oT.bat.RG*(dT.pit.RAG/4.5)*(home?1.04:.96)*pf/spA);}
-function mlbMC(hA,awA,n=5000){
+function mlbMC(hA,awA,n=5000,ouLine=8.5){
   const h=TEAMS[hA],aw=TEAMS[awA];if(!h||!aw)return null;
   const hL=adjLam(h,aw,h.pf,true,pAdj(PIT[awA]));const awL=adjLam(aw,h,h.pf,false,pAdj(PIT[hA]));
-  let hw=0,aw2=0,ts=0,hT=0,aT=0,rT=0;const mD={};
-  for(let i=0;i<n;i++){const hr=pois(hL),ar=pois(awL);hT+=hr;aT+=ar;rT+=hr+ar;const m=hr-ar;mD[m]=(mD[m]||0)+1;if(hr>ar)hw++;else if(ar>hr)aw2++;else ts++;}
+  let hw=0,aw2=0,ts=0,hT=0,aT=0,rT=0,ov=0;const mD={};
+  for(let i=0;i<n;i++){const hr=pois(hL),ar=pois(awL);hT+=hr;aT+=ar;rT+=hr+ar;const m=hr-ar;mD[m]=(mD[m]||0)+1;if(hr>ar)hw++;else if(ar>hr)aw2++;else ts++;if(hr+ar>ouLine)ov++;}
   hw+=Math.round(ts*.503);aw2+=Math.round(ts*.497);
-  return{hwP:hw/n,avgH:hT/n,avgA:aT/n,avgT:rT/n,rl15:Object.entries(mD).filter(([m])=>+m>=2).reduce((s,[,c])=>s+c,0)/n,rlN:Object.entries(mD).filter(([m])=>+m<=-2).reduce((s,[,c])=>s+c,0)/n};
+  return{hwP:hw/n,avgH:hT/n,avgA:aT/n,avgT:rT/n,overP:ov/n,underP:1-ov/n,rl15:Object.entries(mD).filter(([m])=>+m>=2).reduce((s,[,c])=>s+c,0)/n,rlN:Object.entries(mD).filter(([m])=>+m<=-2).reduce((s,[,c])=>s+c,0)/n};
+}
+function _ouAdj(hA,awA,date,baseOverP,ouL,delta){
+  var nl=(parseFloat(ouL)+delta).toFixed(1);
+  var np=Math.min(.72,Math.max(.28,baseOverP-delta*0.035));
+  var dir=np>=.5?'OVER':'UNDER';
+  lockPick(hA,awA,'OU',dir+' '+nl,np,'-110',1.91,date||today());
 }
 function mlbEns(hA,awA,espnGame){
-  const mc=mlbMC(hA,awA);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
+  const ouLine=parseFloat(espnGame?.ou||8.5);
+  const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
   const hfa=(+document.getElementById('s-hfa')?.value||4)/100;
   const bay=Math.min(.92,Math.max(.08,getBayes(hA).m/(getBayes(hA).m+getBayes(awA).m)+.04));
   const eloP=Math.min(.92,Math.max(.08,eloWP(ELO[hA]||1500,ELO[awA]||1500)+hfa));
@@ -2760,7 +2767,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hD=ml2d(hML),aD=ml2d(aML);
   const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
   const ouL=espnGame?.ou||(mc?(mc.avgT).toFixed(1):'8.5');
-  const ouP=mc&&mc.avgT>parseFloat(ouL)?.52:.48;const ouCS=chipC(ouP,ev(ouP,1.91));
+  const ouP=mc?.overP??( mc&&mc.avgT>parseFloat(ouL)?.52:.48);const ouCS=chipC(ouP,ev(ouP,1.91));
   const rlP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38);const rlCS=chipC(rlP,ev(rlP,1.87));
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
   const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||4.5;const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||4.5;
@@ -2803,7 +2810,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${hA}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${hA}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
       <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${awA}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${awA}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
       <div class="${rlCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','RL','${hP>=.5?hA:awA} -1.5',${rlP.toFixed(3)},'-115',1.87,'${date||today()}')"><div class="cht">${hP>=.5?hA:awA} -1.5</div><div class="cho">-115</div><div class="chp">${(rlP*100).toFixed(1)}%</div></div>
-      <div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',1.91,'${date||today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div>
+      <div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',1.91,'${date||today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
     </div>
     <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -3606,7 +3613,7 @@ function renderNHLTonight(){
       else if(topTier===2)explanation=`${topTeam} ML rated LOCK (${(topP*100).toFixed(1)}%, EV +${evPct}%) — ensemble signals are aligned and the line offers value. ${_gsaxStr} tilts puck-stopping quality toward ${topTeam}, reinforcing the model's win probability. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% consensus supports standard-unit sizing.`;
       else if(topTier===1)explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model finds a modest positive-EV opportunity but components are not fully aligned. ${_gsaxStr} provides a real but incremental edge. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — proceed with half-unit sizing.`;
       else explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). Monitor line movement before ${gh.time}.`;
-      html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div class="${plCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','PL','${hP>=.5?gh.h:gh.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?gh.h:gh.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div><div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${gh.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${gh.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:12px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
+      html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div class="${plCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','PL','${hP>=.5?gh.h:gh.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?gh.h:gh.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div><div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${gh.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${gh.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:12px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
     }
     el.innerHTML=html||'<div class="empty">NO NHL GAMES TONIGHT</div>';
     return;
@@ -3657,7 +3664,7 @@ function renderNHLTonight(){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${plCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','PL','${hP>=.5?g.h:g.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?g.h:g.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div>
-    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div>
+    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
   </div>
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -3917,7 +3924,7 @@ function renderNHLGamesOffline(){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','ML','${g.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${plCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','PL','${hP>=.5?g.h:g.a} -1.5',${plP.toFixed(3)},'-115',1.87)"><div class="cht">${hP>=.5?g.h:g.a} -1.5</div><div class="cho">-115</div><div class="chp">${(plP*100).toFixed(1)}%</div></div>
-    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div>
+    <div class="${ouCS.c} chip" style="flex:1" onclick="lockH('${g.h}','${g.a}','OU','${ouP>=.5?'OVER':'UNDER'} ${g.ou}',${ouP.toFixed(3)},'-110',1.91)"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${g.ou}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${g.h}','${g.a}',null,${ouP.toFixed(3)},'${g.ou}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>
   </div>
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -4872,7 +4879,7 @@ function nbaTeamScore(abbr){
 }
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
-function nbaMC(hA,awA,n=5000){
+function nbaMC(hA,awA,n=5000,ouLine=220){
   const h=NBA_BBREF[hA],aw=NBA_BBREF[awA];
   const ht=NBA_TEAMS[hA],awt=NBA_TEAMS[awA];
   if(!ht||!awt)return null;
@@ -4887,7 +4894,7 @@ function nbaMC(hA,awA,n=5000){
   // TS%/eFG% based SD (better teams have tighter variance)
   const hTS=h?h.p100.ts_pct:.590;const aTS=aw?aw.p100.ts_pct:.580;
   const hSD=Math.max(8,18-(hTS-.56)*40);const aSD=Math.max(8,18-(aTS-.56)*40);
-  let hw=0,aw2=0,hT=0,aT=0,ts=0;
+  let hw=0,aw2=0,hT=0,aT=0,ts=0,ov=0;
   for(let i=0;i<n;i++){
     // Normal distribution approximation using Box-Muller
     const u1=Math.random()||1e-10,u2=Math.random();
@@ -4897,9 +4904,10 @@ function nbaMC(hA,awA,n=5000){
     const as=Math.max(70,Math.round(aProj+z2*aSD));
     hT+=hs;aT+=as;
     if(hs>as)hw++;else if(as>hs)aw2++;else ts++;
+    if(hs+as>ouLine)ov++;
   }
   hw+=Math.round(ts*.503);aw2+=Math.round(ts*.497);
-  return{hwP:hw/n,avgH:+(hT/n).toFixed(1),avgA:+(aT/n).toFixed(1),avgT:+((hT+aT)/n).toFixed(1),spread:+((hT-aT)/n).toFixed(1)};
+  return{hwP:hw/n,avgH:+(hT/n).toFixed(1),avgA:+(aT/n).toFixed(1),avgT:+((hT+aT)/n).toFixed(1),spread:+((hT-aT)/n).toFixed(1),overP:ov/n,underP:1-ov/n};
 }
 function nbaGetBayes(abbr){
   const t=NBA_TEAMS[abbr];if(!t)return{m:.5};
@@ -4909,7 +4917,8 @@ function nbaGetBayes(abbr){
 }
 function nbaEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
 function nbaEns(hA,awA,espnGame){
-  const mc=nbaMC(hA,awA);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
+  const nbaOUL=parseFloat(espnGame?.ou||espnGame?.overUnder||220);
+  const mc=nbaMC(hA,awA,5000,nbaOUL);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
   const hfa=.028; // NBA home court ~2.8%
   const hBay=nbaGetBayes(hA).m,aBay=nbaGetBayes(awA).m;
   const bay=Math.min(.90,Math.max(.10,hBay/(hBay+aBay)+hfa));
@@ -5076,8 +5085,9 @@ async function renderNBAGames(day){
       const sprdP=hP>=aP?Math.max(0.38,hP-0.08):Math.max(0.38,aP-0.08);
       const sprdD=ml2d('-115');const sprdCS=chipC(sprdP,ev(sprdP,sprdD));
       const sprdLbl=hP>=aP?`${hn} -5.5`:`${an} -5.5`;
-      // O/U chip
-      const ouP=0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
+      // O/U chip — use MC overP when available, pass ESPN line to ensemble
+      let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
+      const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
       // Engine reasoning (mirrors MLB explanation block)
       const topP=Math.max(hP,aP);const topTeam=hP>=aP?hn:an;const topML=hP>=aP?hML:aML;
       const topD=hP>=aP?hD:aD;const topEV=hP>=aP?hEV:aEV;
@@ -5112,7 +5122,7 @@ async function renderNBAGames(day){
     <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
     <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${an}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${today()}')"><div class="cht">ML ${an}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div class="${sprdCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','SPREAD','${sprdLbl}',${sprdP.toFixed(3)},'-115',${sprdD.toFixed(3)},'${today()}')"><div class="cht">${sprdLbl}</div><div class="cho">-115</div><div class="chp">${(sprdP*100).toFixed(1)}%</div></div>
-    ${ouL?`<div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',${ouD.toFixed(3)},'${today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div></div>`:''}
+    ${ouL?`<div class="${ouCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','OU','${ouP>=.5?'OVER':'UNDER'} ${ouL}',${ouP.toFixed(3)},'-110',${ouD.toFixed(3)},'${today()}')"><div class="cht">${ouP>=.5?'OVER':'UNDER'} ${ouL}</div><div class="cho">-110</div><div class="chp">${(ouP*100).toFixed(1)}%</div><div style="display:flex;gap:3px;justify-content:center;margin-top:3px"><button onclick="event.stopPropagation();_ouAdj('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}',-0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">-½</button><button onclick="event.stopPropagation();_ouAdj('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}',0.5)" style="font-size:9px;padding:1px 5px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t2);border-radius:2px;cursor:pointer">+½</button></div></div>`:''}
   </div>`:''}
   <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -11327,7 +11337,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-11 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-11 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -14385,7 +14395,7 @@ function _socialPicks(sport){
     for(const g of(TONIGHT||[])){const h=NHL?.[g.h],aw=NHL?.[g.a];if(!h||!aw)continue;const ens=nhlEns(g.h,g.a);const mc=ens.mcD;const hP=ens.p,aP=1-ens.p;const ouP=mc?.overP||.52;[[hP,p2ml(hP),ev(hP,ml2d(p2ml(hP))),`ML ${g.h}`],[aP,p2ml(aP),ev(aP,ml2d(p2ml(aP))),`ML ${g.a}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${g.ou}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'NHL',matchup:`${g.h} vs ${g.a}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
     return picks;
   }
-  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc&&mc.avgT>parseFloat(ouL)?.52:.48;[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
+  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
   return picks;
 }
 function _filterTier(picks,tf){if(tf==='elite')return picks.filter(p=>p.t===3);if(tf==='lock')return picks.filter(p=>p.t>=2);return picks;}
