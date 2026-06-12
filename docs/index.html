@@ -6057,7 +6057,7 @@ function renderOverall(){
   const losses=settled.filter(p=>p.outcome==='loss').length;
   const pushes=settled.filter(p=>p.outcome==='push').length;
   const acc=settled.length?wins/settled.length:null;
-  const atUnits=settled.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+  const atUnits=settled.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
   const totalWagered=settled.reduce((s,p)=>s+(p.wager||100),0);
   const totalReturned=settled.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds||2)*(p.wager||100);if(p.outcome==='push')return s+(p.wager||100);return s;},0);
   const roi=totalWagered?((totalReturned-totalWagered)/totalWagered):null;
@@ -6070,7 +6070,7 @@ function renderOverall(){
   let maxWin=0,maxLoss=0,curW=0,curL=0;
   let maxDD=0,curDD=0,peak=0,equity=0;
   settled.forEach(p=>{
-    if(p.outcome==='win'){equity+=(p.decOdds||2)-1;if(equity>peak)peak=equity;curDD=peak-equity;if(curDD>maxDD)maxDD=curDD;curW++;if(curW>maxWin)maxWin=curW;curL=0;}
+    if(p.outcome==='win'){equity+=(parseFloat(p.decOdds)||2)-1;if(equity>peak)peak=equity;curDD=peak-equity;if(curDD>maxDD)maxDD=curDD;curW++;if(curW>maxWin)maxWin=curW;curL=0;}
     else if(p.outcome==='loss'){equity-=1;curDD=peak-equity;if(curDD>maxDD)maxDD=curDD;curL++;if(curL>maxLoss)maxLoss=curL;curW=0;}
   });
 
@@ -6082,7 +6082,7 @@ function renderOverall(){
   const calcPerf=(bets)=>{
     const s=bets.filter(p=>p.outcome!=='pending');
     const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;
-    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};
   };
   const _todStr=today();
@@ -6144,7 +6144,7 @@ function renderOverall(){
   const lastN=[10,25,50,75,100];
   const lastNData=lastN.map(n=>{
     const s=settled.slice(-n);const w=s.filter(p=>p.outcome==='win').length;
-    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return{n,w,l:s.length-w,acc:s.length?w/s.length:null,units:u,total:s.length};
   });
 
@@ -6175,7 +6175,7 @@ function renderOverall(){
   const recentForm=settledByDate.slice(-20);
   const rfW=recentForm.filter(p=>p.outcome==='win').length;
   const rfL=recentForm.filter(p=>p.outcome==='loss').length;
-  const rfROI=recentForm.length?((recentForm.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0))/recentForm.length*100).toFixed(1):null;
+  const rfROI=recentForm.length?((recentForm.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0))/recentForm.length*100).toFixed(1):null;
   const last5=recentForm.slice(-5);
   const formDots=recentForm.map(p=>{
     const c=p.outcome==='win'?'#00f0ff':p.outcome==='push'?'#ffdd00':'#ff2090';
@@ -6187,7 +6187,7 @@ function renderOverall(){
   const insights=[];
   const roiPct=(bets)=>{
     if(!bets.length)return null;
-    const pnl=bets.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    const pnl=bets.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return pnl/bets.length*100;
   };
   // 60-day window
@@ -6423,7 +6423,7 @@ function renderOverallVisuals(){
   if(settled.length<5){el.innerHTML='<div class="empty">NEED 5+ SETTLED BETS FOR VISUALS</div>';return;}
   // 1. P&L Equity Curve
   const W=340,H=100,PAD=20;
-  let equity=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')equity+=(p.decOdds||2)-1;else if(p.outcome==='loss')equity-=1;return equity;})];
+  let equity=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')equity+=(parseFloat(p.decOdds)||2)-1;else if(p.outcome==='loss')equity-=1;return equity;})];
   const minV=Math.min(...pts),maxV=Math.max(...pts),range=maxV-minV||1;
   const px=(i)=>PAD+i*(W-2*PAD)/(pts.length-1||1);
   const py=(v)=>PAD+(1-(v-minV)/range)*(H-2*PAD);
@@ -6502,7 +6502,7 @@ function renderOverallAnalytics(filterUpdate){
   const settled=base;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-  const pnl=(p)=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=(p)=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pct=(v,n)=>n?(v/n*100).toFixed(1)+'%':'--';
   const pfmt=(v)=>v!=null?(v*100).toFixed(1)+'%':'--';
   const barW=(p,mx)=>Math.max(1,Math.round((p/(mx||1))*100));
@@ -6920,7 +6920,7 @@ function initAnalyticsExpand(){
         drillDiv._populated=true;
         const sectionLabel=label.replace(/[^A-Z0-9 ]/g,'').trim();
         const settled=getP().filter(p=>p.outcome!=='pending');
-        const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+        const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
         // Generic drill-down: show last 5 bets relevant to this section
         const recent5=settled.slice(-5);
         drillDiv.innerHTML=`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.7);margin-bottom:8px">// LAST 5 BETS IN DATASET</div>`+
@@ -7071,7 +7071,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const _pickTs=p=>p.lockedAt||new Date((_pickDate(p)||'2000-01-01')+'T12:00:00').getTime();
   const pctCol=pct=>pct===null?'var(--t3)':pct>=.62?'var(--nc)':pct>=.50?'var(--vc)':'var(--hc)';
   const uCol2=u=>u>=0?'var(--nc)':'var(--hc)';
-  const perf=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
+  const perf=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
 
   // ── Parlay leg W/L parser ──────────────────────────────────────────────────
   const _parlayLegs=(p)=>{
@@ -7088,8 +7088,8 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     // Pattern: "misses (Name1, Name2)"
     const pm=note.match(/misses\s*\(([^)]+)\)/i);
     if(pm)pm[1].split(',').forEach(s=>miss.add(s.trim().toLowerCase()));
-    // Pattern: "Name ... MISS" (word before MISS with preceding content)
-    [...note.matchAll(/\b([A-Za-z][A-Za-z'.]*)\s[\d.]+[^.]*?\bMISS\b/gi)].forEach(m=>miss.add(m[1].toLowerCase()));
+    // Pattern: "Name score [words] vs line [words] MISS"
+    [...note.matchAll(/\b([A-Za-z][A-Za-z'.]+)\s+[\d.]+(?:\s+[A-Za-z]+)*\s+vs\s+[\d.]+(?:\s+[A-Za-z]+)*\s+MISS\b/gi)].forEach(m=>miss.add(m[1].toLowerCase()));
     // Pattern: "Name NNN & Name NNN both missed"
     [...note.matchAll(/\b([A-Z][A-Za-z.]+)\s+[\d]+\s+\w+(?:\s+\w+)?\s+(?:&|and)\s+([A-Z][A-Za-z.]+)\s+[\d]+\s+\w+(?:\s+\w+)?\s+both\s+miss/gi)].forEach(m=>{miss.add(m[1].toLowerCase());miss.add(m[2].toLowerCase());});
     // Pattern: "Name ... killed slip"
@@ -7330,7 +7330,7 @@ function renderOverallTrends(){
   if(all.length<5){el.innerHTML='<div class="empty">NOT ENOUGH DATA — SETTLE MORE PICKS TO SEE TRENDS</div>';return;}
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pctCol=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';
   const uCol=u=>u>=0?'var(--nc)':'var(--hc)';
   const now=Date.now();
@@ -7342,7 +7342,7 @@ function renderOverallTrends(){
 
   // ── Sport × bet-type hot/cold combos ─────────────────────────────────────
   const combos={};
-  for(const p of all){const k=(p.sport||'?')+'_'+(p.betType||'ML');if(!combos[k])combos[k]={key:k,sport:p.sport,type:p.betType,n:0,w:0,u:0};combos[k].n++;if(p.outcome==='win'){combos[k].w++;combos[k].u+=(p.decOdds||2)-1;}else if(p.outcome==='loss')combos[k].u-=1;}
+  for(const p of all){const k=(p.sport||'?')+'_'+(p.betType||'ML');if(!combos[k])combos[k]={key:k,sport:p.sport,type:p.betType,n:0,w:0,u:0};combos[k].n++;if(p.outcome==='win'){combos[k].w++;combos[k].u+=(parseFloat(p.decOdds)||2)-1;}else if(p.outcome==='loss')combos[k].u-=1;}
   const hotList=Object.values(combos).filter(c=>c.n>=3).sort((a,b)=>(b.w/b.n)-(a.w/a.n));
   const hot=hotList.slice(0,5),cold=hotList.slice(-5).reverse();
   const sportCol={'MLB':'var(--vc)','NHL':'var(--ic)','NBA':'var(--pc)','TEN':'var(--mc)','default':'var(--t3)'};
@@ -7433,7 +7433,7 @@ function renderOverallTrends(){
     if(p.ml&&parseFloat(p.ml)>100)factors.push('underdog value');
     if(p.betType==='PROP')factors.push('player prop');
     if(p.betType==='ML')factors.push('moneyline');
-    const ev=p.decOdds&&p.winProb?(p.winProb*(p.decOdds||2)-1)*100:null;
+    const ev=p.decOdds&&p.winProb?(p.winProb*(parseFloat(p.decOdds)||2)-1)*100:null;
     if(ev!==null&&ev>=5)factors.push(`+${ev.toFixed(1)}% EV`);
     return{p,factors};
   });
@@ -7824,9 +7824,9 @@ function renderAdaptiveLearning(){
     const bets=perfAll.filter(p=>sports.some(s=>(p.sport||'').toUpperCase()===s));
     if(!bets.length)continue;
     const w=bets.filter(p=>p.outcome==='win').length;const acc=bets.length?w/bets.length:null;
-    const units=bets.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
+    const units=bets.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);
     // Per-league inside group
-    const leagueRows=sports.map(s=>{const lb=bets.filter(p=>(p.sport||'').toUpperCase()===s);if(!lb.length)return'';const lw=lb.filter(p=>p.outcome==='win').length;const lu=lb.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);const lacc=lb.length?lw/lb.length:null;return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 20px;border-top:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${s}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${lw}W-${lb.length-lw}L</span><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pCol(lacc||0)}">${lacc!==null?(lacc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:10px;color:${units>=0?'var(--nc)':'var(--hc)'}">${lu>=0?'+':''}${lu.toFixed(1)}u</span></div>`;}).filter(Boolean).join('');
+    const leagueRows=sports.map(s=>{const lb=bets.filter(p=>(p.sport||'').toUpperCase()===s);if(!lb.length)return'';const lw=lb.filter(p=>p.outcome==='win').length;const lu=lb.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);const lacc=lb.length?lw/lb.length:null;return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 20px;border-top:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${s}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${lw}W-${lb.length-lw}L</span><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${pCol(lacc||0)}">${lacc!==null?(lacc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:10px;color:${units>=0?'var(--nc)':'var(--hc)'}">${lu>=0?'+':''}${lu.toFixed(1)}u</span></div>`;}).filter(Boolean).join('');
     const fid2='adsp_'+grp;
     html+=`<div style="border:1px solid rgba(255,255,255,.08);border-radius:3px;overflow:hidden">
       <div onclick="const c=document.getElementById('${fid2}');c.style.display=c.style.display==='none'?'block':'none'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7)">
@@ -7844,7 +7844,7 @@ function renderAdaptiveLearning(){
 
   // ── BY BET TYPE ───────────────────────────────────────────────────────────
   const typeMap={ML:'Moneyline',RL:'Run Line',PL:'Puck Line',OU:'Over/Under',PROP:'Player Props'};
-  const typeBets=['ML','RL','PL','OU','PROP'].map(bt=>{const tb=perfAll.filter(p=>p.betType===bt);if(!tb.length)return null;const tw=tb.filter(p=>p.outcome==='win').length;const tu=tb.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);return{bt,n:tb.length,w:tw,acc:tb.length?tw/tb.length:null,units:tu};}).filter(Boolean);
+  const typeBets=['ML','RL','PL','OU','PROP'].map(bt=>{const tb=perfAll.filter(p=>p.betType===bt);if(!tb.length)return null;const tw=tb.filter(p=>p.outcome==='win').length;const tu=tb.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);return{bt,n:tb.length,w:tw,acc:tb.length?tw/tb.length:null,units:tu};}).filter(Boolean);
   if(typeBets.length){
     html+=`<div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--mc);margin:12px 0 6px">// BY BET TYPE</div>
     <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px">
@@ -8584,7 +8584,7 @@ function renderHomePage(){
   const calcPerf=bets=>{
     const w=bets.filter(p=>p.outcome==='win').length;
     const l=bets.filter(p=>p.outcome==='loss').length;
-    const units=bets.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0);
+    const units=bets.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);
     return{w,l,n:bets.length,pct:bets.length?w/bets.length:null,units};
   };
   const pCol=p=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
@@ -8606,7 +8606,7 @@ function renderHomePage(){
       const s=bets.filter(p=>p.outcome!=='pending');
       const w=s.filter(p=>p.outcome==='win').length;
       const l=s.filter(p=>p.outcome==='loss').length;
-      const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+      const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
       return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
     };
 
@@ -8853,8 +8853,8 @@ function renderPerformanceSection(containerId){
   if(!all.length){el.innerHTML='';return;}
   const calcPerf=(bets)=>{
     const w=bets.filter(p=>p.outcome==='win').length;const l=bets.filter(p=>p.outcome==='loss').length;
-    const roi=bets.length?(bets.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0)/bets.length*100):0;
-    const units=bets.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+    const roi=bets.length?(bets.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0)/bets.length*100):0;
+    const units=bets.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
     return{w,l,n:bets.length,pct:bets.length?w/bets.length:null,roi,units};
   };
   const now=Date.now();const wkAgo=now-7*86400000;
@@ -12037,7 +12037,7 @@ function analyzeJournalReasons(){
     const r=b.reason||'NO REASON';
     if(!byReason[r])byReason[r]={n:0,w:0,u:0};
     byReason[r].n++;
-    const pnl=b.outcome==='win'?(b.decOdds||2)-1:b.outcome==='push'?0:-1;
+    const pnl=b.outcome==='win'?(parseFloat(b.decOdds)||2)-1:b.outcome==='push'?0:-1;
     if(b.outcome==='win')byReason[r].w++;
     byReason[r].u+=pnl;
   }
@@ -12593,7 +12593,7 @@ function renderTrackRecord(){
   const cP=bets=>{
     const s=bets.filter(p=>p.outcome!=='pending');
     const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;
-    const u=s.reduce((a,p)=>p.outcome==='win'?a+(p.decOdds||2)-1:p.outcome==='loss'?a-1:a,0);
+    const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);
     return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
   };
   const periods=[
@@ -12641,7 +12641,7 @@ function renderTrackRecord(){
   const settled=allBets.filter(p=>p.outcome!=='pending');
   const W2=settled.filter(p=>p.outcome==='win').length,L2=settled.filter(p=>p.outcome==='loss').length;
   const acc=settled.length?W2/settled.length:null;
-  const totalU=settled.reduce((a,p)=>a+(p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1),0);
+  const totalU=settled.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);
   const bestWins=settled.filter(p=>p.outcome==='win').sort((a,b)=>(b.decOdds||2)-(a.decOdds||2)).slice(0,5);
   const shareUrl=location.origin+location.pathname;
 
@@ -15734,7 +15734,7 @@ function renderWCPicks(){
       +'<div style="text-align:right">'
       +'<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:'+gradeClr+';margin-bottom:3px">'+grade+'</div>'
       +'<div style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+Math.round(prob*100)+'% · '+ml+'</div>'
-      +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+pick+'\','+prob.toFixed(3)+',\''+ml+'\',\'WC26 Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK</button>'
+      +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+pick+'\','+prob.toFixed(3)+',\''+ml+'\','+ml2d(ml).toFixed(3)+',\''+m.date+'\')">+PICK</button>'
       +'</div>'
       +'</div>';
   });
@@ -15764,7 +15764,7 @@ function renderWCProps(){
         +'<div style="text-align:right">'
         +'<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+gradeClr+'">'+p.grade+'</div>'
         +'<div style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+p.conf+'% · '+p.ml+'</div>'
-        +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+p.team+'\',\''+p.opp+'\',\'SOC\',\''+p.player+' '+dir+' '+p.line+' '+p.stat+'\','+(p.conf/100).toFixed(2)+',\''+p.ml+'\',\'WC26 PROP · '+p.player+' '+p.stat+' '+dir+' '+p.line+'\',\'2026-06-13\')">+PICK</button>'
+        +'<button class="btn btn-p btn-sm" style="margin-top:4px" onclick="lockPick(\''+p.team+'\',\''+p.opp+'\',\'SOC\',\''+p.player+' '+dir+' '+p.line+' '+p.stat+'\','+(p.conf/100).toFixed(2)+',\''+p.ml+'\','+ml2d(p.ml).toFixed(3)+',\'2026-06-13\')">+PICK</button>'
         +'</div>'
         +'</div>'
         +'</div>';
@@ -16397,7 +16397,7 @@ function renderTeamResults(sportFilter='ALL'){
       if(!teamMap[t])teamMap[t]={team:t,w:0,l:0,n:0,units:0};
       const entry=teamMap[t];
       entry.n++;
-      if(b.outcome==='win'){entry.w++;entry.units+=(b.decOdds||2)-1;}
+      if(b.outcome==='win'){entry.w++;entry.units+=(parseFloat(b.decOdds)||2)-1;}
       else if(b.outcome==='loss'){entry.l++;entry.units-=1;}
     }
   }
@@ -16579,7 +16579,7 @@ function renderBySportAnalytics(key){
   const el=document.getElementById('analytics-bysport-content');if(!el)return;
   const all=getP().filter(p=>p.outcome!=='pending');
   if(!all.length){el.innerHTML='<div class="empty">NO SETTLED BETS YET</div>';return;}
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pC=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';
   const uC=u=>u>=0?'var(--nc)':'var(--hc)';
 
@@ -16698,7 +16698,7 @@ function renderByTeamAnalytics(key){
   const def=SPORT_DEFS[activeSport]||SPORT_DEFS.ALL;
   const pC=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';
   const uC=u=>u>=0?'var(--nc)':'var(--hc)';
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
 
   // Update sport button highlights
   document.querySelectorAll('#byteam-filters .btn').forEach(b=>{
@@ -16737,7 +16737,7 @@ function renderByTeamAnalytics(key){
     if(!t||t.length<2)return;
     const key2=t.toUpperCase().trim();
     if(!teamMap[key2])teamMap[key2]={name:t,w:0,l:0,n:0,sport:p.sport,u:0,bets:[]};
-    if(p.outcome==='win'){teamMap[key2].w++;teamMap[key2].u+=(p.decOdds||2)-1;}
+    if(p.outcome==='win'){teamMap[key2].w++;teamMap[key2].u+=(parseFloat(p.decOdds)||2)-1;}
     else if(p.outcome==='loss'){teamMap[key2].l++;teamMap[key2].u-=1;}
     teamMap[key2].n++;teamMap[key2].bets.push(p);
   });
@@ -16765,7 +16765,7 @@ function renderByTeamAnalytics(key){
     if(!td||!td.bets.length){el.innerHTML='<div class="empty">NO BETS FOUND FOR THIS TEAM/PICK</div>';return;}
     const tw=td.w;const tl=td.l;const tacc=td.n?tw/td.n:null;const tu=td.u;
     const settled2=td.bets.filter(p=>p.outcome!=='pending');
-    const typeBreak={};settled2.forEach(p=>{const t=(p.betType||'ML');if(!typeBreak[t])typeBreak[t]={w:0,l:0,u:0};if(p.outcome==='win'){typeBreak[t].w++;typeBreak[t].u+=(p.decOdds||2)-1;}else{typeBreak[t].l++;typeBreak[t].u-=1;}});
+    const typeBreak={};settled2.forEach(p=>{const t=(p.betType||'ML');if(!typeBreak[t])typeBreak[t]={w:0,l:0,u:0};if(p.outcome==='win'){typeBreak[t].w++;typeBreak[t].u+=(parseFloat(p.decOdds)||2)-1;}else{typeBreak[t].l++;typeBreak[t].u-=1;}});
     const dateBets=td.bets.slice().sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
     let h=`<div class="card" style="margin-bottom:10px;padding:12px;border-left:3px solid ${def.color}">
       <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:${def.color};margin-bottom:8px">${td.name}</div>
@@ -16875,7 +16875,7 @@ function renderAnalyticsBetHistory(filter){
 
   const settled=bets.filter(p=>p.outcome!=='pending');const pending=bets.filter(p=>p.outcome==='pending');
   if(!bets.length){el.innerHTML='<div class="empty">NO BETS FOUND</div>';return;}
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pC=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';const uC=u=>u>=0?'var(--nc)':'var(--hc)';
   const w=settled.filter(p=>p.outcome==='win').length;const l=settled.filter(p=>p.outcome==='loss').length;
   const acc=settled.length?w/settled.length:null;const units=settled.reduce((a,p)=>a+pnl(p),0);
@@ -16884,7 +16884,7 @@ function renderAnalyticsBetHistory(filter){
   const filterLabel=activeLeague||activeSport||filter;
 
   // Monthly breakdown
-  const monthly={};settled.forEach(p=>{const mo=(p.date||'').slice(0,7)||'?';if(!monthly[mo])monthly[mo]={w:0,l:0,u:0};if(p.outcome==='win'){monthly[mo].w++;monthly[mo].u+=(p.decOdds||2)-1;}else{monthly[mo].l++;monthly[mo].u-=1;}});
+  const monthly={};settled.forEach(p=>{const mo=(p.date||'').slice(0,7)||'?';if(!monthly[mo])monthly[mo]={w:0,l:0,u:0};if(p.outcome==='win'){monthly[mo].w++;monthly[mo].u+=(parseFloat(p.decOdds)||2)-1;}else{monthly[mo].l++;monthly[mo].u-=1;}});
   const mKeys=Object.keys(monthly).sort().slice(-8);
   // Avg odds
   const winOdds=settled.filter(p=>p.outcome==='win'&&p.decOdds).map(p=>p.decOdds);
@@ -17715,13 +17715,13 @@ function renderAnalyticsVisuals(viewFilter){
   const el=document.getElementById('analytics-visuals-content');if(!el)return;
   const settled=getP().filter(p=>p.outcome!=='pending');
   if(settled.length<3){el.innerHTML='<div class="empty">NEED 3+ SETTLED BETS FOR VISUALS</div>';return;}
-  const pnl=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pC=r=>r>=.62?'#00f0ff':r>=.52?'#ffdd00':'#ff2090';
   let out='';
   const vcrd=(title,col,content,note)=>`<div class="card" style="border-left:2px solid ${col};margin-bottom:10px;padding:10px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:${col};margin-bottom:8px">${title}</div><div style="overflow-x:auto;background:rgba(5,0,15,.5);border-radius:2px;padding:8px">${content}</div>${note?`<div style="font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:4px">${note}</div>`:''}</div>`;
 
   if(viewFilter==='all'||viewFilter==='performance'){
-    let eq=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')eq+=(p.decOdds||2)-1;else if(p.outcome==='loss')eq-=1;return eq;})];
+    let eq=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')eq+=(parseFloat(p.decOdds)||2)-1;else if(p.outcome==='loss')eq-=1;return eq;})];
     const W=320,H=90,PAD=14;const minV=Math.min(...pts),maxV=Math.max(...pts),rng=maxV-minV||1;
     const px=i=>PAD+i*(W-2*PAD)/(pts.length-1||1);const py=v=>PAD+(1-(v-minV)/rng)*(H-2*PAD);
     const path=pts.map((v,i)=>`${i===0?'M':'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
@@ -17814,7 +17814,7 @@ function renderAnalyticsTeams(league){
   document.querySelectorAll('#teams-league-filters button').forEach(b=>{b.classList.toggle('act',b.getAttribute('onclick')===`renderAnalyticsTeams('${league}')`)});
   const el=document.getElementById('analytics-teams-content');if(!el)return;
   const settled=getP().filter(p=>p.outcome!=='pending');
-  const pnl4=p=>p.outcome==='win'?(p.decOdds||2)-1:p.outcome==='push'?0:-1;
+  const pnl4=p=>p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1;
   const pC4=r=>r>=.62?'var(--nc)':r>=.52?'var(--vc)':'var(--hc)';
   const leagueSportMap={MLB:'MLB',NHL:'NHL',NBA:'NBA',TEN:'TEN',NFL:'NFL',CFB:'CFB'};
   const bets=league==='ALL'?settled:settled.filter(p=>(p.sport||'').toUpperCase()===leagueSportMap[league]);
@@ -17826,7 +17826,7 @@ function renderAnalyticsTeams(league){
     if(!t||t.length<2)return;
     const key=t.toUpperCase().trim();
     if(!teams[key])teams[key]={name:t,w:0,l:0,n:0,sport:p.sport||league,u:0};
-    if(p.outcome==='win'){teams[key].w++;teams[key].u+=(p.decOdds||2)-1;}
+    if(p.outcome==='win'){teams[key].w++;teams[key].u+=(parseFloat(p.decOdds)||2)-1;}
     else if(p.outcome==='loss'){teams[key].l++;teams[key].u-=1;}
     teams[key].n++;
   });
@@ -17862,14 +17862,14 @@ function renderOvrAnalytics(filter){
   // Helper
   const accC=(a)=>a===null?'var(--t3)':a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
   const uC=(u)=>u>=0?'var(--nc)':'var(--hc)';
-  const calcP=(bets)=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(p.decOdds||2)-1;if(p.outcome==='loss')return a-1;return a;},0);return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};};
+  const calcP=(bets)=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};};
 
   let out='';
 
   // VISUALS section
   if(filter==='all'||filter==='visuals'){
     const W=320,H=90,PAD=18;
-    let eq=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')eq+=(p.decOdds||2)-1;else if(p.outcome==='loss')eq-=1;return eq;})];
+    let eq=0;const pts=[0,...settled.map(p=>{if(p.outcome==='win')eq+=(parseFloat(p.decOdds)||2)-1;else if(p.outcome==='loss')eq-=1;return eq;})];
     const minV=Math.min(...pts),maxV=Math.max(...pts),range=maxV-minV||1;
     const px=(i)=>PAD+i*(W-2*PAD)/(pts.length-1||1);
     const py=(v)=>PAD+(1-(v-minV)/range)*(H-2*PAD);
