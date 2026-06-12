@@ -18388,6 +18388,260 @@ function renderCLVTracker(){
 }
 window.renderCLVTracker=renderCLVTracker;
 
+/* ================================================================
+   CLV AUTOMATION ENGINE
+   ─ Runs automatically on page load and on a 5-minute poll cycle.
+   ─ Three phases per bet:
+       OPEN   — first snapshot of the day (at page load each morning)
+       UPDATE — mid-day line movement logged from ESPN odds
+       CLOSE  — logged the moment the event status flips to "in"/"post"
+   ================================================================ */
+
+/* ── helpers ─────────────────────────────────────────────────── */
+function _clvTodayKey(){
+  return typeof today==='function'?today().replace(/-/g,''):new Date().toISOString().slice(0,10).replace(/-/g,'');
+}
+function _clvGetDailyState(){
+  try{return JSON.parse(localStorage.getItem('cv_clv_daily')||'{}');}catch(e){return {};}
+}
+function _clvSaveDailyState(s){localStorage.setItem('cv_clv_daily',JSON.stringify(s));}
+
+/* ── ESPN odds fetch (best-effort; graceful degradation) ────── */
+async function _clvFetchESPNOdds(sport,league){
+  var sportMap={MLB:'baseball/mlb',NHL:'hockey/nhl',NBA:'basketball/nba',WNBA:'basketball/wnba',
+    TEN:'tennis/atp',NFL:'football/nfl',SOC:'soccer/usa.1'};
+  var path=sportMap[(sport||'').toUpperCase()];
+  if(!path)return [];
+  try{
+    var url='https://site.api.espn.com/apis/site/v2/sports/'+path+'/scoreboard';
+    var r=await fetch(url,{mode:'cors',cache:'no-store'});
+    if(!r.ok)return [];
+    var d=await r.json();
+    var events=d.events||[];
+    return events.map(function(ev){
+      var comp=(ev.competitions||[])[0]||{};
+      var odds=(comp.odds||[])[0]||{};
+      var status=(comp.status||{}).type||{};
+      var homeTeam=(comp.competitors||[]).find(function(c){return c.homeAway==='home';})||{};
+      var awayTeam=(comp.competitors||[]).find(function(c){return c.homeAway==='away';})||{};
+      return {
+        id:ev.id,
+        name:ev.shortName||ev.name||'',
+        homeAbbr:(homeTeam.team||{}).abbreviation||'',
+        awayAbbr:(awayTeam.team||{}).abbreviation||'',
+        statusState:status.state||'pre', /* pre / in / post */
+        statusDesc:status.description||'',
+        homeML:odds.homeTeamOdds?(odds.homeTeamOdds.moneyLine||null):null,
+        awayML:odds.awayTeamOdds?(odds.awayTeamOdds.moneyLine||null):null,
+        overUnder:odds.overUnder||null,
+        spread:odds.spread||null,
+        date:ev.date||''
+      };
+    });
+  }catch(e){return [];}
+}
+
+/* ── match a locked bet to an ESPN event ───────────────────── */
+function _clvMatchEvent(pick,events){
+  var hA=(pick.hA||'').toUpperCase();
+  var awA=(pick.awA||'').toUpperCase();
+  return events.find(function(ev){
+    return (ev.homeAbbr===hA||ev.awayAbbr===hA||ev.homeAbbr===awA||ev.awayAbbr===awA||
+            (ev.name||'').toUpperCase().includes(hA)||(ev.name||'').toUpperCase().includes(awA));
+  })||null;
+}
+
+/* ── derive current ML for a pick from a matched event ─────── */
+function _clvPickML(pick,ev){
+  if(!ev)return null;
+  var hA=(pick.hA||'').toUpperCase();
+  var isHome=ev.homeAbbr===hA;
+  var betOn=(pick.betOn||'').toUpperCase();
+  /* Over/Under */
+  if(betOn.includes('OVER')||betOn.includes(' O ')){ return ev.overUnder?('-110'):null; }
+  if(betOn.includes('UNDER')||betOn.includes(' U ')){ return ev.overUnder?('-110'):null; }
+  /* Moneyline / prop fallback */
+  if(isHome&&ev.homeML!=null)return String(ev.homeML);
+  if(!isHome&&ev.awayML!=null)return String(ev.awayML);
+  return null;
+}
+
+/* ── PHASE 1: OPEN snapshot at start of day ─────────────────── */
+async function _clvOpenSnapshot(){
+  var td=_clvTodayKey();
+  var state=_clvGetDailyState();
+  if(state.openDate===td)return; /* already ran today */
+
+  var picks=typeof getP==='function'?getP():[];
+  var pending=picks.filter(function(p){return(p.outcome||'pending')==='pending';});
+  if(!pending.length)return;
+
+  /* Group by sport for batched ESPN fetches */
+  var sports=[...new Set(pending.map(function(p){return(p.sport||'MLB').toUpperCase();}))];
+  var eventsBySport={};
+  for(var i=0;i<sports.length;i++){
+    eventsBySport[sports[i]]=await _clvFetchESPNOdds(sports[i]);
+  }
+
+  var log=_getCLVLog();
+  var snappedCount=0;
+  pending.forEach(function(pick){
+    if(!log[pick.id])return; /* not yet in CLV log */
+    /* Check if already have an OPEN snap today */
+    var hasTodayOpen=(log[pick.id].snapshots||[]).some(function(s){
+      return s.note==='OPEN'&&new Date(s.ts).toISOString().slice(0,10).replace(/-/g,'')===td;
+    });
+    if(hasTodayOpen)return;
+
+    /* Try to get live ML from ESPN */
+    var sport=(pick.sport||'MLB').toUpperCase();
+    var evts=eventsBySport[sport]||[];
+    var ev=_clvMatchEvent(pick,evts);
+    var espnML=_clvPickML(pick,ev);
+    var mlToUse=espnML||log[pick.id].currentML||log[pick.id].lockedML;
+
+    log[pick.id].snapshots.push({ts:Date.now(),ml:parseFloat(String(mlToUse).replace('+','')),note:'OPEN',date:td});
+    log[pick.id].currentML=parseFloat(String(mlToUse).replace('+',''));
+    log[pick.id].clv=+(_calcCLV(log[pick.id].lockedML,log[pick.id].currentML)).toFixed(2);
+    snappedCount++;
+  });
+
+  _saveCLVLog(log);
+  state.openDate=td;
+  _clvSaveDailyState(state);
+  if(snappedCount)console.log('[CLV] Opening snapshots recorded for '+snappedCount+' bets ('+td+')');
+}
+
+/* ── PHASE 2/3: Poll ESPN every 5 min — log movement + closes ─ */
+var _clvPollInterval=null;
+async function _clvPoll(){
+  var td=_clvTodayKey();
+  var picks=typeof getP==='function'?getP():[];
+  var pending=picks.filter(function(p){return(p.outcome||'pending')==='pending';});
+  if(!pending.length)return;
+
+  var sports=[...new Set(pending.map(function(p){return(p.sport||'MLB').toUpperCase();}))];
+  var eventsBySport={};
+  for(var i=0;i<sports.length;i++){
+    eventsBySport[sports[i]]=await _clvFetchESPNOdds(sports[i]);
+  }
+
+  var log=_getCLVLog();
+  var state=_clvGetDailyState();
+  var changed=false;
+
+  pending.forEach(function(pick){
+    if(!log[pick.id])return;
+    var sport=(pick.sport||'MLB').toUpperCase();
+    var evts=eventsBySport[sport]||[];
+    var ev=_clvMatchEvent(pick,evts);
+    if(!ev)return;
+
+    var closedKey='closed_'+pick.id;
+    var espnML=_clvPickML(pick,ev);
+    var mlNum=espnML?parseFloat(String(espnML).replace('+','')):null;
+
+    /* CLOSE: game just went live or finished */
+    if((ev.statusState==='in'||ev.statusState==='post')&&!state[closedKey]&&!log[pick.id].closed){
+      if(mlNum!=null){
+        log[pick.id].snapshots.push({ts:Date.now(),ml:mlNum,note:'CLOSE',date:td});
+        log[pick.id].currentML=mlNum;
+        log[pick.id].clv=+(_calcCLV(log[pick.id].lockedML,mlNum)).toFixed(2);
+        log[pick.id].closed=true;
+      } else {
+        /* No ESPN odds — close with last known line */
+        log[pick.id].snapshots.push({ts:Date.now(),ml:log[pick.id].currentML,note:'CLOSE',date:td});
+        log[pick.id].closed=true;
+      }
+      state[closedKey]=true;
+      changed=true;
+    }
+    /* UPDATE: game still pre, but line moved (ESPN odds changed) */
+    else if(ev.statusState==='pre'&&mlNum!=null&&mlNum!==log[pick.id].currentML){
+      var lastSnap=(log[pick.id].snapshots||[]).slice(-1)[0];
+      var lastSnapAge=lastSnap?Date.now()-lastSnap.ts:Infinity;
+      if(lastSnapAge>4*60*1000){ /* throttle: max one UPDATE per 4 min */
+        log[pick.id].snapshots.push({ts:Date.now(),ml:mlNum,note:'UPDATE',date:td});
+        log[pick.id].currentML=mlNum;
+        log[pick.id].clv=+(_calcCLV(log[pick.id].lockedML,mlNum)).toFixed(2);
+        changed=true;
+      }
+    }
+  });
+
+  if(changed){
+    _saveCLVLog(log);
+    _clvSaveDailyState(state);
+    try{if(document.getElementById('tracker-sub-clv')?.classList.contains('act'))renderCLVTracker();}catch(e){}
+  }
+}
+
+/* ── DAILY EVENT SUMMARY ─────────────────────────────────────── */
+function _clvDailySummary(){
+  var td=_clvTodayKey();
+  var log=_getCLVLog();
+  var picks=typeof getP==='function'?getP():[];
+  var todayPicks=picks.filter(function(p){
+    var d=(p.date||'').replace(/-/g,'');
+    return d===td&&log[p.id];
+  });
+  if(!todayPicks.length)return null;
+
+  var summary={date:td,total:todayPicks.length,closed:0,open:0,totalCLV:0,clvBets:0,best:null,worst:null};
+  todayPicks.forEach(function(p){
+    var c=log[p.id];
+    if(!c)return;
+    if(c.closed)summary.closed++;else summary.open++;
+    if(c.snapshots&&c.snapshots.length>1){
+      summary.totalCLV+=c.clv;
+      summary.clvBets++;
+      if(summary.best===null||c.clv>summary.best.clv)summary.best={betOn:p.betOn,clv:c.clv,sport:p.sport||''};
+      if(summary.worst===null||c.clv<summary.worst.clv)summary.worst={betOn:p.betOn,clv:c.clv,sport:p.sport||''};
+    }
+  });
+  summary.avgCLV=summary.clvBets?+(summary.totalCLV/summary.clvBets).toFixed(2):0;
+  return summary;
+}
+
+/* ── Inject daily summary into CLV tracker header ───────────── */
+var _origRenderCLVTracker=renderCLVTracker;
+renderCLVTracker=function(){
+  _origRenderCLVTracker();
+  /* Append daily summary banner above the list */
+  var el=document.getElementById('clv-tracker-list');
+  if(!el)return;
+  var sum=_clvDailySummary();
+  if(!sum||sum.total===0)return;
+  var avgC=sum.avgCLV>0?'var(--gc)':sum.avgCLV<0?'var(--hc)':'var(--t3)';
+  var banner='<div style="background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:4px;padding:10px 14px;margin-bottom:10px;font-family:var(--mono)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+    +'<span style="font-size:10px;letter-spacing:2px;color:var(--nc)">TODAY\'S EVENTS · '+sum.date+'</span>'
+    +'<span style="font-size:10px;color:var(--t3)">'+sum.closed+' CLOSED · '+sum.open+' OPEN · '+sum.total+' TOTAL</span>'
+    +'</div>'
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap">'
+    +'<span style="font-size:12px;color:var(--t2)">AVG CLV <strong style="color:'+avgC+'">'+(sum.avgCLV>=0?'+':'')+sum.avgCLV+'%</strong></span>'
+    +(sum.best&&sum.best.betOn?'<span style="font-size:11px;color:var(--gc)">▲ BEST: '+sum.best.betOn+' ('+(sum.best.clv>=0?'+':'')+sum.best.clv+'%)</span>':'')
+    +(sum.worst&&sum.worst.betOn&&sum.clvBets>1?'<span style="font-size:11px;color:var(--hc)">▼ WORST: '+sum.worst.betOn+' ('+(sum.worst.clv>=0?'+':'')+sum.worst.clv+'%)</span>':'')
+    +'</div>'
+    +'</div>';
+  el.insertAdjacentHTML('afterbegin',banner);
+};
+window.renderCLVTracker=renderCLVTracker;
+
+/* ── Boot sequence ───────────────────────────────────────────── */
+function _clvBoot(){
+  /* Opening snapshot — runs once on first page load each day */
+  setTimeout(function(){_clvOpenSnapshot().catch(function(){});},3000);
+  /* Poll every 5 minutes */
+  if(_clvPollInterval)clearInterval(_clvPollInterval);
+  _clvPollInterval=setInterval(function(){_clvPoll().catch(function(){});},5*60*1000);
+  /* Also poll immediately after 15s (page settled) */
+  setTimeout(function(){_clvPoll().catch(function(){});},15000);
+}
+/* Kick off after data loads */
+if(document.readyState==='complete'){_clvBoot();}
+else{window.addEventListener('load',_clvBoot);}
+
 function saveParlayToTracker(legs,sport){
   if(!legs||legs.length<2)return;
   var parlays=[];
