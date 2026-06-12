@@ -771,6 +771,7 @@ body{line-height:1.5}
   <div id="soc-worldcup" class="subp act">
     <nav class="inav" id="wc-in">
       <button class="nb act" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
+      <button class="nb" onclick="T('wc','standings');renderWCStandings()">STANDINGS</button>
       <button class="nb" onclick="T('wc','groups');renderWCGroups()">GROUPS</button>
       <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
       <button class="nb" onclick="T('wc','picks');renderWCPicks()">PICKS</button>
@@ -778,6 +779,7 @@ body{line-height:1.5}
     </nav>
     <div class="sa" id="wc-sa">
       <div id="wc-tab-matches" class="tab act"><div id="wc-matches-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-standings" class="tab"><div id="wc-standings-list" style="padding:12px 0"></div></div>
       <div id="wc-tab-groups" class="tab"><div id="wc-groups-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-picks" class="tab"><div id="wc-picks-list" style="padding:20px 0"></div></div>
@@ -9064,7 +9066,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
-  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
+  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='standings')renderWCStandings();else if(tabId==='groups')renderWCGroups();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();if(tabId==='ops')renderEngineOps();}
   if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('fo');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
@@ -15663,6 +15665,126 @@ function _wcStandingsCache(){
 }
 function _wcStandingsSave(groupData){
   try{localStorage.setItem('cv_wc26_standings',JSON.stringify({groupData:groupData,ts:Date.now()}));}catch(e){}
+}
+// ── WC STANDINGS TAB ─────────────────────────────────────────────────────────
+var _wcStandingsRefreshTimer=null;
+function _scheduleWCStandingsRefresh(){
+  if(_wcStandingsRefreshTimer)clearTimeout(_wcStandingsRefreshTimer);
+  try{
+    // Compute ms until next 11:00 PM Mountain Time
+    var nowMT=new Date(new Date().toLocaleString('en-US',{timeZone:'America/Denver'}));
+    var target=new Date(nowMT);
+    target.setHours(23,0,0,0);
+    if(nowMT>=target)target.setDate(target.getDate()+1);
+    var delay=target-nowMT;
+    _wcStandingsRefreshTimer=setTimeout(function(){
+      _fetchWCStandings(true,function(gd){
+        var el=document.getElementById('wc-standings-list');
+        if(el)el.innerHTML=_buildWCStandingsHTML(gd,Date.now());
+      });
+      _scheduleWCStandingsRefresh();
+    },delay);
+  }catch(e){}
+}
+function _fetchWCStandings(force,cb){
+  var cache=_wcStandingsCache();
+  var age=cache?(Date.now()-cache.ts):Infinity;
+  var hasGames=cache&&cache.groupData&&cache.groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+  if(!force&&hasGames&&age<2*3600*1000){if(cb)cb(cache.groupData);return;}
+  var ctrl=window.AbortController?new AbortController():null;
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},7000);
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings',ctrl?{signal:ctrl.signal}:{})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      clearTimeout(tid);
+      var gd=_wcParseStandings(data);
+      if(gd.length&&gd.some(function(g){return g.entries.some(function(e){return e.gp>0;});})){
+        _wcStandingsSave(gd);
+        if(cb)cb(gd);
+      }else if(cb&&cache&&cache.groupData){cb(cache.groupData);}
+    })
+    .catch(function(){clearTimeout(tid);if(cb&&cache&&cache.groupData)cb(cache.groupData);});
+}
+function _buildWCStandingsHTML(groupData,updatedAt){
+  var isLive=groupData&&groupData.length&&groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+  var updStr='';
+  if(updatedAt){
+    var d=new Date(updatedAt);
+    updStr=' · '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  }
+  var html='<div style="padding:0 10px 4px">'
+    +'<div style="font-family:var(--orb);font-size:11px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px">⚽ FIFA WORLD CUP 2026 · STANDINGS</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">'+(isLive?'LIVE STANDINGS'+updStr:'ELO-PROJECTED ORDER · LIVE STATS LOAD AFTER KICKOFF')+'</div>'
+    +'<button class="btn btn-sm" style="font-size:9px;padding:2px 8px" onclick="_fetchWCStandings(true,function(gd){var el=document.getElementById(\'wc-standings-list\');if(el)el.innerHTML=_buildWCStandingsHTML(gd,Date.now());})">↻ REFRESH</button>'
+    +'</div>'
+    +'<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.6);letter-spacing:1px;margin-bottom:12px">🏆 TOP 2 PER GROUP ADVANCE TO ROUND OF 32 · AUTO-REFRESHES 11 PM MT DAILY</div>'
+    +'</div>';
+  var groups=isLive?groupData:WC26_GROUPS.map(function(g){
+    return{name:g.id,entries:g.teams.slice().sort(function(a,b){return b.e-a.e;}).map(function(t){return{name:t.n,flag:t.f,gp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0,elo:t.e};})};
+  });
+  groups.forEach(function(g){
+    var hasStats=g.entries.some(function(e){return e.gp>0;});
+    html+='<div style="margin:0 8px 12px;border:1px solid rgba(255,200,0,.2);border-top:2px solid rgba(255,200,0,.7);border-radius:3px;overflow:hidden">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,200,0,.06)">'
+      +'<div style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--gc);letter-spacing:2px">GROUP '+g.name+'</div>'
+      +(hasStats?'<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.5)">LIVE</div>':'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">PRE-TOURNAMENT</div>')
+      +'</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-family:var(--mono)">'
+      +'<thead>'
+      +'<tr style="background:rgba(0,0,0,.3)">'
+      +'<th style="text-align:left;padding:5px 8px;font-size:9px;color:var(--t3);font-weight:400;letter-spacing:1px" colspan="2">TEAM</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">GP</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">W</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">D</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">L</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">GF</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--t3);font-weight:400">GA</th>'
+      +'<th style="text-align:center;padding:5px 4px;font-size:9px;color:var(--nc);font-weight:400">GD</th>'
+      +'<th style="text-align:center;padding:5px 6px;font-size:9px;color:var(--gc);font-weight:700">PTS</th>'
+      +'</tr>'
+      +'</thead><tbody>';
+    g.entries.forEach(function(t,i){
+      var adv=i<2;
+      var gdCol=t.gd>0?'var(--nc)':t.gd<0?'var(--hc)':'var(--t2)';
+      var rowBg=adv&&hasStats?'background:rgba(255,200,0,.06);':'background:rgba(0,0,0,0);';
+      var rowBdr=i<g.entries.length-1?'border-bottom:1px solid rgba(255,255,255,.04);':'';
+      html+='<tr style="'+rowBg+rowBdr+'">'
+        +'<td style="padding:7px 4px 7px 10px;font-size:14px;line-height:1;width:20px">'+t.flag+'</td>'
+        +'<td style="padding:7px 6px 7px 2px;font-size:11px;color:'+(adv&&hasStats?'var(--t1)':'var(--t2)')+';white-space:nowrap;font-weight:'+(adv&&hasStats?'700':'400')+'">'+t.name
+        +(adv&&hasStats?'&nbsp;<span style="display:inline-block;background:rgba(255,200,0,.22);color:var(--gc);font-size:7px;padding:1px 4px;border-radius:2px;vertical-align:middle;font-family:var(--orb)">ADV</span>':'')
+        +'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--t3)">'+t.gp+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--nc)">'+t.w+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--t3)">'+t.d+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--hc)">'+t.l+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--t2)">'+t.gf+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:11px;color:var(--t3)">'+t.ga+'</td>'
+        +'<td style="text-align:center;padding:7px 4px;font-size:12px;color:'+gdCol+';font-weight:700">'+(t.gd>0?'+':'')+t.gd+'</td>'
+        +'<td style="text-align:center;padding:7px 8px;font-size:13px;color:'+(adv&&hasStats?'var(--gc)':'var(--t1)')+';font-weight:700;font-family:var(--orb)">'+t.pts+'</td>'
+        +'</tr>';
+    });
+    html+='</tbody></table></div>';
+  });
+  if(!isLive){
+    html+='<div style="margin:4px 8px 16px;padding:10px 14px;background:rgba(255,200,0,.04);border:1px solid rgba(255,200,0,.15);border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.7">'
+      +'WC 2026 group stage begins June 12, 2026. Live standings will load automatically once matches kick off and scores are reported via ESPN. Table currently shows ELO-based pre-tournament projected order.</div>';
+  }
+  return html;
+}
+function renderWCStandings(){
+  var el=document.getElementById('wc-standings-list');if(!el)return;
+  var cache=_wcStandingsCache();
+  var hasGames=cache&&cache.groupData&&cache.groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
+  // Render cached or ELO fallback immediately
+  el.innerHTML=_buildWCStandingsHTML(hasGames?cache.groupData:[],hasGames?cache.ts:null);
+  // Fetch fresh from ESPN in background
+  _fetchWCStandings(false,function(gd){
+    if(document.getElementById('wc-standings-list'))
+      document.getElementById('wc-standings-list').innerHTML=_buildWCStandingsHTML(gd,Date.now());
+  });
+  // Schedule nightly 11pm MT auto-refresh (idempotent — only sets once)
+  if(!_wcStandingsRefreshTimer)_scheduleWCStandingsRefresh();
 }
 function renderWCGroups(){
   var el=document.getElementById('wc-groups-list');if(!el)return;
