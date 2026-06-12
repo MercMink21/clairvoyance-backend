@@ -17188,6 +17188,58 @@ function _epGatherLegs(){
   return legs;
 }
 
+/* ── FOR THE MOON extended pool (GOOD grade props + value game lines) ── */
+function _epGatherMoonLegs(){
+  var D=window.__CV_DATA||{};
+  var legs=[];
+
+  /* Game lines: lower prob floor but must have positive EV or underdog value */
+  var bb=(D.bestBets||[]).filter(function(b){
+    return b.ml&&b.winProb&&parseFloat(b.winProb)>=0.50&&(b.outcome||'pending')==='pending'&&b.betType!=='PROP';
+  });
+  bb.sort(function(a,b){return parseFloat(b.winProb)-parseFloat(a.winProb);});
+  bb.slice(0,20).forEach(function(b){
+    var prob=parseFloat(b.winProb)||0.55;
+    var dec=_epDec(b.ml);
+    legs.push({name:b.betOn||b.selection||'ML',ml:b.ml,prob:prob,dec:dec,
+      ev:_epEV(prob,dec),matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),
+      sport:(b.sport||'MLB').toUpperCase(),type:'GAME',
+      grade:prob>=0.67?'ELITE':prob>=0.60?'LOCK':prob>=0.55?'GOOD':'VALUE'});
+  });
+
+  /* NHL props — include GOOD grade too */
+  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
+    .filter(function(p){return p.grade==='ELITE'||p.grade==='LOCK'||p.grade==='LEAN';})
+    .slice(0,12).forEach(function(p){
+      var prob=(p.conf||58)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,
+        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+        matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade||'GOOD'});
+    });
+
+  /* WNBA props — include all grades */
+  (typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[])
+    .filter(function(p){return (p.conf||0)>=55;})
+    .slice(0,12).forEach(function(p){
+      var prob=(p.conf||58)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,
+        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+        matchup:(p.team||'WNBA')+' vs '+(p.opp||''),sport:'WNBA',type:'PROP',grade:p.grade||'GOOD'});
+    });
+
+  /* NBA props — lower threshold */
+  (D.bestBets||[]).filter(function(b){
+    return b.betType==='PROP'&&b.sport==='NBA'&&parseFloat(b.winProb)>=0.55;
+  }).slice(0,8).forEach(function(b){
+    var prob=parseFloat(b.winProb)||0.58;var dec=_epDec(b.ml);
+    legs.push({name:b.betOn||b.selection,ml:b.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
+      matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),sport:'NBA',type:'PROP',
+      grade:prob>=0.67?'ELITE':prob>=0.60?'LOCK':'GOOD'});
+  });
+
+  return legs;
+}
+
 function renderEngineParlays(){
   var el=document.getElementById('xp-engine-parlays');
   if(!el)return;
@@ -17261,6 +17313,31 @@ function renderEngineParlays(){
     var s5legs=pickDiverse(byProb,4);
     if(s5legs.length>=3)slates.push({name:"TONIGHT'S SPECIAL",emoji:'🎯',
       desc:'4-leg cross-sport max diversity parlay',color:'#bbff00',legs:s5legs});
+
+    /* 6. FOR THE MOON — 6-8 legs scored by prob × log(dec), max payout with hit probability */
+    (function(){
+      var moonPool=_epGatherMoonLegs();
+      /* Score: blend of hit probability and payout upside — prob^0.6 * dec^0.4 */
+      moonPool.forEach(function(l){l._moonScore=Math.pow(l.prob,0.6)*Math.pow(l.dec,0.4);});
+      moonPool.sort(function(a,b){return b._moonScore-a._moonScore;});
+      /* Deduplicate by name|sport */
+      var seen=new Set();var moonLegs=[];
+      for(var i=0;i<moonPool.length&&moonLegs.length<8;i++){
+        var mk=moonPool[i].name+'|'+moonPool[i].sport;
+        if(!seen.has(mk)){seen.add(mk);moonLegs.push(moonPool[i]);}
+      }
+      /* Need at least 6; pad from byProb if short */
+      if(moonLegs.length<6){
+        byProb.forEach(function(l){
+          if(moonLegs.length>=6)return;
+          var mk=l.name+'|'+l.sport;
+          if(!seen.has(mk)){seen.add(mk);moonLegs.push(l);}
+        });
+      }
+      if(moonLegs.length>=4)slates.push({name:'FOR THE MOON',emoji:'',
+        desc:'6-8 legs — high hit probability + big payout potential',
+        color:'#ff9500',legs:moonLegs.slice(0,8)});
+    })();
 
     if(!slates.length){
       el.innerHTML='<div class="empty" style="padding:14px">Not enough data for recommendations — sync more picks.</div>';
