@@ -124,11 +124,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   .pkb{flex:0 0 36px;height:36px;font-size:11px}
   .gc{padding:9px}
   .gch{margin-bottom:7px}
-  .btn{font-size:12px}.btn-n,.btn-p{padding:7px 12px}.btn-sm{padding:3px 7px;font-size:11px}
+  .btn{font-size:12px;min-height:40px}.btn-n,.btn-p{padding:8px 14px}.btn-sm{padding:5px 9px;font-size:11px;min-height:34px}
   .sgt{font-size:12px;letter-spacing:1px}
   .rrl,.rrv{font-size:13px}
-  .nb{font-size:12px;padding:6px 8px;letter-spacing:.5px}
-  .sb2{font-size:11px;padding:4px 8px}
+  .nb{font-size:12px;padding:8px 10px;letter-spacing:.5px;min-height:38px}
+  .sb2{font-size:11px;padding:5px 9px}
   .dt th{font-size:11px;padding:5px 5px}
   .dt td{font-size:13px;padding:5px 5px}
   .stat-val{font-size:16px}
@@ -136,9 +136,33 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   .sc-val{font-size:18px}
   .empty{padding:20px;font-size:13px}
   .loading{padding:16px;font-size:13px}
+  /* Prevent iOS from zooming in on input focus */
+  input,select,textarea{font-size:16px!important}
+  /* Tables: ensure horizontal scroll instead of overflow clip */
+  .sa{overflow-x:hidden}
+  .dt{display:block;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Game card rows: stack on very narrow screens */
+  .gc-row{flex-direction:column!important;gap:4px!important}
+  /* Modals: fill screen on mobile */
+  #bet-popup-inner{max-width:100%!important;margin:0 8px;border-radius:4px}
+  /* Parlay legs: single column */
+  .par-leg{flex-direction:column!important}
+  /* Inline flex rows that overflow: wrap */
+  .ob-row{flex-wrap:wrap!important;gap:6px!important}
+  /* Card grids in settings: single column */
+  .sg{padding:10px!important}
+  /* Intel / social cards: full width */
+  .social-card-wrap{width:100%!important;max-width:100%!important}
+  /* Odds chips: smaller */
+  .ob{min-width:46px!important;font-size:12px!important;padding:4px 6px!important}
+  /* SP sport bar: slightly larger tap targets */
+  .sp{padding:7px 10px;font-size:12px}
+  .mb{flex:0 0 56px;font-size:10px;min-height:56px}
 }
 @media(max-width:390px){
   .gtm{font-size:14px}
+  .g4{grid-template-columns:1fr!important}
+  .g3{grid-template-columns:1fr!important}
   #hdr-clock{display:none}
 }
 /* NAV ITEM DROPDOWNS */
@@ -4613,12 +4637,109 @@ function importBetsFromCode(code){
     toast(`// IMPORTED ${added} BETS FROM SYNC CODE`);
   }catch(e){toast('// IMPORT FAILED — INVALID CODE');}
 }
-function showImportModal(){
-  const el=document.createElement('div');
-  el.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
-  el.innerHTML=`<div style="background:rgba(4,0,12,.98);border:1px solid var(--nc);border-radius:4px;padding:16px;width:100%;max-width:400px"><div style="font-family:var(--orb);font-size:16px;color:var(--nc);margin-bottom:10px;letter-spacing:2px">PASTE SYNC CODE FROM OTHER DEVICE</div><textarea id="import-code-ta" style="width:100%;height:120px;background:rgba(10,0,24,.8);border:1px solid var(--w2);color:var(--t);font-family:var(--mono);font-size:13px;padding:8px;border-radius:2px;resize:none" placeholder="Paste sync code here..."></textarea><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-n" onclick="importBetsFromCode(document.getElementById('import-code-ta').value);this.closest('div').parentElement.parentElement.remove()" style="flex:1">IMPORT</button><button class="btn btn-o" onclick="this.closest('div').parentElement.parentElement.remove()" style="flex:1">CANCEL</button></div></div>`;
-  document.body.appendChild(el);
+function showImportModal(){showManualBetImport();}
+function showManualBetImport(){
+  const overlay=document.createElement('div');
+  overlay.id='bet-import-overlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch';
+  const inp=n=>`style="width:100%;box-sizing:border-box;background:rgba(10,0,24,.85);border:1px solid rgba(0,240,255,.25);color:var(--t);font-family:var(--mono);font-size:14px;padding:8px 10px;border-radius:2px;outline:none" name="${n}"`;
+  const sel=n=>`style="width:100%;box-sizing:border-box;background:rgba(10,0,24,.85);border:1px solid rgba(0,240,255,.25);color:var(--t);font-family:var(--mono);font-size:14px;padding:8px 10px;border-radius:2px;appearance:none" name="${n}"`;
+  overlay.innerHTML=`
+  <div style="background:rgba(4,0,12,.99);border:1px solid rgba(0,240,255,.4);border-radius:4px;padding:20px;width:100%;max-width:460px;position:relative">
+    <div style="font-family:var(--orb);font-size:16px;color:var(--nc);letter-spacing:3px;margin-bottom:16px">// IMPORT BET</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">SPORT</div>
+        <select id="ibs-sport" ${sel('sport')} onchange="window._ibsUpdateLeague(this.value)">
+          <option value="MLB">MLB</option><option value="NBA">NBA</option><option value="NFL">NFL</option>
+          <option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CFB">CFB</option>
+          <option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option><option value="OTHER">OTHER</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">DATE</div>
+        <input type="date" id="ibs-date" ${inp('date')} value="${today()}">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">HOME TEAM</div>
+        <input type="text" id="ibs-home" ${inp('home')} placeholder="e.g. Yankees">
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">AWAY TEAM</div>
+        <input type="text" id="ibs-away" ${inp('away')} placeholder="e.g. Red Sox">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">BET TYPE</div>
+        <select id="ibs-type" ${sel('type')}>
+          <option value="ML">MONEYLINE</option><option value="RL">RUN/PUCK LINE</option>
+          <option value="OU">OVER/UNDER</option><option value="SPREAD">SPREAD</option>
+          <option value="PROP">PLAYER PROP</option><option value="PARLAY">PARLAY</option><option value="FUTURE">FUTURE</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">BET ON</div>
+        <input type="text" id="ibs-beton" ${inp('beton')} placeholder="e.g. Yankees ML">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">LINE / PROP</div>
+        <input type="text" id="ibs-line" ${inp('line')} placeholder="e.g. -1.5">
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">ODDS (US)</div>
+        <input type="text" id="ibs-ml" ${inp('ml')} placeholder="-110">
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">WAGER ($)</div>
+        <input type="number" id="ibs-wager" ${inp('wager')} placeholder="0" min="0" step="1">
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">NOTES (optional)</div>
+      <input type="text" id="ibs-notes" ${inp('notes')} placeholder="Any context...">
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-n" style="flex:1;padding:11px" onclick="window._ibsSubmit()">ADD TO PENDING</button>
+      <button class="btn btn-o" style="flex:1;padding:11px" onclick="document.getElementById('bet-import-overlay').remove()">CANCEL</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
 }
+window._ibsSubmit=function(){
+  const sport=document.getElementById('ibs-sport')?.value||'';
+  const date=document.getElementById('ibs-date')?.value||today();
+  const home=document.getElementById('ibs-home')?.value.trim()||'';
+  const away=document.getElementById('ibs-away')?.value.trim()||'';
+  const betType=document.getElementById('ibs-type')?.value||'ML';
+  const betOn=document.getElementById('ibs-beton')?.value.trim()||'';
+  const line=document.getElementById('ibs-line')?.value.trim()||'';
+  const ml=document.getElementById('ibs-ml')?.value.trim()||'';
+  const wager=parseFloat(document.getElementById('ibs-wager')?.value)||0;
+  const notes=document.getElementById('ibs-notes')?.value.trim()||'';
+  if(!betOn){toast('// ENTER BET ON FIELD');return;}
+  const mlNum=parseFloat(ml)||0;
+  const decOdds=mlNum>0?mlNum/100+1:mlNum<0?100/Math.abs(mlNum)+1:1.91;
+  const winProb=mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238;
+  const preds=getP();
+  const newBet={
+    id:Date.now(),date,sport,hA:home,awA:away,
+    betType,betOn:betOn+(line?(' '+line):''),
+    ml:ml||'—',decOdds,winProb,wager,
+    outcome:'pending',notes,
+    lockedAt:Date.now(),importedManually:true
+  };
+  saveP([...preds,newBet]);
+  document.getElementById('bet-import-overlay')?.remove();
+  if(typeof renderR==='function')try{renderR();}catch(e){}
+  if(typeof renderGlobalLiveBets==='function')try{renderGlobalLiveBets();}catch(e){}
+  toast(`// BET ADDED — ${sport} ${betOn}`);
+};
 function renderCal(){const el=document.getElementById('cal');if(!el)return;const p=getP().filter(x=>x.outcome!=='pending'&&x.betType==='ML');if(p.length<10){el.innerHTML='<div class="empty" style="padding:12px">NEED 10+ SETTLED ML BETS</div>';return;}const bins=[{lo:.50,hi:.55},{lo:.55,hi:.60},{lo:.60,hi:.65},{lo:.65,hi:.70},{lo:.70,hi:1}];let html='';for(const b of bins){const inB=p.filter(x=>x.winProb>=b.lo&&x.winProb<b.hi);if(inB.length<2)continue;const act=inB.filter(x=>x.outcome==='win').length/inB.length;const pred=(b.lo+b.hi)/2;html+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div class="mono" style="font-size:13px;color:var(--t2);width:52px">${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%</div><div style="flex:1;height:8px;background:rgba(240,0,255,.1);border-radius:1px;overflow:hidden;position:relative"><div style="height:100%;width:${pred*100}%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div><div style="position:absolute;top:0;left:0;height:100%;width:${act*100}%;background:var(--pc);opacity:.7"></div></div><div class="mono" style="font-size:13px;width:30px;text-align:right;color:${Math.abs(act-pred)>.05?'var(--hc)':'var(--nc)'}">${(act*100).toFixed(0)}%</div><div style="font-size:12px;color:var(--t3)">n=${inB.length}</div></div>`;}el.innerHTML=html?`<div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-bottom:8px">PURPLE=PREDICTED · NEON=ACTUAL</div>`+html:'<div class="empty">NO DATA</div>';}
 function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const sa=selfAssess();const p=getP().filter(x=>x.outcome!=='pending');let html=`<div class="g4" style="margin-bottom:10px">`;['ML','RL','OU','PARLAY'].forEach(bt=>{const bp=p.filter(x=>x.betType===bt);const bw=bp.filter(x=>x.outcome==='win').length;const bA=bp.length?bw/bp.length:null;html+=`<div class="card cp" style="text-align:center;padding:9px"><div class="ct">${bt}</div><div class="mono" style="font-size:21px;font-weight:700;color:${bA===null?'var(--t3)':bA>=.55?'var(--nc)':bA>=.45?'var(--vc)':'var(--hc)'}">${bA===null?'--':(bA*100).toFixed(0)+'%'}</div><div style="font-size:13px;color:var(--t3);font-family:var(--mono)">${bw}W/${bp.length-bw}L</div></div>`;});html+='</div>';for(const w of sa.warns)html+=`<div class="sa-warn">// ${w}</div>`;for(const ins of sa.insights)html+=`<div class="sa-ins">// ${ins}</div>`;el.innerHTML=html;}
 
@@ -12409,22 +12530,45 @@ function _isGameLine(p){return!_isProp(p);}
 function _normSport(p){
   const raw=(p.sport||p.league||'').toUpperCase().trim();
   if(raw==='MLB'||raw==='BASEBALL')return'MLB';
-  if(raw==='NHL'||raw==='HOCKEY')return'NHL';
+  if(raw==='NHL'||raw==='HOCKEY'||raw==='ICE HOCKEY')return'NHL';
   if(raw==='WNBA')return'WNBA';
   if(raw==='NBA'||raw==='BASKETBALL')return'NBA';
-  if(raw==='WC'||raw==='WORLDCUP'||raw==='WORLD CUP'||raw==='SOCCER')return'WC';
+  if(raw==='NFL'||raw==='FOOTBALL')return'NFL';
+  if(raw==='CFB'||raw==='COLLEGE FOOTBALL'||raw==='NCAAF')return'CFB';
+  if(raw==='WC'||raw==='WORLDCUP'||raw==='WORLD CUP'||raw==='SOCCER'||raw==='SOC')return'WC';
   if(raw==='TEN'||raw==='TENNIS')return'TEN';
-  // Infer from team abbreviations
+  // Full-name lookup — checked BEFORE abbreviation inference to prevent mis-labeling
   const h=(p.hA||'').toUpperCase(),a=(p.awA||'').toUpperCase();
-  const MLB=['NYY','BOS','LAD','CHC','ATL','HOU','PHI','NYM','SFG','CIN','COL','ARI','DET','KCR','MIL','MIN','CWS','CLE','BAL','TBR','SEA','OAK','TEX','LAA','STL','PIT','MIA','WSN','TOR','SDP'];
-  const NHL=['EDM','FLA','NYR','BOS','TBL','CAR','DAL','VAN','LAK','COL','WPG','NJD','PIT','TOR','MTL','OTT','PHI','CHI','DET','MIN','STL','NSH','SEA','SJS','ANA','CBJ','BUF','CGY','VGK','ARI'];
-  const WNBA=['WSH','TOR','GS','SEA','LV','CON','DAL','IND','NY','PHX','ATL','MIN','CHI','LA'];
-  const NBA=['GSW','LAL','BOS','MIL','PHX','MIA','PHI','DEN','DAL','NYK','BKN','CLE','MEM','NOP','SAC','POR','IND','CHA','ORL','MIN','UTA','OKC','SAS','DET','HOU','LAC','WAS','ATL','CHI','TOR'];
-  if(MLB.includes(h)||MLB.includes(a))return'MLB';
-  if(NHL.includes(h)||NHL.includes(a))return'NHL';
-  // Check WNBA before NBA (some abbrevs overlap)
-  if(WNBA.includes(h)&&WNBA.includes(a))return'WNBA';
-  if(NBA.includes(h)||NBA.includes(a))return'NBA';
+  const FULL_MLB=['YANKEES','METS','RED SOX','BLUE JAYS','ORIOLES','RAYS','WHITE SOX','GUARDIANS','TIGERS','ROYALS',
+    'TWINS','ASTROS','ATHLETICS','RANGERS','ANGELS','MARINERS','DODGERS','GIANTS','PADRES','ROCKIES',
+    'DIAMONDBACKS','D-BACKS','CARDINALS','CUBS','BREWERS','REDS','PIRATES','BRAVES','PHILLIES','NATIONALS','MARLINS'];
+  const FULL_NHL=['MAPLE LEAFS','CANADIENS','SENATORS','JETS','FLAMES','OILERS','CANUCKS','GOLDEN KNIGHTS','SHARKS',
+    'DUCKS','KINGS','COYOTES','WILD','BLUES','BLACKHAWKS','RED WINGS','PREDATORS','STARS','AVALANCHE',
+    'KRAKEN','LIGHTNING','PANTHERS','HURRICANES','CAPITALS','BRUINS','RANGERS','ISLANDERS','DEVILS',
+    'FLYERS','PENGUINS','SABRES','BLUE JACKETS'];
+  const FULL_NBA=['LAKERS','CELTICS','WARRIORS','NETS','KNICKS','BULLS','HEAT','BUCKS','SUNS','SIXERS','76ERS',
+    'NUGGETS','MAVERICKS','GRIZZLIES','PELICANS','KINGS','TRAIL BLAZERS','BLAZERS','PACERS','HORNETS',
+    'MAGIC','TIMBERWOLVES','JAZZ','THUNDER','SPURS','PISTONS','ROCKETS','CLIPPERS','WIZARDS','HAWKS','RAPTORS','CAVALIERS'];
+  const FULL_WNBA=['MYSTICS','LIBERTY','SKY','DREAM','FEVER','LYNX','WINGS','ACES','STORM','SUN','MERCURY','SPARKS','VALKYRIES'];
+  const FULL_NFL=['PATRIOTS','BILLS','DOLPHINS','JETS','RAVENS','STEELERS','BROWNS','BENGALS',
+    'TEXANS','COLTS','JAGUARS','TITANS','BRONCOS','CHIEFS','RAIDERS','CHARGERS',
+    'COWBOYS','GIANTS','EAGLES','COMMANDERS','BEARS','LIONS','PACKERS','VIKINGS',
+    'FALCONS','PANTHERS','SAINTS','BUCCANEERS','CARDINALS','RAMS','SEAHAWKS','49ERS'];
+  const matchesAny=(team,list)=>list.some(name=>team.includes(name));
+  if(matchesAny(h,FULL_WNBA)||matchesAny(a,FULL_WNBA))return'WNBA';
+  if(matchesAny(h,FULL_MLB)||matchesAny(a,FULL_MLB))return'MLB';
+  if(matchesAny(h,FULL_NHL)||matchesAny(a,FULL_NHL))return'NHL';
+  if(matchesAny(h,FULL_NBA)||matchesAny(a,FULL_NBA))return'NBA';
+  if(matchesAny(h,FULL_NFL)||matchesAny(a,FULL_NFL))return'NFL';
+  // Abbreviation inference — last resort
+  const MLB_ABR=['NYY','BOS','LAD','CHC','ATL','HOU','PHI','NYM','SFG','CIN','COL','ARI','DET','KCR','MIL','MIN','CWS','CLE','BAL','TBR','SEA','OAK','TEX','LAA','STL','PIT','MIA','WSN','TOR','SDP'];
+  const NHL_ABR=['EDM','FLA','NYR','BOS','TBL','CAR','DAL','VAN','LAK','COL','WPG','NJD','PIT','TOR','MTL','OTT','PHI','CHI','DET','MIN','STL','NSH','SEA','SJS','ANA','CBJ','BUF','CGY','VGK'];
+  const WNBA_ABR=['WSH','GS','SEA','LV','CON','IND','PHX','NY','LA'];
+  const NBA_ABR=['GSW','LAL','MIL','PHX','MIA','DEN','DAL','NYK','BKN','CLE','MEM','NOP','SAC','POR','CHA','ORL','UTA','OKC','SAS','HOU','LAC','WAS'];
+  if(MLB_ABR.includes(h)||MLB_ABR.includes(a))return'MLB';
+  if(NHL_ABR.includes(h)||NHL_ABR.includes(a))return'NHL';
+  if(WNBA_ABR.includes(h)&&WNBA_ABR.includes(a))return'WNBA';
+  if(NBA_ABR.includes(h)||NBA_ABR.includes(a))return'NBA';
   if(raw)return raw;
   return'MISC';
 }
