@@ -12489,47 +12489,63 @@ function renderIntelCards(tier){
 function _lcGrade(g){return g==='ELITE'?'#bbff00':g==='LOCK'?'#00f0ff':'#f000ff';}
 function _lcSport(s){return{'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','WNBA':'#bbff00','WC':'#00da88','TEN':'#ffd700','TENNIS':'#ffd700'}[s]||'#f000ff';}
 
+// Normalize sport display name for cards
+function _sportDisplayName(s){
+  var map={WC:'WORLD CUP',SOC:'WORLD CUP',SOCCER:'WORLD CUP',TEN:'TENNIS',TENNIS:'TENNIS'};
+  return map[(s||'').toUpperCase()]||s||'';
+}
+
 function _renderLeagueCard(sport,moves,idx,tier,tm){
-  const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
-  const gc=_lcGrade(topGrade);
+  const dispSport=_sportDisplayName(sport);
   const dateStr=moves[0]?.date||today();
-  const maxRows=6;
-  const rows=moves.slice(0,maxRows).map(m=>{
-    const c=_lcGrade(m.grade);
-    return'<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
-      +'<span style="font-family:var(--mono);font-size:7px;padding:1px 3px;border:1px solid '+c+';color:'+c+';border-radius:1px;min-width:28px;text-align:center;flex-shrink:0">'+m.grade+'</span>'
-      +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:8px;font-weight:700;color:'+c+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
-        +'<div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.game+'</div>'
-      +'</div>'
-      +'<div style="text-align:right;flex-shrink:0;line-height:1.2">'
-        +'<div style="font-family:var(--mono);font-size:7px;color:rgba(187,255,0,.75)">'+(m.evStr||'—')+'</div>'
-        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:'+c+'">'+m.prob+'%</div>'
-      +'</div>'
-    +'</div>';
-  }).join('');
+  const cardTitle=(tm||{}).title||'Base Intelligence Brief';
   // CF background: diagonal weave + dark base
   const cfBg='repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
     +'repeating-linear-gradient(-45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
     +'linear-gradient(135deg,rgba(4,0,12,1),rgba(18,0,36,1))';
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';border:1px solid '+gc+'44;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:10px 12px 8px;box-sizing:border-box">'
+  const maxRows=5;
+  const rows=moves.slice(0,maxRows).map(m=>{
+    const c=_lcGrade(m.grade);
+    return'<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+      // Grade pill per pick (no top-right badge)
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6px;font-weight:700;padding:1px 3px;border:1px solid '+c+';color:'+c+';border-radius:1px;min-width:26px;text-align:center;flex-shrink:0;letter-spacing:.5px">'+m.grade+'</span>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7.5px;font-weight:700;color:'+c+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:6px;font-weight:400;color:rgba(220,190,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.game+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0;line-height:1.2">'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:6px;font-weight:600;color:rgba(187,255,0,.8)">'+(m.evStr||'—')+'</div>'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:'+c+'">'+m.prob+'%</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';border:1px solid rgba(192,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:10px 12px 8px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
-    +'<div style="position:absolute;top:0;right:0;width:100px;height:100px;background:radial-gradient(circle,'+gc+'12 0%,transparent 70%);pointer-events:none"></div>'
-    // Header: Clairvoyance + grade badge
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;position:relative">'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:900;color:#c000ff;text-shadow:0 0 10px #c000ff,0 0 20px #8800cc;letter-spacing:1px">CLAIRVOYANCE</span>'
-      +'<span style="font-family:var(--mono);font-size:7px;padding:1px 5px;border:1px solid '+gc+';color:'+gc+';border-radius:2px">'+topGrade+'</span>'
+    +'<div style="position:absolute;top:0;right:0;width:90px;height:90px;background:radial-gradient(circle,rgba(192,0,255,.1) 0%,transparent 70%);pointer-events:none"></div>'
+    // Row 1: CLAIRVOYANCE (no grade badge)
+    +'<div style="position:relative;margin-bottom:1px">'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:900;color:#c000ff;text-shadow:0 0 10px #c000ff,0 0 22px #8800cc;letter-spacing:1px">CLAIRVOYANCE</span>'
     +'</div>'
-    // Sport name in cyan + date in cyan
-    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;position:relative">'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:22px;font-weight:900;color:#00f0ff;text-shadow:0 0 14px #00f0ff">'+sport+'</span>'
-      +'<span style="font-family:var(--mono);font-size:8px;color:#00f0ff;text-shadow:0 0 6px #00f0ff44">'+dateStr+'</span>'
+    // Row 2: card tier title in neon purple Orbitron
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:#c000ff;text-shadow:0 0 8px #c000ff88;letter-spacing:.5px;margin-bottom:3px;position:relative">'+cardTitle+'</div>'
+    // Row 3: sport name in cyan + date in cyan
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;position:relative">'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:'+(dispSport.length>8?'14':'20')+'px;font-weight:900;color:#00f0ff;text-shadow:0 0 12px #00f0ff;line-height:1">'+dispSport+'</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:500;color:#00f0ff;text-shadow:0 0 6px #00f0ff44">'+dateStr+'</span>'
     +'</div>'
-    +'<div style="height:1px;background:linear-gradient(90deg,'+gc+'66,transparent);margin-bottom:5px;position:relative"></div>'
+    +'<div style="height:1px;background:linear-gradient(90deg,rgba(192,0,255,.5),transparent);margin-bottom:4px;position:relative"></div>'
+    // Pick rows
     +'<div style="flex:1;overflow:hidden;position:relative">'+rows+'</div>'
-    +'<div style="display:flex;gap:5px;margin-top:6px;position:relative">'
-      +'<button onclick="event.stopPropagation();exportLeagueCard('+idx+')" style="flex:1;padding:4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.3);color:#00f0ff;font-family:var(--mono);font-size:8px;border-radius:2px;cursor:pointer">⬇ EXPORT PNG</button>'
-      +'<button onclick="event.stopPropagation();shareLeagueCard('+idx+')" style="flex:1;padding:4px;background:rgba(192,0,255,.07);border:1px solid rgba(192,0,255,.3);color:#c000ff;font-family:var(--mono);font-size:8px;border-radius:2px;cursor:pointer">↗ SHARE</button>'
+    // Social handles footer
+    +'<div style="position:relative;margin-top:5px;border-top:1px solid rgba(192,0,255,.2);padding-top:4px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">𝕏 @ClairvoyanceEng</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">⬡ @clairvoyanceengine</span>'
+    +'</div>'
+    // Export/share buttons
+    +'<div style="display:flex;gap:5px;margin-top:5px;position:relative">'
+      +'<button onclick="event.stopPropagation();exportLeagueCard('+idx+')" style="flex:1;padding:4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.3);color:#00f0ff;font-family:\'Orbitron\',sans-serif;font-size:7px;border-radius:2px;cursor:pointer">⬇ EXPORT PNG</button>'
+      +'<button onclick="event.stopPropagation();shareLeagueCard('+idx+')" style="flex:1;padding:4px;background:rgba(192,0,255,.07);border:1px solid rgba(192,0,255,.3);color:#c000ff;font-family:\'Orbitron\',sans-serif;font-size:7px;border-radius:2px;cursor:pointer">↗ SHARE</button>'
     +'</div>'
   +'</div>';
 }
@@ -12544,50 +12560,67 @@ async function exportLeagueCard(idx){
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');
   _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
-  const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
-  const gc=_lcGrade(topGrade);
+  const dispSport=_sportDisplayName(sport);
+  const tm=window._intelCardTierMeta||{label:'BASE',title:'Base Intelligence Brief',color:'#c000ff'};
   const dateStr=moves[0]?.date||today();
-  // "CLAIRVOYANCE" header — neon purple, Orbitron, centered
-  _glowText(ctx,'CLAIRVOYANCE',W/2,64,'900 38px "Orbitron"','#c000ff',20,'center');
-  // eye logo
-  _eyeLogo(ctx,W/2,178);
-  // sport name — cyan
-  _glowText(ctx,sport,W/2,290,'900 72px "Orbitron"','#00f0ff',28,'center');
-  // date — cyan
-  _glowText(ctx,dateStr,W/2,334,'500 17px "Courier New"','#00f0ff',8,'center');
-  // top grade badge
-  ctx.save();ctx.strokeStyle=gc;ctx.lineWidth=2;ctx.shadowColor=gc;ctx.shadowBlur=14;
-  ctx.strokeRect(W/2-72,350,144,34);ctx.restore();
-  _glowText(ctx,topGrade,W/2,368,'700 15px "Courier New"',gc,10,'center');
-  // divider
-  ctx.save();const dg=ctx.createLinearGradient(60,396,W-60,396);
-  dg.addColorStop(0,'transparent');dg.addColorStop(.5,gc+'cc');dg.addColorStop(1,'transparent');
-  ctx.strokeStyle=dg;ctx.lineWidth=1.5;ctx.shadowColor=gc;ctx.shadowBlur=8;
-  ctx.beginPath();ctx.moveTo(60,396);ctx.lineTo(W-60,396);ctx.stroke();ctx.restore();
-  // picks — grade + label + EV + prob%
-  const maxRows=Math.min(moves.length,8);const rH=Math.min(78,(H-476)/maxRows);
+  // CLAIRVOYANCE — neon purple Orbitron header
+  _glowText(ctx,'CLAIRVOYANCE',W/2,62,'900 42px "Orbitron"','#c000ff',22,'center');
+  // Card tier title — neon purple, smaller Orbitron
+  _glowText(ctx,tm.title,W/2,98,'600 18px "Orbitron"','#c000ff',10,'center');
+  // Divider under header
+  ctx.save();const hd=ctx.createLinearGradient(80,116,W-80,116);
+  hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(192,0,255,.6)');hd.addColorStop(1,'transparent');
+  ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#c000ff';ctx.shadowBlur=8;
+  ctx.beginPath();ctx.moveTo(80,116);ctx.lineTo(W-80,116);ctx.stroke();ctx.restore();
+  // Eye logo
+  _eyeLogo(ctx,W/2,210);
+  // Sport name — cyan Orbitron
+  const sportFontSize=dispSport.length>8?'56px':'72px';
+  _glowText(ctx,dispSport,W/2,308,'900 '+sportFontSize+' "Orbitron"','#00f0ff',28,'center');
+  // Date — cyan Orbitron
+  _glowText(ctx,dateStr,W/2,348,'500 16px "Orbitron"','#00f0ff',8,'center');
+  // Divider
+  ctx.save();const dg=ctx.createLinearGradient(60,368,W-60,368);
+  dg.addColorStop(0,'transparent');dg.addColorStop(.5,'rgba(192,0,255,.5)');dg.addColorStop(1,'transparent');
+  ctx.strokeStyle=dg;ctx.lineWidth=1.5;ctx.shadowColor='#c000ff';ctx.shadowBlur=6;
+  ctx.beginPath();ctx.moveTo(60,368);ctx.lineTo(W-60,368);ctx.stroke();ctx.restore();
+  // Column headers
+  ctx.globalAlpha=.4;
+  _glowText(ctx,'GRADE',98,'390','500 11px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'PICK',300,'390','500 11px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'EV',W-148,'390','500 11px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'PROB',W-55,'390','500 11px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  ctx.globalAlpha=1;
+  // Pick rows — grade pill per pick (no top-level badge), all Orbitron
+  const maxRows=Math.min(moves.length,8);const rH=Math.min(76,(H-480)/maxRows);
   moves.slice(0,maxRows).forEach((m,i)=>{
-    const c=_lcGrade(m.grade);const y=416+i*rH+rH/2;
-    // grade pill
+    const c=_lcGrade(m.grade);const y=408+i*rH+rH/2;
+    // Grade pill (per-pick)
     ctx.save();ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.shadowColor=c;ctx.shadowBlur=8;
     ctx.strokeRect(60,y-14,76,28);ctx.restore();
-    _glowText(ctx,m.grade,98,y,'700 12px "Courier New"',c,8,'center');
-    // label
+    _glowText(ctx,m.grade,98,y,'700 11px "Orbitron"',c,8,'center');
+    // Label — Orbitron
     const lbl=m.label.length>32?m.label.slice(0,30)+'…':m.label;
     _glowText(ctx,lbl,150,y-5,'700 15px "Orbitron"',c,8,'left');
-    // game
+    // Game — lighter Orbitron
     const gm=m.game.length>40?m.game.slice(0,38)+'…':m.game;
-    _glowText(ctx,gm,150,y+12,'400 11px "Courier New"','rgba(220,190,255,.5)',3,'left');
-    // EV
+    _glowText(ctx,gm,150,y+12,'400 10px "Orbitron"','rgba(220,190,255,.45)',2,'left');
+    // EV — yellow-green Orbitron
     const evStr=m.evStr||(m.ev!=null?(m.ev>=0?'+':'')+m.ev.toFixed(1)+'%':'—');
-    _glowText(ctx,evStr,W-148,y,'600 13px "Courier New"','rgba(187,255,0,.85)',5,'right');
-    // probability
+    _glowText(ctx,evStr,W-148,y,'600 13px "Orbitron"','rgba(187,255,0,.9)',5,'right');
+    // Probability — Orbitron
     _glowText(ctx,m.prob+'%',W-55,y,'700 22px "Orbitron"',c,12,'right');
-    // row divider
-    if(i<maxRows-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,408+(i+1)*rH);ctx.lineTo(W-60,408+(i+1)*rH);ctx.stroke();ctx.restore();}
+    // Row divider
+    if(i<maxRows-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,400+(i+1)*rH);ctx.lineTo(W-60,400+(i+1)*rH);ctx.stroke();ctx.restore();}
   });
-  // footer
-  _glowText(ctx,'clairvoyance.app',W/2,H-48,'500 13px "Courier New"','rgba(180,140,255,.45)',5,'center');
+  // Footer divider
+  ctx.save();const fd=ctx.createLinearGradient(60,H-100,W-60,H-100);
+  fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(192,0,255,.4)');fd.addColorStop(1,'transparent');
+  ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,H-100);ctx.lineTo(W-60,H-100);ctx.stroke();ctx.restore();
+  // Social handles — neon purple Orbitron
+  _glowText(ctx,'𝕏  @ClairvoyanceEng',W/2-100,H-66,'700 15px "Orbitron"','#c000ff',12,'right');
+  _glowText(ctx,'⬡  @clairvoyanceengine',W/2+100,H-66,'700 15px "Orbitron"','#c000ff',12,'left');
+  _glowText(ctx,'clairvoyance.app',W/2,H-38,'400 12px "Orbitron"','rgba(192,0,255,.4)',4,'center');
   const url=cv.toDataURL('image/png');
   const a=document.createElement('a');a.href=url;
   a.download='cv-intel-'+sport.toLowerCase()+'-'+dateStr.replace(/-/g,'')+'.png';
