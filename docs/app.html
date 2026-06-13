@@ -12378,46 +12378,128 @@ function formatMCResult(t1,t2,p1,res){
 // ═══════════════════════════════════════════════════════════════════════════
 function renderIntelCards(){
   const el=document.getElementById('social-cards-content');if(!el)return;
-  const picks=getP().filter(p=>p.outcome==='pending').slice(0,10);
-  const bestBets=(window.__CV_DATA?.bestBets||[]).filter(b=>b.date===today()).slice(0,8);
-  const allCards=[...picks.map(p=>({type:'locked',label:p.betOn||p.betType,game:(p.awA||'?')+' at '+(p.hA||'?'),sport:p.sport,prob:Math.round((p.winProb||.55)*100),ml:p.ml,grade:p.winProb>=.67?'ELITE':p.winProb>=.62?'LOCK':'LEAN',date:p.date||today(),ev:null})),...bestBets.map(b=>({type:'engine',label:b.pick,game:b.game,sport:b.sport,prob:b.prob||b.confidence||0,ml:b.ml,grade:b.grade,date:b.date,ev:b.ev}))];
-  if(!allCards.length){el.innerHTML='<div class="empty">LOCK PICKS TO GENERATE SHARE CARDS</div>';return;}
-  el.innerHTML=`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:12px;line-height:1.8">Generate shareable pick cards with cyberpunk aesthetics. One tap to save or share.</div>
-  ${allCards.slice(0,6).map((c,i)=>renderPickCard(c,i)).join('')}`;
+  const picks=getP().filter(p=>p.outcome==='pending');
+  const bestBets=(window.__CV_DATA?.bestBets||[]).filter(b=>b.date===today());
+  const allMoves=[
+    ...picks.map(p=>({label:p.betOn||p.betType,game:(p.awA||'?')+' at '+(p.hA||'?'),sport:p.sport||'MISC',prob:Math.round((p.winProb||.55)*100),ml:p.ml||'—',grade:p.winProb>=.67?'ELITE':p.winProb>=.62?'LOCK':'LEAN',date:p.date||today()})),
+    ...bestBets.map(b=>({label:b.pick,game:b.game,sport:b.sport||'MISC',prob:b.prob||b.confidence||0,ml:b.ml||'—',grade:b.grade||'LEAN',date:b.date||today()}))
+  ];
+  const bySport={};
+  allMoves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
+  const sports=Object.keys(bySport);
+  if(!sports.length){el.innerHTML='<div class="empty">LOCK PICKS TO GENERATE SHARE CARDS</div>';return;}
+  window._intelCardData=bySport;
+  el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:12px;line-height:1.8">One combined intel card per league · tap EXPORT to download 1080×1080 PNG.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px">'
+    +sports.map((s,i)=>_renderLeagueCard(s,bySport[s],i)).join('')+'</div>';
 }
 
-function renderPickCard(c,i){
-  const gc=c.grade==='ELITE'?'#bbff00':c.grade==='LOCK'?'#00f0ff':c.grade==='GOOD'?'#00f0ff':'#f000ff';
-  const sportCol={'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','TEN':'#bbff00','F1':'#ff2090'}[c.sport]||'#f000ff';
-  return`<div style="background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:1px solid ${gc}44;border-radius:4px;padding:14px;margin-bottom:10px;position:relative;overflow:hidden" id="pick-card-${i}">
-    <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 6px);pointer-events:none"></div>
-    <div style="position:absolute;top:0;right:0;width:100px;height:100px;background:radial-gradient(circle,${gc}18 0%,transparent 70%);pointer-events:none"></div>
-    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;position:relative">
-      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.55)">CLAIRVOYANCE ENGINE</div>
-      <span style="font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid ${gc};color:${gc};border-radius:2px">${c.grade}</span>
-    </div>
-    <div style="font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:${gc};text-shadow:0 0 12px ${gc};margin-bottom:4px;position:relative">${c.label}</div>
-    <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.8);margin-bottom:8px;position:relative">${c.game}</div>
-    <div style="display:flex;gap:12px;position:relative">
-      <div><div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:${gc};text-shadow:0 0 10px ${gc}88">${c.prob}%</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.5)">WIN PROB</div></div>
-      <div><div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:rgba(220,190,255,.9)">${c.ml||'—'}</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.5)">ODDS</div></div>
-      ${c.ev!=null?`<div><div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:#bbff00">+${parseFloat(c.ev).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.5)">EV</div></div>`:''}
-    </div>
-    <div style="display:flex;gap:8px;margin-top:10px;position:relative">
-      <button onclick="sharePickCard(${i},'${(c.label+' '+c.game).replace(/'/g,'')}')" style="flex:1;padding:8px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.4);color:#f000ff;font-family:var(--mono);font-size:12px;border-radius:2px;cursor:pointer">SHARE CARD</button>
-      <button onclick="downloadPickCard(${i})" style="flex:1;padding:8px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.3);color:#00f0ff;font-family:var(--mono);font-size:12px;border-radius:2px;cursor:pointer">SAVE IMAGE</button>
-    </div>
-  </div>`;
+function _lcGrade(g){return g==='ELITE'?'#bbff00':g==='LOCK'?'#00f0ff':'#f000ff';}
+function _lcSport(s){return{'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','WNBA':'#bbff00','WC':'#00da88','TEN':'#ffd700','TENNIS':'#ffd700'}[s]||'#f000ff';}
+
+function _renderLeagueCard(sport,moves,idx){
+  const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
+  const gc=_lcGrade(topGrade);const sc=_lcSport(sport);
+  const dateStr=moves[0]?.date||today();
+  const rows=moves.slice(0,6).map(m=>{
+    const c=_lcGrade(m.grade);
+    return'<div style="display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+      +'<span style="font-family:var(--mono);font-size:8px;padding:1px 4px;border:1px solid '+c+';color:'+c+';border-radius:1px;min-width:30px;text-align:center;flex-shrink:0">'+m.grade+'</span>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:'+c+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
+        +'<div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.game+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0">'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:'+c+'">'+m.prob+'%</div>'
+        +'<div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.45)">'+m.ml+'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:1px solid '+gc+'44;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:14px;box-sizing:border-box">'
+    +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 6px);pointer-events:none"></div>'
+    +'<div style="position:absolute;top:0;right:0;width:100px;height:100px;background:radial-gradient(circle,'+gc+'1a 0%,transparent 70%);pointer-events:none"></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:relative">'
+      +'<span style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.4)">CLAIRVOYANCE ENGINE</span>'
+      +'<span style="font-family:var(--mono);font-size:8px;padding:1px 6px;border:1px solid '+gc+';color:'+gc+';border-radius:2px">'+topGrade+'</span>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;position:relative">'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:20px;font-weight:900;color:'+sc+';text-shadow:0 0 12px '+sc+'">'+sport+'</span>'
+      +'<span style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.55)">'+dateStr+'</span>'
+    +'</div>'
+    +'<div style="height:1px;background:linear-gradient(90deg,'+gc+'88,transparent);margin-bottom:7px;position:relative"></div>'
+    +'<div style="flex:1;overflow:hidden;position:relative">'+rows+'</div>'
+    +'<div style="display:flex;gap:5px;margin-top:8px;position:relative">'
+      +'<button onclick="event.stopPropagation();exportLeagueCard('+idx+')" style="flex:1;padding:5px;background:rgba(187,255,0,.08);border:1px solid rgba(187,255,0,.4);color:#bbff00;font-family:var(--mono);font-size:9px;border-radius:2px;cursor:pointer">⬇ EXPORT PNG</button>'
+      +'<button onclick="event.stopPropagation();shareLeagueCard('+idx+')" style="flex:1;padding:5px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.3);color:#f000ff;font-family:var(--mono);font-size:9px;border-radius:2px;cursor:pointer">↗ SHARE</button>'
+    +'</div>'
+  +'</div>';
 }
 
-function sharePickCard(i,text){
-  if(navigator.share){navigator.share({title:'CLAIRVOYANCE PICK',text:text+' | Clairvoyance Engine',url:location.href}).catch(()=>{});}
-  else{navigator.clipboard?.writeText(text+' | Clairvoyance Engine · '+location.href).then(()=>toast('// COPIED TO CLIPBOARD — PASTE TO SHARE'));}}
+async function exportLeagueCard(idx){
+  const sports=Object.keys(window._intelCardData||{});
+  const sport=sports[idx];const moves=(window._intelCardData||{})[sport];
+  if(!moves||!moves.length){toast('// NO DATA FOR CARD');return;}
+  toast('// RENDERING 1080×1080...');
+  const W=1080,H=1080;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
+  const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
+  const gc=_lcGrade(topGrade);const sc=_lcSport(sport);
+  const dateStr=moves[0]?.date||today();
+  // header
+  _glowText(ctx,'CLAIRVOYANCE ENGINE',W/2,52,'500 15px "Courier New"','rgba(180,140,255,.6)',6,'center');
+  _eyeLogo(ctx,W/2,160);
+  // sport name
+  _glowText(ctx,sport,W/2,280,'900 70px "Orbitron"',sc,28,'center');
+  // date
+  _glowText(ctx,dateStr,W/2,334,'500 18px "Courier New"','rgba(220,190,255,.6)',5,'center');
+  // grade badge rect
+  ctx.save();ctx.strokeStyle=gc;ctx.lineWidth=2;ctx.shadowColor=gc;ctx.shadowBlur=14;
+  ctx.strokeRect(W/2-70,352,140,34);ctx.restore();
+  _glowText(ctx,topGrade,W/2,369,'700 15px "Courier New"',gc,10,'center');
+  // divider
+  ctx.save();const dg=ctx.createLinearGradient(60,408,W-60,408);
+  dg.addColorStop(0,'transparent');dg.addColorStop(.5,gc+'cc');dg.addColorStop(1,'transparent');
+  ctx.strokeStyle=dg;ctx.lineWidth=1.5;ctx.shadowColor=gc;ctx.shadowBlur=8;
+  ctx.beginPath();ctx.moveTo(60,408);ctx.lineTo(W-60,408);ctx.stroke();ctx.restore();
+  // picks
+  const maxRows=Math.min(moves.length,7);const rH=Math.min(82,(H-500)/maxRows);
+  moves.slice(0,maxRows).forEach((m,i)=>{
+    const c=_lcGrade(m.grade);const y=428+i*rH+rH/2;
+    // grade pill
+    ctx.save();ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.shadowColor=c;ctx.shadowBlur=8;
+    ctx.strokeRect(60,y-13,74,26);ctx.restore();
+    _glowText(ctx,m.grade,97,y,'700 12px "Courier New"',c,8,'center');
+    // label
+    const lbl=m.label.length>34?m.label.slice(0,32)+'…':m.label;
+    _glowText(ctx,lbl,148,y-5,'700 16px "Orbitron"',c,8,'left');
+    // game
+    const gm=m.game.length>38?m.game.slice(0,36)+'…':m.game;
+    _glowText(ctx,gm,148,y+12,'400 11px "Courier New"','rgba(220,190,255,.5)',3,'left');
+    // probability
+    _glowText(ctx,m.prob+'%',W-110,y,'700 22px "Orbitron"',c,12,'right');
+    // ML
+    _glowText(ctx,m.ml||'—',W-55,y,'600 14px "Courier New"','rgba(220,190,255,.65)',4,'right');
+    // row divider
+    if(i<maxRows-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,428+(i+1)*rH);ctx.lineTo(W-60,428+(i+1)*rH);ctx.stroke();ctx.restore();}
+  });
+  // footer
+  _glowText(ctx,'clairvoyance.app',W/2,H-48,'500 13px "Courier New"','rgba(180,140,255,.45)',5,'center');
+  const url=cv.toDataURL('image/png');
+  const a=document.createElement('a');a.href=url;
+  a.download='cv-intel-'+sport.toLowerCase()+'-'+dateStr.replace(/-/g,'')+'.png';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('// '+sport+' INTEL CARD SAVED');
+}
 
-function downloadPickCard(i){
-  const card=document.getElementById('pick-card-'+i);if(!card)return;
-  toast('// IMAGE SAVE: Use long-press / screenshot on the card to save');
-  card.style.boxShadow='0 0 30px rgba(240,0,255,.4)';setTimeout(()=>card.style.boxShadow='',2000);
+function shareLeagueCard(idx){
+  const sports=Object.keys(window._intelCardData||{});
+  const sport=sports[idx];const moves=(window._intelCardData||{})[sport];
+  if(!moves)return;
+  const txt=sport+' INTEL ('+moves[0]?.date+'): '+moves.slice(0,4).map(m=>m.label+' '+m.prob+'%').join(' · ')+' | Clairvoyance Engine';
+  if(navigator.share){navigator.share({title:'CLAIRVOYANCE '+sport+' INTEL',text:txt,url:location.href}).catch(()=>{});}
+  else{navigator.clipboard?.writeText(txt+' · '+location.href).then(()=>toast('// COPIED TO CLIPBOARD'));}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
