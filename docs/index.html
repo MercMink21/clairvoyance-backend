@@ -330,10 +330,7 @@ body{line-height:1.5}
     <div id="home-pending-bets" style="margin-bottom:14px"></div>
     <!-- Utility buttons -->
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
-      <button class="btn btn-o btn-sm" onclick="exportLockedProps()">EXPORT JSON</button>
-      <button class="btn btn-p btn-sm" onclick="exportBetsClipboard()">SYNC EXPORT</button>
-      <button id="notif-btn" class="btn btn-o btn-sm" onclick="requestNotifPermission().then(()=>{const p=('Notification' in window)?Notification.permission:'unsupported';const b=document.getElementById('notif-btn');if(b){b.textContent=p==='granted'?'🔔 ON':p==='denied'?'🔕 OFF':'NOTIFS';b.style.borderColor=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':'';b.style.color=p==='granted'?'var(--nc)':p==='denied'?'var(--hc)':''}})" style="min-width:70px">NOTIFS</button>
-      <button class="btn btn-n btn-sm" onclick="showImportModal()">SYNC IMPORT</button>
+      <button class="btn btn-o btn-sm" onclick="exportBetHistoryCSV()">EXPORT BET HISTORY</button>
     </div>
     <!-- Hidden stubs — keep IDs so legacy JS calls don't crash -->
     <div id="home-live-games"        style="display:none"></div>
@@ -472,8 +469,7 @@ body{line-height:1.5}
       </div>
       <div class="sg"><div class="sgt">// DATA MANAGEMENT</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-o btn-sm" onclick="doExp('csv')">EXPORT CSV</button>
-          <button class="btn btn-o btn-sm" onclick="doExp('json')">EXPORT JSON</button>
+          <button class="btn btn-o btn-sm" onclick="exportBetHistoryCSV()">EXPORT BET HISTORY</button>
           <button class="btn btn-o btn-sm" onclick="doImp()">IMPORT</button>
           <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="if(confirm('RESET ALL DATA?'))doReset()">RESET</button>
         </div>
@@ -4650,6 +4646,23 @@ function doExp(fmt='csv'){
     const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_${today()}.json`;a.click();
     toast('// EXPORTED JSON');
   }
+}
+function exportBetHistoryCSV(){
+  const all=[...getP(),...(JSON.parse(localStorage.getItem('locked_bets')||'[]'))];
+  if(!all.length){toast('// NO BET HISTORY');return;}
+  const hdr=['Date','Sport','Home','Away','BetType','BetOn','ML','WinProb%','Outcome','HomeScore','AwayScore','Units','Wager','LockedAt'];
+  const rows=all.map(p=>[
+    p.date||'',p.sport||'',p.hA||'',p.awA||'',p.betType||'',p.betOn||'',p.ml||'',
+    p.winProb!=null?(p.winProb*100).toFixed(1):'',
+    p.outcome||'pending',
+    p.hScore!=null?p.hScore:'',p.aScore!=null?p.aScore:'',
+    p.units!=null?p.units:'',p.wager||'',
+    p.lockedAt?new Date(p.lockedAt).toLocaleString():''
+  ].map(v=>{const s=String(v);return s.includes(',')||s.includes('"')?`"${s.replace(/"/g,'""')}\"`:s;}).join(','));
+  const csv=[hdr.join(','),...rows].join('\n');
+  const b=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_bet_history_${today()}.csv`;a.click();
+  toast(`// EXPORTED ${all.length} BETS`);
 }
 function doImp(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const fr=new FileReader();fr.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.preds)saveP(d.preds);if(d.elo){ELO=d.elo;S.s('elo',ELO);}if(d.ens)ENS=d.ens;if(d.daily_log)saveDailyLog(d.daily_log);updHdr();renderR();toast('// IMPORTED');}catch{toast('// IMPORT FAILED');}};fr.readAsText(e.target.files[0]);};i.click();}
 function doReset(){['preds','elo','ens','last_upd','last_upd_date','last_nhl_upd','last_nhl_upd_date','daily_log','nhl_edge_date'].forEach(k=>S.d(k));ELO={};PAR=[];buildMLB();initELO();updHdr();renderR();toast('// SYSTEM RESET');}
