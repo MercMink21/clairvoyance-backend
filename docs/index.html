@@ -5836,6 +5836,9 @@ function renderNBAFinalsProps(containerId){
     const dirStr=pp.over===false?'UNDER':'OVER';
     const safeName=pp.player.replace(/'/g,"\\'");
     const lockLabel=`${pp.player} ${pp.stat} ${dirStr} ${pp.line}`;
+    const mlNum=parseFloat(pp.ml||'-110');
+    const mlStr=mlNum>0?'+'+mlNum:String(mlNum);
+    const pKey=pp.player.replace(/\W+/g,'_')+'_'+pp.stat;
     return`<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
         <span style="font-family:var(--orb);font-size:13px;font-weight:700;color:var(--t)">${pp.player} <span style="font-size:10px;color:var(--t3);font-family:var(--mono)">(${pp.t})</span></span>
@@ -5850,7 +5853,18 @@ function renderNBAFinalsProps(containerId){
       </div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--t2);margin-bottom:2px">${pp.hitRate}</div>
       <div style="font-family:var(--mono);font-size:11px;color:rgba(200,180,255,.6);margin-bottom:5px">${pp.basis}</div>
-      <button onclick="lockPick('SA','NYK','PROP','${lockLabel}',${pct/100},'${pp.ml||'-110'}',${dec},'${today()}')" style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
+        <button onclick="lockPick('SA','NYK','PROP','${lockLabel}',${pct/100},'${pp.ml||'-110'}',${dec},'${today()}')" style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">LOCK PICK</button>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">LINE</span>
+          <input type="number" step="0.5" value="${pp.line}" id="padj_nba_finals_${pKey}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 6px;border-radius:2px;text-align:center">
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_finals_${pKey}',-0.5,'${pp.t}','${safeName}','${pp.stat}',${pp.over!==false},${(pct/100).toFixed(3)},'${mlStr}')">-½</button>
+          <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO('padj_nba_finals_${pKey}','${pp.t}','${safeName}','${pp.stat}',${(pct/100).toFixed(3)},'${mlStr}')">▲O</button>
+          <button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU('padj_nba_finals_${pKey}','${pp.t}','${safeName}','${pp.stat}',${(pct/100).toFixed(3)},'${mlStr}')">▼U</button>
+          <button class="btn btn-o btn-sm" style="font-size:10px;padding:2px 5px" onclick="_adjLockDelta('padj_nba_finals_${pKey}',0.5,'${pp.t}','${safeName}','${pp.stat}',${pp.over!==false},${(pct/100).toFixed(3)},'${mlStr}')">+½</button>
+          <button class="btn btn-o btn-sm" onclick="cvParlayAddLeg('nba','${safeName} ${pp.over!==false?'O':'U'}${pp.line} ${pp.stat}',${mlNum},${(pct/100).toFixed(3)},'${pp.t} PROP','PROP')">+PAR</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -11675,7 +11689,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-12 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-13 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
