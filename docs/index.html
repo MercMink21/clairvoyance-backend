@@ -2452,6 +2452,18 @@ function _gameTitle(hA,awA,sport){
   const h=_teamName(hA,sport),a=_teamName(awA,sport);
   return(a&&h)?`${a} at ${h}`:h||a||'';
 }
+// Expand a team abbreviation at the START of a betOn string (e.g. "NYY ML" → "New York Yankees ML")
+function _expandBetOn(str,sport){
+  if(!str)return str||'';
+  const s=str.trim();
+  const sp=s.indexOf(' ');
+  if(sp<1)return s; // single word — prop/future, leave alone
+  const token=s.slice(0,sp);
+  // Only expand if token looks like a team abbreviation (2-5 uppercase letters)
+  if(!/^[A-Z]{2,5}$/.test(token))return s;
+  const full=_teamName(token,sport);
+  return full!==token?full+s.slice(sp):s;
+}
 // ═══ MLB DATA ═══════════════════════════════════════════════
 const MLB={ARI:{n:"Arizona Diamondbacks",div:"NL West",pf:1.05,bat:{RG:4.24,Op:91,OBP:.296,SLG:.387,ISO:.091,BABIP:.295,wOBA:.315,wRC:91,BB_pct:8.2,K_pct:22.1},pit:{ERA:4.46,Ep:92,W:1.301,K9:7.6,B9:3.4,RAG:4.83,FIP:4.38,xFIP:4.51,HR9:1.1},fld:{DE:.713,F:.987,DRS:2,OAA:-1},s:{W:20,L:21,WL:.488,SRS:-.3,RD:-12,pyth:.49}},OAK:{n:"Athletics",div:"AL West",pf:.99,bat:{RG:4.39,Op:97,OBP:.325,SLG:.399,ISO:.074,BABIP:.302,wOBA:.322,wRC:97,BB_pct:9.8,K_pct:21.4},pit:{ERA:4.45,Ep:104,W:1.444,K9:8.1,B9:4.4,RAG:4.59,FIP:4.22,xFIP:4.35,HR9:1.0},fld:{DE:.704,F:.993,DRS:5,OAA:3},s:{W:21,L:20,WL:.512,SRS:-.2,RD:8,pyth:.51}},ATL:{n:"Atlanta Braves",div:"NL East",pf:1.0,bat:{RG:5.55,Op:122,OBP:.335,SLG:.452,ISO:.147,BABIP:.308,wOBA:.358,wRC:122,BB_pct:9.5,K_pct:20.1},pit:{ERA:3.11,Ep:131,W:1.147,K9:8.9,B9:3.5,RAG:3.4,FIP:3.28,xFIP:3.41,HR9:.85},fld:{DE:.739,F:.988,DRS:22,OAA:15},s:{W:29,L:13,WL:.69,SRS:2.0,RD:71,pyth:.67}},BAL:{n:"Baltimore Orioles",div:"AL East",pf:1.02,bat:{RG:4.33,Op:97,OBP:.314,SLG:.377,ISO:.103,BABIP:.289,wOBA:.318,wRC:97,BB_pct:7.8,K_pct:21.9},pit:{ERA:4.71,Ep:88,W:1.449,K9:8.5,B9:3.8,RAG:5.35,FIP:4.81,xFIP:4.72,HR9:1.3},fld:{DE:.673,F:.982,DRS:-8,OAA:-5},s:{W:19,L:24,WL:.442,SRS:-1.0,RD:-28,pyth:.44}},BOS:{n:"Boston Red Sox",div:"AL East",pf:1.08,bat:{RG:3.83,Op:91,OBP:.313,SLG:.351,ISO:.085,BABIP:.294,wOBA:.311,wRC:91,BB_pct:9.1,K_pct:20.8},pit:{ERA:3.95,Ep:104,W:1.281,K9:8.1,B9:3.3,RAG:4.15,FIP:3.88,xFIP:3.94,HR9:.95},fld:{DE:.708,F:.988,DRS:4,OAA:2},s:{W:17,L:24,WL:.415,SRS:-.4,RD:-18,pyth:.46}},CHC:{n:"Chicago Cubs",div:"NL Central",pf:1.0,bat:{RG:5.17,Op:122,OBP:.344,SLG:.412,ISO:.128,BABIP:.310,wOBA:.345,wRC:122,BB_pct:10.2,K_pct:19.8},pit:{ERA:3.85,Ep:99,W:1.206,K9:8.2,B9:3.2,RAG:4.12,FIP:3.91,xFIP:4.02,HR9:1.0},fld:{DE:.723,F:.987,DRS:14,OAA:8},s:{W:27,L:15,WL:.643,SRS:1.0,RD:48,pyth:.62}},CWS:{n:"Chicago White Sox",div:"AL Central",pf:1.01,bat:{RG:4.32,Op:101,OBP:.321,SLG:.394,ISO:.113,BABIP:.299,wOBA:.326,wRC:101,BB_pct:8.8,K_pct:22.4},pit:{ERA:4.26,Ep:103,W:1.364,K9:8.1,B9:4.1,RAG:4.63,FIP:4.18,xFIP:4.28,HR9:1.05},fld:{DE:.706,F:.986,DRS:-2,OAA:-3},s:{W:20,L:21,WL:.488,SRS:-.4,RD:-5,pyth:.48}},CIN:{n:"Cincinnati Reds",div:"NL Central",pf:1.03,bat:{RG:4.0,Op:89,OBP:.305,SLG:.379,ISO:.094,BABIP:.291,wOBA:.312,wRC:89,BB_pct:7.9,K_pct:23.8},pit:{ERA:4.65,Ep:94,W:1.481,K9:7.7,B9:4.7,RAG:4.93,FIP:4.72,xFIP:4.68,HR9:1.2},fld:{DE:.703,F:.99,DRS:1,OAA:0},s:{W:22,L:20,WL:.524,SRS:-1.0,RD:2,pyth:.50}},CLE:{n:"Cleveland Guardians",div:"AL Central",pf:.98,bat:{RG:4.16,Op:95,OBP:.322,SLG:.365,ISO:.082,BABIP:.298,wOBA:.315,wRC:95,BB_pct:9.4,K_pct:18.9},pit:{ERA:3.85,Ep:109,W:1.28,K9:9.4,B9:3.5,RAG:4.11,FIP:3.79,xFIP:3.88,HR9:.88},fld:{DE:.699,F:.988,DRS:8,OAA:5},s:{W:23,L:21,WL:.523,SRS:.1,RD:12,pyth:.52}},COL:{n:"Colorado Rockies",div:"NL West",pf:1.18,bat:{RG:4.19,Op:91,OBP:.316,SLG:.395,ISO:.105,BABIP:.305,wOBA:.318,wRC:91,BB_pct:8.2,K_pct:22.0},pit:{ERA:4.81,Ep:99,W:1.423,K9:7.7,B9:3.4,RAG:5.07,FIP:4.95,xFIP:4.88,HR9:1.3},fld:{DE:.685,F:.985,DRS:-18,OAA:-12},s:{W:16,L:26,WL:.381,SRS:-1.1,RD:-45,pyth:.39}},DET:{n:"Detroit Tigers",div:"AL Central",pf:.97,bat:{RG:4.21,Op:100,OBP:.324,SLG:.392,ISO:.108,BABIP:.298,wOBA:.322,wRC:100,BB_pct:9.0,K_pct:21.5},pit:{ERA:3.99,Ep:108,W:1.333,K9:8.7,B9:3.7,RAG:4.31,FIP:4.02,xFIP:4.15,HR9:.98},fld:{DE:.686,F:.983,DRS:-12,OAA:-8},s:{W:19,L:23,WL:.452,SRS:-.1,RD:2,pyth:.50}},HOU:{n:"Houston Astros",div:"AL West",pf:.99,bat:{RG:4.63,Op:111,OBP:.33,SLG:.421,ISO:.138,BABIP:.302,wOBA:.344,wRC:111,BB_pct:9.8,K_pct:19.5},pit:{ERA:5.61,Ep:77,W:1.585,K9:9.0,B9:5.2,RAG:5.65,FIP:5.42,xFIP:5.18,HR9:1.5},fld:{DE:.678,F:.99,DRS:-5,OAA:-4},s:{W:16,L:27,WL:.372,SRS:-1.2,RD:-38,pyth:.40}},KC:{n:"Kansas City Royals",div:"AL Central",pf:.97,bat:{RG:4.14,Op:101,OBP:.319,SLG:.394,ISO:.115,BABIP:.296,wOBA:.322,wRC:101,BB_pct:8.4,K_pct:21.0},pit:{ERA:4.33,Ep:98,W:1.364,K9:8.7,B9:4.4,RAG:4.5,FIP:4.28,xFIP:4.35,HR9:1.1},fld:{DE:.71,F:.991,DRS:12,OAA:7},s:{W:19,L:23,WL:.452,SRS:-.2,RD:-2,pyth:.50}},LAA:{n:"Los Angeles Angels",div:"AL West",pf:.96,bat:{RG:4.21,Op:101,OBP:.321,SLG:.388,ISO:.108,BABIP:.298,wOBA:.322,wRC:101,BB_pct:8.8,K_pct:22.8},pit:{ERA:4.58,Ep:93,W:1.436,K9:8.7,B9:4.7,RAG:4.91,FIP:4.65,xFIP:4.72,HR9:1.2},fld:{DE:.695,F:.984,DRS:-6,OAA:-3},s:{W:16,L:27,WL:.372,SRS:-.7,RD:-32,pyth:.41}},LAD:{n:"Los Angeles Dodgers",div:"NL West",pf:.94,bat:{RG:4.95,Op:120,OBP:.342,SLG:.43,ISO:.142,BABIP:.308,wOBA:.352,wRC:120,BB_pct:10.8,K_pct:20.2},pit:{ERA:3.48,Ep:116,W:1.141,K9:9.1,B9:2.9,RAG:3.55,FIP:3.42,xFIP:3.58,HR9:.88},fld:{DE:.72,F:.99,DRS:28,OAA:18},s:{W:24,L:18,WL:.571,SRS:1.3,RD:38,pyth:.59}},MIA:{n:"Miami Marlins",div:"NL East",pf:.96,bat:{RG:4.19,Op:98,OBP:.322,SLG:.372,ISO:.092,BABIP:.301,wOBA:.319,wRC:98,BB_pct:8.8,K_pct:21.9},pit:{ERA:4.04,Ep:103,W:1.261,K9:8.5,B9:3.8,RAG:4.33,FIP:3.98,xFIP:4.12,HR9:.92},fld:{DE:.711,F:.982,DRS:2,OAA:1},s:{W:19,L:23,WL:.452,SRS:-.1,RD:-4,pyth:.50}},MIL:{n:"Milwaukee Brewers",div:"NL Central",pf:.98,bat:{RG:5.15,Op:95,OBP:.334,SLG:.358,ISO:.082,BABIP:.322,wOBA:.338,wRC:95,BB_pct:11.2,K_pct:19.5},pit:{ERA:3.45,Ep:121,W:1.244,K9:9.8,B9:3.7,RAG:3.72,FIP:3.38,xFIP:3.45,HR9:.78},fld:{DE:.695,F:.988,DRS:5,OAA:3},s:{W:23,L:16,WL:.59,SRS:1.6,RD:42,pyth:.58}},MIN:{n:"Minnesota Twins",div:"AL Central",pf:1.0,bat:{RG:4.69,Op:96,OBP:.324,SLG:.381,ISO:.102,BABIP:.298,wOBA:.319,wRC:96,BB_pct:9.2,K_pct:22.5},pit:{ERA:4.51,Ep:98,W:1.358,K9:7.7,B9:3.8,RAG:4.9,FIP:4.48,xFIP:4.52,HR9:1.18},fld:{DE:.699,F:.986,DRS:-4,OAA:-2},s:{W:19,L:23,WL:.452,SRS:-.4,RD:-8,pyth:.49}},NYM:{n:"New York Mets",div:"NL East",pf:.96,bat:{RG:3.63,Op:82,OBP:.291,SLG:.343,ISO:.082,BABIP:.285,wOBA:.302,wRC:82,BB_pct:7.8,K_pct:23.5},pit:{ERA:3.8,Ep:106,W:1.264,K9:9.5,B9:3.5,RAG:4.2,FIP:3.75,xFIP:3.88,HR9:.92},fld:{DE:.695,F:.986,DRS:4,OAA:2},s:{W:16,L:25,WL:.39,SRS:-.7,RD:-18,pyth:.45}},NYY:{n:"New York Yankees",div:"AL East",pf:1.01,bat:{RG:5.19,Op:114,OBP:.333,SLG:.44,ISO:.148,BABIP:.305,wOBA:.350,wRC:114,BB_pct:9.8,K_pct:21.2},pit:{ERA:3.12,Ep:137,W:1.144,K9:8.9,B9:3.1,RAG:3.42,FIP:3.08,xFIP:3.22,HR9:.78},fld:{DE:.716,F:.986,DRS:18,OAA:12},s:{W:27,L:16,WL:.628,SRS:1.6,RD:55,pyth:.63}},PHI:{n:"Philadelphia Phillies",div:"NL East",pf:1.04,bat:{RG:4.1,Op:92,OBP:.301,SLG:.394,ISO:.118,BABIP:.290,wOBA:.316,wRC:92,BB_pct:7.8,K_pct:23.8},pit:{ERA:4.46,Ep:98,W:1.401,K9:9.6,B9:3.0,RAG:4.83,FIP:4.42,xFIP:4.38,HR9:1.18},fld:{DE:.65,F:.987,DRS:-22,OAA:-15},s:{W:20,L:22,WL:.476,SRS:-.6,RD:-12,pyth:.47}},PIT:{n:"Pittsburgh Pirates",div:"NL Central",pf:.95,bat:{RG:4.98,Op:104,OBP:.337,SLG:.39,ISO:.095,BABIP:.316,wOBA:.334,wRC:104,BB_pct:10.5,K_pct:20.2},pit:{ERA:3.67,Ep:115,W:1.215,K9:8.9,B9:3.6,RAG:4.19,FIP:3.72,xFIP:3.82,HR9:.88},fld:{DE:.711,F:.985,DRS:8,OAA:5},s:{W:23,L:19,WL:.548,SRS:.7,RD:28,pyth:.54}},SD:{n:"San Diego Padres",div:"NL West",pf:.95,bat:{RG:4.24,Op:87,OBP:.297,SLG:.37,ISO:.095,BABIP:.288,wOBA:.311,wRC:87,BB_pct:7.8,K_pct:23.2},pit:{ERA:4.13,Ep:99,W:1.243,K9:8.8,B9:3.2,RAG:4.22,FIP:4.08,xFIP:4.15,HR9:1.05},fld:{DE:.704,F:.993,DRS:12,OAA:8},s:{W:24,L:17,WL:.585,SRS:-.2,RD:18,pyth:.52}},SEA:{n:"Seattle Mariners",div:"AL West",pf:.95,bat:{RG:4.19,Op:103,OBP:.32,SLG:.38,ISO:.098,BABIP:.298,wOBA:.319,wRC:103,BB_pct:9.5,K_pct:22.1},pit:{ERA:3.67,Ep:108,W:1.221,K9:8.7,B9:2.5,RAG:3.91,FIP:3.62,xFIP:3.75,HR9:.88},fld:{DE:.687,F:.99,DRS:6,OAA:4},s:{W:21,L:22,WL:.488,SRS:.3,RD:5,pyth:.51}},SF:{n:"San Francisco Giants",div:"NL West",pf:.94,bat:{RG:3.45,Op:90,OBP:.292,SLG:.369,ISO:.098,BABIP:.286,wOBA:.309,wRC:90,BB_pct:8.4,K_pct:22.5},pit:{ERA:3.98,Ep:99,W:1.327,K9:8.1,B9:3.9,RAG:4.36,FIP:3.95,xFIP:4.05,HR9:.98},fld:{DE:.704,F:.985,DRS:4,OAA:3},s:{W:18,L:24,WL:.429,SRS:-.9,RD:-22,pyth:.45}},STL:{n:"St. Louis Cardinals",div:"NL Central",pf:.99,bat:{RG:4.68,Op:104,OBP:.319,SLG:.387,ISO:.112,BABIP:.299,wOBA:.328,wRC:104,BB_pct:8.8,K_pct:21.8},pit:{ERA:4.24,Ep:93,W:1.365,K9:7.3,B9:3.8,RAG:4.56,FIP:4.32,xFIP:4.42,HR9:1.12},fld:{DE:.703,F:.988,DRS:2,OAA:1},s:{W:24,L:17,WL:.585,SRS:.3,RD:22,pyth:.53}},TB:{n:"Tampa Bay Rays",div:"AL East",pf:.98,bat:{RG:4.54,Op:101,OBP:.33,SLG:.379,ISO:.098,BABIP:.305,wOBA:.328,wRC:101,BB_pct:10.2,K_pct:20.5},pit:{ERA:3.48,Ep:119,W:1.153,K9:7.9,B9:3.1,RAG:3.95,FIP:3.42,xFIP:3.52,HR9:.85},fld:{DE:.731,F:.98,DRS:24,OAA:16},s:{W:31,L:15,WL:.674,SRS:.7,RD:52,pyth:.63}},TEX:{n:"Texas Rangers",div:"AL West",pf:1.06,bat:{RG:3.71,Op:104,OBP:.315,SLG:.369,ISO:.095,BABIP:.292,wOBA:.318,wRC:104,BB_pct:8.5,K_pct:21.2},pit:{ERA:3.6,Ep:103,W:1.213,K9:8.8,B9:3.2,RAG:3.74,FIP:3.55,xFIP:3.65,HR9:.88},fld:{DE:.717,F:.988,DRS:10,OAA:7},s:{W:20,L:22,WL:.476,SRS:.2,RD:2,pyth:.50}},TOR:{n:"Toronto Blue Jays",div:"AL East",pf:.97,bat:{RG:4.17,Op:89,OBP:.308,SLG:.376,ISO:.102,BABIP:.292,wOBA:.312,wRC:89,BB_pct:8.2,K_pct:22.8},pit:{ERA:4.19,Ep:106,W:1.305,K9:9.1,B9:3.1,RAG:4.55,FIP:4.12,xFIP:4.22,HR9:1.05},fld:{DE:.677,F:.982,DRS:-12,OAA:-8},s:{W:18,L:24,WL:.429,SRS:-.4,RD:-14,pyth:.46}},WSN:{n:"Washington Nationals",div:"NL East",pf:.93,bat:{RG:5.4,Op:111,OBP:.325,SLG:.411,ISO:.128,BABIP:.318,wOBA:.346,wRC:111,BB_pct:9.2,K_pct:21.5},pit:{ERA:4.77,Ep:85,W:1.422,K9:7.6,B9:3.8,RAG:5.57,FIP:4.88,xFIP:4.92,HR9:1.3},fld:{DE:.692,F:.974,DRS:-18,OAA:-12},s:{W:20,L:22,WL:.476,SRS:.3,RD:2,pyth:.50}}};
 const IDS={109:'ARI',144:'ATL',110:'BAL',111:'BOS',112:'CHC',145:'CWS',113:'CIN',114:'CLE',115:'COL',116:'DET',117:'HOU',118:'KC',108:'LAA',119:'LAD',146:'MIA',158:'MIL',142:'MIN',121:'NYM',147:'NYY',143:'PHI',134:'PIT',133:'OAK',135:'SD',137:'SF',138:'STL',139:'TB',140:'TEX',141:'TOR',120:'WSN',136:'SEA'};
@@ -4353,7 +4365,7 @@ async function updLive(){
         <div style="display:flex;justify-content:space-between;align-items:start">
           <div>
             <div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--pc)">${_gameTitle(p.hA,p.awA,p.sport)}</div>
-            <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:2px">${p.betType} · ${p.betOn} · ${p.ml}</div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:2px">${p.betType} · ${_expandBetOn(p.betOn,p.sport)} · ${p.ml}</div>
             <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:1px">LOCKED: ${lockedAt} · PROB: ${p.winProb?(p.winProb*100).toFixed(1)+'%':'—'}</div>
             ${statusLine}
           </div>
@@ -4456,7 +4468,7 @@ function renderNHLLockedBets(){
     return`<div class="pk" style="border-left:2px solid ${oColor}">
       <div style="flex:1">
         <div class="pkt">${_gameTitle(p.hA,p.awA,p.sport)}</div>
-        <div class="pkt2">BET: ${p.betOn||''} · ${p.ml||''}</div>
+        <div class="pkt2">BET: ${_expandBetOn(p.betOn||'',p.sport)} · ${p.ml||''}</div>
         <div class="pkd">WIN%: <strong>${p.winProb?(p.winProb*100).toFixed(1)+'%':'—'}</strong> · <strong style="color:${oColor}">${st}</strong>${p.date?' · '+p.date:''}</div>
         ${p.outcome==='pending'?`<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:12px;padding:2px 8px" onclick="removePick('${p.id}')">✕ REMOVE</button></div>`:''}
       </div>
@@ -5320,7 +5332,7 @@ function renderNBALockedBets(){
     return`<div class="pk" style="border-left:2px solid ${oColor}">
       <div style="flex:1">
         <div class="pkt">${_gameTitle(p.hA,p.awA,p.sport)}</div>
-        <div class="pkt2">BET: ${p.betOn||''} · ${p.ml||''}</div>
+        <div class="pkt2">BET: ${_expandBetOn(p.betOn||'',p.sport)} · ${p.ml||''}</div>
         <div class="pkd">WIN%: <strong>${p.winProb?(p.winProb*100).toFixed(1)+'%':'—'}</strong> · <strong style="color:${oColor}">${st}</strong>${p.date?' · '+p.date:''}</div>
         ${p.outcome==='pending'?`<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:12px;padding:2px 8px" onclick="removePick('${p.id}')">✕ REMOVE</button></div>`:''}
       </div>
@@ -6279,7 +6291,7 @@ function renderHistoryForSport(sport,summId,listId){
             const oLabel=p.outcome==='pending'?'PENDING':p.outcome.toUpperCase();
             return`<div class="ar">
               <div class="ab ${p.outcome==='win'?'ab-w':p.outcome==='loss'?'ab-l':p.outcome==='push'?'ab-p':'ab-s'}">${p.outcome==='win'?'✓':p.outcome==='loss'?'✗':p.outcome==='push'?'=':'⏳'}</div>
-              <div style="flex:1;min-width:0"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,p.sport)}</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2)">${p.betType||''} · ${p.betOn||''} · ${p.ml||''}</div>${p.outcome!=='pending'&&p.hScore!=null?`<div style="font-family:var(--mono);font-size:13px;color:var(--gc);margin-top:2px">FINAL: ${p.hScore}-${p.aScore}</div>`:''}</div>
+              <div style="flex:1;min-width:0"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,p.sport)}</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2)">${p.betType||''} · ${_expandBetOn(p.betOn||'',p.sport)} · ${p.ml||''}</div>${p.outcome!=='pending'&&p.hScore!=null?`<div style="font-family:var(--mono);font-size:13px;color:var(--gc);margin-top:2px">FINAL: ${_teamName(p.hA,p.sport)} ${p.hScore} – ${p.aScore} ${_teamName(p.awA,p.sport)}</div>`:''}</div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${oColor}">${oLabel}</div>
                 ${p.outcome==='pending'?`<div style="display:flex;gap:3px;margin-top:4px"><button class="btn btn-o btn-sm" style="color:var(--nc);border-color:var(--nc)" onclick="recR('${p.id}','win')">W</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">L</button><button class="btn btn-sm" style="font-size:12px;color:var(--t3);border-color:var(--t3);padding:2px 6px" onclick="removePick('${p.id}')">X</button></div>`:''}
@@ -7171,7 +7183,7 @@ function initAnalyticsExpand(){
         // Generic drill-down: show last 5 bets relevant to this section
         const recent5=settled.slice(-5);
         drillDiv.innerHTML=`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.7);margin-bottom:8px">// LAST 5 BETS IN DATASET</div>`+
-          recent5.map(p=>`<div style="font-family:var(--mono);font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(220,190,255,.8)">${p.sport||'?'} · ${p.betOn||''} · <span style="color:${p.outcome==='win'?'#00f0ff':'#ff2090'}">${p.outcome?.toUpperCase()||'?'}</span> · ${p.date||''}</div>`).join('');
+          recent5.map(p=>`<div style="font-family:var(--mono);font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(220,190,255,.8)">${p.sport||'?'} · ${_expandBetOn(p.betOn||'',p.sport)} · <span style="color:${p.outcome==='win'?'#00f0ff':'#ff2090'}">${p.outcome?.toUpperCase()||'?'}</span> · ${p.date||''}</div>`).join('');
       }
     };
   });
@@ -7210,7 +7222,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
             <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${mu}</span>
             <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${p.date||''}</span>
           </div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.betOn||p.betType}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||p.betType,p.sport)}</div>
           <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}</div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;align-items:center">
@@ -7356,7 +7368,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     const st=p.outcome==='pending'?'PENDING':p.outcome==='push'?'PUSH':p.outcome?.toUpperCase()||'PENDING';
     const sc=sportColor[p.sport]||sportColor.default;
     const mu=_gameTitle(p.hA,p.awA,p.sport);
-    const rawBetOn=p.betOn||'';
+    const rawBetOn=_expandBetOn(p.betOn||'',p.sport);
     const parlayLegs=_parlayLegs(p);
     const legHtml=parlayLegs
       ?parlayLegs.map(({leg,w})=>{
@@ -7376,7 +7388,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
           </div>
           <div style="margin-bottom:2px">${legHtml}</div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${p.betType||''}${p.ml?' · '+p.ml:''}${p.winProb?' · '+(p.winProb*100).toFixed(0)+'%':''}</div>
-          ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">FINAL: ${p.awA} ${p.aScore} – ${p.hScore} ${p.hA}</div>`:''}
+          ${p.hScore!=null?`<div style="font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:2px">FINAL: ${_teamName(p.awA,p.sport)} ${p.aScore} – ${p.hScore} ${_teamName(p.hA,p.sport)}</div>`:''}
         </div>
         <span style="font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid ${oColor};color:${oColor};border-radius:2px;white-space:nowrap;flex-shrink:0">${st}</span>
       </div>
@@ -7562,7 +7574,7 @@ function renderTennisOverall(){
     html+=tenPicks.sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0)).map(p=>{
       const oCol=p.outcome==='win'?'var(--nc)':p.outcome==='loss'?'var(--hc)':'var(--gc)';
       return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oCol};padding:9px">
-        <div style="display:flex;justify-content:space-between"><div><div style="font-family:var(--orb);font-size:16px;font-weight:700">${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.date} · ${p.ml} · ${(p.winProb*100).toFixed(1)}%</div></div><span style="font-family:var(--mono);font-size:13px;padding:2px 7px;border:1px solid ${oCol};color:${oCol};border-radius:2px">${p.outcome==='pending'?'PENDING':p.outcome.toUpperCase()}</span></div>
+        <div style="display:flex;justify-content:space-between"><div><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_expandBetOn(p.betOn,p.sport)}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.date} · ${p.ml} · ${(p.winProb*100).toFixed(1)}%</div></div><span style="font-family:var(--mono);font-size:13px;padding:2px 7px;border:1px solid ${oCol};color:${oCol};border-radius:2px">${p.outcome==='pending'?'PENDING':p.outcome.toUpperCase()}</span></div>
         ${p.outcome==='pending'?`<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-n btn-sm" onclick="recR('${p.id}','win')">✓ WIN</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss')">✗ LOSS</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:12px;padding:2px 8px" onclick="removePick('${p.id}')">✕ REMOVE</button></div>`:''}
       </div>`;
     }).join('');
@@ -7778,7 +7790,7 @@ function renderOverallTrends(){
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
           <span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
           <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${mu}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--vc)">${p.betOn||''}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--vc)">${_expandBetOn(p.betOn||'',p.sport)}</span>
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:2px">${p.betType} · <span style="color:var(--hc)">${marginStr}</span> · ${p.date||''}</div>
       </div>`;
@@ -7854,7 +7866,7 @@ function renderOverallTrends(){
       ${winAnalysis.map(({p,factors})=>{const sc=sportCol[p.sport]||'var(--t3)';const mu=_gameTitle(p.hA,p.awA,p.sport);return`<div style="padding:6px 0;border-bottom:1px solid rgba(0,240,255,.07)">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
           <span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t)">${p.betOn||''}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t)">${_expandBetOn(p.betOn||'',p.sport)}</span>
           <span style="font-family:var(--mono);font-size:10px;color:var(--nc)">WIN</span>
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${mu} · ${p.date||''} · ${p.ml||''}</div>
@@ -7870,7 +7882,7 @@ function renderOverallTrends(){
       ${lossAnalysis.map(({p,factors})=>{const sc=sportCol[p.sport]||'var(--t3)';const mu=_gameTitle(p.hA,p.awA,p.sport);return`<div style="padding:6px 0;border-bottom:1px solid rgba(255,32,144,.07)">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
           <span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--t)">${p.betOn||''}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t)">${_expandBetOn(p.betOn||'',p.sport)}</span>
           <span style="font-family:var(--mono);font-size:10px;color:var(--hc)">LOSS</span>
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${mu} · ${p.date||''} · ${p.ml||''}</div>
@@ -8921,7 +8933,7 @@ function renderHomePage(){
               <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
               <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${mu}</span>
             </div>
-            <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.betOn||''}</div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
             <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}${conf?' · '+conf:''}</div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
@@ -9540,8 +9552,8 @@ function renderNHLPropsLive(filter){
 }
 window.renderNHLPropsLive=renderNHLPropsLive;
 
-function renderNHLLiveBets(){const el=document.getElementById('nhl-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NHL'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NHL BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,'NHL')}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
-function renderNBALiveBets(){const el=document.getElementById('nba-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NBA'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NBA BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,'NBA')}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${p.betOn}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
+function renderNHLLiveBets(){const el=document.getElementById('nhl-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NHL'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NHL BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--pc)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,'NHL')}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${_expandBetOn(p.betOn,'NHL')}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
+function renderNBALiveBets(){const el=document.getElementById('nba-live-bets');if(!el)return;const bets=getP().filter(p=>p.sport==='NBA'&&p.outcome==='pending');if(!bets.length){el.innerHTML='<div class="empty">NO ACTIVE NBA BETS</div>';return;}el.innerHTML=bets.map(p=>`<div class="card" style="margin-bottom:7px;border-left:2px solid var(--ic)"><div style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,'NBA')}</div><div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin-top:3px">${p.betType} · ${_expandBetOn(p.betOn,'NBA')}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${p.ml} · ${(p.winProb*100).toFixed(1)}% · $${p.wager||'--'}</div></div>`).join('');}
 function _adjParLine(inputId,sport,player,stat,dir,ml,prob,matchup){
   var inp=document.getElementById(inputId);
   var line=inp?inp.value:'';
@@ -14342,7 +14354,7 @@ function renderGlobalLiveBets(){
           <div>
             <span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px;margin-right:5px">${p.sport||'?'}</span>
             <span style="font-family:var(--orb);font-size:16px;font-weight:700">${_gameTitle(p.hA,p.awA,p.sport)}</span>
-            <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:2px">${p.betType} · ${p.betOn} · ${p.ml}</div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-top:2px">${p.betType} · ${_expandBetOn(p.betOn,p.sport)} · ${p.ml}</div>
             <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:1px">LOCKED: ${lockedAt} · MODEL: ${p.winProb?(p.winProb*100).toFixed(1)+'%':'—'}</div>
             ${gameStatusLine}
           </div>
