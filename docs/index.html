@@ -1957,21 +1957,22 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
     {id:'finals_g1_wemby_3pm',team:'SA',player:'Victor Wembanyama',line:'3PM O/U 1.5',over:true,conf:.72,ml:'-170',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'Victor Wembanyama OVER 3PM 1.5',winProb:.72,hA:'SA',awA:'NY',decOdds:1.588,wager:1,note:'NBA Finals G1 WIN. Wemby OVER 1.5 3PM (had 2).',playerResult:'had 2 3PM'},
     {id:'finals_g1_og_pts',team:'NY',player:'OG Anunoby',line:'PTS O/U 12.5',over:true,conf:.62,ml:'-112',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'OG Anunoby OVER PTS 12.5',winProb:.62,hA:'SA',awA:'NY',decOdds:1.893,wager:1,note:'NBA Finals G1 WIN. OG Anunoby OVER 12.5 pts (had 17).',playerResult:'had 17 pts'},
   ];
-  // ── Force-replace: strip old versions of these IDs, then insert fresh ──
+  // ── Merge: never downgrade a locally-settled bet back to pending ──
   const histIds=new Set(hist.map(h=>h.id));
   // locked_props store
   const cleanLP=LOCKED_PROPS.filter(p=>!histIds.has(p.id));
   hist.forEach(h=>cleanLP.push(h));
   localStorage.setItem('locked_props',JSON.stringify(cleanLP));
-  // main preds store — write via both raw localStorage AND S helper so IDB + localStorage stay in sync
+  // main preds store — preserve locally-settled outcomes, only insert/update pending ones
   try{
     const raw=JSON.parse(localStorage.getItem('preds')||'[]');
+    const settledLocal=new Map(raw.filter(p=>histIds.has(p.id)&&p.outcome&&p.outcome!=='pending').map(p=>[p.id,p]));
     const cleanP=raw.filter(p=>!histIds.has(p.id));
-    hist.forEach(h=>cleanP.push(h));
-    // Write raw first so getP() sees it immediately
+    hist.forEach(h=>{
+      if(settledLocal.has(h.id))cleanP.push(settledLocal.get(h.id));
+      else cleanP.push(h);
+    });
     localStorage.setItem('preds',JSON.stringify(cleanP));
-    // Also write via S so the JSON wrapper format is consistent
-    try{localStorage.setItem('preds',JSON.stringify(cleanP));}catch(e){}
   }catch(e){}
   // version stamp — bump this any time outcomes change to force re-seed on old sessions
   localStorage.setItem('seed_v','5');
