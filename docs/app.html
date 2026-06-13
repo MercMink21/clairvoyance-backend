@@ -1389,12 +1389,12 @@ body{line-height:1.5}
 </div>
 <div id="sp-social" class="spane">
   <nav class="inav" id="social-in">
-    <button class="nb act" onclick="T('social','cards')">INTEL CARDS</button>
+    <button class="nb act" onclick="T('social','cards')">INTEL BRIEFS</button>
     <button class="nb" onclick="T('social','record')">TRACK RECORD</button>
   </nav>
   <div class="sa" id="social-sa">
     <div id="social-tab-cards" class="tab act">
-      <div class="sh"><span class="p"></span> INTEL BRIEF CARDS — SHARE YOUR PICKS</div>
+      <div class="sh"><span class="p"></span> INTEL BRIEFS — SHARE YOUR PICKS</div>
       <div id="social-cards-content"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="social-tab-record" class="tab">
@@ -12376,32 +12376,87 @@ function formatMCResult(t1,t2,p1,res){
 // ═══════════════════════════════════════════════════════════════════════════
 // INTEL BRIEF CARDS (SOCIAL TAB)
 // ═══════════════════════════════════════════════════════════════════════════
-function renderIntelCards(){
+// PROP bet types — used to separate game lines from props
+var _PROP_TYPES=new Set(['PROP','PLAYER','PLAYER_PROP','PP']);
+function _isProp(p){return _PROP_TYPES.has((p.betType||'').toUpperCase())||/OVER|UNDER/.test(p.betOn||'')&&/pts|reb|ast|blk|stl|pra|3pm|yds|td|hits|k\b/i.test(p.betOn||'');}
+function _isGameLine(p){return!_isProp(p);}
+
+window._intelTier='base';
+function renderIntelCards(tier){
+  if(tier)window._intelTier=tier;
   const el=document.getElementById('social-cards-content');if(!el)return;
-  const picks=getP().filter(p=>p.outcome==='pending');
+  const t=window._intelTier||'base';
+
+  // Collect all pending picks
+  const allPending=getP().filter(p=>p.outcome==='pending');
   const bestBets=(window.__CV_DATA?.bestBets||[]).filter(b=>b.date===today());
-  const allMoves=[
-    ...picks.map(p=>({label:p.betOn||p.betType,game:(p.awA||'?')+' at '+(p.hA||'?'),sport:p.sport||'MISC',prob:Math.round((p.winProb||.55)*100),ml:p.ml||'—',grade:p.winProb>=.67?'ELITE':p.winProb>=.62?'LOCK':'LEAN',date:p.date||today()})),
-    ...bestBets.map(b=>({label:b.pick,game:b.game,sport:b.sport||'MISC',prob:b.prob||b.confidence||0,ml:b.ml||'—',grade:b.grade||'LEAN',date:b.date||today()}))
-  ];
+
+  // Build move objects
+  const toMove=p=>({
+    label:p.betOn||p.betType,
+    game:(p.awA||'?')+' @ '+(p.hA||'?'),
+    sport:p.sport||'MISC',
+    prob:Math.round((p.winProb||.55)*100),
+    ml:p.ml||'—',
+    grade:p.winProb>=.67?'ELITE':p.winProb>=.62?'LOCK':'LEAN',
+    date:p.date||today(),
+    isProp:_isProp(p)
+  });
+  const bbToMove=b=>({
+    label:b.pick,game:b.game||'',sport:b.sport||'MISC',
+    prob:Math.round((b.prob||b.confidence||55)),ml:b.ml||'—',
+    grade:b.grade||'LEAN',date:b.date||today(),isProp:false
+  });
+
+  // Filter by tier
+  let moves=allPending.map(toMove);
+  if(t==='base')moves=moves.filter(m=>!m.isProp);
+  moves=[...moves,...bestBets.map(bbToMove)];
+
+  // Group by sport
   const bySport={};
-  allMoves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
+  moves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
   const sports=Object.keys(bySport);
-  if(!sports.length){el.innerHTML='<div class="empty">LOCK PICKS TO GENERATE SHARE CARDS</div>';return;}
-  window._intelCardData=bySport;
-  el.innerHTML='<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.65);margin-bottom:12px;line-height:1.8">One combined intel card per league · tap EXPORT to download 1080×1080 PNG.</div>'
+
+  const tierMeta={
+    base:{label:'BASE',title:'Base Intelligence Brief',desc:'Game lines only — ML, spread & O/U per sport',color:'#00f0ff',bg:'rgba(0,240,255,.08)',border:'rgba(0,240,255,.3)'},
+    insider:{label:'INSIDER',title:'Insider Intelligence Brief',desc:'Full coverage — game lines + player props',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
+  };
+  const tm=tierMeta[t]||tierMeta.base;
+
+  // Tier selector
+  const sel='<div style="display:flex;gap:8px;margin-bottom:14px">'
+    +Object.entries(tierMeta).map(([k,v])=>'<button onclick="renderIntelCards(\''+k+'\')" style="flex:1;padding:8px 0;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;transition:all .2s;'
+      +(t===k?'background:'+v.bg+';border:1.5px solid '+v.color+';color:'+v.color+';':'background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.4);')
+      +'">'+v.label+'</button>').join('')+'</div>';
+
+  const hdr='<div style="background:rgba(10,0,24,.6);border:1px solid '+tm.border+';border-radius:3px;padding:10px 14px;margin-bottom:14px">'
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:800;color:'+tm.color+';margin-bottom:3px">'+tm.title+'</div>'
+    +'<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.6)">'+tm.desc+' · '+today()+' · tap EXPORT for 1080×1080 PNG</div>'
+    +'</div>';
+
+  if(!sports.length){
+    el.innerHTML=sel+hdr+'<div class="empty" style="margin-top:20px">NO '+tm.label+' PICKS FOR TODAY — LOCK PICKS TO GENERATE CARDS</div>';
+    return;
+  }
+  window._intelCardData=bySport;window._intelCardTier=t;window._intelCardTierMeta=tierMeta[t];
+  el.innerHTML=sel+hdr
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px">'
-    +sports.map((s,i)=>_renderLeagueCard(s,bySport[s],i)).join('')+'</div>';
+    +sports.map((s,i)=>_renderLeagueCard(s,bySport[s],i,t,tm)).join('')+'</div>';
 }
 
 function _lcGrade(g){return g==='ELITE'?'#bbff00':g==='LOCK'?'#00f0ff':'#f000ff';}
 function _lcSport(s){return{'MLB':'#00f0ff','NHL':'#4d79ff','NBA':'#f000ff','WNBA':'#bbff00','WC':'#00da88','TEN':'#ffd700','TENNIS':'#ffd700'}[s]||'#f000ff';}
 
-function _renderLeagueCard(sport,moves,idx){
+function _renderLeagueCard(sport,moves,idx,tier,tm){
   const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
   const gc=_lcGrade(topGrade);const sc=_lcSport(sport);
   const dateStr=moves[0]?.date||today();
-  const rows=moves.slice(0,6).map(m=>{
+  const tierColor=(tm||{}).color||'#00f0ff';
+  const tierLabel=(tm||{}).label||'BASE';
+  const cardTitle=(tm||{}).title||'Base Intelligence Brief';
+  const maxRows=6;
+  const rows=moves.slice(0,maxRows).map(m=>{
     const c=_lcGrade(m.grade);
     return'<div style="display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
       +'<span style="font-family:var(--mono);font-size:8px;padding:1px 4px;border:1px solid '+c+';color:'+c+';border-radius:1px;min-width:30px;text-align:center;flex-shrink:0">'+m.grade+'</span>'
@@ -12415,18 +12470,22 @@ function _renderLeagueCard(sport,moves,idx){
       +'</div>'
     +'</div>';
   }).join('');
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:1px solid '+gc+'44;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:14px;box-sizing:border-box">'
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:linear-gradient(135deg,rgba(4,0,12,.98),rgba(20,0,40,.98));border:1px solid '+gc+'55;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:12px 14px 10px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 6px);pointer-events:none"></div>'
-    +'<div style="position:absolute;top:0;right:0;width:100px;height:100px;background:radial-gradient(circle,'+gc+'1a 0%,transparent 70%);pointer-events:none"></div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:relative">'
-      +'<span style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.4)">CLAIRVOYANCE ENGINE</span>'
+    +'<div style="position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(circle,'+gc+'15 0%,transparent 70%);pointer-events:none"></div>'
+    // card type label + grade
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;position:relative">'
+      +'<span style="font-family:var(--mono);font-size:8px;color:'+tierColor+';letter-spacing:1px;font-weight:700">'+tierLabel+'</span>'
       +'<span style="font-family:var(--mono);font-size:8px;padding:1px 6px;border:1px solid '+gc+';color:'+gc+';border-radius:2px">'+topGrade+'</span>'
     +'</div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;position:relative">'
+    // card title
+    +'<div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.45);margin-bottom:5px;position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+cardTitle+'</div>'
+    // sport + date
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;position:relative">'
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:20px;font-weight:900;color:'+sc+';text-shadow:0 0 12px '+sc+'">'+sport+'</span>'
       +'<span style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.55)">'+dateStr+'</span>'
     +'</div>'
-    +'<div style="height:1px;background:linear-gradient(90deg,'+gc+'88,transparent);margin-bottom:7px;position:relative"></div>'
+    +'<div style="height:1px;background:linear-gradient(90deg,'+gc+'77,transparent);margin-bottom:6px;position:relative"></div>'
     +'<div style="flex:1;overflow:hidden;position:relative">'+rows+'</div>'
     +'<div style="display:flex;gap:5px;margin-top:8px;position:relative">'
       +'<button onclick="event.stopPropagation();exportLeagueCard('+idx+')" style="flex:1;padding:5px;background:rgba(187,255,0,.08);border:1px solid rgba(187,255,0,.4);color:#bbff00;font-family:var(--mono);font-size:9px;border-radius:2px;cursor:pointer">⬇ EXPORT PNG</button>'
@@ -12439,6 +12498,7 @@ async function exportLeagueCard(idx){
   const sports=Object.keys(window._intelCardData||{});
   const sport=sports[idx];const moves=(window._intelCardData||{})[sport];
   if(!moves||!moves.length){toast('// NO DATA FOR CARD');return;}
+  const tm=window._intelCardTierMeta||{label:'BASE',title:'Base Intelligence Brief',color:'#00f0ff'};
   toast('// RENDERING 1080×1080...');
   const W=1080,H=1080;
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
@@ -12447,26 +12507,31 @@ async function exportLeagueCard(idx){
   const topGrade=moves.some(m=>m.grade==='ELITE')?'ELITE':moves.some(m=>m.grade==='LOCK')?'LOCK':'LEAN';
   const gc=_lcGrade(topGrade);const sc=_lcSport(sport);
   const dateStr=moves[0]?.date||today();
-  // header
-  _glowText(ctx,'CLAIRVOYANCE ENGINE',W/2,52,'500 15px "Courier New"','rgba(180,140,255,.6)',6,'center');
-  _eyeLogo(ctx,W/2,160);
+  // tier label top-left
+  _glowText(ctx,tm.label,60,46,'700 13px "Courier New"',tm.color,8,'left');
+  // engine header centered
+  _glowText(ctx,'CLAIRVOYANCE ENGINE',W/2,46,'500 14px "Courier New"','rgba(180,140,255,.55)',5,'center');
+  // eye logo
+  _eyeLogo(ctx,W/2,158);
+  // card title (e.g. "Base Intelligence Brief")
+  _glowText(ctx,tm.title,W/2,252,'600 18px "Courier New"',tm.color,10,'center');
   // sport name
-  _glowText(ctx,sport,W/2,280,'900 70px "Orbitron"',sc,28,'center');
+  _glowText(ctx,sport,W/2,316,'900 68px "Orbitron"',sc,26,'center');
   // date
-  _glowText(ctx,dateStr,W/2,334,'500 18px "Courier New"','rgba(220,190,255,.6)',5,'center');
-  // grade badge rect
+  _glowText(ctx,dateStr,W/2,364,'500 16px "Courier New"','rgba(220,190,255,.6)',5,'center');
+  // top grade badge
   ctx.save();ctx.strokeStyle=gc;ctx.lineWidth=2;ctx.shadowColor=gc;ctx.shadowBlur=14;
-  ctx.strokeRect(W/2-70,352,140,34);ctx.restore();
-  _glowText(ctx,topGrade,W/2,369,'700 15px "Courier New"',gc,10,'center');
+  ctx.strokeRect(W/2-68,378,136,32);ctx.restore();
+  _glowText(ctx,topGrade,W/2,394,'700 14px "Courier New"',gc,10,'center');
   // divider
-  ctx.save();const dg=ctx.createLinearGradient(60,408,W-60,408);
+  ctx.save();const dg=ctx.createLinearGradient(60,420,W-60,420);
   dg.addColorStop(0,'transparent');dg.addColorStop(.5,gc+'cc');dg.addColorStop(1,'transparent');
   ctx.strokeStyle=dg;ctx.lineWidth=1.5;ctx.shadowColor=gc;ctx.shadowBlur=8;
-  ctx.beginPath();ctx.moveTo(60,408);ctx.lineTo(W-60,408);ctx.stroke();ctx.restore();
+  ctx.beginPath();ctx.moveTo(60,420);ctx.lineTo(W-60,420);ctx.stroke();ctx.restore();
   // picks
-  const maxRows=Math.min(moves.length,7);const rH=Math.min(82,(H-500)/maxRows);
+  const maxRows=Math.min(moves.length,7);const rH=Math.min(80,(H-520)/maxRows);
   moves.slice(0,maxRows).forEach((m,i)=>{
-    const c=_lcGrade(m.grade);const y=428+i*rH+rH/2;
+    const c=_lcGrade(m.grade);const y=440+i*rH+rH/2;
     // grade pill
     ctx.save();ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.shadowColor=c;ctx.shadowBlur=8;
     ctx.strokeRect(60,y-13,74,26);ctx.restore();
@@ -13983,8 +14048,8 @@ function renderGlobalLiveBets(){
     showBetJournalModal,analyzeJournalReasons,requestNotifPermission,sendLocalNotification,buildInjuryRoster,computeInjuryImpact,injFlagHTML,computeStreaks,renderHotHandTracker,
     notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,renderHotHandTracker,computeStreaks,
     renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
-    simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,renderPickCard,sharePickCard,
-    downloadPickCard,renderTrackRecord,generatePickReasoning,getImpliedProb,getUmpireImpact,
+    simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,_renderLeagueCard,exportLeagueCard,
+    shareLeagueCard,renderTrackRecord,generatePickReasoning,getImpliedProb,getUmpireImpact,
     getRefImpact,fetchESPNNews,fetchESPNInjuries,fetchESPNTransactions,newsCard,injuryCard,
     transactionCard,newsSection,newsLoadingState,newsErrorState,renderNewsAll,renderNewsInjuries,
     renderNewsTrades,renderNewsSport,checkInjuryImpactOnBets,getPendingUploads,addPendingUpload,
