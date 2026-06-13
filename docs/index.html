@@ -375,7 +375,8 @@ body{line-height:1.5}
         <span style="color:var(--ic)">// LEAN</span><span style="color:var(--t3)">55-62%</span>
         <span style="color:var(--hc)">// SKIP</span><span style="color:var(--t3)">&lt;55%</span>
       </div>
-      <div id="espn-status" style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:8px"></div>
+      <div id="espn-status" style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:4px"></div>
+      <div id="odds-api-status" style="font-family:var(--mono);font-size:10px;color:rgba(0,240,255,.5);margin-bottom:8px"></div>
       <div id="games-l"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="mlb-tab-nrfi" style="display:none"><div id="nrfi-list"></div></div>
@@ -2537,6 +2538,8 @@ async function loadGames(dateStr){
   }
 
   ESPN_GAMES=games;
+  /* Augment with live odds (Odds API preferred over ESPN) */
+  games.forEach(function(g){try{_augmentWithLiveOdds(g,'MLB');}catch(e){}});
   // Async weather fetch for all home parks (non-blocking)
   try{fetchAllParkWeather(games.map(g=>g.hA).filter(Boolean));}catch(e){}
   for(const g of games){
@@ -2565,7 +2568,10 @@ async function loadGames(dateStr){
   if(isToday){renderPicks(picks);renderParlayG(pRows);logDailyRecs(picks,today());try{renderMLBEnginePicks();}catch(e){}}try{storeOpeningLines(ESPN_GAMES||[]);checkLineMovements(ESPN_GAMES||[]);}catch(e){}
   const _hpk=document.getElementById('h-pk');if(_hpk)_hpk.textContent=picks.filter(p=>tier(p.p,p.ev2)>=2).length;
   const es=document.getElementById('espn-status');
-  if(es&&isToday)es.textContent=`// ${games.length} GAMES · ${games.filter(g=>g.status==='in').length} LIVE · ${games.filter(g=>g.status==='post').length} FINAL`;
+  if(es&&isToday){
+    const liveOddsGames=games.filter(g=>g._liveOddsSource==='oddsapi').length;
+    es.textContent=`// ${games.length} GAMES · ${games.filter(g=>g.status==='in').length} LIVE · ${games.filter(g=>g.status==='post').length} FINAL`+(liveOddsGames?` · ${liveOddsGames} w/ LIVE ODDS`:'');
+  }
   const pd=document.getElementById('pd');if(pd&&isToday)pd.textContent=`// ${today()}`;
   if(isToday)autoSettleFromESPN(games);
 }
@@ -3903,10 +3909,13 @@ async function renderNHLGames(day){
       const hNHL=NHL[hn]||{},aNHL=NHL[an]||{};
       let hP=0.50,aP=0.50,ens={mc:0.50,xgf:0.50,elo:0.50};
       try{const e=nhlEns(hn,an);if(e?.p){hP=e.p;aP=1-e.p;ens={mc:+(e.mc||.50).toFixed(3),xgf:+(e.xgf||.50).toFixed(3),elo:+(e.elo||.50).toFixed(3)};}}catch(e2){}
-      const hML=p2ml(hP),aML=p2ml(aP),hD=ml2d(hML),aD=ml2d(aML);
+      const _liveNHL=(typeof _clvGetLiveOdds==='function')?_clvGetLiveOdds('NHL',hn,an):null;
+      const hML=_liveNHL?.homeML||p2ml(hP),aML=_liveNHL?.awayML||p2ml(aP);
+      const hD=ml2d(hML),aD=ml2d(aML);
       const hEV=ev(hP,hD),aEV=ev(aP,aD);
       const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
       const plP=hP>=.5?.38:.38,plCS=chipC(plP,ev(plP,1.87));
+      const nhlOuL=_liveNHL?.ou??6.0;
       const ouP=0.50,ouD=ml2d('-110'),ouCS=chipC(ouP,ev(ouP,ouD));
       const seriesNote=hNHL.series||aNHL.series||'';
       // Engine reasoning
@@ -5148,14 +5157,16 @@ async function renderNBAGames(day){
       // Status dot + text matching MLB style
       const statusDot=live?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--vc);margin-right:5px;animation:blink 1s infinite"></span>':'';
       const statusTxt=post?`FINAL · ${an} ${as2} — ${hn} ${hs}`:live?`Q${c.status?.period||'?'} ${c.status?.displayClock||''} · ${an} ${as2}–${hs} ${hn}`:(espnEv.date?new Date(espnEv.date).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'SCHEDULED');
-      // Odds from ESPN
+      // Odds: Odds API → ESPN → model fallback
       const espnOdds=(c.odds||[])[0];
       const espnHL=espnOdds?.homeTeamOdds?.moneyLine;const espnAL=espnOdds?.awayTeamOdds?.moneyLine;
-      const ouL=espnOdds?.overUnder||null;
+      const espnOU=espnOdds?.overUnder||null;
+      const _liveNBA=(typeof _clvGetLiveOdds==='function')?_clvGetLiveOdds('NBA',hn,an):null;
+      const ouL=_liveNBA?.ou??espnOU;
       // Model ensemble
       let hP=0.53,aP=0.47,hML,aML,hD,aD,ens={mc:0.45,bay:0.30,elo:0.25};
-      try{const e=nbaEns(hn,an,espnHL?{hL:espnHL}:null);if(e?.p){hP=e.p;aP=1-e.p;ens={mc:+(e.mc||.45).toFixed(3),bay:+(e.bay||.30).toFixed(3),elo:+(e.elo||.25).toFixed(3)};}}catch(e2){}
-      hML=espnHL||(pre?p2ml(hP):0);aML=espnAL||(pre?p2ml(aP):0);
+      try{const e=nbaEns(hn,an,(_liveNBA?.homeML||espnHL)?{hL:_liveNBA?.homeML||espnHL}:null);if(e?.p){hP=e.p;aP=1-e.p;ens={mc:+(e.mc||.45).toFixed(3),bay:+(e.bay||.30).toFixed(3),elo:+(e.elo||.25).toFixed(3)};}}catch(e2){}
+      hML=_liveNBA?.homeML||espnHL||(pre?p2ml(hP):0);aML=_liveNBA?.awayML||espnAL||(pre?p2ml(aP):0);
       hD=ml2d(hML);aD=ml2d(aML);
       const hEV=ev(hP,hD);const aEV=ev(aP,aD);
       const hCS=chipC(hP,hEV);const aCS=chipC(aP,aEV);
@@ -14173,7 +14184,9 @@ function renderGlobalLiveBets(){
     notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,renderHotHandTracker,computeStreaks,
     renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
     simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,_renderLeagueCard,exportLeagueCard,
-    shareLeagueCard,renderTrackRecord,_genCombinedTrackGraphic,_normSport,generatePickReasoning,getImpliedProb,getUmpireImpact,
+    shareLeagueCard,renderTrackRecord,_genCombinedTrackGraphic,_normSport,
+    _clvGetLiveOdds,_augmentWithLiveOdds,_clvFetchOddsAPI,_getOddsApiKey,_setOddsApiKey,
+    generatePickReasoning,getImpliedProb,getUmpireImpact,
     getRefImpact,fetchESPNNews,fetchESPNInjuries,fetchESPNTransactions,newsCard,injuryCard,
     transactionCard,newsSection,newsLoadingState,newsErrorState,renderNewsAll,renderNewsInjuries,
     renderNewsTrades,renderNewsSport,checkInjuryImpactOnBets,getPendingUploads,addPendingUpload,
@@ -15048,10 +15061,11 @@ async function _renderWNBAGamesInner(el,dateEl,force){
   // Always use data.json as primary source — ESPN fetch supplements live scores only
   var fbGames=(D.wnba&&D.wnba.today)||[];
   var normalizedGames=fbGames.map(function(g){
+    var liveW=(typeof _clvGetLiveOdds==='function')?_clvGetLiveOdds('WNBA',g.home||g.homeName||'',g.away||g.awayName||''):null;
     return{_src:'local',
       home:g.home||g.homeName||'',away:g.away||g.awayName||'',
-      homeML:g.homeML||null,awayML:g.awayML||null,
-      ou:g.ou||null,spread:g.spread||null,
+      homeML:liveW?.homeML||g.homeML||null,awayML:liveW?.awayML||g.awayML||null,
+      ou:liveW?.ou||g.ou||null,spread:liveW?.spread||g.spread||null,
       state:g.state||'pre',homeScore:g.homeScore||null,awayScore:g.awayScore||null,
       venue:g.venue||'',network:g.network||'',date:g.date||''};
   });
@@ -15088,8 +15102,9 @@ async function _renderWNBAGamesInner(el,dateEl,force){
               existing.state=status||existing.state;
               existing.period=period||existing.period;
               existing.clock=clock;
-              if(espnML)existing.homeML=espnML;
-              if(espnOU)existing.ou=espnOU;
+              /* Only use ESPN odds if Odds API hasn't already filled them */
+              if(espnML&&!existing._liveOddsSource)existing.homeML=espnML;
+              if(espnOU&&!existing._liveOddsSource)existing.ou=espnOU;
             }else{
               var hName=(hT.team&&(hT.team.shortDisplayName||hT.team.abbreviation))||hAbb;
               var aName=(aT.team&&(aT.team.shortDisplayName||aT.team.abbreviation))||aAbb;
@@ -19575,6 +19590,219 @@ var _CLV_SPORT_MAP={
 function _clvGetEventsStore(){try{return JSON.parse(localStorage.getItem('cv_clv_events')||'{}');}catch(e){return {};}}
 function _clvSaveEventsStore(s){try{localStorage.setItem('cv_clv_events',JSON.stringify(s));}catch(e){}}
 
+/* ═══════════════════════════════════════════════════════════════
+   THE ODDS API — live odds supplement (more reliable than ESPN)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Key storage — pre-seeded; user can override in Settings */
+var _ODDS_API_KEY_DEFAULT='c35056df6f124ffba153ec778b0cec38';
+function _getOddsApiKey(){return localStorage.getItem('cv_odds_api_key')||_ODDS_API_KEY_DEFAULT;}
+function _setOddsApiKey(k){if(k)localStorage.setItem('cv_odds_api_key',k.trim());}
+/* Seed the key on first load */
+if(!localStorage.getItem('cv_odds_api_key'))localStorage.setItem('cv_odds_api_key',_ODDS_API_KEY_DEFAULT);
+
+/* Odds API sport key map */
+var _ODDS_API_SPORT_MAP={
+  MLB:'baseball_mlb',
+  NBA:'basketball_nba',
+  WNBA:'basketball_wnba',
+  NHL:'icehockey_nhl',
+  NFL:'americanfootball_nfl',
+  CFB:'americanfootball_ncaaf',
+  TEN:'tennis_atp'
+};
+
+/* Full team name → engine abbreviation */
+var _ODDS_TEAM_ABR={
+  /* MLB */
+  'Arizona Diamondbacks':'ARI','Atlanta Braves':'ATL','Baltimore Orioles':'BAL',
+  'Boston Red Sox':'BOS','Chicago Cubs':'CHC','Chicago White Sox':'CWS',
+  'Cincinnati Reds':'CIN','Cleveland Guardians':'CLE','Colorado Rockies':'COL',
+  'Detroit Tigers':'DET','Houston Astros':'HOU','Kansas City Royals':'KC',
+  'Los Angeles Angels':'LAA','Los Angeles Dodgers':'LAD','Miami Marlins':'MIA',
+  'Milwaukee Brewers':'MIL','Minnesota Twins':'MIN','New York Mets':'NYM',
+  'New York Yankees':'NYY','Oakland Athletics':'OAK','Philadelphia Phillies':'PHI',
+  'Pittsburgh Pirates':'PIT','San Diego Padres':'SD','San Francisco Giants':'SF',
+  'Seattle Mariners':'SEA','St. Louis Cardinals':'STL','Tampa Bay Rays':'TB',
+  'Texas Rangers':'TEX','Toronto Blue Jays':'TOR','Washington Nationals':'WSH',
+  'Athletics':'OAK',
+  /* NHL */
+  'Anaheim Ducks':'ANA','Boston Bruins':'BOS','Buffalo Sabres':'BUF',
+  'Calgary Flames':'CGY','Carolina Hurricanes':'CAR','Chicago Blackhawks':'CHI',
+  'Colorado Avalanche':'COL','Columbus Blue Jackets':'CBJ','Dallas Stars':'DAL',
+  'Detroit Red Wings':'DET','Edmonton Oilers':'EDM','Florida Panthers':'FLA',
+  'Los Angeles Kings':'LAK','Minnesota Wild':'MIN','Montreal Canadiens':'MTL',
+  'Nashville Predators':'NSH','New Jersey Devils':'NJD','New York Islanders':'NYI',
+  'New York Rangers':'NYR','Ottawa Senators':'OTT','Philadelphia Flyers':'PHI',
+  'Pittsburgh Penguins':'PIT','San Jose Sharks':'SJS','Seattle Kraken':'SEA',
+  'St. Louis Blues':'STL','Tampa Bay Lightning':'TBL','Toronto Maple Leafs':'TOR',
+  'Vancouver Canucks':'VAN','Vegas Golden Knights':'VGK','Washington Capitals':'WSH',
+  'Winnipeg Jets':'WPG',
+  /* NBA */
+  'Atlanta Hawks':'ATL','Boston Celtics':'BOS','Brooklyn Nets':'BKN',
+  'Charlotte Hornets':'CHA','Chicago Bulls':'CHI','Cleveland Cavaliers':'CLE',
+  'Dallas Mavericks':'DAL','Denver Nuggets':'DEN','Detroit Pistons':'DET',
+  'Golden State Warriors':'GSW','Houston Rockets':'HOU','Indiana Pacers':'IND',
+  'Los Angeles Clippers':'LAC','Los Angeles Lakers':'LAL','Memphis Grizzlies':'MEM',
+  'Miami Heat':'MIA','Milwaukee Bucks':'MIL','Minnesota Timberwolves':'MIN',
+  'New Orleans Pelicans':'NOP','New York Knicks':'NYK','Oklahoma City Thunder':'OKC',
+  'Orlando Magic':'ORL','Philadelphia 76ers':'PHI','Phoenix Suns':'PHX',
+  'Portland Trail Blazers':'POR','Sacramento Kings':'SAC','San Antonio Spurs':'SAS',
+  'Toronto Raptors':'TOR','Utah Jazz':'UTA','Washington Wizards':'WAS',
+  /* WNBA */
+  'Atlanta Dream':'ATL','Chicago Sky':'CHI','Connecticut Sun':'CON',
+  'Dallas Wings':'DAL','Golden State Valkyries':'GS','Indiana Fever':'IND',
+  'Las Vegas Aces':'LV','Los Angeles Sparks':'LA','Minnesota Lynx':'MIN',
+  'New York Liberty':'NY','Phoenix Mercury':'PHX','Seattle Storm':'SEA',
+  'Toronto Tempo':'TOR','Washington Mystics':'WSH'
+};
+
+function _oddsAbbr(fullName){
+  if(!fullName)return'';
+  if(_ODDS_TEAM_ABR[fullName])return _ODDS_TEAM_ABR[fullName];
+  /* Try last word — good for many cases */
+  return(fullName.split(' ').pop()||fullName).toUpperCase().slice(0,3);
+}
+
+/* Bookmakers ordered by market-depth preference */
+var _ODDS_PREF_BOOKS=['draftkings','fanduel','betmgm','caesars','pointsbetus','betrivers','barstool','bet365','bovada'];
+
+/* Average an array of American ML values cleanly */
+function _avgAmericanML(arr){
+  if(!arr.length)return null;
+  /* Convert to implied prob, average, convert back */
+  var probs=arr.map(function(ml){
+    return ml<0?Math.abs(ml)/(Math.abs(ml)+100):100/(ml+100);
+  });
+  var avgP=probs.reduce(function(a,b){return a+b;},0)/probs.length;
+  /* Clamp to [0.01, 0.99] before converting back */
+  avgP=Math.max(0.01,Math.min(0.99,avgP));
+  var ml=avgP>=0.5?-Math.round(avgP*100/(1-avgP)):Math.round((1-avgP)*100/avgP);
+  return ml;
+}
+
+/* Fetch odds from The Odds API — returns same shape as _clvFetchESPNOdds */
+async function _clvFetchOddsAPI(sport){
+  var apiKey=_getOddsApiKey();if(!apiKey)return[];
+  var sportKey=_ODDS_API_SPORT_MAP[(sport||'').toUpperCase()];if(!sportKey)return[];
+  try{
+    var url='https://api.the-odds-api.com/v4/sports/'+sportKey+'/odds/'
+      +'?apiKey='+apiKey+'&regions=us&markets=h2h,spreads,totals&oddsFormat=american&dateFormat=iso';
+    var resp=await fetch(url,{mode:'cors',cache:'no-store'});
+    /* Track quota from response headers */
+    var rem=resp.headers.get('x-requests-remaining');
+    var used=resp.headers.get('x-requests-used');
+    if(rem!=null){window._oddsApiRemaining=+rem;localStorage.setItem('cv_odds_rem',rem);}
+    if(used!=null){window._oddsApiUsed=+used;localStorage.setItem('cv_odds_used',used);}
+    if(!resp.ok){console.warn('[OddsAPI] '+resp.status+' for '+sport);return[];}
+    var data=await resp.json();
+    if(!Array.isArray(data))return[];
+
+    return data.map(function(ev){
+      var homeFull=ev.home_team||'';
+      var awayFull=ev.away_team||'';
+      var homeAbbr=_oddsAbbr(homeFull);
+      var awayAbbr=_oddsAbbr(awayFull);
+
+      /* Collect lines from preferred books (up to 4) */
+      var books=(ev.bookmakers||[]).slice().sort(function(a,b){
+        var ai=_ODDS_PREF_BOOKS.indexOf(a.key),bi=_ODDS_PREF_BOOKS.indexOf(b.key);
+        return(ai<0?999:ai)-(bi<0?999:bi);
+      }).slice(0,4);
+
+      var homeMLs=[],awayMLs=[],ous=[],spreads=[];
+      books.forEach(function(bk){
+        (bk.markets||[]).forEach(function(mkt){
+          if(mkt.key==='h2h'){
+            (mkt.outcomes||[]).forEach(function(o){
+              var p=parseInt(o.price);if(isNaN(p))return;
+              if(o.name===homeFull)homeMLs.push(p);
+              else if(o.name===awayFull)awayMLs.push(p);
+            });
+          }
+          if(mkt.key==='spreads'){
+            (mkt.outcomes||[]).forEach(function(o){
+              if(o.name===homeFull&&o.point!=null)spreads.push(+o.point);
+            });
+          }
+          if(mkt.key==='totals'){
+            (mkt.outcomes||[]).forEach(function(o){
+              if(o.name==='Over'&&o.point!=null)ous.push(+o.point);
+            });
+          }
+        });
+      });
+
+      var avgF=function(arr){return arr.length?+(arr.reduce(function(a,b){return a+b;},0)/arr.length).toFixed(1):null;};
+
+      return{
+        id:ev.id,
+        sport:(sport||'').toUpperCase(),
+        name:awayFull+' @ '+homeFull,
+        homeAbbr:homeAbbr,awayAbbr:awayAbbr,
+        homeName:homeFull,awayName:awayFull,
+        statusState:'pre',statusDesc:'',
+        homeML:_avgAmericanML(homeMLs),
+        awayML:_avgAmericanML(awayMLs),
+        overUnder:avgF(ous),
+        spread:avgF(spreads),
+        ouML:-110,
+        date:ev.commence_time||'',
+        homeScore:null,awayScore:null,
+        source:'oddsapi'
+      };
+    });
+  }catch(e){console.warn('[OddsAPI] Error:',e);return[];}
+}
+
+/* Live odds lookup — returns {homeML, awayML, ou, spread, source} or null */
+function _clvGetLiveOdds(sport,hA,awA){
+  var store=_clvGetEventsStore();
+  var sp=(sport||'').toUpperCase();
+  var h=(hA||'').toUpperCase();
+  var a=(awA||'').toUpperCase();
+  /* Try Odds API-sourced entries first */
+  var keys=Object.keys(store);
+  var oddsKey=keys.find(function(k){
+    var e=store[k];
+    return e.sport===sp&&e.oddsApiSource&&(
+      (e.homeAbbr||'').toUpperCase()===h||(e.awayAbbr||'').toUpperCase()===a||
+      (e.homeName||'').toUpperCase().includes(h)||(e.awayName||'').toUpperCase().includes(a)
+    );
+  });
+  var key=oddsKey||keys.find(function(k){
+    var e=store[k];
+    if(e.sport!==sp)return false;
+    var names=((e.homeAbbr||'')+' '+(e.awayAbbr||'')+' '+(e.homeName||'')+' '+(e.awayName||'')).toUpperCase();
+    return names.includes(h)||names.includes(a);
+  });
+  if(!key)return null;
+  var ev=store[key];
+  return{
+    homeML:ev.currentHomeML,awayML:ev.currentAwayML,
+    ou:ev.currentOU,spread:ev.currentSpread,
+    source:ev.oddsApiSource?'oddsapi':'espn',
+    openHomeML:ev.openHomeML,openAwayML:ev.openAwayML
+  };
+}
+window._clvGetLiveOdds=_clvGetLiveOdds;
+
+/* Augment a parsed game object (hA/awA/hML/aML/ou/spread) with live odds.
+   Odds API ML wins over ESPN when available; keeps ESPN for status/scores. */
+function _augmentWithLiveOdds(game,sport){
+  if(!game)return game;
+  var live=_clvGetLiveOdds(sport||game.sport||'MLB',game.hA,game.awA);
+  if(!live)return game;
+  /* Only override if live source has actual values */
+  if(live.homeML!=null)game.hML=live.homeML;
+  if(live.awayML!=null)game.aML=live.awayML;
+  if(live.ou!=null)game.ou=live.ou;
+  if(live.spread!=null)game.spread=live.spread;
+  game._liveOddsSource=live.source;
+  return game;
+}
+window._augmentWithLiveOdds=_augmentWithLiveOdds;
+
 /* ── ESPN odds fetch — returns normalized event array ─────────── */
 async function _clvFetchESPNOdds(sport){
   var path=_CLV_SPORT_MAP[(sport||'').toUpperCase()];
@@ -19651,54 +19879,151 @@ function _clvPickML(pick,ev){
   return null;
 }
 
-/* ── FULL SCAN: ALL sports, ALL events — runs every 30 min ────── */
+/* ── FULL SCAN: ALL sports — ESPN + Odds API merged ─────────── */
 async function _clvScanAllSports(){
   var td=_clvTodayKey();
   var allSports=Object.keys(_CLV_SPORT_MAP);
   var store=_clvGetEventsStore();
   var fetchedCount=0;
 
-  for(var i=0;i<allSports.length;i++){
-    var sport=allSports[i];
-    var events=await _clvFetchESPNOdds(sport);
-    events.forEach(function(ev){
-      if(!ev.homeML&&!ev.awayML&&!ev.overUnder)return; /* skip no-odds events */
-      var key=sport+':'+ev.id;
+  /* Fetch all sports from both sources in parallel */
+  var espnFetches=allSports.map(function(s){return _clvFetchESPNOdds(s).catch(function(){return[];});});
+  var oddsFetches=Object.keys(_ODDS_API_SPORT_MAP).map(function(s){return _clvFetchOddsAPI(s).catch(function(){return[];});});
+  var allResults=await Promise.all(espnFetches.concat(oddsFetches));
+
+  /* Split back into ESPN and OddsAPI result sets */
+  var espnResults={};
+  allSports.forEach(function(s,i){espnResults[s]=allResults[i]||[];});
+  var oddsResults={};
+  var oddsKeys=Object.keys(_ODDS_API_SPORT_MAP);
+  oddsKeys.forEach(function(s,i){oddsResults[s]=allResults[allSports.length+i]||[];});
+
+  /* Build a lookup: oddsKey = sport+':'+homeAbbr+':'+awayAbbr */
+  var oddsLookup={};
+  Object.keys(oddsResults).forEach(function(sport){
+    (oddsResults[sport]||[]).forEach(function(ev){
+      var k=sport+':'+(ev.homeAbbr||'').toUpperCase()+':'+(ev.awayAbbr||'').toUpperCase();
+      oddsLookup[k]=ev;
+      /* Also index by id for direct match */
+      oddsLookup[sport+':id:'+ev.id]=ev;
+    });
+  });
+
+  function findOddsMatch(sport,espnEv){
+    /* Try abbr match */
+    var k=sport+':'+(espnEv.homeAbbr||'').toUpperCase()+':'+(espnEv.awayAbbr||'').toUpperCase();
+    if(oddsLookup[k])return oddsLookup[k];
+    /* Try away/home reversed (some ESPN events list differently) */
+    var k2=sport+':'+(espnEv.awayAbbr||'').toUpperCase()+':'+(espnEv.homeAbbr||'').toUpperCase();
+    if(oddsLookup[k2])return oddsLookup[k2];
+    /* Try fuzzy: any odds event where home or away name includes espn abbr */
+    return(oddsResults[sport]||[]).find(function(ov){
+      var names=((ov.homeName||'')+' '+(ov.awayName||'')).toUpperCase();
+      return names.includes((espnEv.homeAbbr||'').toUpperCase())||names.includes((espnEv.awayAbbr||'').toUpperCase());
+    })||null;
+  }
+
+  /* Process ESPN events — merge Odds API data when available */
+  allSports.forEach(function(sport){
+    (espnResults[sport]||[]).forEach(function(espnEv){
+      var oddsEv=findOddsMatch(sport,espnEv);
+      /* Merged event: ESPN provides status/score, Odds API provides better lines */
+      var hML=oddsEv?.homeML!=null?oddsEv.homeML:espnEv.homeML;
+      var aML=oddsEv?.awayML!=null?oddsEv.awayML:espnEv.awayML;
+      var ou=oddsEv?.overUnder!=null?oddsEv.overUnder:espnEv.overUnder;
+      var spread=oddsEv?.spread!=null?oddsEv.spread:espnEv.spread;
+      var hasOdds=hML||aML||ou;
+      if(!hasOdds)return;
+
+      var key=sport+':'+espnEv.id;
+      var oddsApiSource=!!(oddsEv&&oddsEv.source==='oddsapi');
       if(!store[key]){
-        /* First time seeing this event — create entry with OPEN snapshot */
         store[key]={
-          sport:sport,name:ev.name,homeAbbr:ev.homeAbbr,awayAbbr:ev.awayAbbr,
-          homeName:ev.homeName,awayName:ev.awayName,date:td,
-          openHomeML:ev.homeML,openAwayML:ev.awayML,openOU:ev.overUnder,openSpread:ev.spread,
-          openTS:Date.now(),
-          currentHomeML:ev.homeML,currentAwayML:ev.awayML,currentOU:ev.overUnder,currentSpread:ev.spread,
-          statusState:ev.statusState,
-          snapshots:[{ts:Date.now(),homeML:ev.homeML,awayML:ev.awayML,ou:ev.overUnder,spread:ev.spread,note:'OPEN'}]
+          sport:sport,name:espnEv.name,homeAbbr:espnEv.homeAbbr,awayAbbr:espnEv.awayAbbr,
+          homeName:espnEv.homeName,awayName:espnEv.awayName,date:td,
+          openHomeML:hML,openAwayML:aML,openOU:ou,openSpread:spread,
+          openTS:Date.now(),oddsApiSource:oddsApiSource,
+          currentHomeML:hML,currentAwayML:aML,currentOU:ou,currentSpread:spread,
+          statusState:espnEv.statusState,
+          snapshots:[{ts:Date.now(),homeML:hML,awayML:aML,ou:ou,spread:spread,note:'OPEN',src:oddsApiSource?'oddsapi':'espn'}]
         };
       } else {
-        /* Update current odds — log if anything changed */
         var prev=store[key];
-        var changed=prev.currentHomeML!==ev.homeML||prev.currentAwayML!==ev.awayML||prev.currentOU!==ev.overUnder;
-        if(changed&&ev.statusState==='pre'){
-          store[key].snapshots.push({ts:Date.now(),homeML:ev.homeML,awayML:ev.awayML,ou:ev.overUnder,spread:ev.spread,note:'UPDATE'});
+        var changed=prev.currentHomeML!==hML||prev.currentAwayML!==aML||prev.currentOU!==ou;
+        if(changed&&espnEv.statusState==='pre'){
+          store[key].snapshots.push({ts:Date.now(),homeML:hML,awayML:aML,ou:ou,spread:spread,note:'UPDATE',src:oddsApiSource?'oddsapi':'espn'});
         }
-        if((ev.statusState==='in'||ev.statusState==='post')&&prev.statusState==='pre'){
-          store[key].snapshots.push({ts:Date.now(),homeML:ev.homeML,awayML:ev.awayML,ou:ev.overUnder,spread:ev.spread,note:'CLOSE'});
+        if((espnEv.statusState==='in'||espnEv.statusState==='post')&&prev.statusState==='pre'){
+          store[key].snapshots.push({ts:Date.now(),homeML:hML,awayML:aML,ou:ou,spread:spread,note:'CLOSE'});
         }
-        store[key].currentHomeML=ev.homeML;
-        store[key].currentAwayML=ev.awayML;
-        store[key].currentOU=ev.overUnder;
-        store[key].currentSpread=ev.spread;
-        store[key].statusState=ev.statusState;
+        store[key].currentHomeML=hML;
+        store[key].currentAwayML=aML;
+        store[key].currentOU=ou;
+        store[key].currentSpread=spread;
+        store[key].statusState=espnEv.statusState;
+        store[key].oddsApiSource=store[key].oddsApiSource||oddsApiSource;
       }
       fetchedCount++;
     });
-  }
+
+    /* Also index any Odds API events not matched to ESPN (extra coverage) */
+    (oddsResults[sport]||[]).forEach(function(oddsEv){
+      var matchedKey=Object.keys(store).find(function(k){
+        var e=store[k];
+        return e.sport===sport&&(
+          (e.homeAbbr||'').toUpperCase()===(oddsEv.homeAbbr||'').toUpperCase()&&
+          (e.awayAbbr||'').toUpperCase()===(oddsEv.awayAbbr||'').toUpperCase()
+        );
+      });
+      if(matchedKey){
+        /* Patch existing entry with Odds API lines if better */
+        if(oddsEv.homeML!=null){store[matchedKey].currentHomeML=oddsEv.homeML;store[matchedKey].oddsApiSource=true;}
+        if(oddsEv.awayML!=null)store[matchedKey].currentAwayML=oddsEv.awayML;
+        if(oddsEv.overUnder!=null)store[matchedKey].currentOU=oddsEv.overUnder;
+        if(oddsEv.spread!=null)store[matchedKey].currentSpread=oddsEv.spread;
+        return;
+      }
+      /* No ESPN match — store Odds API event directly under its own id */
+      if(oddsEv.homeML!=null||oddsEv.awayML!=null||oddsEv.overUnder!=null){
+        var oKey=sport+':odds:'+oddsEv.id;
+        if(!store[oKey]){
+          store[oKey]={
+            sport:sport,name:oddsEv.name,homeAbbr:oddsEv.homeAbbr,awayAbbr:oddsEv.awayAbbr,
+            homeName:oddsEv.homeName,awayName:oddsEv.awayName,date:td,
+            openHomeML:oddsEv.homeML,openAwayML:oddsEv.awayML,openOU:oddsEv.overUnder,openSpread:oddsEv.spread,
+            openTS:Date.now(),oddsApiSource:true,
+            currentHomeML:oddsEv.homeML,currentAwayML:oddsEv.awayML,currentOU:oddsEv.overUnder,currentSpread:oddsEv.spread,
+            statusState:'pre',
+            snapshots:[{ts:Date.now(),homeML:oddsEv.homeML,awayML:oddsEv.awayML,ou:oddsEv.overUnder,spread:oddsEv.spread,note:'OPEN',src:'oddsapi'}]
+          };
+          fetchedCount++;
+        } else {
+          store[oKey].currentHomeML=oddsEv.homeML;store[oKey].currentAwayML=oddsEv.awayML;
+          store[oKey].currentOU=oddsEv.overUnder;store[oKey].currentSpread=oddsEv.spread;
+        }
+      }
+    });
+  });
 
   _clvSaveEventsStore(store);
-  console.log('[CLV] Scanned '+fetchedCount+' events across '+allSports.length+' sports ('+td+')');
+  var oddsApiCount=Object.values(store).filter(function(e){return e.oddsApiSource;}).length;
+  var rem=window._oddsApiRemaining!=null?window._oddsApiRemaining:+(localStorage.getItem('cv_odds_rem')||500);
+  var used=window._oddsApiUsed!=null?window._oddsApiUsed:+(localStorage.getItem('cv_odds_used')||0);
+  console.log('[CLV] Scanned '+fetchedCount+' events ('+oddsApiCount+' w/ OddsAPI) · '+rem+' req remaining ('+td+')');
+  /* Update status badge */
+  try{
+    var sb=document.getElementById('odds-api-status');
+    if(sb){
+      var srcLabel=oddsApiCount>0?'ODDS API + ESPN':'ESPN ONLY';
+      var remColor=rem>100?'rgba(0,240,255,.6)':rem>20?'rgba(255,200,0,.7)':'rgba(255,32,144,.8)';
+      sb.innerHTML='<span style="color:'+remColor+'">⬤</span> ODDS SOURCE: '+srcLabel
+        +' · '+oddsApiCount+' events w/ live lines'
+        +(rem!=null?' · <span style="color:'+remColor+'">'+rem+' API calls remaining</span>':'')
+        +(used?' · '+used+' used':'');
+    }
+  }catch(e){}
 
-  /* Now update all pending locked bets with current market lines */
+  /* Update pending locked bets with current market lines */
   _clvUpdateLockedBetsFromScan(store);
 }
 
