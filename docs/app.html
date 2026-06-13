@@ -3099,7 +3099,7 @@ function renderMLBPickCards(el, picks){
         <div style="flex:1;min-width:0">
           <div style="font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid ${col};color:${col};border-radius:2px;display:inline-block;margin-bottom:4px">${lbl}</div>
           <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--t)">${p.pick||p.lb||''}</div>
-          <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.75);margin-top:2px">${p.game||((p.ha||'')+(p.awa?' vs '+p.awa:''))}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.75);margin-top:2px">${p.ha&&p.awa?(_teamName(p.awa,'MLB')||p.awa)+' at '+(_teamName(p.ha,'MLB')||p.ha):(p.game||'').split(' vs ').map(t=>_teamName(t.trim(),'MLB')||t.trim()).join(' vs ')}</div>
           ${note?`<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.55);margin-top:3px;line-height:1.6">${note}</div>`:''}
           ${(p.injH&&p.injH.flag||p.injA&&p.injA.flag)?injFlagHTML(p.injH,p.injA):''}
         </div>
@@ -3148,7 +3148,7 @@ function renderPicks(picks){
   html+=`<div class="card" style="border:1px solid rgba(255,221,0,.4);border-left:3px solid var(--gc);margin-bottom:14px;padding:12px">
     <div style="font-family:var(--mono);font-size:13px;letter-spacing:3px;color:var(--gc);margin-bottom:6px">★ PICK OF THE DAY — ${lbl3(topT)}</div>
     <div style="font-family:var(--orb);font-size:20px;font-weight:700;color:var(--t)">${top.lb}</div>
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin:3px 0">${top.ha} vs ${top.awa} · ${top.gt||'MLB'}</div>
+    <div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin:3px 0">${_teamName(top.ha,'MLB')||top.ha} vs ${_teamName(top.awa,'MLB')||top.awa} · ${top.gt||'MLB'}</div>
     <div style="font-family:var(--mono);font-size:15px;color:var(--nc);margin:4px 0">WIN: ${(top.p*100).toFixed(1)}% · EV: ${top.ev2>=0?'+':''}${(top.ev2*100).toFixed(1)}% · ODDS: ${top.ml}</div>
     <div style="font-family:var(--mono);font-size:14px;color:var(--gc);margin:4px 0">MC: ${(top.ens.mc*100).toFixed(0)}% · BAY: ${(top.ens.bay*100).toFixed(0)}% · ELO: ${(top.ens.elo*100).toFixed(0)}%${top.ens.mc!==top.ens.p?' · ESPN:blended':''}</div>
     ${top2?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">WHY NOT ${top2.lb}: Win ${(top2.p*100).toFixed(1)}% EV${top2.ev2>=0?'+':''}${(top2.ev2*100).toFixed(1)}% — lower ensemble confidence vs top pick's ${(top.ev2*100).toFixed(1)}% edge</div>`:''}
@@ -3164,7 +3164,7 @@ function renderPicks(picks){
       html+=`<div class="card" style="border-left:2px solid ${col3(t)};padding:9px">
         <div style="font-family:var(--mono);font-size:12px;color:${col3(t)};letter-spacing:1px;margin-bottom:4px">#${i+1} ${lbl3(t)}</div>
         <div style="font-family:var(--orb);font-size:16px;font-weight:700">${pk.lb}</div>
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin:2px 0">${pk.awa} at ${pk.ha}</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin:2px 0">${_teamName(pk.awa,'MLB')||pk.awa} at ${_teamName(pk.ha,'MLB')||pk.ha}</div>
         <div style="font-family:var(--mono);font-size:14px;color:var(--nc)">${(pk.p*100).toFixed(1)}% · EV${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}%</div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:3px">MC:${(pk.ens.mc*100).toFixed(0)}% BAY:${(pk.ens.bay*100).toFixed(0)}%</div>
         <button class="btn btn-o btn-fw" style="margin-top:6px;padding:3px 6px;font-size:12px" onclick="window._lastLockReason=null;window._lastLockNote=null;showBetJournalModal((reason,note)=>{window._lastLockReason=reason;window._lastLockNote=note;lockPick('${pk.ha}','${pk.awa}','${bt(pk)}','${betOn(pk)}',${pk.p.toFixed(3)},'${pk.ml}',${pk.d2.toFixed(3)},'${today()}');},\'${betOn(pk)} vs ${pk.ha}\')">LOCK</button>
@@ -3180,7 +3180,7 @@ function renderPicks(picks){
     html+=`<div class="pk" style="border-left:2px solid ${col3(t)}">
       <div class="pkb ${t===3?'pkb-g':t===2?'pkb-p':'pkb-n'}">${lbl3(t)}</div>
       <div style="flex:1">
-        <div class="pkt">${pk.awa} at ${pk.ha} · ${pk.gt||'MLB'}</div>
+        <div class="pkt">${_teamName(pk.awa,'MLB')||pk.awa} at ${_teamName(pk.ha,'MLB')||pk.ha} · ${pk.gt||'MLB'}</div>
         <div class="pkt2">${pk.lb}</div>
         <div class="pkd">WIN: <strong style="color:var(--t)">${(pk.p*100).toFixed(1)}%</strong> · EV: <strong style="color:${pk.ev2>=0?'var(--nc)':'var(--hc)'}">${pk.ev2>=0?'+':''}${(pk.ev2*100).toFixed(1)}%</strong> · <span style="color:var(--t3)">${pk.ml}</span></div>
       </div>
