@@ -726,6 +726,141 @@ else:
     ok("Template literal expressions: no trailing semicolons inside ${{...}} (would be SyntaxError)")
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CHECK: Duplicate const/let in same function body (SyntaxError = engine dies)
+# Scans each named function in the main JS block, checking its top-level scope.
+# ─────────────────────────────────────────────────────────────────────────────
+def extract_function_bodies(js):
+    """Yield (fn_name, body_text, start_char) for each named function in js.
+    Uses a character scanner that skips strings and template literals so brace
+    counts are accurate."""
+    i = 0; n = len(js)
+    fn_re = re.compile(r'(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{')
+    for m in fn_re.finditer(js):
+        start = m.end() - 1  # position of opening {
+        depth = 0; j = start
+        while j < n:
+            c = js[j]
+            if c in ('"', "'"):
+                j += 1
+                while j < n:
+                    if js[j] == '\\': j += 2; continue
+                    if js[j] == c: j += 1; break
+                    j += 1
+                continue
+            if c == '`':
+                j += 1
+                while j < n:
+                    if js[j] == '\\': j += 2; continue
+                    if js[j] == '`': j += 1; break
+                    if js[j] == '$' and j+1 < n and js[j+1] == '{':
+                        j += 2; d2 = 1
+                        while j < n and d2:
+                            if js[j] == '{': d2 += 1
+                            elif js[j] == '}': d2 -= 1
+                            j += 1
+                        continue
+                    j += 1
+                continue
+            if c == '/' and j+1 < n:
+                if js[j+1] == '/':
+                    end = js.find('\n', j); j = end+1 if end != -1 else n; continue
+                if js[j+1] == '*':
+                    end = js.find('*/', j+2); j = end+2 if end != -1 else n; continue
+            if c == '{': depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    yield m.group(1), js[start+1:j], m.start()
+                    break
+            j += 1
+
+dupe_errors = []
+for fn_name, body, fn_start in extract_function_bodies(main_js):
+    # Scan for const/let at depth 0 of this function body
+    decls = {}
+    depth = 0; i = 0; n = len(body)
+    while i < n:
+        c = body[i]
+        if c in ('"', "'"):
+            i += 1
+            while i < n:
+                if body[i] == '\\': i += 2; continue
+                if body[i] == c: i += 1; break
+                i += 1
+            continue
+        if c == '`':
+            i += 1
+            while i < n:
+                if body[i] == '\\': i += 2; continue
+                if body[i] == '`': i += 1; break
+                if body[i] == '$' and i+1 < n and body[i+1] == '{':
+                    i += 2; d2 = 1
+                    while i < n and d2:
+                        if body[i] == '{': d2 += 1
+                        elif body[i] == '}': d2 -= 1
+                        i += 1
+                    continue
+                i += 1
+            continue
+        if c == '/' and i+1 < n:
+            if body[i+1] == '/':
+                end = body.find('\n', i); i = end+1 if end != -1 else n; continue
+            if body[i+1] == '*':
+                end = body.find('*/', i+2); i = end+2 if end != -1 else n; continue
+        if c == '{': depth += 1; i += 1; continue
+        if c == '}': depth -= 1; i += 1; continue
+        if depth == 0:
+            m2 = re.match(r'\b(const|let)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=', body[i:])
+            if m2:
+                # Skip for-loop initialisers: for(const/let x=...) — own block scope
+                preceding = body[max(0,i-20):i].strip()
+                if not preceding.endswith('('):
+                    nm = m2.group(2)
+                    lineno = main_js[:fn_start].count('\n') + body[:i].count('\n') + 1
+                    decls.setdefault(nm, []).append(lineno)
+                i += m2.end(); continue
+        i += 1
+    for nm, lns in decls.items():
+        if len(lns) > 1:
+            dupe_errors.append((fn_name, nm, lns))
+
+if dupe_errors:
+    for fn_name, nm, lns in dupe_errors[:5]:
+        err(f"DUPLICATE const/let '{nm}' in function '{fn_name}' (file lines ~{lns}) — SyntaxError kills engine")
+    if len(dupe_errors) > 5:
+        err(f"...and {len(dupe_errors)-5} more duplicate declarations")
+else:
+    ok('No duplicate const/let declarations within any function scope')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHECK: _exp array must not reference script-block-2 functions
+# (those functions don't exist when INIT runs — ReferenceError crashes INIT)
+# ─────────────────────────────────────────────────────────────────────────────
+# Identify all inline script blocks
+script_blocks = [s.group(2) for s in re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', html)
+                 if not re.search(r'\bsrc\s*=', s.group(1))]
+# Block 0 = main app (largest), Block 1 = CLV tracker
+if len(script_blocks) >= 2:
+    clv_block = script_blocks[-1]  # last script block = CLV tracker (block 2)
+    # Functions defined at top level of block 2 (not inside INIT)
+    clv_fns = set(re.findall(r'(?:^|\n)\s*(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(', clv_block))
+    clv_fns.update(re.findall(r'(?:^|\n)\s*var\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?function', clv_block))
+    # Find _exp array in main_js
+    exp_match = re.search(r'const\s+_exp\s*=\s*\[([\s\S]*?)\];', main_js)
+    if exp_match:
+        exp_content = exp_match.group(1)
+        exp_names = set(re.findall(r'\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b', exp_content))
+        cross_refs = exp_names & clv_fns
+        if cross_refs:
+            err(f"_exp array references script-block-2 functions: {sorted(cross_refs)} — ReferenceError crashes INIT, engine goes dead")
+        else:
+            ok(f'_exp array has no cross-script-block references ({len(exp_names)} names checked vs {len(clv_fns)} block-2 fns)')
+    else:
+        warn('Could not locate _exp array for cross-block reference check')
+else:
+    warn('Could not find 2+ script blocks for cross-block reference check')
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 total  = len(passed) + len(warnings) + len(errors)
