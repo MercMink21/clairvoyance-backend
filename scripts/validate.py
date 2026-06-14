@@ -89,6 +89,14 @@ if op == cl:
 else:
     err(f'BRACE MISMATCH: {op} open vs {cl} close (diff={op-cl}) — function not closed')
 
+# Check: string-literal followed by ++ identifier — left-hand-side SyntaxError
+# e.g. emoji-removal scripts can strip 'm.hf+' leaving "'text'++variable"
+_dpp = re.findall(r"'\+\+[a-zA-Z_$]", main_js)
+if _dpp:
+    err(f"INVALID POSTFIX ++ ON STRING LITERAL: {len(_dpp)} occurrence(s) of '++<identifier> — SyntaxError crashes entire engine (strips all function hoisting)")
+else:
+    ok("No invalid string++identifier patterns")
+
 lp = len(re.findall(r'\blet LOCKED_PROPS\b', main_js))
 if lp == 1:
     ok('LOCKED_PROPS declared once')
