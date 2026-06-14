@@ -13117,12 +13117,12 @@ function renderTrackRecord(){
     return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
   };
   const periods=[
-    {key:'TODAY',      label:'TODAY',      sub:todayStr,      pC:'#00f0ff', perf:cP(allBets.filter(p=>p.date===todayStr))},
-    {key:'YESTERDAY',  label:'YESTERDAY',  sub:ydStr,         pC:'#00f0ff', perf:cP(allBets.filter(p=>p.date===ydStr))},
-    {key:'ROLLING 7D', label:'ROLLING 7D', sub:'',            pC:'#bbff00', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
-    {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'rgba(0,240,255,.7)', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
-    {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'rgba(240,0,255,.8)', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
-    {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'rgba(255,215,0,.9)', perf:cP(allBets)},
+    {key:'TODAY',      label:'TODAY',      sub:todayStr,      pC:'#c000ff', perf:cP(allBets.filter(p=>p.date===todayStr))},
+    {key:'YESTERDAY',  label:'YESTERDAY',  sub:ydStr,         pC:'#c000ff', perf:cP(allBets.filter(p=>p.date===ydStr))},
+    {key:'ROLLING 7D', label:'ROLLING 7D', sub:'',            pC:'#c000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
+    {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'#c000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
+    {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#c000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
+    {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#c000ff', perf:cP(allBets)},
   ];
   window._cvPerfPeriods=periods;
 
@@ -13199,9 +13199,81 @@ function renderTrackRecord(){
     </div>
   </div>
 
-  <div style="display:flex;gap:8px;margin-bottom:16px">
+  <div style="display:flex;gap:8px;margin-bottom:24px">
     <button onclick="_genCombinedTrackGraphic()" style="flex:1;padding:10px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.35);color:#00f0ff;font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">EXPORT 1080×1080 PNG</button>
     <button onclick="navigator.share&&navigator.share({title:'Clairvoyance Track Record',text:'ALL TIME: ${allPerf.w}W-${allPerf.l}L ${allPerf.pct!=null?((allPerf.pct*100).toFixed(1)+'%'):''} · ${allPerf.units>=0?'+':''}${allPerf.units.toFixed(1)}u · Verified by Clairvoyance Engine',url:'${shareUrl}'}).catch(()=>{});!navigator.share&&navigator.clipboard?.writeText('ALL TIME: ${allPerf.w}W-${allPerf.l}L · ${allPerf.pct!=null?((allPerf.pct*100).toFixed(1)+'%'):''} · ${allPerf.units>=0?'+':''}${allPerf.units.toFixed(1)}u · ${shareUrl}').then(()=>toast('// COPIED RECORD TO CLIPBOARD'))" style="flex:1;padding:10px;background:rgba(192,0,255,.08);border:1px solid rgba(192,0,255,.35);color:#c000ff;font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">↗ SHARE RECORD</button>
+  </div>
+
+  <!-- ── SPORT / LEAGUE PERFORMANCE CARD ── -->
+  <div style="font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3px;color:#c000ff;margin-bottom:10px;text-shadow:0 0 8px #c000ff">// SPORT PERFORMANCE CARD — SOCIAL EXPORT</div>
+  <div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.45);margin-bottom:10px">Breakdown by sport/league · 1080×1080 PNG</div>
+
+  <!-- Period selector -->
+  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:10px;border-radius:2px;cursor:pointer;border:1px solid rgba(192,0,255,.35);background:rgba(192,0,255,.06);color:#c000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+  </div>
+
+  <div style="aspect-ratio:1/1;background:${cfBg};border:1px solid rgba(192,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
+    <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>
+    <!-- Header -->
+    <div style="position:relative;text-align:center;margin-bottom:8px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;color:#c000ff;text-shadow:0 0 14px #c000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
+      <div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.4);letter-spacing:3px;margin-top:1px">SPORT PERFORMANCE</div>
+    </div>
+    <!-- Divider -->
+    <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(192,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
+    <!-- Column headers -->
+    <div style="display:grid;grid-template-columns:2fr 1fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
+      <div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">FRAME</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
+      <div style="text-align:right;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
+    </div>
+    <!-- Sport rows -->
+    <div style="flex:1;position:relative">${(()=>{
+      const activePeriod=renderTrackRecord._sportPeriod||'ALL TIME';
+      const per=periods.find(p=>p.key===activePeriod)||periods[periods.length-1];
+      const periodBets=activePeriod==='TODAY'?allBets.filter(b=>b.date===todayStr):
+        activePeriod==='YESTERDAY'?allBets.filter(b=>b.date===ydStr):
+        activePeriod==='ROLLING 7D'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
+        activePeriod==='THIS MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
+        activePeriod==='LAST MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
+        allBets;
+      const frameLabel=per.sub||per.label;
+      const bySport={};
+      periodBets.forEach(b=>{const s=_normSport(b)||'OTHER';if(!bySport[s])bySport[s]=[];bySport[s].push(b);});
+      const sportList=Object.keys(bySport).sort((a,b)=>bySport[b].length-bySport[a].length);
+      window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel};
+      if(!sportList.length)return'<div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3);padding:8px 0">NO DATA FOR THIS PERIOD</div>';
+      return sportList.slice(0,8).map(s=>{
+        const p=cP(bySport[s]);
+        const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
+        const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+        return'<div style="display:grid;grid-template-columns:2fr 1fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
+          +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:8px;letter-spacing:1.5px;color:#c000ff;font-weight:700;text-shadow:0 0 6px #c000ff88">'+s+'</div></div>'
+          +'<div style="text-align:center"><div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.45)">'+frameLabel+'</div></div>'
+          +(p.n>0
+            ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
+             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:'+rC(p.pct)+'">'+pctStr+'</div></div>'
+             +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:'+uC(p.units)+'">'+unitStr+'</div></div>'
+            :'<div style="grid-column:3/-1;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">NO DATA</div>')
+          +'</div>';
+      }).join('');
+    })()}</div>
+    <!-- Footer -->
+    <div style="position:relative;margin-top:8px">
+      <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(192,0,255,.4),transparent);margin-bottom:6px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">𝕏 @clairvoyanceeng</span>
+        <span style="font-family:var(--mono);font-size:6px;color:rgba(180,140,255,.35);letter-spacing:1px">${todayStr}</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">IG @clairvoyanceengine</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button onclick="_genSportPerfGraphic()" style="flex:1;padding:10px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.35);color:#00f0ff;font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">EXPORT SPORT CARD PNG</button>
   </div>`;
 }
 
@@ -13295,6 +13367,80 @@ async function _genCombinedTrackGraphic(){
   a.download='cv-track-record-'+today().replace(/-/g,'')+'.png';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   toast('// TRACK RECORD SAVED');
+}
+
+async function _genSportPerfGraphic(){
+  const d=window._cvSportPeriodData;
+  if(!d||!d.sportList||!d.sportList.length){toast('// RENDER SPORT CARD FIRST');return;}
+  toast('// RENDERING SPORT CARD 1080×1080...');
+  const W=1080,H=1080;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
+  const rC=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
+  const uC=u=>u>=0?'#00f0ff':'#ff2090';
+  const cP=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};};
+
+  // Header
+  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#c000ff',22,'center');
+  _glowText(ctx,'SPORT PERFORMANCE',W/2,108,'600 15px "Courier New"','rgba(220,190,255,.5)',5,'center');
+
+  // Divider
+  ctx.save();const hd=ctx.createLinearGradient(80,128,W-80,128);
+  hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(192,0,255,.7)');hd.addColorStop(1,'transparent');
+  ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#c000ff';ctx.shadowBlur=8;
+  ctx.beginPath();ctx.moveTo(80,128);ctx.lineTo(W-80,128);ctx.stroke();ctx.restore();
+
+  // Column headers: SPORT | FRAME | RECORD | WIN% | UNITS
+  const cX={sport:80,frame:340,record:520,pct:700,units:W-80};
+  const hdrY=162;
+  ctx.globalAlpha=.45;
+  _glowText(ctx,'SPORT / LEAGUE',cX.sport,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'TIME FRAME',cX.frame,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'right');
+  ctx.globalAlpha=1;
+
+  // Header underline
+  ctx.save();ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(80,176);ctx.lineTo(W-80,176);ctx.stroke();ctx.restore();
+
+  const sports=d.sportList.slice(0,8);
+  const rowH=Math.min(112,(H-290)/sports.length);
+  const startY=194;
+
+  sports.forEach((s,i)=>{
+    const p=cP(d.bySport[s]);
+    const y=startY+i*rowH+rowH/2;
+    _glowText(ctx,s,cX.sport,y-6,'700 20px "Orbitron"','#c000ff',14,'left');
+    _glowText(ctx,d.frameLabel,cX.frame,y+2,'400 12px "Courier New"','rgba(220,190,255,.4)',3,'center');
+    if(p.n>0){
+      _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 18px "Orbitron"','rgba(230,235,255,.9)',6,'center');
+      const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
+      _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.pct),10,'center');
+      const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+      _glowText(ctx,unitStr,cX.units,y,'700 20px "Orbitron"',uC(p.units),12,'right');
+    } else {
+      _glowText(ctx,'NO DATA',cX.record,y,'400 14px "Courier New"','rgba(220,190,255,.3)',3,'center');
+    }
+    if(i<sports.length-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();}
+  });
+
+  // Footer
+  const footY=startY+sports.length*rowH+14;
+  ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
+  fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(192,0,255,.4)');fd.addColorStop(1,'transparent');
+  ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
+  _glowText(ctx,'𝕏  @clairvoyanceeng',W/2-100,H-66,'700 15px "Orbitron"','#c000ff',12,'right');
+  _glowText(ctx,'IG  @clairvoyanceengine',W/2+100,H-66,'700 15px "Orbitron"','#c000ff',12,'left');
+  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(192,0,255,.35)',4,'center');
+
+  const url=cv.toDataURL('image/png');
+  const a=document.createElement('a');a.href=url;
+  a.download='cv-sport-perf-'+today().replace(/-/g,'')+'.png';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('// SPORT PERFORMANCE CARD SAVED');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -14476,7 +14622,7 @@ function renderGlobalLiveBets(){
     notifyElitePick,notifySettlement,getCLVData,saveCLVData,logOpeningLine,logClosingLine,renderHotHandTracker,computeStreaks,
     renderCLVTab,getFutures,saveFutures,lockFuture,updateFutureML,settleFuture,renderFuturesTab,
     simulateSeries,renderMonteCarloUI,formatMCResult,renderIntelCards,_renderLeagueCard,exportLeagueCard,
-    shareLeagueCard,renderTrackRecord,_genCombinedTrackGraphic,_normSport,
+    shareLeagueCard,renderTrackRecord,_genCombinedTrackGraphic,_genSportPerfGraphic,_normSport,
     generatePickReasoning,getImpliedProb,getUmpireImpact,
     getRefImpact,fetchESPNNews,fetchESPNInjuries,fetchESPNTransactions,newsCard,injuryCard,
     transactionCard,newsSection,newsLoadingState,newsErrorState,renderNewsAll,renderNewsInjuries,
