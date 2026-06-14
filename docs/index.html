@@ -12790,7 +12790,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     // Row 3: sport name in neon purple + date in dim purple
     +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;position:relative">'
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:'+(dispSport.length>8?'14':'20')+'px;font-weight:900;color:#c000ff;text-shadow:0 0 12px #c000ff;line-height:1">'+dispSport+'</span>'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:500;color:rgba(220,190,255,.5)">'+dateStr+'</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:#00f0ff;text-shadow:0 0 6px #00f0ff88">'+dateStr+'</span>'
     +'</div>'
     +'<div style="height:1px;background:linear-gradient(90deg,rgba(192,0,255,.5),transparent);margin-bottom:4px;position:relative"></div>'
     // Pick rows
@@ -12834,8 +12834,8 @@ async function exportLeagueCard(idx){
   // Sport name — neon purple Orbitron
   const sportFontSize=dispSport.length>8?'56px':'72px';
   _glowText(ctx,dispSport,W/2,308,'900 '+sportFontSize+' "Orbitron"','#c000ff',28,'center');
-  // Date — dim purple
-  _glowText(ctx,dateStr,W/2,348,'500 16px "Orbitron"','rgba(220,190,255,.55)',5,'center');
+  // Date — neon cyan
+  _glowText(ctx,dateStr,W/2,348,'600 16px "Orbitron"','#00f0ff',10,'center');
   // Divider
   ctx.save();const dg=ctx.createLinearGradient(60,368,W-60,368);
   dg.addColorStop(0,'transparent');dg.addColorStop(.5,'rgba(192,0,255,.5)');dg.addColorStop(1,'transparent');
@@ -13193,7 +13193,6 @@ function renderTrackRecord(){
       <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(192,0,255,.4),transparent);margin-bottom:6px"></div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">𝕏 @clairvoyanceeng</span>
-        <span style="font-family:var(--mono);font-size:6px;color:rgba(180,140,255,.35);letter-spacing:1px">${todayStr}</span>
         <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">IG @clairvoyanceengine</span>
       </div>
     </div>
@@ -13223,9 +13222,8 @@ function renderTrackRecord(){
     <!-- Divider -->
     <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(192,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
     <!-- Column headers -->
-    <div style="display:grid;grid-template-columns:2fr 1fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
-      <div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
-      <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">FRAME</div>
+    <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
+      <div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT / LEAGUE</div>
       <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
       <div style="text-align:center;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
       <div style="text-align:right;font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
@@ -13244,29 +13242,40 @@ function renderTrackRecord(){
       const bySport={};
       periodBets.forEach(b=>{const s=_normSport(b)||'OTHER';if(!bySport[s])bySport[s]=[];bySport[s].push(b);});
       const sportList=Object.keys(bySport).sort((a,b)=>bySport[b].length-bySport[a].length);
-      window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel};
+      const totalP=cP(periodBets);
+      window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel,totalP};
       if(!sportList.length)return'<div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3);padding:8px 0">NO DATA FOR THIS PERIOD</div>';
-      return sportList.slice(0,8).map(s=>{
+      const sportRows=sportList.slice(0,6).map(s=>{
         const p=cP(bySport[s]);
         const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
         const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-        return'<div style="display:grid;grid-template-columns:2fr 1fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
+        return'<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
           +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:8px;letter-spacing:1.5px;color:#c000ff;font-weight:700;text-shadow:0 0 6px #c000ff88">'+s+'</div></div>'
-          +'<div style="text-align:center"><div style="font-family:var(--mono);font-size:7px;color:rgba(220,190,255,.45)">'+frameLabel+'</div></div>'
           +(p.n>0
             ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
              +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:'+rC(p.pct)+'">'+pctStr+'</div></div>'
              +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:'+uC(p.units)+'">'+unitStr+'</div></div>'
-            :'<div style="grid-column:3/-1;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">NO DATA</div>')
+            :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">NO DATA</div>')
           +'</div>';
       }).join('');
+      const tPct=totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
+      const tUnit=(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u';
+      const totalRow='<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:6px 0;border-top:1px solid rgba(192,0,255,.3);margin-top:2px">'
+        +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:8px;letter-spacing:1.5px;color:#00f0ff;font-weight:900;text-shadow:0 0 8px #00f0ff">TOTAL</div>'
+        +'<div style="font-family:var(--mono);font-size:6px;color:rgba(220,190,255,.35)">'+frameLabel+'</div></div>'
+        +(totalP.n>0
+          ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:#00f0ff">'+totalP.w+'W-'+totalP.l+'L</div></div>'
+           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:'+rC(totalP.pct)+'">'+tPct+'</div></div>'
+           +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+uC(totalP.units)+'">'+tUnit+'</div></div>'
+          :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">NO DATA</div>')
+        +'</div>';
+      return sportRows+totalRow;
     })()}</div>
     <!-- Footer -->
     <div style="position:relative;margin-top:8px">
       <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(192,0,255,.4),transparent);margin-bottom:6px"></div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">𝕏 @clairvoyanceeng</span>
-        <span style="font-family:var(--mono);font-size:6px;color:rgba(180,140,255,.35);letter-spacing:1px">${todayStr}</span>
         <span style="font-family:'Orbitron',sans-serif;font-size:7px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">IG @clairvoyanceengine</span>
       </div>
     </div>
@@ -13391,12 +13400,11 @@ async function _genSportPerfGraphic(){
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#c000ff';ctx.shadowBlur=8;
   ctx.beginPath();ctx.moveTo(80,128);ctx.lineTo(W-80,128);ctx.stroke();ctx.restore();
 
-  // Column headers: SPORT | FRAME | RECORD | WIN% | UNITS
-  const cX={sport:80,frame:340,record:520,pct:700,units:W-80};
+  // Column headers: SPORT | RECORD | WIN% | UNITS
+  const cX={sport:80,record:440,pct:670,units:W-80};
   const hdrY=162;
   ctx.globalAlpha=.45;
   _glowText(ctx,'SPORT / LEAGUE',cX.sport,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'left');
-  _glowText(ctx,'TIME FRAME',cX.frame,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'right');
@@ -13406,15 +13414,14 @@ async function _genSportPerfGraphic(){
   ctx.save();ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(80,176);ctx.lineTo(W-80,176);ctx.stroke();ctx.restore();
 
-  const sports=d.sportList.slice(0,8);
-  const rowH=Math.min(112,(H-290)/sports.length);
+  const sports=d.sportList.slice(0,6);
+  const rowH=Math.min(100,(H-360)/Math.max(sports.length+1,1));
   const startY=194;
 
   sports.forEach((s,i)=>{
     const p=cP(d.bySport[s]);
     const y=startY+i*rowH+rowH/2;
-    _glowText(ctx,s,cX.sport,y-6,'700 20px "Orbitron"','#c000ff',14,'left');
-    _glowText(ctx,d.frameLabel,cX.frame,y+2,'400 12px "Courier New"','rgba(220,190,255,.4)',3,'center');
+    _glowText(ctx,s,cX.sport,y,'700 20px "Orbitron"','#c000ff',14,'left');
     if(p.n>0){
       _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 18px "Orbitron"','rgba(230,235,255,.9)',6,'center');
       const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
@@ -13424,11 +13431,24 @@ async function _genSportPerfGraphic(){
     } else {
       _glowText(ctx,'NO DATA',cX.record,y,'400 14px "Courier New"','rgba(220,190,255,.3)',3,'center');
     }
-    if(i<sports.length-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();}
+    ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();
   });
 
+  // TOTAL row
+  const totalY=startY+sports.length*rowH+rowH/2;
+  ctx.save();ctx.strokeStyle='rgba(192,0,255,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,startY+sports.length*rowH);ctx.lineTo(W-80,startY+sports.length*rowH);ctx.stroke();ctx.restore();
+  _glowText(ctx,'TOTAL',cX.sport,totalY,'900 20px "Orbitron"','#00f0ff',14,'left');
+  _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 11px "Courier New"','rgba(220,190,255,.35)',2,'left');
+  if(d.totalP&&d.totalP.n>0){
+    _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 20px "Orbitron"','#00f0ff',10,'center');
+    const tPct=d.totalP.pct!==null?(d.totalP.pct*100).toFixed(1)+'%':'—';
+    _glowText(ctx,tPct,cX.pct,totalY,'700 20px "Orbitron"',rC(d.totalP.pct),12,'center');
+    const tUnit=(d.totalP.units>=0?'+':'')+d.totalP.units.toFixed(1)+'u';
+    _glowText(ctx,tUnit,cX.units,totalY,'700 22px "Orbitron"',uC(d.totalP.units),14,'right');
+  }
+
   // Footer
-  const footY=startY+sports.length*rowH+14;
+  const footY=startY+(sports.length+1)*rowH+20;
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(192,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
