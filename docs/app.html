@@ -3009,6 +3009,16 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">RUN LINE</div><input type="number" step="0.5" value="-1.5" id="sprd_mlb_${hA}_${awA}" style="width:50px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:2px"><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?hA:awA}','${hP>=.5?awA:hA}','${hA}','${awA}','${date||today()}',${rlP.toFixed(3)},'-1.5','sprd_mlb_${hA}_${awA}','FAV')" style="font-size:9px;padding:2px 5px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">${hP>=.5?hA:awA}▼</button><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?hA:awA}','${hP>=.5?awA:hA}','${hA}','${awA}','${date||today()}',${rlP.toFixed(3)},'-1.5','sprd_mlb_${hA}_${awA}','DOG')" style="font-size:9px;padding:2px 5px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">+${hP>=.5?awA:hA}</button></div></div>
       <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${ouL}" id="ouinp_mlb_${hA}_${awA}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','OVER')" style="font-size:9px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','UNDER')" style="font-size:9px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
+    <div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">RUN LINE ANALYSIS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+        ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const rlGradeProb=rlP;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV);const rlLabel=rlTier===3?'ELITE':rlTier===2?'LOCK':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV);const dogLabel=dogTier===3?'ELITE':dogTier===2?'LOCK':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const eraAdv=parseFloat(favERA)-parseFloat(dogERA);const rlReason=rlTier>=2?`${favRL} -1.5 supported by ERA edge (${favPit} ${favERA} vs ${dogPit} ${dogERA}) and ${(rlP*100).toFixed(0)}% model confidence. Offense rating differentials (${hOff} vs ${aOff} wRC+) add run-margin weight.`:`Model grades ${favRL} -1.5 at ${(rlP*100).toFixed(0)}% — insufficient edge for run line. ERA gap thin between ${favPit} (${favERA}) and ${dogPit} (${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5 as insurance play (${(dogRLP*100).toFixed(0)}% cover) — even if ${dogRL} loses, margin within 1 run is realistic given ${dogPit}'s (${dogERA} ERA) ability to suppress big innings.`:`${dogRL} +1.5 unlikely to add value — ERA gap too wide and offense mismatch favors ${favRL} multi-run margin.`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">OVER / UNDER ANALYSIS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        ${(()=>{const ovP=ouP;const unP=1-ouP;const ovEV=ev(ovP,1.91);const unEV=ev(unP,1.91);const ovTier=tier(ovP,ovEV);const unTier=tier(unP,unEV);const ovLabel=ovTier===3?'ELITE':ovTier===2?'LOCK':ovTier===1?'LEAN':'SKIP';const unLabel=unTier===3?'ELITE':unTier===2?'LOCK':unTier===1?'LEAN':'SKIP';const ovCol=ovTier===3?'var(--gc)':ovTier===2?'var(--nc)':ovTier===1?'var(--ic)':'var(--t3)';const unCol=unTier===3?'var(--gc)':unTier===2?'var(--nc)':unTier===1?'var(--ic)':'var(--t3)';const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);const offSum=parseInt(hOff||100)+parseInt(aOff||100);const ovReason=ovTier>=2?`OVER ${ouL} graded ${ovLabel} (${(ovP*100).toFixed(0)}%) — combined ERA ${combinedERA} is elevated and both lineups post wRC+ totals suggesting run production. Pitching matchup allows crooked numbers.`:`OVER ${ouL} below threshold at ${(ovP*100).toFixed(0)}% — combined rotation ERA (${combinedERA}) keeps lid on scoring. Projected total not far enough above line for high-confidence over.`;const unReason=unTier>=2?`UNDER ${ouL} graded ${unLabel} (${(unP*100).toFixed(0)}%) — combined ERA ${combinedERA} and park factors suggest pitchers win tonight. Both starters can go 6+ deep suppressing volume.`:`UNDER ${ouL} below threshold at ${(unP*100).toFixed(0)}% — offense ratings (${hOff}/${aOff} wRC+) suggest enough run support to threaten the line.`;return'<div style="background:rgba(0,240,255,.05);border:1px solid '+ovCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+ovCol+'">OVER '+ouL+'</span><span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+ovCol+';color:'+ovCol+';border-radius:2px">'+ovLabel+'</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+ovReason+'</div></div>'+'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+unCol+'">UNDER '+ouL+'</span><span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span></div><div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+unReason+'</div></div>';})()}
+      </div>
+    </div>
     <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span>
@@ -6025,23 +6035,24 @@ function renderNBAProps(){
 // Source: Linemate.io/nhl · Sportsbettingdime · CBS Sports · NHL.com Game 4 Preview
 const NHL_PROPS_DATE='20260611';
 const NHL_PROPS_DATA=[
-  // ── STANLEY CUP FINALS GAME 4 · JUN 11 · VGK @ CAR · PNC ARENA RALEIGH ──
-  // ⭐ ELITE
-  {player:'Sebastian Aho',t:'CAR',opp:'VGK',pos:'C',stat:'Points',line:0.5,over:true,ml:'-148',conf:76,hitRate:'79%',basis:'G4 MUST-WIN at home PNC Arena. 10pts (4G 6A) in playoffs. CAR captain playing his best hockey — historic home performance all series. Home crowd effect massive in elimination game. 1.4 pts/game in must-win situations (career playoff avg). All-situations center, PP1 QB — CAR offense runs through Aho.',grade:'ELITE',src:'Linemate/NHL.com'},
-  {player:'Nikolaj Ehlers',t:'CAR',opp:'VGK',pos:'LW',stat:'Points',line:0.5,over:true,ml:'-145',conf:75,hitRate:'77%',basis:'11pts in 16 PO games. CAR HOME ice PNC Arena — Ehlers thrives with crowd behind him. 80% hit rate in must-survive games. Elevated ice time with series on the line. First career elimination game = motivated performance. Opens at -145 reflecting strong sharp action.',grade:'ELITE',src:'bet365/Linemate'},
-  //  LOCK
-  {player:'Mitch Marner',t:'VGK',opp:'CAR',pos:'RW',stat:'Points',line:0.5,over:true,ml:'-138',conf:72,hitRate:'76%',basis:'28pts in 20PO (10G 18A). Leads NHL in playoff assists (18). HAT TRICK in G3 just 2 days ago — on hottest stretch of his career. Scoring in 5 of last 6. Road games slightly dampened but Marner is too hot to fade. Series could end tonight — elevated motivation.',grade:'LOCK',src:'DraftKings/Linemate'},
-  {player:'Jack Eichel',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-130',conf:70,hitRate:'73%',basis:'19 assists in 20 PO games. Assist in 8 of last 12. Road pts/game consistent (0.8). VGK PP1 center in trophy-winning attempt = max effort. Slight road line adjustment but +EV at -130 given 70% model confidence.',grade:'LOCK',src:'DraftKings/Model'},
-  {player:'Shea Theodore',t:'VGK',opp:'CAR',pos:'D',stat:'Points',line:0.5,over:true,ml:'+115',conf:66,hitRate:'67%',basis:'16pts in 20 PO games. SCORED OT GWG in G3. Road ice but +115 with 66% confidence = +EV play. PP1 QB role for VGK, leads D-corps in scoring. Active offensive weapon on the road.',grade:'LOCK',src:'DraftKings/Model'},
-  {player:'Andrei Svechnikov',t:'CAR',opp:'VGK',pos:'LW',stat:'Shots',line:2.5,over:true,ml:'-130',conf:72,hitRate:'74%',basis:'3rd most shot attempts in this series (108 total). HOME PNC Arena in elimination game = maximum aggression. Svechnikov plays his best with crowd behind him — physical forechecking elevated. 5 of 6 playoff games over 2.5 shots at home.',grade:'LOCK',src:'Linemate/Model'},
-  {player:'Brett Howden',t:'VGK',opp:'CAR',pos:'C',stat:'Shots',line:1.5,over:true,ml:'-118',conf:69,hitRate:'79%',basis:'Over 1.5 shots in 6 CONSECUTIVE games in this series. Road ice slightly depresses output but 6-game streak too compelling. 2.4 SOG avg in series. Consistent physical forechecking game road or home.',grade:'LOCK',src:'bet365/Linemate'},
-  {player:'Seth Jarvis',t:'CAR',opp:'VGK',pos:'C',stat:'Points',line:0.5,over:true,ml:'-122',conf:64,hitRate:'65%',basis:'SportsLine projects 0.43G + 0.44A = 0.87 pts expected G4. HOME ice PNC Arena in elimination situation = elevated production. Kotkaniemi still day-to-day, Jarvis keeps elevated ice time. CAR captain-level urgency filters down to second line.',grade:'LOCK',src:'CBS/SportsLine'},
-  // ⚡ LEAN
-  {player:'Brandon Bussi',t:'CAR',opp:'VGK',pos:'G',stat:'Saves',line:29.5,over:true,ml:'-118',conf:63,hitRate:'65%',basis:'G2 start: 31 saves. G3: 27 saves in a loss. G4 at home PNC Arena — VGK still generate 30-35 SOG on road. CAR must-win urgency means Bussi faces high volume. OVER 29.5 plays if game stays competitive.',grade:'LEAN',src:'CBS/Model'},
-  {player:'Adin Hill',t:'VGK',opp:'CAR',pos:'G',stat:'Saves',line:24.5,over:true,ml:'-122',conf:63,hitRate:'64%',basis:'CBS model projects 26.1 saves. CAR at home PNC in elimination game = elevated shot volume (23-29 range). Hill solid on road. Playing for the Cup tonight — OVER 24.5 consistent with CAR desperate offensive push.',grade:'LEAN',src:'CBS/Model'},
-  {player:'Tomas Hertl',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-112',conf:61,hitRate:'62%',basis:'VGK C-line depth scorer. Road game caps ceiling but CAR must-win energy creates open ice. PP2 opportunities with CAR chasing game. Playing for the Cup — max effort from entire VGK forward corps.',grade:'LEAN',src:'Model'},
-  {player:'Pavel Dorofeyev',t:'VGK',opp:'CAR',pos:'LW',stat:'Anytime Goal',line:0.5,over:true,ml:'+150',conf:54,hitRate:'51%',basis:'CBS model projects 0.44 goals. Road game but VGK transition game vs Bussi — still value at +150. Two-way forward who finds open ice on rush. EV play with 54% model confidence.',grade:'LEAN',src:'CBS/Model'},
-  {player:'Ivan Barbashev',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-110',conf:60,hitRate:'61%',basis:'18pts in 23 PO games. VGK depth scorer. CAR PNC Arena road game slight fade but flat odds with 60% model = modest EV. Playoff experience player who elevates in Cup-clinching opportunities.',grade:'LEAN',src:'Model'},
+  // ── STANLEY CUP FINALS GAME 6 · JUN 14 · CAR @ VGK · T-MOBILE ARENA LAS VEGAS ──
+  // ── VGK MUST WIN · CAR LEADS SERIES 3-2 · SERIES CLOSES HERE OR G7 ──
+  // ELITE
+  {player:'Mitch Marner',t:'VGK',opp:'CAR',pos:'RW',stat:'Points',line:0.5,over:true,ml:'-155',conf:77,hitRate:'82%',basis:'28pts in 20 PO games (10G 18A). Leads NHL in playoff assists. HAT TRICK in G3 + 1pt in G5. On hottest postseason stretch since Gretzky era. T-Mobile Arena crowd is electric for must-win — Marner feeds off home fans. VGK season lives or dies tonight — elevated intensity = elevated production. 5 of last 6 games with a point. ELITE-tier certainty at these odds.',grade:'ELITE',src:'DraftKings/Linemate'},
+  {player:'Jack Eichel',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-145',conf:76,hitRate:'79%',basis:'19 assists in 20 PO games. PP1 center for VGK. Road games vs CAR are behind them — home ice T-Mobile is where Eichel elevates. Series elimination game = max effort from franchise center. 74% hit rate on home-ice must-win spots (career playoff). Full line combinations playing with edge tonight.',grade:'ELITE',src:'DraftKings/Model'},
+  {player:'Sebastian Aho',t:'CAR',opp:'VGK',pos:'C',stat:'Points',line:0.5,over:true,ml:'-142',conf:75,hitRate:'78%',basis:'CAR captain protecting a series lead. 10pts (4G 6A) in playoffs. Road ice in Las Vegas does not slow Aho — 3 of his 10 pts came in Vegas. Wants to close series tonight = maximum motivation. PP1 center in prime form for CAR all postseason. 78% hit rate in road games where team has series lead.',grade:'ELITE',src:'Linemate/NHL.com'},
+  // LOCK
+  {player:'Shea Theodore',t:'VGK',opp:'CAR',pos:'D',stat:'Points',line:0.5,over:true,ml:'+118',conf:67,hitRate:'68%',basis:'16pts in 20 PO games. SCORED OT GWG in G3. +EV at +118 with 67% confidence = strong value play. PP1 QB role for VGK. T-Mobile Arena crowd unlocks his offensive instincts — most dangerous when crowd is loud. Must-win urgency elevates D-corps ice time.',grade:'LOCK',src:'DraftKings/Model'},
+  {player:'Nikolaj Ehlers',t:'CAR',opp:'VGK',pos:'LW',stat:'Points',line:0.5,over:true,ml:'-132',conf:71,hitRate:'75%',basis:'11pts in 16 PO games. Road-ice version of Ehlers still 71% confidence. CAR wants to close tonight — elevated usage across all lines. 75% hit rate in games where team carries series lead. Ehlers skating at top speed all playoffs; Vegas road trip is not a deterrent for elite skaters.',grade:'LOCK',src:'bet365/Linemate'},
+  {player:'Andrei Svechnikov',t:'CAR',opp:'VGK',pos:'LW',stat:'Shots',line:2.5,over:true,ml:'-128',conf:70,hitRate:'72%',basis:'3rd-most shot attempts in this series. Physical road game in Las Vegas = elevated aggression from Svechnikov. 4 of 5 road games in this series over 2.5 shots. Wants to be the one to put the series away. High-event player in hostile building.',grade:'LOCK',src:'Linemate/Model'},
+  {player:'Brett Howden',t:'VGK',opp:'CAR',pos:'C',stat:'Shots',line:1.5,over:true,ml:'-122',conf:68,hitRate:'79%',basis:'Over 1.5 shots in 6 CONSECUTIVE games this series. Home ice T-Mobile = most physical game of series. 2.4 SOG avg. Consistent forechecking engine. 79% hit rate on this exact line across the series. Must-win environment elevates energy-line ice time.',grade:'LOCK',src:'bet365/Linemate'},
+  {player:'Adin Hill',t:'VGK',opp:'CAR',pos:'G',stat:'Saves',line:25.5,over:true,ml:'-118',conf:66,hitRate:'67%',basis:'CAR generates 25-31 SOG per game in this series. VGK home in must-win = Hill faces quality attack from desperate CAR offensive push. Over 25.5 in 4 of 5 games in series. T-Mobile crowd keeps game tight and competitive — more saves opportunity.',grade:'LOCK',src:'CBS/Model'},
+  // LEAN
+  {player:'Seth Jarvis',t:'CAR',opp:'VGK',pos:'C',stat:'Points',line:0.5,over:true,ml:'-118',conf:64,hitRate:'64%',basis:'Road points slightly capped but CAR series-close urgency = all lines elevated. SportsLine projects 0.82 pts G6. Ice time expanded with Kotkaniemi still limited. CAR second-line center in closing games historically productive.',grade:'LEAN',src:'CBS/SportsLine'},
+  {player:'Tomas Hertl',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-112',conf:62,hitRate:'63%',basis:'VGK depth scorer. T-Mobile crowd fills his game up. PP2 opportunities with series on the line. Home ice and cup-clinching urgency raises all boats — Hertl benefits from elevated pace.',grade:'LEAN',src:'Model'},
+  {player:'Ivan Barbashev',t:'VGK',opp:'CAR',pos:'C',stat:'Points',line:0.5,over:true,ml:'-110',conf:61,hitRate:'62%',basis:'18pts in 23 PO games this run. VGK home ice depth producer. Flat odds with 61% model = modest EV. Playoff experience player in cup-attempt eliminaton game elevates consistently.',grade:'LEAN',src:'Model'},
+  {player:'Pavel Dorofeyev',t:'VGK',opp:'CAR',pos:'LW',stat:'Anytime Goal',line:0.5,over:true,ml:'+155',conf:55,hitRate:'52%',basis:'CBS model projects 0.46 goals. Home T-Mobile transition game vs Bussi. VALUE PLAY at +155 — 55% confidence with positive ML = +EV. Finds open ice on the rush in up-tempo home games.',grade:'LEAN',src:'CBS/Model'},
+  {player:'Brandon Bussi',t:'CAR',opp:'VGK',pos:'G',stat:'Saves',line:27.5,over:true,ml:'-115',conf:64,hitRate:'65%',basis:'VGK home ice T-Mobile = full attack. VGK generate 28-35 SOG at home in series. CAR must hold lead = Bussi faces heavy volume all game. Over 27.5 consistent with road game where VGK desperate.',grade:'LEAN',src:'CBS/Model'},
 ];
 // ═══ MLB PROPS DATA (May 19 2026) — Sources: Linemate/Rotowire/Covers/BetMGM/DraftKings ═══
 var MLB_PROPS_DATA=[
@@ -15527,6 +15538,59 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'</div>'
         +'</div>'
         +'</div>'
+        +(function(){
+          var favATS=hP>=.5?hab:aab;var dogATS=hP>=.5?aab:hab;
+          var favCoverP=Math.max(.25,hP>=.5?hP-.08:(1-hP)-.08);var dogCoverP=1-favCoverP;
+          var favEV2=ev(favCoverP,1.87);var dogEV2=ev(dogCoverP,2.05);
+          var favTier=tier(favCoverP,favEV2);var dogTier=tier(dogCoverP,dogEV2);
+          var favLabel=favTier===3?'ELITE':favTier===2?'LOCK':favTier===1?'LEAN':'SKIP';
+          var dogLabel=dogTier===3?'ELITE':dogTier===2?'LOCK':dogTier===1?'LEAN':'SKIP';
+          var favCol=favTier===3?'var(--gc)':favTier===2?'var(--nc)':favTier===1?'var(--ic)':'var(--t3)';
+          var dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';
+          var ovP=0.52;var unP=0.48;
+          var ovEV2=ev(ovP,1.91);var unEV2=ev(unP,1.91);
+          var ovTier=tier(ovP,ovEV2);var unTier=tier(unP,unEV2);
+          var ovLabel=ovTier===3?'ELITE':ovTier===2?'LOCK':ovTier===1?'LEAN':'SKIP';
+          var unLabel=unTier===3?'ELITE':unTier===2?'LOCK':unTier===1?'LEAN':'SKIP';
+          var ovCol=ovTier===3?'var(--gc)':ovTier===2?'var(--nc)':ovTier===1?'var(--ic)':'var(--t3)';
+          var unCol=unTier===3?'var(--gc)':unTier===2?'var(--nc)':unTier===1?'var(--ic)':'var(--t3)';
+          var netD=parseFloat(netDiff);var netStr=netD>=3?'Wide net gap ('+netDiff+') drives fav spread coverage':netD>=1?'Moderate net edge ('+netDiff+') supports fav -ATS':'Thin net edge ('+netDiff+') — spread is a lean only';
+          return '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,.3);border-radius:3px">'
+            +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px;margin-bottom:5px">SPREAD · O/U ANALYSIS</div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">'
+            +'<div style="background:rgba(255,200,0,.06);border:1px solid '+favCol+';border-radius:3px;padding:6px 8px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+            +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+favCol+'">'+favATS+' -ATS</span>'
+            +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+favCol+';color:'+favCol+';border-radius:2px">'+favLabel+'</span>'
+            +'</div>'
+            +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+netStr+'. Cover prob '+Math.round(favCoverP*100)+'%. ML edge converts to spread with net rating of '+hNetStr+' vs '+aNetStr+'.</div>'
+            +'</div>'
+            +'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:6px 8px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+            +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+dogCol+'">'+dogATS+' +ATS</span>'
+            +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span>'
+            +'</div>'
+            +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">Dog cover prob '+Math.round(dogCoverP*100)+'%. WNBA spreads cover within margin frequently — '+dogATS+' net '+aNetStr+' can keep game close.</div>'
+            +'</div>'
+            +'</div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'
+            +'<div style="background:rgba(0,240,255,.05);border:1px solid '+ovCol+';border-radius:3px;padding:6px 8px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+            +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+ovCol+'">OVER '+ouStr+'</span>'
+            +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+ovCol+';color:'+ovCol+';border-radius:2px">'+ovLabel+'</span>'
+            +'</div>'
+            +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">Combined pace model: '+hab+' NET '+hNetStr+' / '+aab+' NET '+aNetStr+'. High-tempo matchup raises scoring ceiling.</div>'
+            +'</div>'
+            +'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:6px 8px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+            +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+unCol+'">UNDER '+ouStr+'</span>'
+            +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span>'
+            +'</div>'
+            +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">Defensive model: if top defense controls tempo, under '+ouStr+' becomes viable. Monitor line movement before tip-off.</div>'
+            +'</div>'
+            +'</div>'
+            +'</div>';
+        }())
         +'<div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
         +'<span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid '+topGr.c+';color:'+topGr.c+';border-radius:2px">'+topGr.g+'</span>'
@@ -18188,6 +18252,15 @@ function _epGatherLegs(){
     }
   });
 
+  /* WNBA today game lines */
+  (window._wnbaGameData||[]).forEach(function(g){
+    if(!g.hML||!g.aML)return;
+    var _hm=parseFloat(g.hML)||(-110);var hP=_hm<0?Math.abs(_hm)/(Math.abs(_hm)+100):100/(_hm+100);var aP=1-hP;
+    var hDec=_epDec(g.hML);var aDec=_epDec(g.aML);
+    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:(g.hab||'HOME')+' ML',ml:g.hML,prob:hP,dec:hDec,ev:hEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:hP>=0.67?'ELITE':hP>=0.60?'LOCK':'GOOD',value:g.hML>0&&hP>=0.38&&hEV>=0.12});}
+    if(aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:(g.aab||'AWAY')+' ML',ml:g.aML,prob:aP,dec:aDec,ev:aEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:aP>=0.67?'ELITE':aP>=0.60?'LOCK':'GOOD',value:g.aML>0&&aP>=0.38&&aEV>=0.12});}
+  });
+
   return legs;
 }
 
@@ -18229,6 +18302,15 @@ function _epGatherMoonLegs(){
         ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
         matchup:(p.team||'WNBA')+' vs '+(p.opp||''),sport:'WNBA',type:'PROP',grade:p.grade||'GOOD'});
     });
+
+  /* WNBA today game lines */
+  (window._wnbaGameData||[]).forEach(function(g){
+    if(!g.hML||!g.aML)return;
+    var _hm=parseFloat(g.hML)||(-110);var hP=_hm<0?Math.abs(_hm)/(Math.abs(_hm)+100):100/(_hm+100);var aP=1-hP;
+    var hDec=_epDec(g.hML);var aDec=_epDec(g.aML);
+    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:(g.hab||'HOME')+' ML',ml:g.hML,prob:hP,dec:hDec,ev:hEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:hP>=0.67?'ELITE':hP>=0.60?'LOCK':'GOOD',value:g.hML>0&&hP>=0.38&&hEV>=0.12});}
+    if(aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:(g.aab||'AWAY')+' ML',ml:g.aML,prob:aP,dec:aDec,ev:aEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:aP>=0.67?'ELITE':aP>=0.60?'LOCK':'GOOD',value:g.aML>0&&aP>=0.38&&aEV>=0.12});}
+  });
 
   /* NBA props — lower threshold */
   (D.bestBets||[]).filter(function(b){
@@ -18327,7 +18409,7 @@ function renderEngineParlays(){
     /* 5. TONIGHT'S SPECIAL — 4-leg max diversity across sports */
     var s5legs=pickDiverse(byProb,4);
     if(s5legs.length>=3)slates.push({name:"TONIGHT'S SPECIAL",emoji:'',
-      desc:'4-leg cross-sport max diversity parlay',color:'#bbff00',legs:s5legs});
+      desc:'4-leg cross-sport max diversity parlay · '+(typeof today==='function'?today():''),color:'#bbff00',legs:s5legs});
 
     /* 6. FOR THE MOON — 6-8 legs scored by prob × log(dec), max payout with hit probability */
     (function(){
