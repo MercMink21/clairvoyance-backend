@@ -12906,7 +12906,8 @@ function renderIntelCards(tier){
   // Filter by tier
   let moves=allPending.map(toMove);
   if(t==='base')moves=moves.filter(m=>!m.isProp);
-  moves=[...moves,...bestBets.map(bbToMove)];
+  if(t==='insider')moves=moves.filter(m=>m.isProp);
+  moves=[...moves,...(t==='base'?bestBets.map(bbToMove):[])];
 
   // Group by sport
   const bySport={};
@@ -12915,7 +12916,7 @@ function renderIntelCards(tier){
 
   const tierMeta={
     base:{label:'BASE',title:'Base Intelligence Brief',desc:'Game lines only — ML, spread & O/U per sport',color:'#00f0ff',bg:'rgba(0,240,255,.08)',border:'rgba(0,240,255,.3)'},
-    insider:{label:'INSIDER',title:'Insider Intelligence Brief',desc:'Full coverage — game lines + player props',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
+    insider:{label:'INSIDER',title:'Insider Intelligence Brief',desc:'Player props only · daily player prop analysis',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
   };
   const tm=tierMeta[t]||tierMeta.base;
 
@@ -12960,15 +12961,15 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   const maxRows=5;
   const rows=moves.slice(0,maxRows).map(m=>{
     const c=_lcGrade(m.grade);
+    const pickClr=m.isProp?'#00f0ff':'#c000ff';
     return'<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
-      // Grade pill per pick (no top-right badge)
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6px;font-weight:700;padding:1px 3px;border:1px solid '+c+';color:'+c+';border-radius:1px;min-width:26px;text-align:center;flex-shrink:0;letter-spacing:.5px">'+m.grade+'</span>'
       +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7.5px;font-weight:700;color:'+c+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7.5px;font-weight:700;color:'+pickClr+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
         +'<div style="font-family:\'Orbitron\',sans-serif;font-size:6px;font-weight:400;color:rgba(220,190,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.game+'</div>'
       +'</div>'
       +'<div style="text-align:right;flex-shrink:0;line-height:1.2">'
-        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:'+c+'">'+m.prob+'%</div>'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:'+pickClr+'">'+m.prob+'%</div>'
       +'</div>'
     +'</div>';
   }).join('');
@@ -12980,20 +12981,21 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     +'<div style="position:relative;margin-bottom:1px;text-align:center">'
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:900;color:#c000ff;text-shadow:0 0 10px #c000ff,0 0 22px #8800cc;letter-spacing:1px">CLAIRVOYANCE</span>'
     +'</div>'
-    // Row 2: card tier title in neon cyan, centered
-    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:#00f0ff;text-shadow:0 0 8px #00f0ff88;letter-spacing:.5px;margin-bottom:3px;position:relative;text-align:center">'+cardTitle+'</div>'
-    // Row 3: sport name in neon purple + date in dim purple
+    // Row 2: card tier title in dim grey/purple
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:rgba(220,190,255,.4);letter-spacing:.5px;margin-bottom:3px;position:relative;text-align:center">'+cardTitle+'</div>'
+    // Row 3: sport name in neon purple + date in neon purple
     +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;position:relative">'
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:'+(dispSport.length>8?'14':'20')+'px;font-weight:900;color:#c000ff;text-shadow:0 0 12px #c000ff;line-height:1">'+dispSport+'</span>'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:#00f0ff;text-shadow:0 0 6px #00f0ff88">'+dateStr+'</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:600;color:#c000ff;text-shadow:0 0 6px #c000ff88">'+dateStr+'</span>'
     +'</div>'
     +'<div style="height:1px;background:linear-gradient(90deg,rgba(192,0,255,.5),transparent);margin-bottom:4px;position:relative"></div>'
     // Pick rows
     +'<div style="flex:1;overflow:hidden;position:relative">'+rows+'</div>'
     // Social handles footer
     +'<div style="position:relative;margin-top:5px;border-top:1px solid rgba(192,0,255,.2);padding-top:4px;display:flex;justify-content:space-between;align-items:center">'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">𝕏 @ClairvoyanceEng</span>'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">⬡ @clairvoyanceengine</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">X @clairvoyanceeng</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">clairvoyanceengine.info</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6.5px;font-weight:700;color:#c000ff;text-shadow:0 0 8px #c000ff">IG @clairvoyanceengine</span>'
     +'</div>'
     // Export/share buttons
     +'<div style="display:flex;gap:5px;margin-top:5px;position:relative">'
@@ -13017,8 +13019,8 @@ async function exportLeagueCard(idx){
   const dateStr=moves[0]?.date||today();
   // CLAIRVOYANCE — neon purple Orbitron header
   _glowText(ctx,'CLAIRVOYANCE',W/2,62,'900 42px "Orbitron"','#c000ff',22,'center');
-  // Card tier title — neon cyan, smaller Orbitron
-  _glowText(ctx,tm.title,W/2,98,'600 18px "Orbitron"','#00f0ff',10,'center');
+  // Card tier title — dim grey/purple
+  _glowText(ctx,tm.title,W/2,98,'600 18px "Orbitron"','rgba(220,190,255,.55)',4,'center');
   // Divider under header
   ctx.save();const hd=ctx.createLinearGradient(80,116,W-80,116);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(192,0,255,.6)');hd.addColorStop(1,'transparent');
@@ -13029,8 +13031,8 @@ async function exportLeagueCard(idx){
   // Sport name — neon purple Orbitron
   const sportFontSize=dispSport.length>8?'56px':'72px';
   _glowText(ctx,dispSport,W/2,308,'900 '+sportFontSize+' "Orbitron"','#c000ff',28,'center');
-  // Date — neon cyan
-  _glowText(ctx,dateStr,W/2,348,'600 16px "Orbitron"','#00f0ff',10,'center');
+  // Date — neon purple
+  _glowText(ctx,dateStr,W/2,348,'600 16px "Orbitron"','#c000ff',10,'center');
   // Divider
   ctx.save();const dg=ctx.createLinearGradient(60,368,W-60,368);
   dg.addColorStop(0,'transparent');dg.addColorStop(.5,'rgba(192,0,255,.5)');dg.addColorStop(1,'transparent');
@@ -13046,18 +13048,19 @@ async function exportLeagueCard(idx){
   const maxRows=Math.min(moves.length,8);const rH=Math.min(76,(H-480)/maxRows);
   moves.slice(0,maxRows).forEach((m,i)=>{
     const c=_lcGrade(m.grade);const y=408+i*rH+rH/2;
+    const pickClr=m.isProp?'#00f0ff':'#c000ff';
     // Grade pill (per-pick)
     ctx.save();ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.shadowColor=c;ctx.shadowBlur=8;
     ctx.strokeRect(60,y-14,76,28);ctx.restore();
     _glowText(ctx,m.grade,98,y,'700 11px "Orbitron"',c,8,'center');
-    // Label — Orbitron
+    // Label — neon purple (team) or cyan (prop)
     const lbl=m.label.length>32?m.label.slice(0,30)+'…':m.label;
-    _glowText(ctx,lbl,150,y-5,'700 15px "Orbitron"',c,8,'left');
-    // Game — lighter Orbitron
+    _glowText(ctx,lbl,150,y-5,'700 15px "Orbitron"',pickClr,8,'left');
+    // Game — lighter grey
     const gm=m.game.length>40?m.game.slice(0,38)+'…':m.game;
     _glowText(ctx,gm,150,y+12,'400 10px "Orbitron"','rgba(220,190,255,.45)',2,'left');
-    // Probability — Orbitron
-    _glowText(ctx,m.prob+'%',W-80,y,'700 22px "Orbitron"',c,12,'right');
+    // Probability — same as pick color
+    _glowText(ctx,m.prob+'%',W-80,y,'700 22px "Orbitron"',pickClr,12,'right');
     // Row divider
     if(i<maxRows-1){ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,400+(i+1)*rH);ctx.lineTo(W-60,400+(i+1)*rH);ctx.stroke();ctx.restore();}
   });
@@ -13066,8 +13069,9 @@ async function exportLeagueCard(idx){
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(192,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,H-100);ctx.lineTo(W-60,H-100);ctx.stroke();ctx.restore();
   // Social handles — neon purple Orbitron
-  _glowText(ctx,'𝕏  @ClairvoyanceEng',W/2-100,H-66,'700 15px "Orbitron"','#c000ff',12,'right');
-  _glowText(ctx,'⬡  @clairvoyanceengine',W/2+100,H-66,'700 15px "Orbitron"','#c000ff',12,'left');
+  _glowText(ctx,'X  @clairvoyanceeng',W/2-180,H-66,'700 15px "Orbitron"','#c000ff',12,'right');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-66,'700 15px "Orbitron"','#c000ff',12,'center');
+  _glowText(ctx,'IG  @clairvoyanceengine',W/2+180,H-66,'700 15px "Orbitron"','#c000ff',12,'left');
   _glowText(ctx,'clairvoyance.app',W/2,H-38,'400 12px "Orbitron"','rgba(192,0,255,.4)',4,'center');
   const url=cv.toDataURL('image/png');
   const a=document.createElement('a');a.href=url;
