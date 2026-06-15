@@ -811,7 +811,6 @@ body{line-height:1.5}
       <button class="nb" onclick="T('wc','standings');renderWCStandings()">STANDINGS</button>
       <button class="nb" onclick="T('wc','groups');renderWCGroups()">GROUPS</button>
       <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
-      <button class="nb" onclick="T('wc','picks');renderWCPicks()">PICKS</button>
       <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
       <button class="nb" onclick="T('wc','parlay');renderWCParlay()">PARLAY</button>
     </nav>
@@ -820,7 +819,6 @@ body{line-height:1.5}
       <div id="wc-tab-standings" class="tab"><div id="wc-standings-list" style="padding:12px 0"></div></div>
       <div id="wc-tab-groups" class="tab"><div id="wc-groups-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
-      <div id="wc-tab-picks" class="tab"><div id="wc-picks-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-props" class="tab"><div id="wc-props-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-parlay" class="tab"><div id="wc-parlay-list" style="padding:12px 0"></div></div>
     </div>
@@ -2795,6 +2793,7 @@ function autoSettleFromESPN(games){
     // Find matching pending bets
     for(const p of preds){
       if(p.outcome!=='pending')continue;
+      if(p.date!==today())continue;
       if(p.hA!==g.hA&&p.awA!==g.awA&&p.hA!==g.awA&&p.awA!==g.hA)continue;
       if(p.sport!=='MLB')continue;
       const hW=g.hScore>g.aScore;const aW=g.aScore>g.hScore;
@@ -2830,6 +2829,7 @@ async function autoSettleNHL(){
       const hs=g.homeTeam?.score||0,as=g.awayTeam?.score||0;
       for(const p of preds){
         if(p.outcome!=='pending'||p.sport!=='NHL')continue;
+        if(p.date!==today())continue;
         if(p.hA!==h&&p.awA!==a)continue;
         let outcome=null;
         if(p.betType==='ML'){
@@ -2848,6 +2848,24 @@ async function autoSettleNHL(){
     }
     if(changed){saveP(preds);updHdr();}
   }catch(e){console.warn('NHL settle:',e);}
+}
+// Reset any bets for today that were incorrectly auto-settled (e.g. settled with prior-day scores)
+function resetTodayIncorrectSettlements(){
+  const td=today();
+  const preds=getP();
+  let changed=false;
+  preds.forEach(function(p){
+    if(p.date!==td)return;
+    if(p.outcome==='pending')return;
+    // If settledAt is missing or settled before today midnight MT, it's stale
+    const todayMidnight=new Date(new Date().toLocaleDateString('en-US',{timeZone:'America/Denver'})).getTime();
+    if(!p.settledAt||p.settledAt<todayMidnight){
+      p.outcome='pending';
+      delete p.settledAt;delete p.hScore;delete p.aScore;
+      changed=true;
+    }
+  });
+  if(changed){saveP(preds);updHdr();console.log('[CV] Reset incorrectly settled bets for',td);}
 }
 // ═══ MLB MODEL ═══════════════════════════════════════════════
 function buildMLB(){
@@ -14201,6 +14219,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
   try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
   try{const be=S.g('nba_ens');if(be)NBA_ENS=be;}catch{}
+  try{resetTodayIncorrectSettlements();}catch(e){console.error('resetSettlements',e);}
   try{buildMLB();}catch(e){console.error('buildMLB',e);}
   try{initELO();}catch(e){console.error('initELO',e);}
   try{updHdr();}catch(e){console.error('updHdr',e);}
@@ -16483,61 +16502,127 @@ function _wcCodeByName(name){
 // ── ESPN live fetch for MATCHES ───────────────────────────────────────────────
 function _renderWCMatchCard(m,liveScore){
   var o=_wcOut(m.he,m.ae);
-  var pick=o.h>o.a?m.home:o.a>o.h?m.away:'DRAW';
-  var pickProb=o.h>o.a?o.h:o.a>o.h?o.a:o.d;
-  var ml=_wcML(pickProb);
-  var grade=_wcGrade(pickProb);
-  var gradeClr=_wcGradeColor(grade);
+  var hP=o.h,dP=o.d,aP=o.a;
+  var hML=_wcML(hP),dML=_wcML(dP),aML=_wcML(aP);
   var isLive=liveScore&&liveScore.state==='in';
   var isFinal=liveScore&&liveScore.state==='post';
+  function wcGC(p){var e=ev(p,1.909);var t=tier(p,e);if(t===3)return{c:'chip chip-elite',pl:'pill-elite',lb:'ELITE'};if(t===2)return{c:'chip chip-lock',pl:'pill-lock',lb:'LOCK'};if(t===1)return{c:'chip chip-lean',pl:'pill-lean',lb:'LEAN'};return{c:'chip chip-skip',pl:'pill-skip',lb:'SKIP'};}
+  function gCol(t){return t===3?'var(--gc)':t===2?'var(--nc)':t===1?'var(--ic)':'var(--t3)';}
+  var hCS=wcGC(hP),dCS=wcGC(dP),aCS=wcGC(aP);
+  // Asian Handicap
+  var ah=_wcAH(m.he,m.ae);
+  var ahFavP=ah<0?hP/(hP+aP):aP/(hP+aP),ahDogP=1-(ah<0?hP/(hP+aP):aP/(hP+aP));
+  var ahFavTier=tier(ahFavP,ev(ahFavP,1.909)),ahDogTier=tier(ahDogP,ev(ahDogP,1.909));
+  var ahFavLabel=ahFavTier===3?'ELITE':ahFavTier===2?'LOCK':ahFavTier===1?'LEAN':'SKIP';
+  var ahDogLabel=ahDogTier===3?'ELITE':ahDogTier===2?'LOCK':ahDogTier===1?'LEAN':'SKIP';
+  var ahFavTeam=ah<0?m.home:m.away,ahDogTeam=ah<0?m.away:m.home;
+  // O/U
+  var ouL=m.ou||2.5;
+  var ouId='ouinp_wc_'+m.hc+'_'+m.ac;
+  var eloAvg=(m.he+m.ae)/2;
+  var ouP=eloAvg>1900?0.46:eloAvg>1800?0.50:0.54;
+  var ouTier=tier(ouP,ev(ouP,1.909)),unTier=tier(1-ouP,ev(1-ouP,1.909));
+  var ouLabel=ouTier===3?'ELITE':ouTier===2?'LOCK':ouTier===1?'LEAN':'SKIP';
+  var unLabel=unTier===3?'ELITE':unTier===2?'LOCK':unTier===1?'LEAN':'SKIP';
+  var ouCol=gCol(ouTier),unCol=gCol(unTier);
+  // Top pick
+  var topP=Math.max(hP,dP,aP);
+  var topTeam=hP>=dP&&hP>=aP?m.home:dP>=hP&&dP>=aP?'DRAW':m.away;
+  var topT=hP>=dP&&hP>=aP?tier(hP,ev(hP,1.909)):dP>=hP&&dP>=aP?tier(dP,ev(dP,1.909)):tier(aP,ev(aP,1.909));
+  var topLabel=topT===3?'ELITE':topT===2?'LOCK':topT===1?'LEAN':'SKIP';
+  var topCol=gCol(topT);
+  var eloGap=Math.abs(m.he-m.ae);
+  var explanation=topT===3?'Model grades '+topTeam+' as ELITE ('+Math.round(topP*100)+'%) — ELO gap of '+eloGap+' points creates a structural mismatch with significant positive expected value. '+m.home+' (ELO '+m.he+') vs '+m.away+' (ELO '+m.ae+'). Full-unit sizing warranted.':topT===2?topTeam+' rated LOCK ('+Math.round(topP*100)+'%) — strong positive EV from '+eloGap+'-point ELO differential. '+m.home+' ('+m.he+') vs '+m.away+' ('+m.ae+'). Standard-unit sizing appropriate.':topT===1?'Lean toward '+topTeam+' ('+Math.round(topP*100)+'%) — modest edge from ELO differential ('+eloGap+' pts). Not a high-conviction play. Half-unit sizing only.':'Model finds no qualifying edge in this matchup. ELO differential ('+eloGap+' pts) insufficient to overcome market juice. Skip or monitor for line movement.';
+  // Score HTML
   var scoreHtml='';
-  if(isLive){
-    scoreHtml='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-      +'<span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.hs+'</span>'
-      +'<span style="font-family:var(--mono);font-size:11px;color:var(--hc);background:rgba(255,32,0,.15);padding:2px 6px;border-radius:2px;animation:pulse 1.5s infinite">LIVE '+liveScore.clock+'</span>'
-      +'<span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.as+'</span>'
-      +'</div>';
-  } else if(isFinal){
-    scoreHtml='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-      +'<span style="font-family:var(--orb);font-size:20px;font-weight:900;color:var(--nc)">'+liveScore.hs+'</span>'
-      +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);padding:2px 5px;border:1px solid rgba(255,255,255,.12);border-radius:2px">FT</span>'
-      +'<span style="font-family:var(--orb);font-size:20px;font-weight:900;color:var(--nc)">'+liveScore.as+'</span>'
-      +'</div>';
-  }
-  return '<div class="card" style="margin:0 8px 6px;border-left:2px solid '+(isLive?'var(--hc)':isFinal?'rgba(255,255,255,.2)':'rgba(255,200,0,.3)')+'">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">GROUP '+m.group+' · '+m.time+'</div>'
-    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);max-width:140px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.venue+'</div>'
+  if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:11px;color:var(--hc);background:rgba(255,32,0,.15);padding:2px 7px;border-radius:2px;animation:pulse 1.5s infinite">LIVE '+liveScore.clock+'</span><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.as+'</span></div>';}
+  else if(isFinal){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:20px;font-weight:900;color:var(--nc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:10px;color:var(--t3);padding:2px 6px;border:1px solid rgba(255,255,255,.12);border-radius:2px">FT</span><span style="font-family:var(--orb);font-size:20px;font-weight:900;color:var(--nc)">'+liveScore.as+'</span></div>';}
+  var statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
+  var statusTxt=isFinal?'FINAL':isLive?'LIVE':m.time;
+  return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
+    +'<div class="gch"><div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+    +'<span class="gtm" style="color:'+(aP>=hP&&aP>=dP?'var(--gc)':'var(--t2)')+'">'+m.away+'</span>'
+    +'<span style="color:var(--t3);font-size:11px;font-family:var(--mono)">at</span>'
+    +'<span class="gtm" style="color:'+(hP>=aP&&hP>=dP?'var(--gc)':'var(--t2)')+'">'+m.home+'</span>'
+    +'</div>'
+    +'<div class="gsp">GROUP '+m.group+' · '+m.venue+'</div>'
+    +'</div>'
+    +'<div style="text-align:right"><div class="np mono" style="font-size:15px">'+statusDot+statusTxt+'</div></div>'
     +'</div>'
     +scoreHtml
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-    +'<div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t1)">'+m.home+'</div>'
-    +'<div style="font-family:var(--mono);font-size:12px;color:var(--t3)">vs</div>'
-    +'<div style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--t1)">'+m.away+'</div>'
+    // ML chips: home, draw, away + AH + O/U
+    +'<div class="brow">'
+    +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.home+'\','+hP.toFixed(3)+',\''+hML+'\','+ml2d(hML).toFixed(3)+',\''+m.date+'\')">'
+    +'<div class="cht">'+m.hc+'</div><div class="cho">'+(parseInt(hML)>0?'+':'')+hML+'</div><div class="chp">'+Math.round(hP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
+    +'<div class="'+dCS.c+' chip" style="flex:1" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'DRAW\','+dP.toFixed(3)+',\''+dML+'\','+ml2d(dML).toFixed(3)+',\''+m.date+'\')">'
+    +'<div class="cht">DRAW</div><div class="cho">'+(parseInt(dML)>0?'+':'')+dML+'</div><div class="chp">'+Math.round(dP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+dCS.pl+'">'+dCS.lb+'</span></div></div>'
+    +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.away+'\','+aP.toFixed(3)+',\''+aML+'\','+ml2d(aML).toFixed(3)+',\''+m.date+'\')">'
+    +'<div class="cht">'+m.ac+'</div><div class="cho">'+(parseInt(aML)>0?'+':'')+aML+'</div><div class="chp">'+Math.round(aP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
+    +(ah!==0?'<div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px">'
+    +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">ASIAN HCP</div>'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--gc)">'+ahFavTeam+' '+ah+'</div>'
+    +'<div style="display:flex;gap:2px">'
+    +'<button onclick="event.stopPropagation();lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+ahFavTeam+' '+ah+'\','+ahFavP.toFixed(3)+',\'-110\',1.909,\''+m.date+'\')" style="font-size:9px;padding:2px 4px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">'+ahFavTeam+' ▼</button>'
+    +'<button onclick="event.stopPropagation();lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+ahDogTeam+' +'+(Math.abs(ah))+'\','+ahDogP.toFixed(3)+',\'-110\',1.909,\''+m.date+'\')" style="font-size:9px;padding:2px 4px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">+'+ahDogTeam+'</button>'
+    +'</div></div>':'')
+    +'<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
+    +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
+    +'<input type="number" step="0.5" value="'+ouL+'" id="'+ouId+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center">'
+    +'<div style="display:flex;gap:3px">'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\')" style="font-size:9px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\')" style="font-size:9px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
+    +'</div></div>'
     +'</div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-    +'<div style="display:flex;gap:6px">'
-    +'<span style="font-family:var(--mono);font-size:11px;color:var(--nc)">H '+Math.round(o.h*100)+'%</span>'
-    +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">D '+Math.round(o.d*100)+'%</span>'
-    +'<span style="font-family:var(--mono);font-size:11px;color:var(--mc)">A '+Math.round(o.a*100)+'%</span>'
+    // AH Analysis
+    +(ah!==0?'<div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">'
+    +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">ASIAN HANDICAP ANALYSIS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +'<div style="background:rgba(255,200,0,.06);border:1px solid '+gCol(ahFavTier)+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+gCol(ahFavTier)+'">'+ahFavTeam+' '+ah+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+gCol(ahFavTier)+';color:'+gCol(ahFavTier)+';border-radius:2px">'+ahFavLabel+'</span>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:6px">'
-    +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+gradeClr+'">'+grade+'</span>'
-    +'<span style="font-family:var(--mono);font-size:12px;color:var(--t2)">'+ml+'</span>'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+(ahFavTier>=2?'ELO edge ('+eloGap+' pts) supports '+ahFavTeam+' covering handicap — model confidence '+Math.round(ahFavP*100)+'%.':'ELO gap ('+eloGap+' pts) makes handicap cover uncertain at '+Math.round(ahFavP*100)+'%.')+'</div></div>'
+    +'<div style="background:rgba(80,120,255,.05);border:1px solid '+gCol(ahDogTier)+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+gCol(ahDogTier)+'">'+ahDogTeam+' +'+(Math.abs(ah))+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+gCol(ahDogTier)+';color:'+gCol(ahDogTier)+';border-radius:2px">'+ahDogLabel+'</span>'
     +'</div>'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+(ahDogTier>=2?'Underdog +'+Math.abs(ah)+' at '+Math.round(ahDogP*100)+'% — viable insurance play even if '+ahDogTeam+' loses by a goal.':'Insufficient edge for dog-side handicap ('+Math.round(ahDogP*100)+'%). ELO spread favors favorite covering.')+'</div></div>'
+    +'</div></div>':'')
+    // O/U Analysis
+    +'<div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">'
+    +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">OVER / UNDER ANALYSIS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +'<div style="background:rgba(0,240,255,.05);border:1px solid '+ouCol+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+ouCol+'">OVER '+ouL+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+ouCol+';color:'+ouCol+';border-radius:2px">'+ouLabel+'</span>'
     +'</div>'
-    +(isFinal?'':'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-    +'<button class="btn btn-p btn-sm" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.home+'\','+o.h.toFixed(3)+',\''+_wcML(o.h)+'\',\'Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK '+m.home+'</button>'
-    +'<button class="btn btn-o btn-sm" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\''+m.away+'\','+o.a.toFixed(3)+',\''+_wcML(o.a)+'\',\'Group '+m.group+' · '+m.home+' vs '+m.away+'\',\''+m.date+'\')">+PICK '+m.away+'</button>'
-    +'<button class="btn btn-sm" style="background:rgba(255,255,255,.06);color:var(--t2)" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'DRAW\','+o.d.toFixed(3)+',\''+_wcML(o.d)+'\',\'Group '+m.group+' · '+m.home+' vs '+m.away+' · DRAW\',\''+m.date+'\')">+DRAW</button>'
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+(ouTier>=2?'OVER '+ouL+' graded '+ouLabel+' ('+Math.round(ouP*100)+'%) — attacking quality from both sides expected to produce goals above line.':'OVER '+ouL+' below threshold ('+Math.round(ouP*100)+'%) — high avg ELO ('+Math.round(eloAvg)+') teams tend to be defensively disciplined.')+'</div></div>'
+    +'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:'+unCol+'">UNDER '+ouL+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span>'
     +'</div>'
-    +(function(){var ah=_wcAH(m.he,m.ae);if(ah===0)return'';var hAH=ah<0?m.home+' '+ah:m.away+' +'+(Math.abs(ah));var aAH=ah<0?m.away+' +'+(Math.abs(ah)):m.home+' '+(-Math.abs(ah));var hAHP=ah<0?o.h/(o.h+o.a):o.a/(o.h+o.a);var aAHP=1-hAHP;return'<div style="display:flex;gap:6px;margin-top:5px;align-items:center;flex-wrap:wrap"><span style="font-family:var(--mono);font-size:9px;color:var(--gc)">AH</span><button class="btn btn-sm" style="background:rgba(255,200,0,.08);color:var(--gc);border-color:rgba(255,200,0,.4);font-size:11px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+hAH+'\','+hAHP.toFixed(3)+',\'-110\',1.91,\''+m.date+'\')">'+hAH+'</button><button class="btn btn-sm" style="background:rgba(255,200,0,.05);color:var(--gc);border-color:rgba(255,200,0,.25);font-size:11px" onclick="lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+aAH+'\','+aAHP.toFixed(3)+',\'-110\',1.91,\''+m.date+'\')">'+aAH+'</button></div>';})()
-    +'<div style="display:flex;gap:6px;margin-top:5px;align-items:center;flex-wrap:wrap">'
-    +'<span style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:1px">O/U</span>'
-    +'<input type="number" step="0.5" value="'+m.ou+'" id="ouinp_wc_'+m.hc+'_'+m.ac+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,200,0,.3);color:var(--t);font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:2px;text-align:center">'
-    +'<button class="btn btn-sm" style="background:rgba(0,229,255,.08);color:var(--nc);border-color:rgba(0,229,255,.4)" onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.5,\''+m.ou+'\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'OVER\')">▲ OVER ⚽</button>'
-    +'<button class="btn btn-sm" style="background:rgba(255,80,0,.08);color:var(--hc);border-color:rgba(255,80,0,.4)" onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',0.5,\''+m.ou+'\',\'ouinp_wc_'+m.hc+'_'+m.ac+'\',\'UNDER\')">▼ UNDER ⚽</button>'
-    +'</div>')
+    +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">'+(unTier>=2?'UNDER '+ouL+' graded '+unLabel+' ('+Math.round((1-ouP)*100)+'%) — elite defenses (avg ELO '+Math.round(eloAvg)+') and tournament-stage discipline suppress scoring.':'UNDER '+ouL+' at '+Math.round((1-ouP)*100)+'% — attacking potential limits confidence in a tight, low-scoring result.')+'</div></div>'
+    +'</div></div>'
+    // Engine reasoning
+    +'<div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">'
+    +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+    +'<span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid '+topCol+';color:'+topCol+';border-radius:2px">'+topLabel+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">ENGINE REASONING</span>'
+    +'</div>'
+    +'<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.7">'+explanation+'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">'
+    +'<span class="mono" style="font-size:12px;color:var(--t3)">ELO: '+m.home+' '+m.he+' · '+m.away+' '+m.ae+' · H:'+Math.round(hP*100)+'% D:'+Math.round(dP*100)+'% A:'+Math.round(aP*100)+'%</span>'
+    +'<button class="btn btn-o" style="padding:2px 6px;font-size:11px;margin-left:auto" onclick="addLeg2(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\')">+PAR</button>'
+    +'</div>'
     +'</div>';
 }
 function _buildWCMatchesHTML(schedule,liveMap){
@@ -21083,10 +21168,11 @@ function saveParlayToTracker(legs,sport){
   <div class="ndl"><button onclick="SS('soc');setSub('soc','worldcup');hideAllND()">World Cup 2026</button>
     <div class="ndl-sub">
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','matches');renderWCMatches();hideAllND()">Matches</button>
+      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','standings');renderWCStandings();hideAllND()">Standings</button>
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','groups');renderWCGroups();hideAllND()">Groups</button>
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">Bracket</button>
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','picks');renderWCPicks();hideAllND()">Picks</button>
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','props');renderWCProps();hideAllND()">Props</button>
+      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','parlay');renderWCParlay();hideAllND()">Parlay</button>
     </div>
   </div>
 </div>
