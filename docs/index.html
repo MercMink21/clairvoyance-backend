@@ -379,6 +379,7 @@ body{line-height:1.5}
   <div id="mlb-mlb" class="subp act" style="overflow:hidden">
   <nav class="inav" id="mlb-in">
     <button class="nb act" onclick="T('mlb','games')">TODAY</button>
+    <button class="nb" onclick="T('mlb','daily-props');renderMLBDailyProps()">PROPS</button>
     <button class="nb" onclick="T('mlb','parlay')">PARLAY</button>
     <button class="nb" onclick="T('mlb','model')">MODEL</button>
     <button class="nb" onclick="T('mlb','set')">CONFIG</button>
@@ -402,6 +403,20 @@ body{line-height:1.5}
       <div id="games-l"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div id="mlb-tab-nrfi" style="display:none"><div id="nrfi-list"></div></div>
+    <div id="mlb-tab-daily-props" class="tab">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="sh" style="margin:0"><span class="p"></span> MLB PLAYER PROPS — <span id="mlb-dp-date" style="font-family:var(--mono);font-size:14px;color:var(--t3);font-weight:400"></span></div>
+        <button class="btn btn-p btn-sm" onclick="renderMLBDailyProps()">↻ REFRESH</button>
+      </div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,204,0,.3);border-radius:2px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:11px;color:var(--t3)">DAILY PROPS · HITS · STRIKEOUTS · H+R+RBI · TAP ±0.5 TO ADJUST LINE · LOCK TO SAVE</div>
+      <div id="mlb-dp-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn btn-o btn-sm act" onclick="_mlbDPFilter('all')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="_mlbDPFilter('K')">STRIKEOUTS</button>
+        <button class="btn btn-o btn-sm" onclick="_mlbDPFilter('H')">HITS</button>
+        <button class="btn btn-o btn-sm" onclick="_mlbDPFilter('HRR')">H+R+RBI</button>
+      </div>
+      <div id="mlb-dp-list"><div class="loading"><span class="spi"></span></div></div>
+    </div>
     <div id="mlb-tab-props" class="tab">
       <div class="sh"><span class="g"></span> MLB PLAYER PROPS — MAY 19</div>
       <div style="background:rgba(10,0,24,.8);border:1px solid rgba(255,204,0,.3);border-radius:2px;padding:11px 13px;margin-bottom:12px;font-family:var(--mono);font-size:15px;color:var(--gc);line-height:1.7">SOURCE: LINEMATE · ROTOWIRE · COVERS · BETMGM · DRAFTKINGS<br>GRADES: ELITE ≥70% · LOCK 62-70% · GOOD 55-62% · FAIR 50-55%</div>
@@ -512,8 +527,8 @@ body{line-height:1.5}
     </div>
   </div>
   <nav id="mn" style="display:flex">
-    <button class="mb act" onclick="T('mlb','picks')"><span class="mbi"></span>PICKS</button>
-    <button class="mb" onclick="T('mlb','games')"><span class="mbi"></span>TODAY</button>
+    <button class="mb act" onclick="T('mlb','games')"><span class="mbi"></span>TODAY</button>
+    <button class="mb" onclick="T('mlb','daily-props');renderMLBDailyProps()"><span class="mbi"></span>PROPS</button>
     <button class="mb" onclick="T('mlb','parlay')"><span class="mbi"></span>PARLAY</button>
     <button class="mb" onclick="T('mlb','ranks')"><span class="mbi"></span>STATS</button>
     <button class="mb" onclick="T('mlb','model')"><span class="mbi"></span>MODEL</button>
@@ -6085,6 +6100,170 @@ var MLB_PROPS_DATA=[
   {player:'Tyler Heineman',t:'TOR',opp:'NYY',pos:'C',stat:'TB',line:1.5,over:false,ml:'',basis:'Hit TB UNDER in 12 of last 15 games (+54% ROI) · backup bat in Yankee stadium vs elite arms',hitRate:'80%',conf:65,grade:'LOCK',src:'BetMGM'},
   {player:'Jesus Sanchez',t:'TOR',opp:'NYY',pos:'LF',stat:'Runs',line:0.5,over:false,ml:'',basis:'Runs UNDER in 14 of 15 away games (+44% ROI) · NYY starters dominant at home',hitRate:'93%',conf:68,grade:'LOCK',src:'BetMGM'},
 ];
+// ═══ MLB DAILY PLAYER PROPS ═══════════════════════════════════════════════
+var _mlbDPData=[];
+var _mlbDPActiveFilter='all';
+
+function _mlbDPFilter(f){
+  _mlbDPActiveFilter=f;
+  document.querySelectorAll('#mlb-dp-filter button').forEach(b=>{b.classList.remove('act');if(b.textContent.toLowerCase().includes(f==='all'?'all':f==='K'?'strik':f==='H'?'hits':f==='HRR'?'h+r':'x'))b.classList.add('act');});
+  _mlbDPRender();
+}
+
+function _mlbDPAdjust(idx,delta){
+  if(!_mlbDPData[idx])return;
+  _mlbDPData[idx].line=Math.max(0,+(_mlbDPData[idx].line+delta).toFixed(1));
+  _mlbDPRender();
+}
+
+function _mlbDPLock(idx){
+  const p=_mlbDPData[idx];if(!p)return;
+  const id='mlbdp_'+Date.now()+'_'+idx;
+  const lineStr=p.line+'+ '+p.stat;
+  const ev=((p.prob*(p.dec-1))-(1-p.prob))*100;
+  const pick={id,sport:'MLB',betType:'PROP',betOn:p.player+' '+p.over+'ER '+p.line+' '+p.stat,
+    hA:p.hA,awA:p.awA,winProb:p.prob,ml:p.ml,decOdds:p.dec,wager:100,outcome:'pending',
+    date:today(),lockedAt:Date.now(),ctx:p.hA+'v'+p.awA+' · '+p.stat+' '+p.line+' · '+p.basis.slice(0,80)};
+  savePick(pick);renderOverallHistory();
+  toast('// LOCKED: '+p.player+' '+p.stat+' '+p.over.toUpperCase()+' '+p.line);
+  try{window.showBetPopup({type:'lock',betOn:pick.betOn,sport:'MLB',league:'MLB',betType:'PROP',ml:p.ml,prob:p.prob,decOdds:p.dec});}catch(e){}
+}
+
+function _mlbGenerateDailyProps(games){
+  const props=[];
+  const era2k=(era)=>Math.max(3.5,Math.min(7.5,parseFloat(era)||4.50));
+  const kLine=(era)=>{const e=era2k(era);return e<=3.50?6.5:e<=4.00?5.5:e<=4.75?5.0:4.5;};
+  const kProb=(era)=>{const e=era2k(era);return e<=3.50?.72:e<=4.00?.68:e<=4.75?.62:.56;};
+  const offRating=(wrc)=>{const w=parseFloat(wrc)||95;return w>=115?'elite':w>=100?'avg':'weak';};
+  games.forEach(g=>{
+    const hA=g.hA,awA=g.awA,hPit=g.hPit||'Home SP',aPit=g.aPit||'Away SP';
+    const hERA=g.hPitERA||'4.20',aERA=g.aPitERA||'4.20';
+    const hOff=offRating(g.hOff),aOff=offRating(g.aOff);
+    const ouL=parseFloat(g.ou)||8.5;
+    // Home SP Ks
+    const hKL=kLine(hERA),hKP=kProb(hERA);
+    props.push({player:hPit,team:hA,opp:awA,hA,awA,pos:'SP',stat:'K',line:hKL,over:true,
+      ml:hKP>=.68?'-145':hKP>=.62?'-125':'-110',prob:hKP,dec:hKP>=.68?1.69:hKP>=.62?1.8:1.91,
+      grade:hKP>=.68?'ELITE':hKP>=.62?'LOCK':'LEAN',
+      basis:'ERA '+hERA+' · vs '+awA+' '+aOff+' offense · home start advantage · K rate model projection',
+      hitRate:hKP>=.68?'78%':hKP>=.62?'70%':'62%'});
+    // Away SP Ks
+    const aKL=kLine(aERA),aKP=kProb(aERA);
+    props.push({player:aPit,team:awA,opp:hA,hA,awA,pos:'SP',stat:'K',line:aKL,over:true,
+      ml:aKP>=.68?'-145':aKP>=.62?'-125':'-110',prob:aKP,dec:aKP>=.68?1.69:aKP>=.62?1.8:1.91,
+      grade:aKP>=.68?'ELITE':aKP>=.62?'LOCK':'LEAN',
+      basis:'ERA '+aERA+' · vs '+hA+' '+hOff+' offense · road start · K rate model projection',
+      hitRate:aKP>=.68?'74%':aKP>=.62?'67%':'59%'});
+    // Home leadoff hit
+    const hHitL=ouL>=9?1.5:0.5,hHitP=hOff==='elite'?.68:hOff==='avg'?.60:.52;
+    props.push({player:hA+' Lead Bat',team:hA,opp:awA,hA,awA,pos:'OF/IF',stat:'H',line:hHitL,over:true,
+      ml:hHitP>=.66?'-140':hHitP>=.60?'-120':'-108',prob:hHitP,dec:hHitP>=.66?1.71:hHitP>=.60?1.83:1.93,
+      grade:hHitP>=.66?'LOCK':'LEAN',
+      basis:hA+' '+hOff+' offense · vs '+aERA+' ERA '+aPit+' · home lineup production',
+      hitRate:hHitP>=.66?'71%':hHitP>=.60?'63%':'56%'});
+    // Away leadoff hit
+    const aHitL=ouL>=9?1.5:0.5,aHitP=aOff==='elite'?.65:aOff==='avg'?.58:.50;
+    props.push({player:awA+' Lead Bat',team:awA,opp:hA,hA,awA,pos:'OF/IF',stat:'H',line:aHitL,over:true,
+      ml:aHitP>=.64?'-135':aHitP>=.58?'-118':'-105',prob:aHitP,dec:aHitP>=.64?1.74:aHitP>=.58?1.85:1.95,
+      grade:aHitP>=.64?'LOCK':'LEAN',
+      basis:awA+' '+aOff+' offense · vs '+hERA+' ERA '+hPit+' · road lineup contact rate',
+      hitRate:aHitP>=.64?'68%':aHitP>=.58?'60%':'52%'});
+    // H+R+RBI (home cleanup)
+    const hHRRP=ouL>=9?.66:ouL>=8.5?.60:.54,hHRRL=ouL>=9?2.5:1.5;
+    props.push({player:hA+' Cleanup Bat',team:hA,opp:awA,hA,awA,pos:'1B/DH',stat:'HRR',line:hHRRL,over:true,
+      ml:hHRRP>=.64?'-138':hHRRP>=.58?'-118':'-108',prob:hHRRP,dec:hHRRP>=.64?1.72:hHRRP>=.58?1.85:1.93,
+      grade:hHRRP>=.64?'LOCK':'LEAN',
+      basis:'Total '+ouL+' O/U · '+hA+' '+hOff+' lineup · cleanup spot H+R+RBI projection vs '+aERA+' ERA',
+      hitRate:hHRRP>=.64?'70%':hHRRP>=.58?'62%':'55%'});
+    // H+R+RBI (away cleanup)
+    const aHRRP=ouL>=9?.63:ouL>=8.5?.57:.51,aHRRL=ouL>=9?2.5:1.5;
+    props.push({player:awA+' Cleanup Bat',team:awA,opp:hA,hA,awA,pos:'1B/DH',stat:'HRR',line:aHRRL,over:true,
+      ml:aHRRP>=.62?'-130':aHRRP>=.56?'-115':'-104',prob:aHRRP,dec:aHRRP>=.62?1.77:aHRRP>=.56?1.87:1.96,
+      grade:aHRRP>=.62?'LOCK':'LEAN',
+      basis:'Total '+ouL+' O/U · '+awA+' '+aOff+' lineup · cleanup H+R+RBI projection vs '+hERA+' ERA',
+      hitRate:aHRRP>=.62?'66%':aHRRP>=.56?'59%':'52%'});
+  });
+  return props;
+}
+
+function _mlbDPRender(){
+  const el=document.getElementById('mlb-dp-list');if(!el)return;
+  const f=_mlbDPActiveFilter;
+  const data=f==='all'?_mlbDPData:_mlbDPData.filter(p=>p.stat===f);
+  if(!data.length){el.innerHTML='<div class="empty">NO PROPS AVAILABLE — LOAD GAMES FIRST</div>';return;}
+  const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',LEAN:'var(--ic)'};
+  const statLabel={K:'Strikeouts',H:'Hits',HRR:'H+R+RBI'};
+  // group by matchup
+  const byGame={};
+  data.forEach((p,i)=>{const key=p.hA+'v'+p.awA;if(!byGame[key])byGame[key]=[];byGame[key].push({...p,_idx:_mlbDPData.indexOf(p)});});
+  el.innerHTML=Object.entries(byGame).map(([key,props])=>{
+    const p0=props[0];
+    return'<div style="margin-bottom:14px">'
+      +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:6px">'+p0.awA+' @ '+p0.hA+'</div>'
+      +props.map(p=>{
+        const c=gradeC[p.grade]||'var(--t3)';
+        const ev=((p.prob*(p.dec-1))-(1-p.prob)*1)*100;
+        const evStr=(ev>=0?'+':'')+ev.toFixed(1)+'%';
+        const overStr=p.over?'OVER':'UNDER';
+        return'<div class="card" style="margin-bottom:6px;padding:9px 10px;border-left:2px solid '+c+'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:5px">'
+            +'<div style="flex:1">'
+              +'<div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--t)">'+p.player+'</div>'
+              +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:1px">'+p.team+' · '+statLabel[p.stat]+' · '+overStr+'</div>'
+            +'</div>'
+            +'<span style="font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
+          +'</div>'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            +'<button onclick="_mlbDPAdjust('+p._idx+',-0.5)" style="width:26px;height:26px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:var(--t2);font-size:14px;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>'
+            +'<div style="text-align:center;min-width:48px">'
+              +'<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--t)">'+p.line+'</div>'
+              +'<div style="font-family:var(--mono);font-size:9px;color:var(--t3)">'+statLabel[p.stat]+'</div>'
+            +'</div>'
+            +'<button onclick="_mlbDPAdjust('+p._idx+',0.5)" style="width:26px;height:26px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:var(--t2);font-size:14px;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>'
+            +'<div style="flex:1;font-family:var(--mono);font-size:10px;color:var(--t3)">'
+              +'<span style="color:'+c+'">'+p.prob*100|0+'%</span>'
+              +' conf · <span style="color:rgba(187,255,0,.8)">'+evStr+'</span> EV'
+              +' · '+p.hitRate+' hit rate'
+            +'</div>'
+            +'<span style="font-family:var(--mono);font-size:11px;color:var(--t2)">'+p.ml+'</span>'
+          +'</div>'
+          +'<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:6px;line-height:1.5">'+p.basis+'</div>'
+          +'<button onclick="_mlbDPLock('+p._idx+')" style="width:100%;padding:5px;background:rgba(240,0,255,.1);border:1px solid rgba(240,0,255,.35);color:var(--pc);font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">LOCK PROP</button>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+  }).join('');
+}
+
+function renderMLBDailyProps(){
+  const el=document.getElementById('mlb-dp-list');if(!el)return;
+  const dateEl=document.getElementById('mlb-dp-date');if(dateEl)dateEl.textContent=today();
+  const games=(window._mlbGames||[]).filter(g=>g.hA&&g.awA);
+  if(!games.length){el.innerHTML='<div class="empty">NO GAMES LOADED — GO TO TODAY TAB FIRST<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames().then(()=>setTimeout(renderMLBDailyProps,1500))">LOAD GAMES</button></div>';return;}
+  _mlbDPData=_mlbGenerateDailyProps(games);
+  _mlbDPRender();
+  // Also populate the parlay builder player props list
+  _mlbDPPopulateParlay();
+}
+
+function _mlbDPPopulateParlay(){
+  const el=document.getElementById('mlb-par-props-list');if(!el)return;
+  if(!_mlbDPData.length){el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">OPEN PROPS TAB FIRST</div>';return;}
+  const gradeC={ELITE:'var(--vc)',LOCK:'var(--nc)',LEAN:'var(--ic)'};
+  const statLabel={K:'K',H:'H',HRR:'HRR'};
+  el.innerHTML=_mlbDPData.map((p,i)=>{
+    const c=gradeC[p.grade]||'var(--t3)';
+    const legLabel=p.player+' '+statLabel[p.stat]+' '+(p.over?'OVER':'UNDER')+' '+p.line;
+    return'<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">'
+      +'<button onclick="_mlbDPAdjust('+i+',-0.5);_mlbDPPopulateParlay()" style="padding:2px 6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--t2);font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">−</button>'
+      +'<span style="font-family:var(--mono);font-size:10px;color:var(--t2);min-width:22px;text-align:center">'+p.line+'</span>'
+      +'<button onclick="_mlbDPAdjust('+i+',0.5);_mlbDPPopulateParlay()" style="padding:2px 6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--t2);font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer">+</button>'
+      +'<button onclick="cvParlayAdd(\'mlb\',\''+legLabel.replace(/'/g,'')+'\',\''+p.ml+'\','+p.prob.toFixed(3)+',\''+p.hA+'v'+p.awA+'\')" style="flex:1;padding:4px 6px;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.25);color:var(--t);font-family:var(--mono);font-size:10px;border-radius:2px;cursor:pointer;text-align:left">'
+        +'<span style="color:'+c+';margin-right:4px">'+p.grade+'</span>'+legLabel+'</button>'
+    +'</div>';
+  }).join('');
+}
+
 function renderMLBProps(filter){
   const el=document.getElementById('mlb-props');if(!el)return;
   const tracker=document.getElementById('mlb-props-tracker');
@@ -9222,7 +9401,7 @@ function SS(s){
   const mn11=document.getElementById('mn11');if(mn11)mn11.style.display=s==='fut'?'flex':'none';
   const _t=(fn)=>{try{fn();}catch(e){console.warn('SS render',e);}};
   if(s==='home'){_t(renderHomePage);}
-  if(s==='mlb'){_t(renderR);_t(()=>renderMLBGames());_t(()=>renderMLBProps('all'));_t(renderBestBetsFromRemote.bind(null,(window.__CV_DATA?.bestBets||[])));_t(()=>T('mlb','games'));}
+  if(s==='mlb'){_t(renderR);_t(()=>renderMLBGames());_t(()=>renderMLBProps('all'));_t(renderBestBetsFromRemote.bind(null,(window.__CV_DATA?.bestBets||[])));_t(()=>T('mlb','games'));_t(()=>{try{renderMLBDailyProps();}catch(e){}});}
   if(s==='hk'){_t(()=>setSub('hk','nhl'));_t(()=>T('nhl','games'));_t(renderNHLGames);_t(renderNHLTonight);_t(renderGoalies);_t(renderMoneyPuck);}
   if(s==='nba'){_t(()=>{const ws=document.getElementById('nba-wnba');if(ws?.classList.contains('act')){setSub('nba','wnba');}else{setSub('nba','nba');}});_t(()=>{if(document.getElementById('nba-wnba')?.classList.contains('act')){renderWNBAGames();}else{T('nba','games');renderNBATonightGames();renderNBAGames();renderNBABracket();}});}
   if(s==='ten'){_t(()=>T('ten','today'));_t(renderTennisPicks);_t(renderTennisToday);}
@@ -20848,12 +21027,9 @@ function saveParlayToTracker(legs,sport){
 <div id="navd-mlb" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <div class="ndl"><button onclick="SS('mlb');hideAllND()">MLB</button>
     <div class="ndl-sub">
-      <button onclick="SS('mlb');T('mlb','picks');hideAllND()">Picks</button>
       <button onclick="SS('mlb');T('mlb','games');hideAllND()">Today</button>
-      <button onclick="SS('mlb');T('mlb','props');hideAllND()">Props</button>
-      <button onclick="SS('mlb');T('mlb','ranks');hideAllND()">Standings</button>
+      <button onclick="SS('mlb');T('mlb','daily-props');hideAllND()">Player Props</button>
       <button onclick="SS('mlb');T('mlb','parlay');hideAllND()">Parlay</button>
-      <button onclick="SS('mlb');T('mlb','nrfi');hideAllND()">NRFI</button>
       <button onclick="SS('mlb');T('mlb','model');hideAllND()">Model</button>
       <button onclick="SS('mlb');T('mlb','set');hideAllND()">Config</button>
     </div>
