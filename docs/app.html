@@ -2664,6 +2664,7 @@ async function loadGames(dateStr){
   }
 
   ESPN_GAMES=games;
+  window._mlbGames=games;
   /* Augment with live odds (Odds API preferred over ESPN) */
   games.forEach(function(g){try{_augmentWithLiveOdds(g,'MLB');}catch(e){}});
   // Async weather fetch for all home parks (non-blocking)
@@ -6256,8 +6257,8 @@ function _mlbDPRender(){
 function renderMLBDailyProps(){
   const el=document.getElementById('mlb-dp-list');if(!el)return;
   const dateEl=document.getElementById('mlb-dp-date');if(dateEl)dateEl.textContent=today();
-  const games=(window._mlbGames||[]).filter(g=>g.hA&&g.awA);
-  if(!games.length){el.innerHTML='<div class="empty">NO GAMES LOADED — GO TO TODAY TAB FIRST<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames().then(()=>setTimeout(renderMLBDailyProps,1500))">LOAD GAMES</button></div>';return;}
+  const games=(ESPN_GAMES&&ESPN_GAMES.length?ESPN_GAMES:window._mlbGames||[]).filter(g=>g.hA&&g.awA);
+  if(!games.length){el.innerHTML='<div class="empty">NO GAMES LOADED<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames().then(()=>setTimeout(renderMLBDailyProps,1500))">↻ LOAD GAMES</button></div>';return;}
   _mlbDPData=_mlbGenerateDailyProps(games);
   _mlbDPRender();
   // Also populate the parlay builder player props list
@@ -16775,33 +16776,43 @@ function _buildWCGroupsHTML(groupData,updatedAt){
 function _wcParseStandings(data){
   var groupData=[];
   try{
-    var children=(data.children)||(data.standings&&data.standings.children)||[];
+    // ESPN can nest standings under data.children, data.standings.children, or data.content.standings.groups
+    var children=(data.children)
+      ||(data.standings&&data.standings.children)
+      ||(data.content&&data.content.standings&&data.content.standings.groups)
+      ||[];
     if(!children.length&&data.standings)children=[data.standings];
     children.forEach(function(grp){
-      var gName=(grp.name||grp.abbreviation||'').replace(/Group\s*/i,'').trim()||grp.id;
-      var entries=(grp.standings&&grp.standings.entries)||grp.entries||[];
+      var gName=(grp.name||grp.abbreviation||'').replace(/Group\s*/i,'').trim()||grp.id||'?';
+      var entries=(grp.standings&&grp.standings.entries)||(grp.table&&grp.table.rows)||grp.entries||[];
       var parsed=[];
       entries.forEach(function(e){
         var stats={};
-        (e.stats||[]).forEach(function(s){stats[s.name]=s.value;});
-        var tName=(e.team&&e.team.displayName)||'';
+        // Flatten all stat arrays ESPN might use
+        (e.stats||e.statistics||[]).forEach(function(s){
+          stats[s.name]=s.value;
+          if(s.abbreviation)stats[s.abbreviation]=s.value;
+        });
+        var tName=(e.team&&(e.team.displayName||e.team.name))||e.name||'';
         parsed.push({
           name:tName,
           flag:_wcFlagByName(tName),
-          gp:+(stats.gamesPlayed||stats.gp||0),
-          w:+(stats.wins||0),
-          d:+(stats.ties||stats.draws||0),
-          l:+(stats.losses||0),
-          gf:+(stats.pointsFor||stats.goalsFor||0),
-          ga:+(stats.pointsAgainst||stats.goalsAgainst||0),
-          gd:+(stats.pointDifferential||0),
-          pts:+(stats.points||0)
+          gp:+(stats.gamesPlayed||stats.played||stats.gp||0),
+          w:+(stats.wins||stats.win||0),
+          d:+(stats.ties||stats.draws||stats.draw||stats.tie||0),
+          l:+(stats.losses||stats.loss||0),
+          gf:+(stats.pointsFor||stats.goalsFor||stats.gf||0),
+          ga:+(stats.pointsAgainst||stats.goalsAgainst||stats.ga||0),
+          gd:+(stats.pointDifferential||stats.goalDifference||stats.gd||0),
+          pts:+(stats.points||stats.pts||0)
         });
       });
-      parsed.sort(function(a,b){return b.pts-a.pts||b.gd-a.gd||b.gf-a.gf;});
-      groupData.push({name:gName,entries:parsed});
+      if(parsed.length){
+        parsed.sort(function(a,b){return b.pts-a.pts||b.gd-a.gd||b.gf-a.gf;});
+        groupData.push({name:gName,entries:parsed});
+      }
     });
-  }catch(e){}
+  }catch(e){console.warn('[CV] WC standings parse error:',e);}
   return groupData;
 }
 function _wcStandingsCache(){
@@ -16834,20 +16845,30 @@ function _fetchWCStandings(force,cb){
   var cache=_wcStandingsCache();
   var age=cache?(Date.now()-cache.ts):Infinity;
   var hasGames=cache&&cache.groupData&&cache.groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
-  if(!force&&hasGames&&age<2*3600*1000){if(cb)cb(cache.groupData);return;}
+  // Use cache only if: not forced, has real game data, and less than 30 min old
+  if(!force&&hasGames&&age<30*60*1000){if(cb)cb(cache.groupData);return;}
   var ctrl=window.AbortController?new AbortController():null;
-  var tid=setTimeout(function(){ctrl&&ctrl.abort();},7000);
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings',ctrl?{signal:ctrl.signal}:{})
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},10000);
+  // Try primary endpoint, fall back to season-qualified URL
+  var url='https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/standings';
+  fetch(url,ctrl?{signal:ctrl.signal}:{})
     .then(function(r){return r.json();})
     .then(function(data){
       clearTimeout(tid);
       var gd=_wcParseStandings(data);
-      if(gd.length&&gd.some(function(g){return g.entries.some(function(e){return e.gp>0;});})){
+      // Accept ESPN data if we got any groups with entries — even gp=0 is better than stale ELO
+      if(gd.length&&gd.some(function(g){return g.entries.length>0;})){
         _wcStandingsSave(gd);
         if(cb)cb(gd);
-      }else if(cb&&cache&&cache.groupData){cb(cache.groupData);}
+      }else{
+        // Parse failed or empty — keep cache if available
+        if(cb&&cache&&cache.groupData)cb(cache.groupData);
+      }
     })
-    .catch(function(){clearTimeout(tid);if(cb&&cache&&cache.groupData)cb(cache.groupData);});
+    .catch(function(){
+      clearTimeout(tid);
+      if(cb&&cache&&cache.groupData)cb(cache.groupData);
+    });
 }
 function _buildWCStandingsHTML(groupData,updatedAt){
   var isLive=groupData&&groupData.length&&groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
@@ -16918,14 +16939,12 @@ function _buildWCStandingsHTML(groupData,updatedAt){
 }
 function renderWCStandings(){
   var el=document.getElementById('wc-standings-list');if(!el)return;
-  var cache=_wcStandingsCache();
-  var hasGames=cache&&cache.groupData&&cache.groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
-  // Render cached or ELO fallback immediately
-  el.innerHTML=_buildWCStandingsHTML(hasGames?cache.groupData:[],hasGames?cache.ts:null);
-  // Fetch fresh from ESPN in background
-  _fetchWCStandings(false,function(gd){
-    if(document.getElementById('wc-standings-list'))
-      document.getElementById('wc-standings-list').innerHTML=_buildWCStandingsHTML(gd,Date.now());
+  // Show loading state immediately while we fetch
+  el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:20px 12px;text-align:center;letter-spacing:1px">⚽ LOADING STANDINGS…</div>';
+  // Always force-fetch fresh data from ESPN
+  _fetchWCStandings(true,function(gd){
+    var standingsEl=document.getElementById('wc-standings-list');
+    if(standingsEl)standingsEl.innerHTML=_buildWCStandingsHTML(gd,Date.now());
   });
   // Schedule nightly 11pm MT auto-refresh (idempotent — only sets once)
   if(!_wcStandingsRefreshTimer)_scheduleWCStandingsRefresh();
