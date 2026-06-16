@@ -3250,7 +3250,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
       const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
       saveDailyLog(log);updHdr();toast(`// LOCKED → API: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
-      setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}},120);return;
+      setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderHomePage();}catch(e){}},120);return;
     }
   }
   const preds=getP();
@@ -3297,7 +3297,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
   saveDailyLog(log);updHdr();toast(`// LOCKED: ${betOn} ${ml}`);try{window.showBetPopup({type:'lock',betOn,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,ml,prob:p,decOdds:d});}catch(ex){}
-  setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderTennisPendingBets();}catch(e){}},120);
+  setTimeout(()=>{try{renderNHLLockedBets();}catch(e){}try{renderNBALockedBets();}catch(e){}try{renderHomeLockedBets();}catch(e){}try{renderTennisPendingBets();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderHomePage();}catch(e){}},120);
 }
 // ── Wipe blocklist — IDs permanently deleted, never restored by any sync ──
 function _getWipedIds(){try{return new Set(JSON.parse(localStorage.getItem('cv_wiped_ids')||'[]'));}catch(e){return new Set();}}
@@ -6150,7 +6150,8 @@ function _mlbDPLock(idx){
   const pick={id,sport:'MLB',betType:'PROP',betOn:p.player+' '+p.over+'ER '+p.line+' '+p.stat,
     hA:p.hA,awA:p.awA,winProb:p.prob,ml:p.ml,decOdds:p.dec,wager:100,outcome:'pending',
     date:today(),lockedAt:Date.now(),ctx:p.hA+'v'+p.awA+' · '+p.stat+' '+p.line+' · '+p.basis.slice(0,80)};
-  savePick(pick);renderOverallHistory();
+  const _dp=getP();if(!_dp.find(x=>x.id===pick.id)){_dp.push(pick);saveP(_dp);}
+  renderOverallHistory();
   toast('// LOCKED: '+p.player+' '+p.stat+' '+p.over.toUpperCase()+' '+p.line);
   try{window.showBetPopup({type:'lock',betOn:pick.betOn,sport:'MLB',league:'MLB',betType:'PROP',ml:p.ml,prob:p.prob,decOdds:p.dec});}catch(e){}
 }
