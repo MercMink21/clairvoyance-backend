@@ -18747,158 +18747,130 @@ function _epImp(ml){var m=_epML(ml);return m<0?Math.abs(m)/(Math.abs(m)+100):100
 function _epMLStr(ml){var m=_epML(ml);return(m>0?'+':'')+m;}
 function _epEV(prob,dec){return+(prob*dec-1);}
 
+/* ── Daily leg gatherer — fully dynamic from today's live game data ── */
 function _epGatherLegs(){
   var D=window.__CV_DATA||{};
   var legs=[];
+  var _grade=function(p){return p>=0.67?'PREMIUM':p>=0.62?'OPTIMAL':p>=0.55?'LEAN':'SKIP';};
+  var _val=function(ml,p,ev){return parseFloat(ml)>0&&p>=0.35&&ev>=0.08;};
 
-  /* ── Game picks from bestBets ─────────────────────────────── */
-  var bb=(D.bestBets||[]).filter(function(b){
-    return b.ml&&b.winProb&&parseFloat(b.winProb)>0.52&&(b.outcome||'pending')==='pending'&&b.betType!=='PROP';
-  });
-  bb.sort(function(a,b){return parseFloat(b.winProb)-parseFloat(a.winProb);});
-  bb.slice(0,12).forEach(function(b){
-    var prob=parseFloat(b.winProb)||0.55;
-    var dec=_epDec(b.ml);
-    legs.push({name:b.betOn||b.selection||'ML',ml:b.ml,prob:prob,dec:dec,
-      ev:_epEV(prob,dec),matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),
-      sport:(b.sport||'MLB').toUpperCase(),type:'GAME',
-      grade:prob>=0.67?'PREMIUM':prob>=0.60?'OPTIMAL':prob>=0.55?'GOOD':'FAIR'});
-  });
-
-  /* ── NHL props ─────────────────────────────────────────────── */
-  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';})
-    .slice(0,8).forEach(function(p){
-      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,
-        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-        matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade});
-    });
-
-  /* ── WNBA props ────────────────────────────────────────────── */
-  (typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';})
-    .slice(0,8).forEach(function(p){
-      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,
-        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-        matchup:(p.team||'WNBA')+' vs '+(p.opp||''),sport:'WNBA',type:'PROP',grade:p.grade});
-    });
-
-  /* ── NBA Finals props (hardcoded G5 slate) ─────────────────── */
-  (typeof NBA_PROPS_DATA!=='undefined'?NBA_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';})
-    .slice(0,10).forEach(function(p){
-      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,
-        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-        matchup:(p.t||'NBA')+' vs '+(p.opp||''),sport:'NBA',type:'PROP',grade:p.grade});
-    });
-  /* ── NBA props from bestBets ───────────────────────────────── */
-  (D.bestBets||[]).filter(function(b){
-    return b.betType==='PROP'&&b.sport==='NBA'&&parseFloat(b.winProb)>=0.62;
-  }).slice(0,6).forEach(function(b){
-    var prob=parseFloat(b.winProb)||0.62;var dec=_epDec(b.ml);
-    legs.push({name:b.betOn||b.selection,ml:b.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-      matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),sport:'NBA',type:'PROP',
-      grade:prob>=0.67?'PREMIUM':'OPTIMAL'});
+  /* ── MLB TODAY (ESPN_GAMES — live API data) ────────────────── */
+  var mlbGames=(window.ESPN_GAMES||window._mlbGames||[])
+    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F';});
+  mlbGames.forEach(function(g){
+    var hmlRaw=g.hML||g.homeML,amlRaw=g.aML||g.awayML;
+    if(!hmlRaw||!amlRaw)return;
+    var hP=_epImp(hmlRaw),aP=_epImp(amlRaw);
+    var hDec=_epDec(hmlRaw),aDec=_epDec(amlRaw);
+    var matchup=g.awA+' @ '+g.hA;
+    /* Pick the favored side with model-adjusted probability */
+    if(hP>aP&&hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:'MLB ML '+g.hA,ml:hmlRaw,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'MLB',type:'GAME',grade:_grade(hP),value:_val(hmlRaw,hP,hEV)});}
+    else if(aP>=hP&&aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:'MLB ML '+g.awA,ml:amlRaw,prob:aP,dec:aDec,ev:aEV,matchup:matchup,sport:'MLB',type:'GAME',grade:_grade(aP),value:_val(amlRaw,aP,aEV)});}
   });
 
-  /* ── NBA Tonight game lines (hardcoded slate) ──────────────── */
-  (typeof NBA_TONIGHT!=='undefined'?NBA_TONIGHT:[]).forEach(function(g){
-    var hML=g.hML,aML=g.aML;
-    var hProb=hML<0?Math.abs(hML)/(Math.abs(hML)+100):100/(hML+100);
-    var aProb=aML<0?Math.abs(aML)/(Math.abs(aML)+100):100/(aML+100);
-    var hDec=hML<0?100/Math.abs(hML)+1:hML/100+1;
-    var aDec=aML<0?100/Math.abs(aML)+1:aML/100+1;
-    if(hProb>=0.52){
-      var hGrade=hProb>=0.67?'PREMIUM':hProb>=0.60?'OPTIMAL':hProb>=0.55?'GOOD':'FAIR';
-      legs.push({name:g.h+' ML',ml:(hML<0?'':'+')+''+hML,prob:hProb,dec:hDec,
-        ev:_epEV(hProb,hDec),matchup:g.a+' at '+g.h,sport:'NBA',type:'GAME',grade:hGrade});
-    }
-    if(aProb>=0.52){
-      var aGrade=aProb>=0.67?'PREMIUM':aProb>=0.60?'OPTIMAL':aProb>=0.55?'GOOD':'FAIR';
-      legs.push({name:g.a+' ML',ml:(aML<0?'':'+')+''+aML,prob:aProb,dec:aDec,
-        ev:_epEV(aProb,aDec),matchup:g.a+' at '+g.h,sport:'NBA',type:'GAME',grade:aGrade});
-    }
+  /* ── NHL TODAY ──────────────────────────────────────────────── */
+  (D.nhl&&D.nhl.today||[]).forEach(function(g){
+    var hA=g.hA||g.home||'HOME',awA=g.awA||g.away||'AWAY';
+    var st=(g.state||g.status||'').toUpperCase();if(st==='FINAL'||st==='F')return;
+    var hP=g.ens?g.ens.p:(g.winProb||0.5);var awP=1-hP;
+    var hML=typeof p2ml==='function'?p2ml(hP):Math.round(hP>=.5?-hP/(1-hP)*100:(1-hP)/hP*100);
+    var awML=typeof p2ml==='function'?p2ml(awP):Math.round(awP>=.5?-awP/(1-awP)*100:(1-awP)/awP*100);
+    var hDec=_epDec(hML),aDec=_epDec(awML);var matchup=awA+' @ '+hA;
+    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:'NHL ML '+hA,ml:hML,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'NHL',type:'GAME',grade:_grade(hP),value:_val(hML,hP,hEV)});}
+    if(awP>=0.52){var aEV=_epEV(awP,aDec);legs.push({name:'NHL ML '+awA,ml:awML,prob:awP,dec:aDec,ev:aEV,matchup:matchup,sport:'NHL',type:'GAME',grade:_grade(awP),value:_val(awML,awP,aEV)});}
   });
 
-  /* WNBA today game lines */
+  /* ── NBA TODAY ──────────────────────────────────────────────── */
+  (D.nba&&D.nba.today||[]).forEach(function(g){
+    var hA=g.hA||g.home||'HOME',awA=g.awA||g.away||'AWAY';
+    var st=(g.state||g.status||'').toUpperCase();if(st==='FINAL'||st==='F')return;
+    var hP=g.ens?g.ens.p:(g.winProb||0.5);var awP=1-hP;
+    var hML=typeof p2ml==='function'?p2ml(hP):Math.round(hP>=.5?-hP/(1-hP)*100:(1-hP)/hP*100);
+    var awML=typeof p2ml==='function'?p2ml(awP):Math.round(awP>=.5?-awP/(1-awP)*100:(1-awP)/awP*100);
+    var hDec=_epDec(hML),aDec=_epDec(awML);var matchup=awA+' @ '+hA;
+    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:'NBA ML '+hA,ml:hML,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'NBA',type:'GAME',grade:_grade(hP),value:_val(hML,hP,hEV)});}
+    if(awP>=0.52){var aEV=_epEV(awP,aDec);legs.push({name:'NBA ML '+awA,ml:awML,prob:awP,dec:aDec,ev:aEV,matchup:matchup,sport:'NBA',type:'GAME',grade:_grade(awP),value:_val(awML,awP,aEV)});}
+  });
+
+  /* ── WNBA TODAY ─────────────────────────────────────────────── */
   (window._wnbaGameData||[]).forEach(function(g){
     if(!g.hML||!g.aML)return;
-    var _hm=parseFloat(g.hML)||(-110);var hP=_hm<0?Math.abs(_hm)/(Math.abs(_hm)+100):100/(_hm+100);var aP=1-hP;
-    var hDec=_epDec(g.hML);var aDec=_epDec(g.aML);
-    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:(g.hab||'HOME')+' ML',ml:g.hML,prob:hP,dec:hDec,ev:hEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:hP>=0.67?'PREMIUM':hP>=0.60?'OPTIMAL':'GOOD',value:g.hML>0&&hP>=0.38&&hEV>=0.12});}
-    if(aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:(g.aab||'AWAY')+' ML',ml:g.aML,prob:aP,dec:aDec,ev:aEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:aP>=0.67?'PREMIUM':aP>=0.60?'OPTIMAL':'GOOD',value:g.aML>0&&aP>=0.38&&aEV>=0.12});}
+    var hP=_epImp(g.hML),aP=_epImp(g.aML);
+    var hDec=_epDec(g.hML),aDec=_epDec(g.aML);
+    var hN=g.hab||'HOME',aN=g.aab||'AWAY';var matchup=aN+'@'+hN;
+    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:'WNBA ML '+hN,ml:g.hML,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'WNBA',type:'GAME',grade:_grade(hP),value:_val(g.hML,hP,hEV)});}
+    if(aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:'WNBA ML '+aN,ml:g.aML,prob:aP,dec:aDec,ev:aEV,matchup:matchup,sport:'WNBA',type:'GAME',grade:_grade(aP),value:_val(g.aML,aP,aEV)});}
   });
 
-  return legs;
+  /* ── WC26 TODAY ─────────────────────────────────────────────── */
+  var todStr=typeof today==='function'?today():new Date().toISOString().slice(0,10);
+  (typeof WC26_SCHEDULE!=='undefined'?WC26_SCHEDULE:[]).filter(function(m){return m.date===todStr;}).forEach(function(m){
+    if(typeof _wcOut!=='function'||typeof _wcML!=='function')return;
+    var o=_wcOut(m.he,m.ae);
+    var hML=_wcML(o.h),aML=_wcML(o.a);
+    var hDec=_epDec(hML),aDec=_epDec(aML);
+    var matchup=m.away+' @ '+m.home;
+    if(o.h>=0.45&&hDec>1.1){var hEV=_epEV(o.h,hDec);legs.push({name:'WC26 ML '+m.home,ml:hML,prob:o.h,dec:hDec,ev:hEV,matchup:matchup,sport:'WC26',type:'GAME',grade:o.h>=0.62?'OPTIMAL':'LEAN',value:_val(hML,o.h,hEV)});}
+    if(o.a>=0.40&&aDec>1.1){var aEV=_epEV(o.a,aDec);legs.push({name:'WC26 ML '+m.away,ml:aML,prob:o.a,dec:aDec,ev:aEV,matchup:matchup,sport:'WC26',type:'GAME',grade:o.a>=0.55?'LEAN':'SKIP',value:_val(aML,o.a,aEV)});}
+  });
+
+  /* ── MLB PROPS (real player data from today's _mlbDPData) ──── */
+  (window._mlbDPData||[]).filter(function(p){return p.grade&&p.grade!=='SKIP'&&p.prob>=0.55;}).slice(0,10).forEach(function(p){
+    var pDec=p.dec||_epDec(p.ml);var pEV=_epEV(p.prob,pDec);
+    legs.push({name:'MLB '+p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:p.prob,dec:pDec,ev:pEV,matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade,value:_val(p.ml,p.prob,pEV)});
+  });
+
+  /* ── NHL PROPS (current NHL_PROPS_DATA) ─────────────────────── */
+  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
+    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';}).slice(0,6).forEach(function(p){
+      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade});
+    });
+
+  /* ── NBA PROPS (current NBA_PROPS_DATA) ─────────────────────── */
+  (typeof NBA_PROPS_DATA!=='undefined'?NBA_PROPS_DATA:[])
+    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';}).slice(0,6).forEach(function(p){
+      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
+      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NBA')+' vs '+(p.opp||''),sport:'NBA',type:'PROP',grade:p.grade});
+    });
+
+  return legs.filter(function(l){return l.type==='PROP'?l.prob>=0.55:l.prob>=0.52;});
 }
 
-/* ── FOR THE MOON extended pool (GOOD grade props + value game lines) ── */
+/* ── Moon pool — wider threshold for high-leg-count slates ── */
 function _epGatherMoonLegs(){
-  var D=window.__CV_DATA||{};
-  var legs=[];
+  /* Start from core legs, then add underdog value plays + lean-grade props */
+  var legs=_epGatherLegs().slice();
+  var seen=new Set(legs.map(function(l){return l.name;}));
 
-  /* Game lines: lower prob floor but must have positive EV or underdog value */
-  var bb=(D.bestBets||[]).filter(function(b){
-    return b.ml&&b.winProb&&parseFloat(b.winProb)>=0.50&&(b.outcome||'pending')==='pending'&&b.betType!=='PROP';
-  });
-  bb.sort(function(a,b){return parseFloat(b.winProb)-parseFloat(a.winProb);});
-  bb.slice(0,20).forEach(function(b){
-    var prob=parseFloat(b.winProb)||0.55;
-    var dec=_epDec(b.ml);
-    legs.push({name:b.betOn||b.selection||'ML',ml:b.ml,prob:prob,dec:dec,
-      ev:_epEV(prob,dec),matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),
-      sport:(b.sport||'MLB').toUpperCase(),type:'GAME',
-      grade:prob>=0.67?'PREMIUM':prob>=0.60?'OPTIMAL':prob>=0.55?'GOOD':'VALUE'});
+  /* MLB underdogs and lean game lines */
+  var mlbGames=(window.ESPN_GAMES||window._mlbGames||[])
+    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F';});
+  mlbGames.forEach(function(g){
+    var hmlRaw=g.hML||g.homeML,amlRaw=g.aML||g.awayML;if(!hmlRaw||!amlRaw)return;
+    var hP=_epImp(hmlRaw),aP=_epImp(amlRaw);
+    var hDec=_epDec(hmlRaw),aDec=_epDec(amlRaw);var matchup=g.awA+' @ '+g.hA;
+    var nH='MLB ML '+g.hA,nA='MLB ML '+g.awA;
+    if(!seen.has(nH)&&hP>=0.38){var hEV=_epEV(hP,hDec);seen.add(nH);legs.push({name:nH,ml:hmlRaw,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'MLB',type:'GAME',grade:'LEAN',value:parseFloat(hmlRaw)>0&&hP>=0.35&&hEV>=0.06});}
+    if(!seen.has(nA)&&aP>=0.38){var aEV=_epEV(aP,aDec);seen.add(nA);legs.push({name:nA,ml:amlRaw,prob:aP,dec:aDec,ev:aEV,matchup:matchup,sport:'MLB',type:'GAME',grade:'LEAN',value:parseFloat(amlRaw)>0&&aP>=0.35&&aEV>=0.06});}
   });
 
-  /* NHL props — include GOOD grade too */
+  /* MLB props at LEAN+ threshold */
+  (window._mlbDPData||[]).filter(function(p){return p.grade&&p.grade!=='SKIP'&&p.prob>=0.50;}).slice(0,12).forEach(function(p){
+    var n='MLB '+p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat;
+    if(seen.has(n))return;seen.add(n);
+    var pDec=p.dec||_epDec(p.ml);legs.push({name:n,ml:p.ml,prob:p.prob,dec:pDec,ev:_epEV(p.prob,pDec),matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade});
+  });
+
+  /* NHL props LEAN+ */
   (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN';})
-    .slice(0,12).forEach(function(p){
+    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN';}).slice(0,10).forEach(function(p){
+      var n=p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat;if(seen.has(n))return;seen.add(n);
       var prob=(p.conf||58)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,
-        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-        matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade||'GOOD'});
+      legs.push({name:n,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade||'LEAN'});
     });
 
-  /* WNBA props — include all grades */
-  (typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[])
-    .filter(function(p){return (p.conf||0)>=55;})
-    .slice(0,12).forEach(function(p){
-      var prob=(p.conf||58)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,
-        ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-        matchup:(p.team||'WNBA')+' vs '+(p.opp||''),sport:'WNBA',type:'PROP',grade:p.grade||'GOOD'});
-    });
-
-  /* WNBA today game lines */
-  (window._wnbaGameData||[]).forEach(function(g){
-    if(!g.hML||!g.aML)return;
-    var _hm=parseFloat(g.hML)||(-110);var hP=_hm<0?Math.abs(_hm)/(Math.abs(_hm)+100):100/(_hm+100);var aP=1-hP;
-    var hDec=_epDec(g.hML);var aDec=_epDec(g.aML);
-    if(hP>=0.52){var hEV=_epEV(hP,hDec);legs.push({name:(g.hab||'HOME')+' ML',ml:g.hML,prob:hP,dec:hDec,ev:hEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:hP>=0.67?'PREMIUM':hP>=0.60?'OPTIMAL':'GOOD',value:g.hML>0&&hP>=0.38&&hEV>=0.12});}
-    if(aP>=0.52){var aEV=_epEV(aP,aDec);legs.push({name:(g.aab||'AWAY')+' ML',ml:g.aML,prob:aP,dec:aDec,ev:aEV,matchup:(g.aab||'')+'@'+(g.hab||''),sport:'WNBA',type:'GAME',grade:aP>=0.67?'PREMIUM':aP>=0.60?'OPTIMAL':'GOOD',value:g.aML>0&&aP>=0.38&&aEV>=0.12});}
-  });
-
-  /* NBA props — lower threshold */
-  (D.bestBets||[]).filter(function(b){
-    return b.betType==='PROP'&&b.sport==='NBA'&&parseFloat(b.winProb)>=0.55;
-  }).slice(0,8).forEach(function(b){
-    var prob=parseFloat(b.winProb)||0.58;var dec=_epDec(b.ml);
-    legs.push({name:b.betOn||b.selection,ml:b.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),
-      matchup:(b.awA||'')+(b.awA&&b.hA?' at ':'')+(b.hA||''),sport:'NBA',type:'PROP',
-      grade:prob>=0.67?'PREMIUM':prob>=0.60?'OPTIMAL':'GOOD'});
-  });
-
-  /* Mark value plays: positive ML (underdog), prob ≥ 38%, EV ≥ 12% */
-  legs.forEach(function(l){
-    var ml=parseFloat(l.ml)||0;
-    if(ml>0&&l.prob>=0.38&&l.ev>=0.12)l.value=true;
-  });
-
+  legs.forEach(function(l){var ml=parseFloat(l.ml)||0;if(ml>0&&l.prob>=0.35&&l.ev>=0.06)l.value=true;});
   return legs;
 }
 
@@ -18907,10 +18879,12 @@ function renderEngineParlays(){
   if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span></div>';
 
-  setTimeout(function(){
+  /* Auto-load MLB games then build parlays */
+  var _doRender=function(){
+    setTimeout(function(){
     var allLegs=_epGatherLegs();
     if(!allLegs.length){
-      el.innerHTML='<div class="empty" style="padding:14px">No engine data yet — sync data or lock picks first.</div>';
+      el.innerHTML='<div class="empty" style="padding:14px">No game data yet — tap ↻ after games load.<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames().then(()=>setTimeout(renderEngineParlays,1500))">↻ LOAD GAMES</button></div>';
       return;
     }
 
@@ -19067,7 +19041,16 @@ function renderEngineParlays(){
         +'</div>';
       }).join('')
     +'</div>';
-  },50);
+    },50);
+  };/* end _doRender */
+
+  /* If MLB games not loaded yet, load them first */
+  if(!(window.ESPN_GAMES&&window.ESPN_GAMES.length)&&typeof loadGames==='function'){
+    el.innerHTML='<div style="text-align:center;padding:16px;font-family:var(--mono);font-size:12px;color:var(--t3)"><span class="spi"></span> LOADING TODAY\'S GAMES…</div>';
+    loadGames().then(_doRender).catch(_doRender);
+  } else {
+    _doRender();
+  }
 }
 
 function _loadEngineParlayToBuilder(idx){
