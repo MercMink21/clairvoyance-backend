@@ -18820,19 +18820,8 @@ function _epGatherLegs(){
     legs.push({name:'MLB '+p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:p.prob,dec:pDec,ev:pEV,matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade,value:_val(p.ml,p.prob,pEV)});
   });
 
-  /* ── NHL PROPS (current NHL_PROPS_DATA) ─────────────────────── */
-  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';}).slice(0,6).forEach(function(p){
-      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade});
-    });
-
-  /* ── NBA PROPS (current NBA_PROPS_DATA) ─────────────────────── */
-  (typeof NBA_PROPS_DATA!=='undefined'?NBA_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL';}).slice(0,6).forEach(function(p){
-      var prob=(p.conf||65)/100;var dec=_epDec(p.ml);
-      legs.push({name:p.player+' '+(p.over!==false?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NBA')+' vs '+(p.opp||''),sport:'NBA',type:'PROP',grade:p.grade});
-    });
+  /* NOTE: NHL_PROPS_DATA / NBA_PROPS_DATA are hardcoded stale slates — intentionally
+     excluded here so only live daily sources drive the recommended parlays. */
 
   return legs.filter(function(l){return l.type==='PROP'?l.prob>=0.55:l.prob>=0.52;});
 }
@@ -18861,14 +18850,6 @@ function _epGatherMoonLegs(){
     if(seen.has(n))return;seen.add(n);
     var pDec=p.dec||_epDec(p.ml);legs.push({name:n,ml:p.ml,prob:p.prob,dec:pDec,ev:_epEV(p.prob,pDec),matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade});
   });
-
-  /* NHL props LEAN+ */
-  (typeof NHL_PROPS_DATA!=='undefined'?NHL_PROPS_DATA:[])
-    .filter(function(p){return p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN';}).slice(0,10).forEach(function(p){
-      var n=p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat;if(seen.has(n))return;seen.add(n);
-      var prob=(p.conf||58)/100;var dec=_epDec(p.ml);
-      legs.push({name:n,ml:p.ml,prob:prob,dec:dec,ev:_epEV(prob,dec),matchup:(p.t||'NHL')+' vs '+(p.opp||''),sport:'NHL',type:'PROP',grade:p.grade||'LEAN'});
-    });
 
   legs.forEach(function(l){var ml=parseFloat(l.ml)||0;if(ml>0&&l.prob>=0.35&&l.ev>=0.06)l.value=true;});
   return legs;
