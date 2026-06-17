@@ -55,7 +55,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .sk{font-family:var(--mono);font-size:14px;color:var(--nc);letter-spacing:2px;cursor:pointer;margin-top:4px;opacity:1;border:1px solid rgba(0,240,255,.3);padding:8px 20px;border-radius:2px;}
 .sk.v{opacity:1}.sk:hover{color:var(--t2)}
 /* HEADER */
-#hdr{flex:0 0 56px;background:linear-gradient(180deg,rgba(10,0,24,1) 0%,rgba(20,0,46,.95) 100%);
+#hdr{flex:0 0 72px;background:linear-gradient(180deg,rgba(10,0,24,1) 0%,rgba(20,0,46,.95) 100%);
   border-bottom:1px solid rgba(240,0,255,.3);
   display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 14px;
   box-shadow:0 0 30px rgba(240,0,255,.15),0 0 60px rgba(77,121,255,.08);
@@ -325,8 +325,14 @@ body{line-height:1.5}
     <button class="ub" onclick="openTokenModal()" id="gh-hdr-btn" title="GitHub Sync Settings" style="background:linear-gradient(135deg,rgba(240,0,255,.12),rgba(77,121,255,.12));border-color:rgba(240,0,255,.4);color:var(--pc)">SYNC KEY</button>
     <span id="live-dot" title="Live games in progress" style="display:none;width:8px;height:8px;background:var(--hc);border-radius:50%;margin-left:6px;animation:blink 1s infinite;vertical-align:middle"></span>
   </div>
-  <div class="logo" style="display:flex;flex-direction:column;align-items:center;gap:2px">CLAIRVOYANCE<div id="hdr-status-bar" style="font-family:var(--mono);font-size:13px;color:var(--pc);text-shadow:0 0 8px rgba(240,0,255,.5);letter-spacing:2px;text-align:center;font-weight:600;display:none"></div></div>
-  <div class="hdr-r" style="display:flex;align-items:center;justify-content:flex-end"><div id="hdr-clock" style="font-family:var(--mono);font-size:11px;color:var(--pc);text-shadow:0 0 8px rgba(240,0,255,.7);letter-spacing:.5px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px"></div></div>
+  <div class="logo" style="display:flex;flex-direction:column;align-items:center;gap:3px">CLAIRVOYANCE
+    <div style="display:flex;align-items:center;gap:10px;justify-content:center">
+      <div id="hdr-clock-mt" style="font-family:var(--mono);font-size:11px;color:rgba(240,0,255,.65);letter-spacing:.5px;white-space:nowrap"></div>
+      <div id="hdr-status-bar" style="font-family:var(--mono);font-size:13px;color:var(--pc);text-shadow:0 0 8px rgba(240,0,255,.5);letter-spacing:2px;text-align:center;font-weight:600;display:none"></div>
+      <div id="hdr-clock-et" style="font-family:var(--mono);font-size:11px;color:rgba(240,0,255,.65);letter-spacing:.5px;white-space:nowrap"></div>
+    </div>
+  </div>
+  <div class="hdr-r" style="display:flex;align-items:center;justify-content:flex-end"></div>
 </header>
 <nav id="sbar">
   <button class="sp act" onclick="SS('home')" onmouseenter="showND(this,'home')" onmouseleave="startHideND()">HOME</button>
@@ -9406,13 +9412,14 @@ function renderHomePage(){
 // ── Header dual-timezone clock ────────────────────────────────────────────────
 (function(){
   function tickClock(){
-    const el=document.getElementById('hdr-clock');if(!el)return;
+    const elMT=document.getElementById('hdr-clock-mt');
+    const elET=document.getElementById('hdr-clock-et');
+    if(!elMT||!elET)return;
     const now=new Date();
-    const mt=now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'America/Denver'});
-    const et=now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'America/New_York'});
     const narrow=window.innerWidth<=480;
-    const fmt=(t)=>narrow?t.slice(0,5):t;
-    el.textContent=`MT ${fmt(mt)} · ET ${fmt(et)}`;
+    const fmt=(tz)=>{const t=now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:tz});return narrow?t.slice(0,5):t;};
+    elMT.textContent=`MT ${fmt('America/Denver')}`;
+    elET.textContent=`ET ${fmt('America/New_York')}`;
   }
   tickClock();
   setInterval(tickClock,1000);
