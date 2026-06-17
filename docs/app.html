@@ -38,8 +38,9 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 #app{display:flex;flex-direction:column;height:100%;height:-webkit-fill-available;overflow:hidden;opacity:1;transition:opacity .7s}
 #app.ready{opacity:1}
 /* SPLASH */
-#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0d;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px);background-size:22px 22px,22px 22px,22px 22px,22px 22px;animation:splashFade 3s ease forwards}
-@keyframes splashFade{0%,75%{opacity:1;pointer-events:auto}100%{opacity:0;pointer-events:none;visibility:hidden}}
+#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background:#0a0014;will-change:opacity;transition:opacity .9s cubic-bezier(.4,0,.2,1)}
+#splash-grid{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,rgba(240,0,255,.04) 0px,rgba(240,0,255,.04) 1px,transparent 1px,transparent 28px),repeating-linear-gradient(90deg,rgba(240,0,255,.04) 0px,rgba(240,0,255,.04) 1px,transparent 1px,transparent 28px);opacity:0;transition:opacity 1s ease}
+@keyframes splashFade{0%{opacity:1}100%{opacity:0}}
 .si{position:relative;z-index:2;text-align:center;display:flex;flex-direction:column;align-items:center;gap:18px}
 .sl{font-family:var(--orb);font-weight:900;font-size:clamp(22px,6vw,52px);letter-spacing:clamp(4px,1.5vw,14px);
   background:linear-gradient(135deg,var(--pc),var(--ic),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
@@ -311,10 +312,11 @@ body{line-height:1.5}
 <body>
 
 <div id="splash">
+  <div id="splash-grid"></div>
   <div class="si">
-    <div id="splash-wordmark" style="opacity:0;transform:scale(.88);transition:opacity .9s ease,transform .9s cubic-bezier(.34,1.56,.64,1);font-family:'Orbitron',sans-serif;font-size:clamp(52px,13vw,110px);font-weight:900;letter-spacing:6px;color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 32px rgba(240,0,255,.8),0 0 72px rgba(240,0,255,.45),0 0 130px rgba(240,0,255,.2);text-align:center;line-height:1">CLAIRVOYANCE</div>
-    <div id="splash-sub" style="font-family:'Share Tech Mono',monospace;font-size:clamp(14px,3vw,22px);letter-spacing:clamp(3px,1vw,6px);color:rgba(170,192,224,0.55);text-transform:uppercase;opacity:0;transition:opacity .9s .5s;margin-top:20px">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
-    <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:28px;overflow:hidden"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 2.4s ease-in-out;border-radius:4px"></div></div>
+    <div id="splash-wordmark" style="opacity:0;transform:translateY(12px);transition:opacity .8s ease,transform .8s cubic-bezier(.22,1,.36,1);font-family:'Orbitron',sans-serif;font-size:clamp(52px,13vw,110px);font-weight:900;letter-spacing:6px;color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 32px rgba(240,0,255,.8),0 0 72px rgba(240,0,255,.45),0 0 130px rgba(240,0,255,.2);text-align:center;line-height:1">CLAIRVOYANCE</div>
+    <div id="splash-sub" style="font-family:'Share Tech Mono',monospace;font-size:clamp(14px,3vw,22px);letter-spacing:clamp(3px,1vw,6px);color:rgba(170,192,224,0.55);text-transform:uppercase;opacity:0;transform:translateY(8px);transition:opacity .7s ease,transform .7s ease;margin-top:0">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
+    <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:0;overflow:hidden;opacity:0;transition:opacity .5s ease"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 2s cubic-bezier(.4,0,.2,1);border-radius:4px"></div></div>
   </div>
 </div>
 
@@ -9885,17 +9887,40 @@ setInterval(()=>{try{cvGuard();}catch(e){}},3000);
 
 // ═══ SPLASH ═══════════════════════════════════════════════════
 let splashDone=false;
-function endSplash(){if(splashDone)return;splashDone=true;const sp=document.getElementById('splash');const app=document.getElementById('app');if(sp){sp.style.transition='opacity .7s';sp.style.opacity='0';setTimeout(()=>sp.remove(),800);}if(app)app.classList.add('ready');try{SS('home');}catch(e){}}
+function endSplash(){
+  if(splashDone)return;splashDone=true;
+  const sp=document.getElementById('splash');
+  const app=document.getElementById('app');
+  if(sp){sp.style.opacity='0';setTimeout(()=>{sp.style.display='none';},950);}
+  if(app)app.classList.add('ready');
+  try{SS('home');}catch(e){}
+}
 function startSplash(){
-  const wordmark=document.getElementById('splash-wordmark');
   const sp=document.getElementById('splash');
   if(sp)sp.addEventListener('click',endSplash);
+  // Step 1: fade in grid (50ms)
   setTimeout(()=>{
-    if(wordmark){wordmark.style.opacity='1';wordmark.style.transform='scale(1)';}
-    const sub=document.getElementById('splash-sub');if(sub)sub.style.opacity='1';
-    const bar=document.getElementById('splash-bar');if(bar)requestAnimationFrame(()=>{bar.style.width='100%';});
-    setTimeout(endSplash,2600);
-  },100);
+    const g=document.getElementById('splash-grid');if(g)g.style.opacity='1';
+  },50);
+  // Step 2: slide up + fade in wordmark (200ms)
+  setTimeout(()=>{
+    const w=document.getElementById('splash-wordmark');
+    if(w){w.style.opacity='1';w.style.transform='translateY(0)';}
+  },200);
+  // Step 3: fade in subtitle (600ms)
+  setTimeout(()=>{
+    const s=document.getElementById('splash-sub');
+    if(s){s.style.opacity='1';s.style.transform='translateY(0)';}
+  },600);
+  // Step 4: reveal bar track + start fill (900ms)
+  setTimeout(()=>{
+    const bw=document.getElementById('splash-bar-wrap');if(bw)bw.style.opacity='1';
+    requestAnimationFrame(()=>{
+      const bar=document.getElementById('splash-bar');if(bar)bar.style.width='100%';
+    });
+  },900);
+  // Step 5: end after bar finishes (~2.9s total)
+  setTimeout(endSplash,2900);
 }
 
 // ═══ NHL/NBA LIVE TRACKER ════════════════════════════════════
