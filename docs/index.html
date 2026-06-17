@@ -13262,15 +13262,23 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   // Scale font + row count based on how many picks exist
   const n=moves.length;
   const maxRows=n<=5?5:n<=8?8:n<=12?12:16;
-  const fs=n<=5?{pick:8.5,game:7,prob:10,pad:'3px 0',grade:7}
-           :n<=8?{pick:7.5,game:6,prob:8.5,pad:'2px 0',grade:6.5}
-           :n<=12?{pick:6.5,game:5.5,prob:7.5,pad:'1.5px 0',grade:6}
-           :{pick:5.5,game:5,prob:6.5,pad:'1px 0',grade:5.5};
-  const rows=moves.slice(0,maxRows).map(m=>{
-    const c=_lcGrade(m.grade);
+  const fs=n<=5?{pick:8.5,game:7,prob:10,pad:'3px 0',hdr:7}
+           :n<=8?{pick:7.5,game:6,prob:8.5,pad:'2px 0',hdr:6.5}
+           :n<=12?{pick:6.5,game:5.5,prob:7.5,pad:'1.5px 0',hdr:6}
+           :{pick:5.5,game:5,prob:6.5,pad:'1px 0',hdr:5.5};
+  // Group picks by grade tier
+  const grpOrder=['ELITE','PREMIUM','OPTIMAL','LEAN'];
+  const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
+  const grpMap={};
+  moves.slice(0,maxRows).forEach(m=>{
+    const key=grpLabel[m.grade]||'LEAN';
+    if(!grpMap[key])grpMap[key]=[];
+    grpMap[key].push(m);
+  });
+  const grpKeys=['ELITE','OPTIMAL','LEAN'].filter(k=>grpMap[k]);
+  const pickRow=(m)=>{
     const pickClr=m.isProp?'#00f0ff':'#f000ff';
-    return'<div style="display:flex;align-items:center;gap:4px;padding:'+fs.pad+';border-bottom:1px solid rgba(255,255,255,.05)">'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:'+fs.grade+'px;font-weight:700;padding:1px 3px;border:1px solid '+c+';color:rgb(230,235,255);border-radius:1px;min-width:24px;text-align:center;flex-shrink:0;letter-spacing:.5px">'+m.grade+'</span>'
+    return'<div style="display:flex;align-items:center;gap:4px;padding:'+fs.pad+';border-bottom:1px solid rgba(255,255,255,.04)">'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:\'Orbitron\',sans-serif;font-size:'+fs.pick+'px;font-weight:700;color:'+pickClr+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.label+'</div>'
         +'<div style="font-family:\'Orbitron\',sans-serif;font-size:'+fs.game+'px;font-weight:400;color:rgba(220,190,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.game+'</div>'
@@ -13279,6 +13287,10 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
         +'<div style="font-family:\'Orbitron\',sans-serif;font-size:'+fs.prob+'px;font-weight:700;color:'+pickClr+'">'+m.prob+'%</div>'
       +'</div>'
     +'</div>';
+  };
+  const rows=grpKeys.map(k=>{
+    const header='<div style="font-family:\'Orbitron\',sans-serif;font-size:'+fs.hdr+'px;font-weight:700;color:#00f0ff;letter-spacing:1px;padding:3px 0 1px;border-bottom:1px solid rgba(0,240,255,.25);margin-bottom:1px">'+k+'</div>';
+    return header+grpMap[k].map(pickRow).join('');
   }).join('');
 
   return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:10px 12px 8px;box-sizing:border-box">'
