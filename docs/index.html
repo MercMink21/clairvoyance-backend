@@ -15948,7 +15948,7 @@ function renderNCAABaseballContent(){
 
 window.WNBA_ELO={
   NY:1640,MIN:1590,LV:1560,CON:1535,IND:1525,SEA:1495,
-  CHI:1485,PHX:1455,ATL:1445,LA:1430,DAL:1415,GS:1410,WSH:1390,TOR:1355
+  CHI:1485,PHX:1455,ATL:1445,LA:1430,DAL:1415,GS:1410,WSH:1390,TOR:1355,POR:1380,PDX:1380
 };
 var WNBA_ABBR_MAP={
   LVA:'LV',NYL:'NY',GSV:'GS',PHO:'PHX',WAS:'WSH',LAE:'LA',LAS:'LA',LSPR:'LA',
@@ -15961,7 +15961,7 @@ var WNBA_ABBR_MAP={
 };
 var WNBA_WIN_PCT={
   NY:.72,MIN:.65,LV:.60,CON:.58,IND:.58,SEA:.52,
-  CHI:.48,PHX:.46,ATL:.45,GS:.44,LA:.40,DAL:.40,WSH:.38,TOR:.30
+  CHI:.48,PHX:.46,ATL:.45,GS:.44,LA:.40,DAL:.40,WSH:.38,TOR:.30,POR:.42,PDX:.42
 };
 var WNBA_ENS={mc:.45,bay:.25,elo:.30};
 function _wnbaKey(abbr){
@@ -16130,14 +16130,14 @@ async function _renderWNBAGamesInner(el,dateEl,force){
   if(!normalizedGames.length){el.innerHTML='<div class="empty">NO WNBA GAMES TODAY</div>';return;}
   var WPAR=[];
   var htmlParts=[];
-  normalizedGames.forEach(function(ev){
+  normalizedGames.forEach(function(game){
     try{
-      var hab=_wnbaKey(ev.home)||ev.home||'HOME';
-      var aab=_wnbaKey(ev.away)||ev.away||'AWAY';
-      var homeML=ev.homeML||null;
-      var awayML=ev.awayML||null;
-      var ou=ev.ou||null;
-      var spread=ev.spread||null;
+      var hab=_wnbaKey(game.home)||game.home||'HOME';
+      var aab=_wnbaKey(game.away)||game.away||'AWAY';
+      var homeML=game.homeML||null;
+      var awayML=game.awayML||null;
+      var ou=game.ou||null;
+      var spread=game.spread||null;
       var espnHL=homeML?{homeML:homeML,awayML:awayML}:null;
       var ens;
       try{ens=wnbaEns(hab,aab,espnHL);}catch(ex){ens={hP:0.5,aP:0.5,mcP:0.5,bayP:0.5,eloP:0.5,hNet:0,aNet:0};}
@@ -16173,18 +16173,18 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var aSign=aMLn>0?'+':'';
       // Live score badge
       var liveBadge='';
-      if(ev.state==='in'||ev.state==='STATUS_IN_PROGRESS'){
-        var hSc=ev.homeScore!=null?ev.homeScore:'—';
-        var aSc=ev.awayScore!=null?ev.awayScore:'—';
-        var qtr=ev.period?'Q'+ev.period:'LIVE';
-        var clk=ev.clock&&ev.clock!=='0.0'?' '+ev.clock:'';
+      if(game.state==='in'||game.state==='STATUS_IN_PROGRESS'){
+        var hSc=game.homeScore!=null?game.homeScore:'—';
+        var aSc=game.awayScore!=null?game.awayScore:'—';
+        var qtr=game.period?'Q'+game.period:'LIVE';
+        var clk=game.clock&&game.clock!=='0.0'?' '+game.clock:'';
         liveBadge='<span style="font-family:var(--mono);font-size:12px;color:var(--gc);background:rgba(0,240,0,.08);border:1px solid rgba(0,240,0,.3);border-radius:2px;padding:1px 6px;margin-left:8px">● LIVE '+qtr+clk+' · '+aab+' '+aSc+' '+hab+' '+hSc+'</span>';
-      }else if(ev.state==='STATUS_FINAL'||ev.state==='post'){
-        var hSc=ev.homeScore!=null?ev.homeScore:'—';
-        var aSc=ev.awayScore!=null?ev.awayScore:'—';
+      }else if(game.state==='STATUS_FINAL'||game.state==='post'){
+        var hSc=game.homeScore!=null?game.homeScore:'—';
+        var aSc=game.awayScore!=null?game.awayScore:'—';
         liveBadge='<span style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-left:8px">FINAL '+aab+' '+aSc+' '+hab+' '+hSc+'</span>';
       }
-      var timeNet=ev.network?'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">'+ev.network+(ev.venue?' · '+ev.venue:'')+'</div>':'';
+      var timeNet=game.network?'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">'+game.network+(game.venue?' · '+game.venue:'')+'</div>':'';
       WPAR.push({hab:hab,aab:aab,hP:hP,aP:aP,hML:hMLn,aML:aMLn,
                  hDec:hDec,aDec:aDec,spread:''+spreadStr,ou:''+ouStr,gameKey:gameKey});
       var _hEV=hP*parseFloat(hDec)-1;
@@ -16193,8 +16193,8 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var csA=chipC(aP,_aEV);
       var csSprd=chipC(hP,_hEV);
       var csOU=chipC(0.5,-0.045);
-      var _gameState=ev.state||'pre';
-      var _statusTxt=(_gameState==='in'||_gameState==='STATUS_IN_PROGRESS')?'● LIVE':(_gameState==='STATUS_FINAL'||_gameState==='post')?'FINAL':ev.date?new Date(ev.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'UPCOMING';
+      var _gameState=game.state||'pre';
+      var _statusTxt=(_gameState==='in'||_gameState==='STATUS_IN_PROGRESS')?'● LIVE':(_gameState==='STATUS_FINAL'||_gameState==='post')?'FINAL':game.date?new Date(game.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'UPCOMING';
       htmlParts.push('<div class="gc" style="border-left:2px solid rgba(187,255,0,.4)">'
         +'<div class="gch">'
         +'<div>'
@@ -16306,7 +16306,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'</div>'
         +'</div>');
     }catch(ex){
-      console.warn('WNBA game render err',ev,ex);
+      console.warn('WNBA game render err',game,ex);
       htmlParts.push('<div class="empty" style="margin-bottom:8px">GAME DATA UNAVAILABLE</div>');
     }
   });
