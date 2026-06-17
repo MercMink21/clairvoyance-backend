@@ -9205,15 +9205,38 @@ function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv
 function renderDailyBriefing(){
   const el=document.getElementById('home-daily-briefing');if(!el)return;
   const D=window.__CV_DATA||{};
+  const now=Date.now();
+  const nowD=getMSTNow();
   const todayStr=today();
   const allBets=getP();
+  const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
   const td=allBets.filter(p=>p.date===todayStr);
   const tdSettled=td.filter(p=>p.outcome==='win'||p.outcome==='loss');
   const tdW=tdSettled.filter(p=>p.outcome==='win').length;
   const tdL=tdSettled.filter(p=>p.outcome==='loss').length;
   const tdPending=td.filter(p=>p.outcome==='pending').length;
 
-  // ── Tally today's slate across every sport source we track ──────────────
+  // ── Performance calcs ───────────────────────────────────────────────────
+  const cP=bets=>{const s=bets.filter(p=>p.outcome==='win'||p.outcome==='loss');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:a-1,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
+  const wk7ts=now-7*86400000;
+  const moTs=mstFirstOfMonth(nowD).getTime();
+  const wk7P=cP(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts));
+  const moP=cP(settled.filter(p=>p.lockedAt&&p.lockedAt>=moTs));
+  const allP=cP(settled);
+
+  // ── Streak from most recent bets ────────────────────────────────────────
+  const recent=[...settled].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0)).slice(0,10);
+  let streak=0,streakType='';
+  for(const b of recent){if(!streakType)streakType=b.outcome;if(b.outcome===streakType)streak++;else break;}
+  const streakCol=streakType==='win'?'var(--nc)':'var(--hc)';
+  const streakLabel=streak>1?`${streak}${streakType==='win'?'W':'L'} STREAK`:'';
+
+  // ── Hot sport (best win% in rolling 7d with ≥2 bets) ───────────────────
+  const sports=['MLB','NHL','NBA','NFL','TEN','SOC'];
+  let hotSport='',hotPct=0;
+  sports.forEach(sp=>{const sb=settled.filter(p=>p.sport===sp&&p.lockedAt&&p.lockedAt>=wk7ts);if(sb.length>=2){const wp=sb.filter(p=>p.outcome==='win').length/sb.length;if(wp>hotPct){hotPct=wp;hotSport=sp;}}});
+
+  // ── Game count across all sport sources ────────────────────────────────
   let gameCount=0;
   try{gameCount+=(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).length;}catch(e){}
   try{gameCount+=(D.nhl?.today||[]).length;}catch(e){}
@@ -9221,60 +9244,90 @@ function renderDailyBriefing(){
   try{gameCount+=(window._wnbaGameData||[]).length;}catch(e){}
   try{gameCount+=(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).length;}catch(e){}
 
-  // ── Pull candidate "best play" picks from every graded source ───────────
+  // ── Top pick candidates ─────────────────────────────────────────────────
   const candidates=[];
-  try{
-    (D.bestBets||D.heroPicksForDay||[]).filter(b=>b.date===todayStr).forEach(b=>{
-      candidates.push({sport:b.sport||'MLB',matchup:_gameTitle?_gameTitle(b.hA||b.home,b.awA||b.away,b.sport):`${b.away||b.awA||''} @ ${b.home||b.hA||''}`,
-        pick:b.pick||b.betOn||b.selection||'',grade:b.grade||tier?.(b.confidence||b.prob||0,b.ev2||0)||'OPTIMAL',prob:b.confidence||b.prob||0});
-    });
-  }catch(e){}
-  try{
-    (window._mlbDPData||[]).forEach(p=>{
-      if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'){
-        candidates.push({sport:'MLB',matchup:`${p.awA} @ ${p.hA}`,pick:`${p.player} ${p.over?.toUpperCase()} ${p.line} ${p.stat}`,grade:p.grade,prob:p.prob||0});
-      }
-    });
-  }catch(e){}
+  const gradeColor={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
+  try{(D.bestBets||D.heroPicksForDay||[]).filter(b=>b.date===todayStr).forEach(b=>{candidates.push({sport:b.sport||'MLB',matchup:`${b.away||b.awA||''} @ ${b.home||b.hA||''}`,pick:b.pick||b.betOn||b.selection||'',grade:b.grade||'OPTIMAL',prob:b.confidence||b.prob||0});});}catch(e){}
+  try{(window._mlbDPData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'){candidates.push({sport:'MLB',matchup:`${p.awA} @ ${p.hA}`,pick:`${p.player} ${p.over?.toUpperCase()} ${p.line} ${p.stat}`,grade:p.grade,prob:p.prob||0});}});}catch(e){}
   candidates.sort((a,b)=>(b.prob||0)-(a.prob||0));
   const top=candidates.slice(0,3);
 
-  const gradeColor={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
-
-  // ── Engine-voice summary line ────────────────────────────────────────
+  // ── Engine-voice blurb ──────────────────────────────────────────────────
   let blurb;
   if(gameCount===0){
-    blurb='Slate is quiet — no games detected yet for today. Check back once schedules load.';
+    blurb='No games detected yet — slate will populate once schedules load. Engine standing by.';
   }else if(top.length){
     const best=top[0];
-    blurb=`Scanning ${gameCount} game${gameCount===1?'':'s'} across the board today — top signal is <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.pick}</span> graded <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.grade}</span>.`;
+    blurb=`Engine scanning <strong>${gameCount} games</strong> today. Top signal: <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.pick}</span> — graded <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.grade}</span>${best.prob?' at '+(best.prob*100).toFixed(0)+'% confidence':''}.`;
   }else{
-    blurb=`Scanning ${gameCount} game${gameCount===1?'':'s'} across the board today — model is still grinding through matchups, no standout edge yet.`;
+    blurb=`Engine scanning <strong>${gameCount} games</strong> across all tracked slates. No standout edge flagged yet — model still processing.`;
   }
-  if(tdPending>0)blurb+=` ${tdPending} bet${tdPending===1?'':'s'} locked and riding.`;
-  if(tdSettled.length>0)blurb+=` Today's ledger: ${tdW}W-${tdL}L so far.`;
+  if(tdPending>0)blurb+=` <span style="color:var(--nc)">${tdPending} bet${tdPending===1?'':'s'} live and riding.</span>`;
+  if(tdSettled.length>0)blurb+=` Today: <span style="color:${tdW>tdL?'var(--nc)':'var(--hc)'}">${tdW}W-${tdL}L</span>.`;
+
+  // ── Stat pill helper ───────────────────────────────────────────────────
+  const pill=(label,val,col='var(--t2)',sub='')=>`<div style="background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.07);border-radius:4px;padding:9px 13px;text-align:center;min-width:72px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">${label}</div>
+    <div style="font-family:var(--orb);font-size:17px;font-weight:800;color:${col};text-shadow:0 0 12px ${col}40">${val}</div>
+    ${sub?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:3px">${sub}</div>`:''}
+  </div>`;
+
+  const fmtPct=p=>p===null?'—':(p*100).toFixed(1)+'%';
+  const fmtU=u=>(u>=0?'+':'')+u.toFixed(1)+'u';
+  const pCol=p=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
+  const uCol=u=>u>=0?'var(--nc)':'var(--hc)';
 
   el.innerHTML=`
-  <div style="position:relative;border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;background:linear-gradient(135deg,rgba(240,0,255,.07),rgba(0,240,255,.04));box-shadow:0 0 24px rgba(240,0,255,.12),inset 0 0 30px rgba(240,0,255,.03)">
-    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--pc),var(--nc),transparent);animation:cvbScan 3.5s linear infinite"></div>
-    <div style="padding:14px 16px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--pc);box-shadow:0 0 10px var(--pc);animation:blink 1.6s infinite"></span>
-        <span style="font-family:var(--orb);font-size:14px;font-weight:800;letter-spacing:3px;color:var(--pc);text-shadow:0 0 10px rgba(240,0,255,.5)">DAILY BRIEFING</span>
-        <span style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-left:auto">${getMSTNow().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'}).toUpperCase()}</span>
+  <div style="position:relative;border:1px solid rgba(240,0,255,.3);border-radius:6px;overflow:hidden;background:linear-gradient(145deg,rgba(10,0,24,.95),rgba(20,0,46,.9));box-shadow:0 0 40px rgba(240,0,255,.1),0 0 80px rgba(77,121,255,.06),inset 0 1px 0 rgba(240,0,255,.15)">
+    <!-- animated scan line -->
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--pc),var(--nc),var(--pc),transparent);animation:cvbScan 3.5s linear infinite"></div>
+    <!-- corner accents -->
+    <div style="position:absolute;top:0;left:0;width:18px;height:18px;border-top:2px solid var(--pc);border-left:2px solid var(--pc);border-radius:6px 0 0 0;opacity:.7"></div>
+    <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-top:2px solid var(--nc);border-right:2px solid var(--nc);border-radius:0 6px 0 0;opacity:.7"></div>
+    <div style="position:absolute;bottom:0;left:0;width:18px;height:18px;border-bottom:2px solid var(--pc);border-left:2px solid var(--pc);border-radius:0 0 0 6px;opacity:.4"></div>
+    <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-bottom:2px solid var(--nc);border-right:2px solid var(--nc);border-radius:0 0 6px 0;opacity:.4"></div>
+
+    <div style="padding:16px 18px 18px">
+
+      <!-- header row -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--pc);box-shadow:0 0 14px var(--pc),0 0 28px rgba(240,0,255,.4);animation:blink 1.6s infinite;flex-shrink:0"></span>
+        <span style="font-family:var(--orb);font-size:15px;font-weight:900;letter-spacing:4px;color:var(--pc);text-shadow:0 0 14px rgba(240,0,255,.6)">DAILY BRIEFING</span>
+        ${streakLabel?`<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${streakCol};background:${streakType==='win'?'rgba(0,240,255,.1)':'rgba(255,32,144,.1)'};border:1px solid ${streakCol};border-radius:3px;padding:2px 7px;letter-spacing:1px">${streakLabel}</span>`:''}
+        ${hotSport?`<span style="font-family:var(--mono);font-size:11px;color:var(--gc);background:rgba(255,221,0,.08);border:1px solid rgba(255,221,0,.3);border-radius:3px;padding:2px 7px;letter-spacing:1px">🔥 ${hotSport} HOT</span>`:''}
+        <span style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-left:auto;letter-spacing:1px">${nowD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase()}</span>
       </div>
-      <div style="font-family:var(--ex);font-size:15px;line-height:1.55;color:var(--t2);margin-bottom:${top.length?'12':'0'}px">${blurb}</div>
+
+      <!-- engine voice blurb -->
+      <div style="font-family:var(--ex);font-size:15px;line-height:1.6;color:var(--t2);padding:10px 13px;background:rgba(240,0,255,.04);border-left:3px solid rgba(240,0,255,.4);border-radius:0 4px 4px 0;margin-bottom:16px">${blurb}</div>
+
+      <!-- stat pills row -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${top.length?'16':'0'}px">
+        ${pill('7-DAY',wk7P.n?`${wk7P.w}W-${wk7P.l}L`:' — ',pCol(wk7P.pct),wk7P.n?fmtPct(wk7P.pct):'')}
+        ${pill('THIS MO',moP.n?`${moP.w}W-${moP.l}L`:' — ',pCol(moP.pct),moP.n?fmtPct(moP.pct):'')}
+        ${pill('ALL TIME',allP.n?`${allP.w}W-${allP.l}L`:' — ',pCol(allP.pct),allP.n?fmtPct(allP.pct):'')}
+        ${pill('7D UNITS',wk7P.n?fmtU(wk7P.u):' — ',uCol(wk7P.u),'')}
+        ${pill('ALL UNITS',allP.n?fmtU(allP.u):' — ',uCol(allP.u),'')}
+        ${gameCount?pill('GAMES TODAY',gameCount,'var(--ic)','ON SLATE'):pill('GAMES TODAY','—','var(--t3)','')}
+      </div>
+
+      <!-- top picks grid -->
       ${top.length?`
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:4px">
-        ${top.map(t=>`<div style="background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08);border-left:3px solid ${gradeColor[t.grade]||'var(--pc)'};border-radius:3px;padding:8px 10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-            <span style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px">${t.sport}</span>
-            <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${gradeColor[t.grade]||'var(--pc)'}">${t.grade}</span>
-          </div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.pick}</div>
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:2px">${t.matchup}${t.prob?' · '+(t.prob*100).toFixed(0)+'%':''}</div>
-        </div>`).join('')}
+      <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:14px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">▸ TOP SIGNALS TODAY</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px">
+          ${top.map((t,i)=>`<div style="position:relative;background:linear-gradient(135deg,rgba(0,0,0,.5),rgba(${i===0?'240,0,255':'0,240,255'},.04));border:1px solid rgba(${i===0?'240,0,255':'255,255,255'},.${i===0?'2':'08'});border-left:3px solid ${gradeColor[t.grade]||'var(--pc)'};border-radius:4px;padding:10px 12px;overflow:hidden">
+            <div style="position:absolute;top:0;right:0;width:40px;height:40px;background:radial-gradient(circle,${gradeColor[t.grade]||'var(--pc)'}18,transparent 70%);pointer-events:none"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+              <span style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:2px">${t.sport}</span>
+              <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${gradeColor[t.grade]||'var(--pc)'};text-shadow:0 0 8px ${gradeColor[t.grade]||'var(--pc)'}">${t.grade}${t.prob?' · '+(t.prob*100).toFixed(0)+'%':''}</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:14px;color:var(--t);font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.pick}</div>
+            <div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${t.matchup}</div>
+          </div>`).join('')}
+        </div>
       </div>`:''}
+
     </div>
   </div>`;
 }
