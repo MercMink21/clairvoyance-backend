@@ -13167,17 +13167,17 @@ function _normSport(p){
   return raw||'MISC';
 }
 
-window._intelTier='base_20';
+window._intelTier='base';
 function renderIntelCards(tier){
   if(tier)window._intelTier=tier;
   const el=document.getElementById('social-cards-content');if(!el)return;
-  const t=window._intelTier||'base_20';
+  const t=window._intelTier||'base';
 
   // Collect all pending picks
   const allPending=getP().filter(p=>p.outcome==='pending');
   const bestBets=(window.__CV_DATA?.bestBets||[]).filter(b=>b.date===today());
 
-  // Build move objects
+  // Build move objects from locked picks
   const toMove=p=>{
     const prob=p.winProb||.55;
     const dec=parseFloat(p.decOdds)||2;
@@ -13200,8 +13200,7 @@ function renderIntelCards(tier){
       grade:b.grade||'LEAN',date:b.date||today(),isProp:false};
   };
 
-  // Props registry — sport is always explicit here, never inferred.
-  // Add new sports here as the engine expands.
+  // Props registry
   const _PROPS_REG=[
     {sport:'MLB',  data:typeof MLB_PROPS_DATA !=='undefined'?MLB_PROPS_DATA :[]},
     {sport:'NBA',  data:typeof NBA_PROPS_DATA !=='undefined'?NBA_PROPS_DATA :[]},
@@ -13223,43 +13222,76 @@ function renderIntelCards(tier){
       grade,date:today(),isProp:true};
   };
 
-  // Filter by tier
-  // base_20 (PLUS) = all game lines only · insider = game lines + props
-  let moves=allPending.map(toMove);
-  if(t==='base_20'){
-    moves=moves.filter(m=>!m.isProp);
+  // ── Tier filtering ────────────────────────────────────────────────
+  // BASE:    one pick per sport per grade (PREMIUM / OPTIMAL / LEAN) — game lines only
+  // PLUS:    all game lines for every sport (no props)
+  // INSIDER: all game lines + all player props for every sport
+  let moves=allPending.map(toMove).filter(m=>!m.isProp); // game lines only baseline
+
+  if(t==='base'){
+    // One top pick per sport per grade level, game lines only
+    moves=[...moves,...bestBets.map(bbToMove)];
+    const seen={};
+    moves=moves.filter(m=>{
+      const key=m.sport+'_'+m.grade;
+      if(seen[key])return false;
+      seen[key]=true;return true;
+    });
+  } else if(t==='base_20'){
+    // All game lines — no props
     moves=[...moves,...bestBets.map(bbToMove)];
   } else {
-    // insider: game lines from locked picks + props from registry
-    moves=moves.filter(m=>!m.isProp);
+    // INSIDER: all game lines + props from registry
+    moves=[...moves,...bestBets.map(bbToMove)];
     _PROPS_REG.forEach(({sport,data})=>{
       data.forEach(p=>{if(p&&p.player)moves.push(propToMove(p,sport));});
     });
   }
 
-  // NBA offseason — exclude from intel cards
-  const _OFFSEASON_SPORTS=new Set(['NBA']);
+  // Offseason exclusions
+  const _OFFSEASON_SPORTS=new Set(['NBA','NHL']);
   moves=moves.filter(m=>!_OFFSEASON_SPORTS.has(m.sport));
+
   const bySport={};
   moves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
-
   const sports=Object.keys(bySport);
 
   const tierMeta={
-    base_20:{label:'PLUS',title:'Plus Intel Brief',desc:'All ML, O/U & spread picks by sport · game lines only',color:'#f000ff',bg:'rgba(240,0,255,.08)',border:'rgba(240,0,255,.3)'},
-    insider:{label:'INSIDER',title:'Insider Intel Brief',desc:'All game lines + player props by sport',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
+    base:{
+      label:'BASE',
+      title:'Base Intelligence Brief',
+      postName:'"BASE INTELLIGENCE BRIEF"',
+      desc:'Top pick per sport per grade · ML, Spread & O/U · game lines only',
+      color:'#00f0ff',bg:'rgba(0,240,255,.07)',border:'rgba(0,240,255,.3)'
+    },
+    base_20:{
+      label:'PLUS',
+      title:'Plus Intelligence Brief',
+      postName:'"PLUS INTELLIGENCE BRIEF"',
+      desc:'All picks for every sport · ML, Spread & O/U · game lines only',
+      color:'#f000ff',bg:'rgba(240,0,255,.08)',border:'rgba(240,0,255,.3)'
+    },
+    insider:{
+      label:'INSIDER',
+      title:'Insider Intelligence Brief',
+      postName:'"INSIDER INTELLIGENCE BRIEF"',
+      desc:'All picks for every sport · ML, Spread & O/U · plus player props',
+      color:'#ffd700',bg:'rgba(255,215,0,.07)',border:'rgba(255,215,0,.35)'
+    }
   };
-  const tm=tierMeta[t]||tierMeta.base_20;
+  const tm=tierMeta[t]||tierMeta.base;
 
-  // Tier selector
+  // ── Tier selector (3 buttons) ─────────────────────────────────────
   const sel='<div style="display:flex;gap:6px;margin-bottom:14px">'
-    +Object.entries(tierMeta).map(([k,v])=>'<button onclick="renderIntelCards(\''+k+'\')" style="flex:1;padding:7px 0;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:.5px;transition:all .2s;'
-      +(t===k?'background:'+v.bg+';border:1.5px solid '+v.color+';color:'+v.color+';':'background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.4);')
+    +Object.entries(tierMeta).map(([k,v])=>'<button onclick="renderIntelCards(\''+k+'\')" style="flex:1;padding:8px 0;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:.5px;transition:all .2s;'
+      +(t===k?'background:'+v.bg+';border:1.5px solid '+v.color+';color:'+v.color+';box-shadow:0 0 8px '+v.color+'44;':'background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.35);')
       +'">'+v.label+'</button>').join('')+'</div>';
 
-  const hdr='<div style="background:rgba(10,0,24,.6);border:1px solid '+tm.border+';border-radius:3px;padding:10px 14px;margin-bottom:14px">'
-    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:800;color:'+tm.color+';margin-bottom:3px">'+tm.title+'</div>'
-    +'<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.6)">'+tm.desc+' · '+today()+' · tap EXPORT for 1080×1080 PNG</div>'
+  // ── Header block ──────────────────────────────────────────────────
+  const hdr='<div style="background:rgba(10,0,24,.65);border:1px solid '+tm.border+';border-radius:4px;padding:12px 16px;margin-bottom:14px">'
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:900;color:'+tm.color+';margin-bottom:3px;letter-spacing:1px">'+tm.title+'</div>'
+    +'<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.5);letter-spacing:1px;margin-bottom:6px">POST AS: <span style="color:'+tm.color+'">'+tm.postName+'</span></div>'
+    +'<div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.55)">'+tm.desc+' · '+today()+' · tap EXPORT for 1080×1080 PNG</div>'
     +'</div>';
 
   if(!sports.length){
@@ -13272,7 +13304,7 @@ function renderIntelCards(tier){
       const label=_sportDisplayName(s)||s;
       return'<div style="display:flex;gap:6px">'
         +'<button onclick="exportLeagueCard('+i+')" style="flex:1;padding:7px 0;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.3);color:#00f0ff;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:2px;cursor:pointer;letter-spacing:.5px">EXPORT '+label+'</button>'
-        +'<button onclick="shareLeagueCard('+i+')" style="flex:1;padding:7px 0;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.3);color:#f000ff;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:2px;cursor:pointer;letter-spacing:.5px">↗ SHARE '+label+'</button>'
+        +'<button onclick="shareLeagueCard('+i+')" style="flex:1;padding:7px 0;background:'+tm.bg+';border:1px solid '+tm.border+';color:'+tm.color+';font-family:var(--mono);font-size:10px;font-weight:700;border-radius:2px;cursor:pointer;letter-spacing:.5px">↗ SHARE '+label+'</button>'
       +'</div>';
     }).join('')+'</div>';
   el.innerHTML=sel+hdr
