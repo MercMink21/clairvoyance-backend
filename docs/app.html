@@ -13136,13 +13136,13 @@ window._intelTier='base';
 function renderIntelCards(tier){
   if(tier)window._intelTier=tier;
   const el=document.getElementById('social-cards-content');if(!el)return;
-  const t=window._intelTier||'base';
+  const t=window._intelTier||'base_10';
 
   // Collect all pending picks
   const allPending=getP().filter(p=>p.outcome==='pending');
   const bestBets=(window.__CV_DATA?.bestBets||[]).filter(b=>b.date===today());
 
-  // Build move objects with EV
+  // Build move objects
   const toMove=p=>{
     const prob=p.winProb||.55;
     const dec=parseFloat(p.decOdds)||2;
@@ -13166,25 +13166,43 @@ function renderIntelCards(tier){
   };
 
   // Filter by tier
+  // base_10 / base_20 = game lines only (no props)
+  // insider = all game lines + all player props
   let moves=allPending.map(toMove);
-  if(t==='base')moves=moves.filter(m=>!m.isProp);
-  // insider shows everything (game lines + player props)
-  moves=[...moves,...(t==='base'?bestBets.map(bbToMove):[])];
+  if(t==='base_10'||t==='base_20') moves=moves.filter(m=>!m.isProp);
+  moves=[...moves,...(t==='base_10'||t==='base_20'?bestBets.map(bbToMove):[])];
 
   // Group by sport
   const bySport={};
   moves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
+
+  // Base 1.0: keep only the single highest-confidence pick per grade tier per sport
+  if(t==='base_10'){
+    const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
+    Object.keys(bySport).forEach(s=>{
+      const grpMap={};
+      bySport[s].forEach(m=>{
+        const k=grpLabel[m.grade]||'LEAN';
+        if(!grpMap[k])grpMap[k]=[];
+        grpMap[k].push(m);
+      });
+      bySport[s]=['ELITE','OPTIMAL','LEAN'].filter(k=>grpMap[k])
+        .map(k=>grpMap[k].sort((a,b)=>b.prob-a.prob)[0]);
+    });
+  }
+
   const sports=Object.keys(bySport);
 
   const tierMeta={
-    base:{label:'BASE',title:'Base Intelligence Brief',desc:'Game lines only — ML, spread & O/U per sport',color:'#00f0ff',bg:'rgba(0,240,255,.08)',border:'rgba(0,240,255,.3)'},
-    insider:{label:'INSIDER',title:'Insider Intelligence Brief',desc:'Player props only · daily player prop analysis',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
+    base_10:{label:'BASE 1.0',title:'Base Intel Brief 1.0',desc:'Top pick per tier · ELITE · OPTIMAL · LEAN · game lines only',color:'#00f0ff',bg:'rgba(0,240,255,.08)',border:'rgba(0,240,255,.3)'},
+    base_20:{label:'BASE 2.0',title:'Base Intel Brief 2.0',desc:'All ML, O/U & spread picks by sport',color:'#f000ff',bg:'rgba(240,0,255,.08)',border:'rgba(240,0,255,.3)'},
+    insider:{label:'INSIDER',title:'Insider Intel Brief',desc:'All game lines + player props by sport',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
   };
-  const tm=tierMeta[t]||tierMeta.base;
+  const tm=tierMeta[t]||tierMeta.base_10;
 
   // Tier selector
-  const sel='<div style="display:flex;gap:8px;margin-bottom:14px">'
-    +Object.entries(tierMeta).map(([k,v])=>'<button onclick="renderIntelCards(\''+k+'\')" style="flex:1;padding:8px 0;font-family:var(--mono);font-size:12px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;transition:all .2s;'
+  const sel='<div style="display:flex;gap:6px;margin-bottom:14px">'
+    +Object.entries(tierMeta).map(([k,v])=>'<button onclick="renderIntelCards(\''+k+'\')" style="flex:1;padding:7px 0;font-family:var(--mono);font-size:10px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:.5px;transition:all .2s;'
       +(t===k?'background:'+v.bg+';border:1.5px solid '+v.color+';color:'+v.color+';':'background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.4);')
       +'">'+v.label+'</button>').join('')+'</div>';
 
@@ -13194,10 +13212,10 @@ function renderIntelCards(tier){
     +'</div>';
 
   if(!sports.length){
-    el.innerHTML=sel+hdr+'<div class="empty" style="margin-top:20px">NO '+tm.label+' PICKS FOR TODAY — OPTIMAL PICKS TO GENERATE CARDS</div>';
+    el.innerHTML=sel+hdr+'<div class="empty" style="margin-top:20px">NO '+tm.label+' PICKS FOR TODAY — LOCK PICKS TO GENERATE CARDS</div>';
     return;
   }
-  window._intelCardData=bySport;window._intelCardTier=t;window._intelCardTierMeta=tierMeta[t];
+  window._intelCardData=bySport;window._intelCardTier=t;window._intelCardTierMeta=tm;
   el.innerHTML=sel+hdr
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px">'
     +sports.map((s,i)=>_renderLeagueCard(s,bySport[s],i,t,tm)).join('')+'</div>';
