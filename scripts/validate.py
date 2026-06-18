@@ -8,7 +8,7 @@ Exit 0 = all checks pass (push proceeds)
 Exit 1 = checks failed (push blocked)
 """
 
-import re, sys, os
+import re, sys, os, json, time, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_HTML = os.path.join(ROOT, 'docs', 'app.html')
@@ -51,6 +51,18 @@ elif open(IDX_HTML, encoding='utf-8').read() != html:
     err('docs/index.html differs from app.html — run: cp docs/app.html docs/index.html')
 else:
     ok('index.html matches app.html')
+
+# Auto-update version.json so every push triggers a hard reload for all users
+VER_JSON = os.path.join(ROOT, 'docs', 'version.json')
+_built = datetime.datetime.now().strftime('%Y%m%d-%H%M')
+_ts = int(time.time())
+try:
+    with open(VER_JSON, 'w', encoding='utf-8') as _f:
+        json.dump({'built': _built, 'ts': _ts}, _f, indent=2)
+        _f.write('\n')
+    ok(f'version.json stamped → {_built}')
+except Exception as _e:
+    err(f'version.json update failed: {_e}')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
