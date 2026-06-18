@@ -13165,14 +13165,45 @@ function renderIntelCards(tier){
       grade:b.grade||'LEAN',date:b.date||today(),isProp:false};
   };
 
-  // Filter by tier
-  // base_10 / base_20 = game lines only (no props)
-  // insider = all game lines + all player props
-  let moves=allPending.map(toMove);
-  if(t==='base_10'||t==='base_20') moves=moves.filter(m=>!m.isProp);
-  moves=[...moves,...(t==='base_10'||t==='base_20'?bestBets.map(bbToMove):[])];
+  // Props registry — sport is always explicit here, never inferred.
+  // Add new sports here as the engine expands.
+  const _PROPS_REG=[
+    {sport:'MLB',  data:typeof MLB_PROPS_DATA !=='undefined'?MLB_PROPS_DATA :[]},
+    {sport:'NBA',  data:typeof NBA_PROPS_DATA !=='undefined'?NBA_PROPS_DATA :[]},
+    {sport:'WNBA', data:typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[]},
+    {sport:'NHL',  data:typeof NHL_PROPS_DATA !=='undefined'?NHL_PROPS_DATA :[]},
+    {sport:'TEN',  data:typeof TEN_PROPS_DATA !=='undefined'?TEN_PROPS_DATA :[]},
+    {sport:'WC',   data:typeof WC_PROPS_DATA  !=='undefined'?WC_PROPS_DATA  :[]},
+  ];
+  const propToMove=(p,sport)=>{
+    const prob=(p.conf||60)/100;
+    const dec=parseFloat(p.ml&&p.ml!=='—'?(p.ml>0?(p.ml/100+1):(100/Math.abs(p.ml)+1)):1.91)||1.91;
+    const ev=(prob*(dec-1)-(1-prob))*100;
+    const grade=p.grade==='ELITE'||p.grade==='PREMIUM'?'PREMIUM':p.grade==='OPTIMAL'?'OPTIMAL':'LEAN';
+    const dir=p.over?'O':'U';
+    return{label:(p.player||'?')+' '+p.stat+' '+dir+p.line,
+      game:(p.t||'')+'@'+(p.opp||''),
+      sport,prob:Math.round(prob*100),ml:p.ml||'—',
+      ev,evStr:(ev>=0?'+':'')+ev.toFixed(1)+'%',
+      grade,date:today(),isProp:true};
+  };
 
-  // Group by sport
+  // Filter by tier
+  // base_10 / base_20 = game lines only from locked picks
+  // insider = game lines from locked picks + props from _PROPS_REG (sport always explicit)
+  let moves=allPending.map(toMove);
+  if(t==='base_10'||t==='base_20'){
+    moves=moves.filter(m=>!m.isProp);
+    moves=[...moves,...bestBets.map(bbToMove)];
+  } else {
+    // insider: keep game lines from locked picks, discard prop picks (use registry instead)
+    moves=moves.filter(m=>!m.isProp);
+    _PROPS_REG.forEach(({sport,data})=>{
+      data.forEach(p=>{if(p&&p.player)moves.push(propToMove(p,sport));});
+    });
+  }
+
+  // Group by sport — sport is always a normalized key, never MISC for props
   const bySport={};
   moves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
 
