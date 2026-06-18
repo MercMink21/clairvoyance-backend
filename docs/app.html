@@ -13147,11 +13147,11 @@ function _normSport(p){
   return raw||'MISC';
 }
 
-window._intelTier='base';
+window._intelTier='base_20';
 function renderIntelCards(tier){
   if(tier)window._intelTier=tier;
   const el=document.getElementById('social-cards-content');if(!el)return;
-  const t=window._intelTier||'base_10';
+  const t=window._intelTier||'base_20';
 
   // Collect all pending picks
   const allPending=getP().filter(p=>p.outcome==='pending');
@@ -13204,50 +13204,32 @@ function renderIntelCards(tier){
   };
 
   // Filter by tier
-  // base_10 / base_20 = game lines only from locked picks
-  // insider = game lines from locked picks + props from _PROPS_REG (sport always explicit)
+  // base_20 (PLUS) = all game lines only · insider = game lines + props
   let moves=allPending.map(toMove);
-  if(t==='base_10'||t==='base_20'){
+  if(t==='base_20'){
     moves=moves.filter(m=>!m.isProp);
     moves=[...moves,...bestBets.map(bbToMove)];
   } else {
-    // insider: keep game lines from locked picks, discard prop picks (use registry instead)
+    // insider: game lines from locked picks + props from registry
     moves=moves.filter(m=>!m.isProp);
     _PROPS_REG.forEach(({sport,data})=>{
       data.forEach(p=>{if(p&&p.player)moves.push(propToMove(p,sport));});
     });
   }
 
-  // Group by sport — sport is always a normalized key, never MISC for props
-  // NBA season over — exclude from intel cards
+  // NBA offseason — exclude from intel cards
   const _OFFSEASON_SPORTS=new Set(['NBA']);
   moves=moves.filter(m=>!_OFFSEASON_SPORTS.has(m.sport));
   const bySport={};
   moves.forEach(m=>{const s=m.sport||'MISC';if(!bySport[s])bySport[s]=[];bySport[s].push(m);});
 
-  // Base 1.0: keep only the single highest-confidence pick per grade tier per sport
-  if(t==='base_10'){
-    const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
-    Object.keys(bySport).forEach(s=>{
-      const grpMap={};
-      bySport[s].forEach(m=>{
-        const k=grpLabel[m.grade]||'LEAN';
-        if(!grpMap[k])grpMap[k]=[];
-        grpMap[k].push(m);
-      });
-      bySport[s]=['ELITE','OPTIMAL','LEAN'].filter(k=>grpMap[k])
-        .map(k=>grpMap[k].sort((a,b)=>b.prob-a.prob)[0]);
-    });
-  }
-
   const sports=Object.keys(bySport);
 
   const tierMeta={
-    base_10:{label:'BASE 1.0',title:'Base Intel Brief 1.0',desc:'Top pick per tier · ELITE · OPTIMAL · LEAN · game lines only',color:'#00f0ff',bg:'rgba(0,240,255,.08)',border:'rgba(0,240,255,.3)'},
-    base_20:{label:'PLUS',title:'Plus Intel Brief',desc:'All ML, O/U & spread picks by sport',color:'#f000ff',bg:'rgba(240,0,255,.08)',border:'rgba(240,0,255,.3)'},
+    base_20:{label:'PLUS',title:'Plus Intel Brief',desc:'All ML, O/U & spread picks by sport · game lines only',color:'#f000ff',bg:'rgba(240,0,255,.08)',border:'rgba(240,0,255,.3)'},
     insider:{label:'INSIDER',title:'Insider Intel Brief',desc:'All game lines + player props by sport',color:'#bbff00',bg:'rgba(187,255,0,.08)',border:'rgba(187,255,0,.35)'}
   };
-  const tm=tierMeta[t]||tierMeta.base_10;
+  const tm=tierMeta[t]||tierMeta.base_20;
 
   // Tier selector
   const sel='<div style="display:flex;gap:6px;margin-bottom:14px">'
@@ -13336,7 +13318,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     // Row 1: CLAIRVOYANCE centered · tier label pinned top-right
     +'<div style="position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:1px">'
       +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:900;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px">CLAIRVOYANCE</span>'
-      +'<span style="position:absolute;right:0;font-family:\'Orbitron\',sans-serif;font-size:5.5px;font-weight:700;color:#00f0ff;letter-spacing:.5px;white-space:nowrap">'+((tm&&tm.label)||'BASE 1.0')+'</span>'
+      +'<span style="position:absolute;right:0;font-family:\'Orbitron\',sans-serif;font-size:5.5px;font-weight:700;color:#00f0ff;letter-spacing:.5px;white-space:nowrap">'+((tm&&tm.label)||'PLUS')+'</span>'
     +'</div>'
     +'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.5),transparent);margin-bottom:2px;position:relative"></div>'
     // Row 2: sport name left · date right (below divider)
