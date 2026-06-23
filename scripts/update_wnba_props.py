@@ -486,10 +486,11 @@ def props_to_js(props: list[dict], date_key: str, games: list[dict]) -> str:
         first_game = False
         lines.append(header)
         for p in game_props:
-            basis_esc = p["basis"].replace("'", "\\'")
-            hit_esc   = p["hitRate"].replace("'", "\\'")
+            basis_esc  = p["basis"].replace("'", "\\'")
+            hit_esc    = p["hitRate"].replace("'", "\\'")
+            player_esc = p["player"].replace("'", "")
             lines.append(
-                f"  {{player:'{p['player']}',team:'{p['team']}',opp:'{p['opp']}',"
+                f"  {{player:'{player_esc}',team:'{p['team']}',opp:'{p['opp']}',"
                 f"game:'{p['game']}',stat:'{p['stat']}',line:{p['line']},"
                 f"over:true,ml:'{p['ml']}',conf:{p['conf']},grade:'{p['grade']}',"
                 f"hitRate:'{hit_esc}',"
