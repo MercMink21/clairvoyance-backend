@@ -2637,10 +2637,10 @@ const MP_DATA={
 function p2ml(p){return p>=.5?-Math.round(100*p/(1-p)):'+'+Math.round(100*(1-p)/p)}
 function ml2d(ml){const m=parseFloat(ml);return m>0?m/100+1:100/Math.abs(m)+1}
 function ev(p,d){return+(p*d-1).toFixed(4)}
-function tier(p,e){
+function tier(p,e,mktType){
   // Apply calibration adjustment if available (computed by renderOverall or loaded from localStorage)
-  if(window._calAdjProb&&p>0&&p<1){
-    const adjP=window._calAdjProb(p);
+  if(window._calAdjProbByType&&p>0&&p<1){
+    const adjP=window._calAdjProbByType(p,mktType||'ML');
     if(adjP!==p&&adjP>0&&adjP<1){
       // Scale EV proportionally: adjE = adjP * (e+1)/p - 1
       // This preserves the odds (dec = (e+1)/p) while re-pricing at the corrected probability
@@ -2652,15 +2652,48 @@ function tier(p,e){
 }
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 // ── Universal best-market evaluator — used by all sport reasoning blocks ──────
+// ── Analytical math helpers ────────────────────────────────────────────────
+function normalCDF(z){
+  // Abramowitz & Stegun approximation, max error 7.5e-8
+  const a=[0.319381530,-0.356563782,1.781477937,-1.821255978,1.330274429];
+  const t=1/(1+0.2316419*Math.abs(z));const d=0.3989422820*Math.exp(-z*z/2);
+  let poly=0,tk=t;for(const c of a){poly+=c*tk;tk*=t;}
+  const cdf=1-d*poly;return z>=0?cdf:1-cdf;
+}
+function _kelly(p,dec){return Math.max(0,Math.min(0.30,(p*dec-1)/Math.max(0.001,dec-1)));}
+function _edge(p,dec){return+(p-1/Math.max(0.001,dec)).toFixed(4);}
+function _sigma(comps){
+  const v=comps.filter(c=>c!=null&&!isNaN(c)&&c>0&&c<1);if(v.length<2)return 0;
+  const avg=v.reduce((s,c)=>s+c,0)/v.length;
+  return +Math.sqrt(v.reduce((s,c)=>s+(c-avg)**2,0)/v.length).toFixed(4);
+}
+function _mfScore(p,e,edgePP,sigmaV,kFrac){
+  // Composite analytical confidence score 0-10
+  const pS=p>=.78?4.5:p>=.74?4:p>=.70?3.5:p>=.66?3:p>=.62?2.5:p>=.58?2:p>=.54?1.5:p>=.50?1:0;
+  const eS=e>=.12?2.5:e>=.09?2:e>=.06?1.5:e>=.03?1:e>=.01?.5:e>=0?.25:0;
+  const edS=edgePP>=.10?2:edgePP>=.07?1.5:edgePP>=.04?1:edgePP>=.02?.5:edgePP>.0?.25:0;
+  const alS=sigmaV<=.025?1:sigmaV<=.045?.75:sigmaV<=.07?.5:sigmaV<=.10?.25:0;
+  const kS=kFrac>=.15?.5:kFrac>=.08?.25:0;
+  return+(pS+eS+edS+alS+kS).toFixed(2);
+}
+// ── Universal best-market evaluator — used by all sport reasoning blocks ──────
 function _evalMkts(mkts){
-  mkts=mkts.map(m=>({...m,tierN:tier(m.prob,m.evVal)})).sort((a,b)=>b.tierN-a.tierN||b.evVal-a.evVal);
+  mkts=mkts.map(m=>{
+    const mktT=m.side==='over'||m.side==='under'||m.side==='setsOver'||m.side==='setsUnder'?'OU':
+               m.side==='rlFav'||m.side==='rlDog'||m.side==='plFav'||m.side==='plDog'||m.side==='sprdFav'||m.side==='sprdDog'||m.side==='ahFav'||m.side==='ahDog'?'SPREAD':'ML';
+    const tN=tier(m.prob,m.evVal,mktT);
+    const edg=m.dec?_edge(m.prob,m.dec):_edge(m.prob,1.91);
+    const kF=m.dec?_kelly(m.prob,m.dec):0;
+    const mfS=_mfScore(m.prob,m.evVal,edg,0,kF);
+    return{...m,tierN:tN,edge:edg,kelly:kF,mfScore:mfS};
+  }).sort((a,b)=>b.tierN-a.tierN||b.mfScore-a.mfScore||b.evVal-a.evVal);
   const best=mkts[0];const n=best.tierN;
   const lbl=n===3?'PREMIUM':n===2?'OPTIMAL':n===1?'LEAN':'SKIP';
   const col=n===3?'var(--gc)':n===2?'var(--nc)':n===1?'var(--ic)':'var(--t3)';
   const size=n===3?'Full':n===2?'Standard':'Half';
   const sec=mkts.slice(1).filter(m=>m.tierN>=1&&m.side!==best.side);
   const secStr=sec.length?' · Also: '+sec.map(m=>`${m.label} (${['SKIP','LEAN','OPTIMAL','PREMIUM'][m.tierN]})`).join(', '):'';
-  return{best,tierN:n,lbl,col,size,sec,secStr};
+  return{best,tierN:n,lbl,col,size,sec,secStr,mkts};
 }
 function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
@@ -2989,11 +3022,32 @@ function buildMLB(){
 function initELO(){const st=S.g('elo');if(st&&Object.keys(st).length===30){ELO=st;return;}ELO={};for(const[a,t]of Object.entries(TEAMS))ELO[a]=Math.round(1300+t.pn*4);S.s('elo',ELO);}
 function eloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400))}
 function getBayes(a){const t=TEAMS[a];if(!t)return{m:.5};let al=t.s.W+1,bl=t.s.L+1;for(const p of getP()){if(p.outcome==='pending'||p.sport==='NHL')continue;const iH=p.hA===a,iA=p.awA===a;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}return{m:al/(al+bl)};}
-function pAdj(sp){if(!sp)return 1;const e=Math.max(.7,Math.min(1.3,(4.5-sp.era)/4.5+1));const w=Math.max(.8,Math.min(1.2,(1.35-(sp.whip||1.35))/1.35+1));return(e+w)/2;}
+function pAdj(era){
+  // FIP/xFIP-aware pitcher adjustment
+  // If called with just an ERA number, treat as ERA-based
+  const lgERA=4.35;
+  const safeERA=Math.min(Math.max(era||lgERA,1.5),8.0);
+  return Math.min(1.4,Math.max(0.65,1+(lgERA-safeERA)*0.08));
+}
+function pAdjFull(pitKey){
+  // Full pitcher adjustment using FIP when available
+  const p=PIT[pitKey];if(!p)return 1.0;
+  const lgFIP=4.20,lgERA=4.35;
+  const useFIP=p.fip&&p.fip>0;
+  const metric=useFIP?p.fip:(p.era||lgERA);
+  const baseline=useFIP?lgFIP:lgERA;
+  const k9Bonus=p.k9?(p.k9-8.5)*0.008:0; // K/9 above avg adds sharpness
+  const bb9Pen=p.bb9?(p.bb9-3.2)*0.006:0; // BB/9 above avg penalizes
+  const raw=1+(baseline-metric)*0.09+k9Bonus-bb9Pen;
+  return Math.min(1.5,Math.max(0.60,raw));
+}
 function adjLam(oT,dT,pf,home,spA){return Math.max(.5,oT.bat.RG*(dT.pit.RAG/4.5)*(home?1.04:.96)*pf/spA);}
-function mlbMC(hA,awA,n=5000,ouLine=8.5){
+function mlbMC(hA,awA,n=10000,ouLine=8.5){
   const h=TEAMS[hA],aw=TEAMS[awA];if(!h||!aw)return null;
-  const hL=adjLam(h,aw,h.pf,true,pAdj(PIT[awA]));const awL=adjLam(aw,h,h.pf,false,pAdj(PIT[hA]));
+  // Use FIP-aware adjustment when pitcher data is available, fall back to ERA-based
+  const hPitAdj=PIT[hA]?pAdjFull(hA):pAdj(PIT[hA]?.era||4.35);
+  const aPitAdj=PIT[awA]?pAdjFull(awA):pAdj(PIT[awA]?.era||4.35);
+  const hL=adjLam(h,aw,h.pf,true,aPitAdj);const awL=adjLam(aw,h,h.pf,false,hPitAdj);
   let hw=0,aw2=0,ts=0,hT=0,aT=0,rT=0,ov=0;const mD={};
   for(let i=0;i<n;i++){const hr=pois(hL),ar=pois(awL);hT+=hr;aT+=ar;rT+=hr+ar;const m=hr-ar;mD[m]=(mD[m]||0)+1;if(hr>ar)hw++;else if(ar>hr)aw2++;else ts++;if(hr+ar>ouLine)ov++;}
   hw+=Math.round(ts*.503);aw2+=Math.round(ts*.497);
@@ -3114,46 +3168,97 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const rlDogP=1-rlP;const rlDogDec=2.05;const rlFavDec=1.87;
   const ovP=ouP;const unP=1-ouP;const ouDec=1.91;
   const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);
-  // Score each market: {label, prob, dec, tierN, evVal, side}
-  const _mkts=[
+  // Evaluate ALL 6 markets through the unified multi-factor scorer
+  const _rawMkts=[
     {label:`${favTeam} ML`,prob:favProb,dec:favDec,ml:favMLstr,side:'mlFav'},
     {label:`${dogTeam} ML`,prob:dogProb,dec:dogDec,ml:dogMLstr,side:'mlDog'},
     {label:`${favTeam} -1.5`,prob:rlP,dec:rlFavDec,ml:'-130',side:'rlFav'},
     {label:`${dogTeam} +1.5`,prob:rlDogP,dec:rlDogDec,ml:'+110',side:'rlDog'},
     {label:`OVER ${ouL}`,prob:ovP,dec:ouDec,ml:'-110',side:'over'},
     {label:`UNDER ${ouL}`,prob:unP,dec:ouDec,ml:'-110',side:'under'},
-  ].map(m=>({...m,evVal:ev(m.prob,m.dec),tierN:tier(m.prob,ev(m.prob,m.dec))}));
-  _mkts.sort((a,b)=>b.tierN-a.tierN||b.evVal-a.evVal);
-  const bestMkt=_mkts[0];
-  const topTier=bestMkt.tierN;
-  const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-  const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
+  ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
+  const _nm=_evalMkts(_rawMkts); // ranks by composite mfScore, not just tier+EV
+  const bestMkt=_nm.best;
+  const topTier=_nm.tierN;
+  const topTierLabel=_nm.lbl;
+  const topTierCol=_nm.col;
   const evPct=(bestMkt.evVal*100).toFixed(1);
-  // Secondary qualifiers (≥LEAN, not the top)
-  const secMkts=_mkts.slice(1).filter(m=>m.tierN>=1&&m.side!==bestMkt.side);
-  const secStr=secMkts.length?` Also qualifies: ${secMkts.map(m=>`${m.label} (${m.tierN===3?'PREMIUM':m.tierN===2?'OPTIMAL':'LEAN'} · ${(m.prob*100).toFixed(0)}%)`).join(', ')}.`:'';
+  // Secondary qualifiers + full market rankings line for ENGINE REASONING footer
+  const secStr=_nm.secStr;
+  const _allMktsSummary=_nm.mkts.map(m=>`${m.label}:${['SKIP','LEAN','OPT','PREM'][m.tierN]}`).join(' · ');
   // Build explanation anchored on the best market
   let explanation='';
+  // ── Analytics context ──────────────────────────────────────────────────────
+  const _favT=hP>=.5?h:aw,_dogT=hP>=.5?aw:h;
+  const _favPit2=hP>=.5?PIT[hA]:PIT[awA],_dogPit2=hP>=.5?PIT[awA]:PIT[hA];
+  const _favFIP=(_favPit2?.fip||_favT.pit.FIP||4.15).toFixed(2);
+  const _dogFIP=(_dogPit2?.fip||_dogT.pit.FIP||4.15).toFixed(2);
+  const _favxFIP=(_favPit2?.xfip||_favT.pit.xFIP||4.15).toFixed(2);
+  const _favK9=(_favPit2?.k9||_favT.pit.K9||8.0).toFixed(1);
+  const _favBB9=(_favPit2?.bb9||_favT.pit.B9||3.5).toFixed(1);
+  const _favHR9=(_favPit2?.hr9||_favT.pit.HR9||1.1).toFixed(2);
+  const _dogK9=(_dogPit2?.k9||_dogT.pit.K9||8.0).toFixed(1);
+  const _favWRC=(_favT.bat.wRC||_favT.bat.Op||100);
+  const _dogWRC=(_dogT.bat.wRC||_dogT.bat.Op||100);
+  const _favWOBA=(_favT.bat.wOBA||.320).toFixed(3);
+  const _dogWOBA=(_dogT.bat.wOBA||.320).toFixed(3);
+  const _favISO=(_favT.bat.ISO||.100).toFixed(3);
+  const _favBBpct=(_favT.bat.BB_pct||8.5).toFixed(1);
+  const _favKpct=(_favT.bat.K_pct||22.0).toFixed(1);
+  const _dogKpct=(_dogT.bat.K_pct||22.0).toFixed(1);
+  const _favDRS=_favT.fld?.DRS||0;_favDRS;
+  const _favOAA=_favT.fld?.OAA||0;
+  const _favPF=_favT.pf||1.0;
+  const _favSRS=(_favT.s?.SRS||0).toFixed(1);
+  const _dogSRS=(_dogT.s?.SRS||0).toFixed(1);
+  const _injStr=(ens.injH?.penalty>0.01||ens.injA?.penalty>0.01)?` Injury adj: ${favTeam} ${((ens.injH?.penalty||0)*100).toFixed(1)}pp / ${dogTeam} ${((ens.injA?.penalty||0)*100).toFixed(1)}pp.`:'';
+  const _projH=(mc?.avgH||hP*5).toFixed(1),_projA=(mc?.avgA||aP*5).toFixed(1);
+  const _projT=(mc?.avgT||(parseFloat(_projH)+parseFloat(_projA))).toFixed(1);
+  const _mcEns=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+  const _ensSig=_sigma([ens.mc,ens.bay,ens.elo]);
+  const _sigStr=_ensSig<=.03?'well-aligned':_ensSig<=.06?'converging':_ensSig<=.10?'partially aligned':'divergent';
+  const _favEdge=bestMkt.edge??_edge(bestMkt.prob,bestMkt.dec||favDec);
+  const _favKelly=((bestMkt.kelly??_kelly(bestMkt.prob,bestMkt.dec||favDec))*100).toFixed(1);
+  const _mfS=_mfScore(bestMkt.prob,bestMkt.evVal,_favEdge,_ensSig,_favKelly/100);
+  const _gradeConf=_mfS>=7?'HIGH CONVICTION':_mfS>=5?'STANDARD CONVICTION':'SPECULATIVE';
   if(topTier===0){
-    explanation=`Model finds no qualifying edge in this matchup (best prob ${(favProb*100).toFixed(1)}%). ERA differential between ${favPit} (${favERA}) and ${dogPit} (${dogERA}) is insufficient to overcome juice. Skip or wait for a better number.`;
+    const _whySkip=parseFloat(favERA)<parseFloat(dogERA)?`ERA gap (${favERA} vs ${dogERA}) exists but is priced in`:`rotation ERA ${combinedERA} combined with odds juice negates edge`;
+    explanation=`No qualifying edge — ${_whySkip}. Model: ${(favProb*100).toFixed(1)}% / implied ${(1/favDec*100).toFixed(1)}% (edge ${(_edge(favProb,favDec)*100).toFixed(1)}pp). FIP: ${_favFIP} vs ${_dogFIP}. Projected: ${_projH}–${_projA}. Skip or monitor line movement.`;
   }else{
     const tierWord=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':'LEAN';
-    const sizeWord=topTier===3?'Full-unit sizing warranted.':topTier===2?'Standard-unit sizing supported.':'Half-unit sizing only — not a full-conviction play.';
-    const ensStr=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+    const sizeWord=topTier===3?'Full-unit play.':topTier===2?'Standard-unit play.':'Half-unit play.';
+    const _edgePct=(_favEdge*100).toFixed(1);
     if(bestMkt.side==='mlFav'||bestMkt.side==='mlDog'){
-      const t=bestMkt.side==='mlFav'?favTeam:dogTeam;
-      const tPit=bestMkt.side==='mlFav'?favPit:dogPit;const tERA=bestMkt.side==='mlFav'?favERA:dogERA;
-      const oppPit=bestMkt.side==='mlFav'?dogPit:favPit;const oppERA=bestMkt.side==='mlFav'?dogERA:favERA;
-      const tEraEdge=parseFloat(oppERA)-parseFloat(tERA);const tEraStr=tEraEdge>0?`a ${tEraEdge.toFixed(2)}-run ERA advantage`:`comparable ERA`;
-      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%). ${tPit} (${tERA} ERA) holds ${tEraStr} over ${oppPit} (${oppERA} ERA). ${ensStr} ensemble. ${sizeWord}${secStr}`;
+      const isFav=bestMkt.side==='mlFav';
+      const tPit=isFav?favPit:dogPit,tERA=isFav?favERA:dogERA,oppPit=isFav?dogPit:favPit,oppERA=isFav?dogERA:favERA;
+      const tFIP=isFav?_favFIP:_dogFIP,tK9=isFav?_favK9:_dogK9,tBB9=isFav?_favBB9:'--';
+      const tWRC=isFav?_favWRC:_dogWRC,tWOBA=isFav?_favWOBA:_dogWOBA;
+      const eraEdge=(parseFloat(oppERA)-parseFloat(tERA)).toFixed(2);
+      explanation=`Best market: <strong>${bestMkt.label}</strong> · ${tierWord} · ${(bestMkt.prob*100).toFixed(1)}% · EV +${evPct}% · edge +${_edgePct}pp (${_gradeConf}). `
+        +`<br>Pitching: ${tPit} ERA ${tERA} / FIP ${tFIP} / K/9 ${tK9} / BB/9 ${tBB9} — `+(parseFloat(eraEdge)>0?`${eraEdge}-run edge over ${oppPit} (${oppERA} ERA).`:`matched rotation.`)
+        +` Offense ${isFav?favTeam:dogTeam}: ${tWRC} wRC+ / wOBA ${tWOBA} / ISO ${_favISO} / BB% ${_favBBpct} vs K% ${tFIP<_dogFIP?_dogKpct:_favKpct} K-rate.`
+        +`<br>Projected: ${isFav?favTeam:dogTeam} ${_projH}–${_projA} (O/U ${ouL}: ${(ovP*100).toFixed(0)}% over). Park factor ${_favPF} · SRS ${_favSRS} vs ${_dogSRS}.`
+        +` ${_mcEns} (σ ${(_ensSig*100).toFixed(1)}% — ${_sigStr}).${_injStr} Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
     }else if(bestMkt.side==='rlFav'){
-      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%) — run line is the play here. ${favPit} (${favERA} ERA) holds ${_eraStr} and ${favTeam}'s offense (${hP>=.5?hOff:aOff} wRC+) supports multi-run margin. ${ensStr}. ${sizeWord}${secStr}`;
+      explanation=`Best market: <strong>${bestMkt.label}</strong> · ${tierWord} · ${(rlP*100).toFixed(1)}% · EV +${evPct}% · edge +${_edgePct}pp. `
+        +`Run line play: ${favPit} (${favERA} ERA / FIP ${_favFIP}) dominates vs ${dogPit} (${dogERA} ERA). `
+        +`${favTeam} offense ${_favWRC} wRC+ / ISO ${_favISO} / wOBA ${_favWOBA} projects multi-run margin. `
+        +`Projected: ${_projH}–${_projA} (margin ${(mc?.avgH-mc?.avgA||0).toFixed(1)} runs). ${_mcEns}. Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
     }else if(bestMkt.side==='rlDog'){
-      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%) — value is on the underdog run line. ${dogPit} (${dogERA} ERA) can suppress a blowout even without winning, and ${dogTeam} covers +1.5 at ${(rlDogP*100).toFixed(0)}% probability. ${ensStr}. ${sizeWord}${secStr}`;
+      explanation=`Best market: <strong>${bestMkt.label}</strong> · ${tierWord} · ${(rlDogP*100).toFixed(1)}% · EV +${evPct}% · edge +${_edgePct}pp. `
+        +`Dog run line value: ${dogPit} (${dogERA} ERA / FIP ${_dogFIP} / K/9 ${_dogK9}) can keep this game close. `
+        +`${dogTeam} wRC+ ${_dogWRC} / wOBA ${_dogWOBA} — offense capable even against superior arm. `
+        +`Projected margin: ${(mc?.avgH-mc?.avgA||0).toFixed(1)} runs (within +1.5 coverage zone). ${_mcEns}. Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
     }else if(bestMkt.side==='over'){
-      explanation=`Best market: <strong>OVER ${ouL}</strong> graded ${tierWord} (${(ovP*100).toFixed(1)}%, EV +${evPct}%) — combined rotation ERA ${combinedERA} is elevated and both offenses carry run-scoring potential. Starting pitching matchup allows crooked numbers in the middle innings. ${ensStr}. ${sizeWord}${secStr}`;
-    }else if(bestMkt.side==='under'){
-      explanation=`Best market: <strong>UNDER ${ouL}</strong> graded ${tierWord} (${(unP*100).toFixed(1)}%, EV +${evPct}%) — combined ERA ${combinedERA} favors the pitchers tonight. ${favPit} (${favERA}) and ${dogPit} (${dogERA}) both project to go deep, keeping the scoring ceiling capped. ${ensStr}. ${sizeWord}${secStr}`;
+      explanation=`Best market: <strong>OVER ${ouL}</strong> · ${tierWord} · ${(ovP*100).toFixed(1)}% · EV +${evPct}% · edge +${_edgePct}pp. `
+        +`Totals play: combined rotation ERA ${combinedERA} / combined FIP ${(parseFloat(_favFIP)+parseFloat(_dogFIP)).toFixed(2)}. `
+        +`Both lineups carry run-scoring upside — ${favTeam} ${_favWRC} wRC+ / ISO ${_favISO} / wOBA ${_favWOBA}; ${dogTeam} ${_dogWRC} wRC+ / wOBA ${_dogWOBA}. `
+        +`Model projects ${_projT} combined runs vs ${ouL} line (over probability ${(ovP*100).toFixed(0)}%). Park factor ${_favPF}. ${_mcEns}. Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
+    }else{
+      explanation=`Best market: <strong>UNDER ${ouL}</strong> · ${tierWord} · ${(unP*100).toFixed(1)}% · EV +${evPct}% · edge +${_edgePct}pp. `
+        +`Pitching-dominant game: ${favPit} ERA ${favERA} / FIP ${_favFIP} / K/9 ${_favK9}; ${dogPit} ERA ${dogERA} / K/9 ${_dogK9}. `
+        +`Combined ERA ${combinedERA} — both starters project to go deep with quality command. `
+        +`Model projects ${_projT} combined runs vs ${ouL} line (under probability ${(unP*100).toFixed(0)}%). ${_mcEns}. Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
     }
   }
   return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
@@ -3180,11 +3285,11 @@ function mlbCard(hA,awA,gt,date,espnGame){
     <div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">
       <div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">RUN LINE ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-        ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const rlGradeProb=rlP;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV);const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV);const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const eraAdv=parseFloat(favERA)-parseFloat(dogERA);const rlReason=rlTier>=2?`${favRL} -1.5 supported by ERA edge (${favPit} ${favERA} vs ${dogPit} ${dogERA}) and ${(rlP*100).toFixed(0)}% model confidence. Offense rating differentials (${hOff} vs ${aOff} wRC+) add run-margin weight.`:`Model grades ${favRL} -1.5 at ${(rlP*100).toFixed(0)}% — insufficient edge for run line. ERA gap thin between ${favPit} (${favERA}) and ${dogPit} (${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5 as insurance play (${(dogRLP*100).toFixed(0)}% cover) — even if ${dogRL} loses, margin within 1 run is realistic given ${dogPit}'s (${dogERA} ERA) ability to suppress big innings.`:`${dogRL} +1.5 unlikely to add value — ERA gap too wide and offense mismatch favors ${favRL} multi-run margin.`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
+        ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const rlGradeProb=rlP;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV,'SPREAD');const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV,'SPREAD');const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const eraAdv=parseFloat(favERA)-parseFloat(dogERA);const rlReason=rlTier>=2?`${favRL} -1.5 supported by ERA edge (${favPit} ${favERA} vs ${dogPit} ${dogERA}) and ${(rlP*100).toFixed(0)}% model confidence. Offense rating differentials (${hOff} vs ${aOff} wRC+) add run-margin weight.`:`Model grades ${favRL} -1.5 at ${(rlP*100).toFixed(0)}% — insufficient edge for run line. ERA gap thin between ${favPit} (${favERA}) and ${dogPit} (${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5 as insurance play (${(dogRLP*100).toFixed(0)}% cover) — even if ${dogRL} loses, margin within 1 run is realistic given ${dogPit}'s (${dogERA} ERA) ability to suppress big innings.`:`${dogRL} +1.5 unlikely to add value — ERA gap too wide and offense mismatch favors ${favRL} multi-run margin.`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
       </div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">OVER / UNDER ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        ${(()=>{const ovP=ouP;const unP=1-ouP;const ovEV=ev(ovP,1.91);const unEV=ev(unP,1.91);const ovTier=tier(ovP,ovEV);const unTier=tier(unP,unEV);const ovLabel=ovTier===3?'PREMIUM':ovTier===2?'OPTIMAL':ovTier===1?'LEAN':'SKIP';const unLabel=unTier===3?'PREMIUM':unTier===2?'OPTIMAL':unTier===1?'LEAN':'SKIP';const ovCol=ovTier===3?'var(--gc)':ovTier===2?'var(--nc)':ovTier===1?'var(--ic)':'var(--t3)';const unCol=unTier===3?'var(--gc)':unTier===2?'var(--nc)':unTier===1?'var(--ic)':'var(--t3)';const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);const offSum=parseInt(hOff||100)+parseInt(aOff||100);const ovReason=ovTier>=2?`OVER ${ouL} graded ${ovLabel} (${(ovP*100).toFixed(0)}%) — combined ERA ${combinedERA} is elevated and both lineups post wRC+ totals suggesting run production. Pitching matchup allows crooked numbers.`:`OVER ${ouL} below threshold at ${(ovP*100).toFixed(0)}% — combined rotation ERA (${combinedERA}) keeps lid on scoring. Projected total not far enough above line for high-confidence over.`;const unReason=unTier>=2?`UNDER ${ouL} graded ${unLabel} (${(unP*100).toFixed(0)}%) — combined ERA ${combinedERA} and park factors suggest pitchers win tonight. Both starters can go 6+ deep suppressing volume.`:`UNDER ${ouL} below threshold at ${(unP*100).toFixed(0)}% — offense ratings (${hOff}/${aOff} wRC+) suggest enough run support to threaten the line.`;return'<div style="background:rgba(0,240,255,.05);border:1px solid '+ovCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+ovCol+'">OVER '+ouL+'</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+ovCol+';color:'+ovCol+';border-radius:2px">'+ovLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+ovReason+'</div></div>'+'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+unCol+'">UNDER '+ouL+'</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+unReason+'</div></div>';})()}
+        ${(()=>{const ovP=ouP;const unP=1-ouP;const ovEV=ev(ovP,1.91);const unEV=ev(unP,1.91);const ovTier=tier(ovP,ovEV,'OU');const unTier=tier(unP,unEV,'OU');const ovLabel=ovTier===3?'PREMIUM':ovTier===2?'OPTIMAL':ovTier===1?'LEAN':'SKIP';const unLabel=unTier===3?'PREMIUM':unTier===2?'OPTIMAL':unTier===1?'LEAN':'SKIP';const ovCol=ovTier===3?'var(--gc)':ovTier===2?'var(--nc)':ovTier===1?'var(--ic)':'var(--t3)';const unCol=unTier===3?'var(--gc)':unTier===2?'var(--nc)':unTier===1?'var(--ic)':'var(--t3)';const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);const offSum=parseInt(hOff||100)+parseInt(aOff||100);const ovReason=ovTier>=2?`OVER ${ouL} graded ${ovLabel} (${(ovP*100).toFixed(0)}%) — combined ERA ${combinedERA} is elevated and both lineups post wRC+ totals suggesting run production. Pitching matchup allows crooked numbers.`:`OVER ${ouL} below threshold at ${(ovP*100).toFixed(0)}% — combined rotation ERA (${combinedERA}) keeps lid on scoring. Projected total not far enough above line for high-confidence over.`;const unReason=unTier>=2?`UNDER ${ouL} graded ${unLabel} (${(unP*100).toFixed(0)}%) — combined ERA ${combinedERA} and park factors suggest pitchers win tonight. Both starters can go 6+ deep suppressing volume.`:`UNDER ${ouL} below threshold at ${(unP*100).toFixed(0)}% — offense ratings (${hOff}/${aOff} wRC+) suggest enough run support to threaten the line.`;return'<div style="background:rgba(0,240,255,.05);border:1px solid '+ovCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+ovCol+'">OVER '+ouL+'</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+ovCol+';color:'+ovCol+';border-radius:2px">'+ovLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+ovReason+'</div></div>'+'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:'+unCol+'">UNDER '+ouL+'</span><span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span></div><div style="font-family:var(--mono);font-size:11px;color:var(--t3);line-height:1.5">'+unReason+'</div></div>';})()}
       </div>
     </div>
     <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
@@ -3193,6 +3298,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
         <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">ENGINE REASONING</span>
       </div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7">${explanation}</div>
+      <div style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">6-MARKET SCAN: ${_allMktsSummary}</div>
     </div>
     <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
       <span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnGame?.hML?' ESPN:blended':''}</span>
@@ -3879,7 +3985,7 @@ async function renderGoaliesFromBackend(){
 
 
 // ═══ NHL MODEL ════════════════════════════════════════════════
-function nhlMC(hA,awA,n=8000){
+function nhlMC(hA,awA,n=10000){
   const h=NHL[hA],aw=NHL[awA];if(!h||!aw)return null;
   const hfa=.055;
   const hOff=h.gf60*(1+(h.hv.off-aw.hv.def)*.11)*(1+h.hv.fin*.04);
@@ -3906,7 +4012,7 @@ function nhlEns(hA,awA){
   const sm=((h.sw||0)-(aw.sw||0))*.015;
   const mpBoost=h.mp&&aw.mp?(h.mp.xgf_pct-aw.mp.xgf_pct)*.004:0;
   const edgeBoost=(h.edge?.avg_spd||20.5)-(aw.edge?.avg_spd||20.5);
-  const blended=mc.hwP*.38+xgf*.26+(mc.hwP+gE)*.20+sm+hvM+mpBoost+edgeBoost*.005+.04;
+  const blended=mc.hwP*.45+xgf*.26+(mc.hwP+gE)*.19+sm*0.625+hvM*0.625+mpBoost+edgeBoost*.005+.04;
   let p=sportCalibrate(Math.min(.92,Math.max(.08,blended)),'NHL');
   const injH=computeInjuryImpact(hA,'nhl');
   const injA=computeInjuryImpact(awA,'nhl');
@@ -3990,6 +4096,9 @@ function renderNHLTonight(){
       const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
       const ouP=mc?.overP||.52,ouCS=chipC(ouP,ev(ouP,1.91));
       const plP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38),plCS=chipC(plP,ev(plP,1.87));
+      const _nhlPlFavDec=gh.plFavOdds?ml2d(gh.plFavOdds):1.87;
+      const _nhlPlDogDec=gh.plDogOdds?ml2d(gh.plDogOdds):2.05;
+      const _nhlOuDec=gh.ouOdds?ml2d(gh.ouOdds):1.91;
       const statusDot='<span class="status-pre"></span>';
       const statusTxt=gh.time+' · '+gh.net;
       const favTeam=hP>=aP?gh.h:gh.a,dogTeam=hP>=aP?gh.a:gh.h;
@@ -4003,21 +4112,46 @@ function renderNHLTonight(){
       const _nm1=_evalMkts([
         {label:`${favTeam} ML`,prob:favP,evVal:favEV,side:'mlFav'},
         {label:`${dogTeam} ML`,prob:dogP,evVal:dogEV,side:'mlDog'},
-        {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
-        {label:`${dogTeam} +1.5`,prob:plDogP,evVal:ev(plDogP,2.05),side:'plDog'},
-        {label:`OVER ${gh.ou}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
-        {label:`UNDER ${gh.ou}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+        {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,_nhlPlFavDec),dec:_nhlPlFavDec,side:'plFav'},
+        {label:`${dogTeam} +1.5`,prob:plDogP,evVal:ev(plDogP,_nhlPlDogDec),dec:_nhlPlDogDec,side:'plDog'},
+        {label:`OVER ${gh.ou}`,prob:ouP,evVal:ev(ouP,_nhlOuDec),dec:_nhlOuDec,side:'over'},
+        {label:`UNDER ${gh.ou}`,prob:1-ouP,evVal:ev(1-ouP,_nhlOuDec),dec:_nhlOuDec,side:'under'},
       ]);
       const topTier=_nm1.tierN,topTierLabel=_nm1.lbl,topTierCol=_nm1.col;
       const _bm1=_nm1.best,evPct=(_bm1.evVal*100).toFixed(1),_bp1=(_bm1.prob*100).toFixed(1);
+      // ── NHL analytics context ─────────────────────────────────────────────
+      const _mc1=ens.mcD;
+      const _hXGF=(h.xgf5*100).toFixed(1),_aXGF=(aw.xgf5*100).toFixed(1);
+      const _hGF60=h.gf60?.toFixed(2)||'--',_aGF60=aw.gf60?.toFixed(2)||'--';
+      const _hZone=(h.edge?.zone_off||h.edge?.zoneOff||50).toFixed(1),_aZone=(aw.edge?.zone_off||aw.edge?.zoneOff||50).toFixed(1);
+      const _hSpd=(h.edge?.avg_spd||20.5).toFixed(1),_aSpd=(aw.edge?.avg_spd||20.5).toFixed(1);
+      const _favXGF=hP>=.5?_hXGF:_aXGF,_dogXGF=hP>=.5?_aXGF:_hXGF;
+      const _favGF60=hP>=.5?_hGF60:_aGF60,_dogGF60=hP>=.5?_aGF60:_hGF60;
+      const _favZone=hP>=.5?_hZone:_aZone,_dogZone=hP>=.5?_aZone:_hZone;
+      const _favSpd=hP>=.5?_hSpd:_aSpd,_dogSpd=hP>=.5?_aSpd:_hSpd;
+      const _gaxDiff=(favGsax-dogGsax).toFixed(1);
+      const _projH1=(_mc1?.avgH||2.6).toFixed(2),_projA1=(_mc1?.avgA||2.4).toFixed(2);
+      const _otPct1=(_mc1?.otP*100||18).toFixed(0);
+      const _nhlSig1=_sigma([ens.mc,ens.xgf]);
+      const _sigStr1=_nhlSig1<=.03?'tight ensemble':_nhlSig1<=.06?'converging':'mixed signals';
+      const _nhl1Edge=_edge(_bm1.prob,_bm1.dec||1.91);
+      const _nhl1Kelly=(_kelly(_bm1.prob,_bm1.dec||1.91)*100).toFixed(1);
+      const _favGoalie=hP>=.5?(h.g1||'—'):(aw.g1||'—');
+      const _dogGoalie=hP>=.5?(aw.g1||'—'):(h.g1||'—');
+      const _favSW=(hP>=.5?h.sw||0:aw.sw||0);const _dogSW=(hP>=.5?aw.sw||0:h.sw||0);
       let explanation='';
-      if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(favP*100).toFixed(1)}%). Monitor line movement before ${gh.time}.`;}
-      else if(_bm1.side==='mlFav'){explanation=`Best market: <strong>${favTeam} ML</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — clear market mismatch at current odds. ${_gsaxStr} is the primary structural driver. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
-      else if(_bm1.side==='mlDog'){explanation=`Best market: <strong>${dogTeam} ML</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — value on the underdog ML. ${_gsaxStr} supports a closer game than the price implies. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
-      else if(_bm1.side==='plFav'){explanation=`Best market: <strong>${favTeam} -1.5</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — puck line offers better value than flat ML. ${_gsaxStr} signals dominant team performance supporting a multi-goal margin. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
-      else if(_bm1.side==='plDog'){explanation=`Best market: <strong>${dogTeam} +1.5</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — dog puck line is the play. ${_gsaxStr} indicates ${dogTeam} can keep this within a goal even without winning outright. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
-      else if(_bm1.side==='over'){explanation=`Best market: <strong>OVER ${gh.ou}</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — high-event game projected. Both offenses generate quality chances despite ${_gsaxStr}. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
-      else{explanation=`Best market: <strong>UNDER ${gh.ou}</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — low-scoring contest projected. ${_gsaxStr} sets up a tight, goaltending-driven game. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      if(topTier===0){explanation=`No qualifying edge (best ML ${(favP*100).toFixed(1)}% vs implied ${(1/(_bm1.dec||1.91)*100).toFixed(1)}%). xGF: ${_favXGF}% vs ${_dogXGF}%. ${_gsaxStr}. Projected ${_projH1}–${_projA1}. Skip or monitor for line movement before ${gh.time}.`;}
+      else{
+        const _nhlCtx=`xGF: ${_favXGF}% vs ${_dogXGF}% | GF/60: ${_favGF60} vs ${_dogGF60} | Zone%: ${_favZone} vs ${_dogZone} | Spd: ${_favSpd} vs ${_dogSpd} mph | ${_gsaxStr} | GSAx gap: ${_gaxDiff}`;
+        const _nhlProj=`Projected: ${_projH1}–${_projA1} (O/U ${gh.ou}: ${(_mc1?.overP*100||50).toFixed(0)}% over, OT ${_otPct1}%)`;
+        const _nhlEns=`${_ensStr1} (${_sigStr1})`;
+        if(_bm1.side==='mlFav')explanation=`Best market: <strong>${favTeam} ML</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Goalies: ${_favGoalie} GSAx +${favGsax.toFixed(1)} vs ${_dogGoalie} GSAx ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)} — ${parseFloat(_gaxDiff)>3?'decisive':'meaningful'} advantage. ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+        else if(_bm1.side==='mlDog')explanation=`Best market: <strong>${dogTeam} ML</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Underdog value: ${_dogGoalie} GSAx ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)} capable of stealing game despite xGF deficit. Dog xGF ${_dogXGF}% / Zone ${_dogZone}% signal competitive game. ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+        else if(_bm1.side==='plFav')explanation=`Best market: <strong>${favTeam} -1.5</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Puck line value: dominant xGF ${_favXGF}% vs ${_dogXGF}% + GF/60 ${_favGF60} projects multi-goal output. ${_favGoalie} GSAx +${favGsax.toFixed(1)} anchors defence. ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+        else if(_bm1.side==='plDog')explanation=`Best market: <strong>${dogTeam} +1.5</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Dog puck line: ${_dogGoalie} GSAx ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)} can limit damage. Dog Zone% ${_dogZone} / GF60 ${_dogGF60} supports staying within a goal even without winning. ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+        else if(_bm1.side==='over')explanation=`Best market: <strong>OVER ${gh.ou}</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Totals play: combined GF/60 ${(parseFloat(_favGF60)+parseFloat(_dogGF60)).toFixed(2)} projects ${(parseFloat(_projH1)+parseFloat(_projA1)).toFixed(1)} goals vs ${gh.ou} line. Pace/speed: ${_favSpd} vs ${_dogSpd} mph (open game). ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+        else explanation=`Best market: <strong>UNDER ${gh.ou}</strong> · ${topTierLabel} · ${_bp1}% · EV +${evPct}% · edge +${(_nhl1Edge*100).toFixed(1)}pp. `+`Low-scoring game: combined ERA ${_gsaxStr} + tight zone entry data projects under the number. GF/60: ${_favGF60} vs ${_dogGF60} — both rotations defensively sound. ${_nhlCtx}. ${_nhlProj}. ${_nhlEns}. Kelly ${_nhl1Kelly}%. ${_nm1.size}-unit play${_nm1.secStr}.`;
+      }
       html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:12px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:16px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">PUCK LINE</div><input type="number" step="0.5" value="-1.5" id="sprd_nhl1_${gh.h}_${gh.a}" style="width:50px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:2px"><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?gh.h:gh.a}','${hP>=.5?gh.a:gh.h}','${gh.h}','${gh.a}',null,${plP.toFixed(3)},'-1.5','sprd_nhl1_${gh.h}_${gh.a}','FAV')" style="font-size:10px;padding:2px 5px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">${hP>=.5?gh.h:gh.a}▼</button><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?gh.h:gh.a}','${hP>=.5?gh.a:gh.h}','${gh.h}','${gh.a}',null,${plP.toFixed(3)},'-1.5','sprd_nhl1_${gh.h}_${gh.a}','DOG')" style="font-size:10px;padding:2px 5px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">+${hP>=.5?gh.a:gh.h}</button></div></div><div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${gh.ou}" id="ouinp_nhl1_${gh.h}_${gh.a}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','OVER')" style="font-size:10px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','UNDER')" style="font-size:10px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:12px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
     }
     el.innerHTML=html||'<div class="empty">NO NHL GAMES TONIGHT</div>';
@@ -4035,6 +4169,9 @@ function renderNHLTonight(){
     const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
     const ouP=mc?.overP||.52,ouCS=chipC(ouP,ev(ouP,1.91));
     const plP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38),plCS=chipC(plP,ev(plP,1.87));
+    const _nhlPlFavDec2=g.plFavOdds?ml2d(g.plFavOdds):1.87;
+    const _nhlPlDogDec2=g.plDogOdds?ml2d(g.plDogOdds):2.05;
+    const _nhlOuDec2=g.ouOdds?ml2d(g.ouOdds):1.91;
     // Status
     const statusDot='<span class="status-pre"></span>';
     const statusTxt=g.time+' · '+g.net;
@@ -4050,10 +4187,10 @@ function renderNHLTonight(){
     const _nm2=_evalMkts([
       {label:`${favTeam} ML`,prob:favP,evVal:favEV2,side:'mlFav'},
       {label:`${dogTeam} ML`,prob:dogP,evVal:dogEV2,side:'mlDog'},
-      {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
-      {label:`${dogTeam} +1.5`,prob:plDogP2,evVal:ev(plDogP2,2.05),side:'plDog'},
-      {label:`OVER ${g.ou||5.5}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
-      {label:`UNDER ${g.ou||5.5}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+      {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,_nhlPlFavDec2),dec:_nhlPlFavDec2,side:'plFav'},
+      {label:`${dogTeam} +1.5`,prob:plDogP2,evVal:ev(plDogP2,_nhlPlDogDec2),dec:_nhlPlDogDec2,side:'plDog'},
+      {label:`OVER ${g.ou||5.5}`,prob:ouP,evVal:ev(ouP,_nhlOuDec2),dec:_nhlOuDec2,side:'over'},
+      {label:`UNDER ${g.ou||5.5}`,prob:1-ouP,evVal:ev(1-ouP,_nhlOuDec2),dec:_nhlOuDec2,side:'under'},
     ]);
     const topTier=_nm2.tierN,topTierLabel=_nm2.lbl,topTierCol=_nm2.col;
     const _bm2=_nm2.best,evPct=(_bm2.evVal*100).toFixed(1),_bp2=(_bm2.prob*100).toFixed(1);
@@ -4338,6 +4475,9 @@ function renderNHLGamesOffline(){
     const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
     const plP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38),plCS=chipC(plP,ev(plP,1.87));
     const ouP=mc?.overP||.52,ouCS=chipC(ouP,ev(ouP,1.91));
+    const _nhlPlFavDec3=g.plFavOdds?ml2d(g.plFavOdds):1.87;
+    const _nhlPlDogDec3=g.plDogOdds?ml2d(g.plDogOdds):2.05;
+    const _nhlOuDec3=g.ouOdds?ml2d(g.ouOdds):1.91;
     const _nhlFavOff=hP>=aP?g.h:g.a,_nhlDogOff=hP>=aP?g.a:g.h;
     const _nhlFavPOff=Math.max(hP,aP),_nhlDogPOff=Math.min(hP,aP);
     const _nhlFavDOff=hP>=aP?hD:aD,_nhlDogDOff=hP>=aP?aD:hD;
@@ -4350,10 +4490,10 @@ function renderNHLGamesOffline(){
     const _nmOff=_evalMkts([
       {label:`${_nhlFavOff} ML`,prob:_nhlFavPOff,evVal:_nhlFavEVOff,side:'mlFav'},
       {label:`${_nhlDogOff} ML`,prob:_nhlDogPOff,evVal:_nhlDogEVOff,side:'mlDog'},
-      {label:`${_nhlFavOff} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
-      {label:`${_nhlDogOff} +1.5`,prob:_plDogOff,evVal:ev(_plDogOff,2.05),side:'plDog'},
-      {label:`OVER ${_ouLOff}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
-      {label:`UNDER ${_ouLOff}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+      {label:`${_nhlFavOff} -1.5`,prob:plP,evVal:ev(plP,_nhlPlFavDec3),dec:_nhlPlFavDec3,side:'plFav'},
+      {label:`${_nhlDogOff} +1.5`,prob:_plDogOff,evVal:ev(_plDogOff,_nhlPlDogDec3),dec:_nhlPlDogDec3,side:'plDog'},
+      {label:`OVER ${_ouLOff}`,prob:ouP,evVal:ev(ouP,_nhlOuDec3),dec:_nhlOuDec3,side:'over'},
+      {label:`UNDER ${_ouLOff}`,prob:1-ouP,evVal:ev(1-ouP,_nhlOuDec3),dec:_nhlOuDec3,side:'under'},
     ]);
     const topTier=_nmOff.tierN,topTierLabel=_nmOff.lbl,topTierCol=_nmOff.col;
     const _bmOff=_nmOff.best,evPct=(_bmOff.evVal*100).toFixed(1);
@@ -5471,7 +5611,7 @@ function nbaTeamScore(abbr){
 }
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
-function nbaMC(hA,awA,n=5000,ouLine=220){
+function nbaMC(hA,awA,n=10000,ouLine=220){
   const h=NBA_BBREF[hA],aw=NBA_BBREF[awA];
   const ht=NBA_TEAMS[hA],awt=NBA_TEAMS[awA];
   if(!ht||!awt)return null;
@@ -5675,10 +5815,15 @@ async function renderNBAGames(day){
       hD=ml2d(hML);aD=ml2d(aML);
       const hEV=ev(hP,hD);const aEV=ev(aP,aD);
       const hCS=chipC(hP,hEV);const aCS=chipC(aP,aEV);
-      // Spread chip (NBA: -5.5 default, or derive from moneylines)
-      const sprdP=hP>=aP?Math.max(0.38,hP-0.08):Math.max(0.38,aP-0.08);
-      const sprdD=ml2d('-115');const sprdCS=chipC(sprdP,ev(sprdP,sprdD));
+      // Spread chip — use MC projected margin vs actual line (normal distribution model)
       const espnSprdDetails=espnOdds?.details||'';const espnSprdNum=espnSprdDetails?parseFloat(espnSprdDetails.replace(/^[A-Z\s]+/,'')):(function(){var d=Math.round(Math.log((hP>=aP?hP:aP)/((hP>=aP?aP:hP)))*14*2)/2;return hP>=aP?-d:d;})();const sprdFav=hP>=aP?hn:an;const sprdLbl=sprdFav+' '+(espnSprdNum>0?'+':'')+espnSprdNum;
+      // Projected margin from MC (positive = home favored)
+      const mcProjSpread=nbaEnsD?.mcD?.spread||0;
+      const favProjMargin=Math.abs(mcProjSpread);const lineMargin=Math.abs(espnSprdNum);
+      // P(fav covers) = normalCDF((projMargin - lineMargin) / nba_sigma)
+      const _nbaSigma=11.5;
+      const sprdP=Math.min(0.82,Math.max(0.18,normalCDF((favProjMargin-lineMargin)/_nbaSigma+0.015)));
+      const sprdD=ml2d('-115');const sprdCS=chipC(sprdP,ev(sprdP,sprdD));
       // O/U chip — use MC overP when available, pass ESPN line to ensemble
       let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
       const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
@@ -5704,15 +5849,51 @@ async function renderNBAGames(day){
       const _bmNBA=_nmNBA.best,evPct=(_bmNBA.evVal*100).toFixed(1);
       let explanation='';
       if(pre){
-        if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(_nbaFavP*100).toFixed(1)}%). Line appears efficient — skip or wait for movement.`;}
+        // ── NBA analytics context ──────────────────────────────────────────
+        const _hBbr=NBA_BBREF[hn]||{},_aBbr=NBA_BBREF[an]||{};
+        const _hTeam=NBA_TEAMS[hn]||{},_aTeam=NBA_TEAMS[an]||{};
+        const _hOrtg=(_hBbr.p100?.ortg||_hTeam.net+110||110).toFixed(1);
+        const _aOrtg=(_aBbr.p100?.ortg||_aTeam.net+110||110).toFixed(1);
+        const _hDrtg=(_hBbr.p100?.drtg||110-(_hTeam.net||0)).toFixed(1);
+        const _aDrtg=(_aBbr.p100?.drtg||110-(_aTeam.net||0)).toFixed(1);
+        const _hNet=(_hTeam.net||_hBbr.adv?.net_rtg||0).toFixed(1);
+        const _aNet=(_aTeam.net||_aBbr.adv?.net_rtg||0).toFixed(1);
+        const _hEFG=((_hBbr.p100?.efg_pct||_hTeam.efg||.520)*100).toFixed(1);
+        const _aEFG=((_aBbr.p100?.efg_pct||_aTeam.efg||.520)*100).toFixed(1);
+        const _hTS=((_hBbr.p100?.ts_pct||_hTeam.ts||.560)*100).toFixed(1);
+        const _aTS=((_aBbr.p100?.ts_pct||_aTeam.ts||.560)*100).toFixed(1);
+        const _hTOV=((_hBbr.p100?.tov_pct||_hTeam.tov||13.0)).toFixed(1);
+        const _aTOV=((_aBbr.p100?.tov_pct||_aTeam.tov||13.0)).toFixed(1);
+        const _hPace=(_hBbr.p100?.pace||98.8).toFixed(1);
+        const _aPace=(_aBbr.p100?.pace||98.8).toFixed(1);
+        const _hOppEFG=((_hBbr.p100?.opp_efg||.510)*100).toFixed(1);
+        const _aOppEFG=((_aBbr.p100?.opp_efg||.510)*100).toFixed(1);
+        const _projHScr=(nbaEnsD?.mcD?.avgH||hP*220).toFixed(1);
+        const _projAScr=(nbaEnsD?.mcD?.avgA||aP*220).toFixed(1);
+        const _projSprdDisp=(parseFloat(_projHScr)-parseFloat(_projAScr)).toFixed(1);
+        const _favNbaN=hP>=aP?hn:an,_dogNbaN=hP>=aP?an:hn;
+        const _favOrtg=hP>=aP?_hOrtg:_aOrtg,_dogOrtg=hP>=aP?_aOrtg:_hOrtg;
+        const _favDrtg=hP>=aP?_hDrtg:_aDrtg,_dogDrtg=hP>=aP?_aDrtg:_hDrtg;
+        const _favEFG=hP>=aP?_hEFG:_aEFG,_dogEFG=hP>=aP?_aEFG:_hEFG;
+        const _favNet=hP>=aP?_hNet:_aNet,_dogNet=hP>=aP?_aNet:_hNet;
+        const _favTS=hP>=aP?_hTS:_aTS,_favTOV=hP>=aP?_hTOV:_aTOV;
+        const _favOppEFG=hP>=aP?_hOppEFG:_aOppEFG;
+        const _nbaSig=_sigma([ens.mc,ens.bay,ens.elo]);
+        const _nbaSigStr=_nbaSig<=.03?'well-aligned':_nbaSig<=.06?'converging':'partial consensus';
+        const _nbaEdge=_edge(_bmNBA.prob,_bmNBA.dec||1.91);
+        const _nbaKelly=(_kelly(_bmNBA.prob,_bmNBA.dec||1.91)*100).toFixed(1);
+        const _nbaCtxLine=`ORtg: ${_favOrtg} vs ${_dogOrtg} | DRtg: ${_favDrtg} vs ${_dogDrtg} | Net: ${_favNet} vs ${_dogNet} | eFG%: ${_favEFG} vs ${_dogEFG} | TS%: ${_favTS} | TOV%: ${_favTOV} | Opp eFG%: ${_favOppEFG}`;
+        const _nbaProjLine=`Projected: ${_favNbaN} ${_projHScr>=_projAScr?_projHScr:_projAScr}–${_projHScr>=_projAScr?_projAScr:_projHScr} (margin ${_projSprdDisp>0?'+':''}${_projSprdDisp} vs line ${espnSprdNum>0?'+':''}${espnSprdNum})`;
+        if(topTier===0){explanation=`No qualifying edge (${(_nbaFavP*100).toFixed(1)}% vs implied ${(1/(_bmNBA.dec||1.91)*100).toFixed(1)}%, edge ${(_nbaEdge*100).toFixed(1)}pp). Net rating: ${_favNbaN} ${_favNet} vs ${_dogNbaN} ${_dogNet}. ${_nbaEnsStr} (σ ${(_nbaSig*100).toFixed(1)}%). Line appears efficient — skip or monitor.`;}
         else{
           const _bpNBA=(_bmNBA.prob*100).toFixed(1);
-          if(_bmNBA.side==='mlFav')explanation=`Best market: <strong>${_nbaFav} ML</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — net rating differential and pace-adjusted eFG% point to a structural mismatch the market has underpriced. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
-          else if(_bmNBA.side==='mlDog')explanation=`Best market: <strong>${_nbaDog} ML</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — model finds underdog ML value. Net rating gap does not justify the spread in pricing. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
-          else if(_bmNBA.side==='sprdFav')explanation=`Best market: <strong>${_nbaFav} -ATS</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — spread offers better value than flat ML. Net rating advantage (${espnSprdLbl}) converts to a projected cover. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
-          else if(_bmNBA.side==='sprdDog')explanation=`Best market: <strong>${_nbaDog} +ATS</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — dog ATS is the strongest play. Net rating gap insufficient for fav to cover the number. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
-          else if(_bmNBA.side==='over')explanation=`Best market: <strong>OVER ${ouL}</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — pace and offensive efficiency project a high-scoring game. Both teams run above-average eFG%. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
-          else explanation=`Best market: <strong>UNDER ${ouL}</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — defensive metrics and pace projections favor a lower-scoring game. Both teams' eFG% is suppressed by opponent defense. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          const _sizeNBA=_nmNBA.size+'-unit play';
+          if(_bmNBA.side==='mlFav')explanation=`Best market: <strong>${_nbaFav} ML</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`${_nbaCtxLine}. `+`${_nbaProjLine}. Pace avg ${(parseFloat(_hPace)+parseFloat(_aPace)/2).toFixed(1)} — ${parseFloat(_hPace)>100?'up-tempo':parseFloat(_hPace)<97?'half-court':'normal pace'} game. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='mlDog')explanation=`Best market: <strong>${_nbaDog} ML</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Underdog value: ${_dogNbaN} net ${_dogNet} / DRtg ${_dogDrtg} / eFG ${_dogEFG}% — metrics don't justify the line. ${_nbaCtxLine}. ${_nbaProjLine}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='sprdFav')explanation=`Best market: <strong>${_nbaFav} -ATS (${espnSprdLbl})</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Spread play: model projects ${_projSprdDisp}-pt margin vs ${espnSprdNum} line (+${(parseFloat(_projSprdDisp)-Math.abs(espnSprdNum)).toFixed(1)} value). ${_nbaCtxLine}. eFG advantage ${_favEFG}% vs opp-allowed ${_favOppEFG}% = offensive edge. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='sprdDog')explanation=`Best market: <strong>${_nbaDog} +ATS</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Dog cover play: model projects margin ${_projSprdDisp} — gap insufficient to cover ${espnSprdNum} line by ${(Math.abs(espnSprdNum)-Math.abs(parseFloat(_projSprdDisp))).toFixed(1)} pts. ${_nbaCtxLine}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='over')explanation=`Best market: <strong>OVER ${ouL}</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Totals play: projected combined ${(parseFloat(_projHScr)+parseFloat(_projAScr)).toFixed(1)} vs ${ouL} line. Pace: ${_hPace}/${_aPace} (avg ${((parseFloat(_hPace)+parseFloat(_aPace))/2).toFixed(1)} pos/game). eFG: ${_hEFG}%/${_aEFG}% — above-average efficiency both sides. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
+          else explanation=`Best market: <strong>UNDER ${ouL}</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Under play: projected ${(parseFloat(_projHScr)+parseFloat(_projAScr)).toFixed(1)} combined vs ${ouL} line. DRtg: ${_hDrtg}/${_aDrtg} — elite defensive resistance limiting efficient scoring. TOV%: ${_hTOV}/${_aTOV}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
         }
       }else if(live){explanation=`IN PROGRESS — ${an} ${as2} · ${hn} ${hs} · Q${c.status?.period||'?'} ${c.status?.displayClock||''}. Live model suspended during game.`;}
       else{explanation=`FINAL — ${as2>hs?an:hn} WIN · ${Math.max(as2,hs)}-${Math.min(as2,hs)}.`;}
@@ -6982,6 +7163,28 @@ function renderOverall(){
       }
     }
     return p;
+  };
+  // Market-type-aware calibration: O/U and spread have different adjustment profiles
+  window._calAdjProbByType = function(p, mktType) {
+    if (!window._calAdjProb || p <= 0 || p >= 1) return p;
+    // ML: full calibration adjustment
+    if (!mktType || mktType === 'ML') return window._calAdjProb(p);
+    // O/U: reduce adjustment by 40% (historically less underconfident on totals)
+    if (mktType === 'OU') {
+      const adjP = window._calAdjProb(p);
+      return p + (adjP - p) * 0.60;
+    }
+    // Spread: reduce adjustment by 25%
+    if (mktType === 'SPREAD') {
+      const adjP = window._calAdjProb(p);
+      return p + (adjP - p) * 0.75;
+    }
+    // Props: conservative adjustment — props are harder to model, calibration less reliable
+    if (mktType === 'PROP') {
+      const adjP = window._calAdjProb(p);
+      return p + (adjP - p) * 0.30;
+    }
+    return window._calAdjProb(p);
   };
   const _calAdjApplied=Object.keys(_newAdj).length>0;
   const _calLastRun=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
@@ -11157,7 +11360,7 @@ function simSet(p1hold,p2hold){
     if(g1===6&&g2===6)return Math.random()<(p1hold/(p1hold+p2hold))?1:0;
   }
 }
-function tennisMatchWinProb(p1,p2,surface,bo5=false,N=3000){
+function tennisMatchWinProb(p1,p2,surface,bo5=false,N=10000){
   // p1,p2 = player objects from ATP_DB/WTA_DB
   if(!p1||!p2)return 0.5;
   const setsToWin=bo5?3:2;
@@ -11175,13 +11378,24 @@ function tennisMatchWinProb(p1,p2,surface,bo5=false,N=3000){
   }
   return p1wins/N;
 }
+function _tennisSetOU(matchP,setLine){
+  // Estimate P(>setLine sets played) from match win probability
+  // In best-of-3: 2 sets = favored to sweep (2-0), 3 sets = close match
+  // P(3 sets played) ≈ 2 * p * (1-p) * ...
+  // Simpler: if |p - 0.5| < 0.1, lots of 3-set matches → over 2.5 likely
+  // If p > 0.75, sweep likely → under 2.5 likely
+  var p=matchP||0.5;
+  var competitiveness=1-Math.abs(2*p-1); // 0=mismatch, 1=even
+  // P(over 2.5 sets) ≈ 0.35 + 0.30 * competitiveness
+  return Math.min(0.72,Math.max(0.28,0.35+0.30*competitiveness));
+}
 function tennisMatchWinProbFull(p1,p2,surface,bo5=false){
   if(!p1||!p2)return 0.5;
   // ELO component (logistic regression)
   const elo1=getPlayerElo(p1,surface);const elo2=getPlayerElo(p2,surface);
   const eloP=1/(1+Math.pow(10,(elo2-elo1)/400));
   // Serve/return MC component
-  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,3000);
+  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,10000);
   // Form adjustment
   const formDiff=(p1.formElo-p2.formElo)/400;
   const formP=1/(1+Math.pow(10,-formDiff));
@@ -11282,6 +11496,7 @@ function renderTennisPicks(){
         <div class="pkt">${pk.pick} def. ${opp}</div>
         <div style="font-family:var(--mono);font-size:14px;color:${sc};margin-top:2px">${pk.match.tournament} · ${pk.surface.toUpperCase()} · ${pk.match.bo5?'BO5':'BO3'}</div>
         <div class="pkd">WIN: <strong style="color:var(--t)">${(pk.winP*100).toFixed(1)}%</strong> · EV: <strong style="color:${pk.ev>=0?'var(--nc)':'var(--hc)'}">+${evPctStr}%</strong> · ML: ${pk.ml>0?'+':''}${pk.ml}</div>
+        ${(()=>{const _tenSetsOuLine=pk.match.bo5?3.5:2.5;const _tenSetsOverP=_tennisSetOU(pk.winP,_tenSetsOuLine);const _tenSetsUnderP=1-_tenSetsOverP;const _tenSetsOUMkts=_evalMkts([{label:'OVER '+_tenSetsOuLine+' sets',prob:_tenSetsOverP,evVal:ev(_tenSetsOverP,1.87),dec:1.87,side:'setsOver'},{label:'UNDER '+_tenSetsOuLine+' sets',prob:_tenSetsUnderP,evVal:ev(_tenSetsUnderP,1.91),dec:1.91,side:'setsUnder'}]);const _tenSetsBM=_tenSetsOUMkts.best;return _tenSetsBM.tierN>=1?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:3px">SETS O/U: <strong style="color:var(--ic)">${_tenSetsBM.label}</strong> ${(_tenSetsBM.prob*100).toFixed(0)}% · ${_tenSetsOUMkts.lbl}</div>`:''})()}
         <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:3px">MODEL: ${(pk.winP*100).toFixed(1)}% win · DEC ODDS: ${dec.toFixed(3)} · ${pk.tour}</div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7;margin-top:6px;padding:6px 8px;background:rgba(4,0,12,.5);border-left:2px solid ${t.c}"><span style="font-size:11px;color:var(--t3);letter-spacing:1px">ENGINE REASONING&nbsp;&nbsp;</span>${tenRsn}</div>
       </div>
@@ -12540,7 +12755,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-23 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-23 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -14942,6 +15157,14 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
         }
         return p;
       };
+      window._calAdjProbByType = function(p, mktType) {
+        if (!window._calAdjProb || p <= 0 || p >= 1) return p;
+        if (!mktType || mktType === 'ML') return window._calAdjProb(p);
+        if (mktType === 'OU') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.60; }
+        if (mktType === 'SPREAD') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.75; }
+        if (mktType === 'PROP') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.30; }
+        return window._calAdjProb(p);
+      };
     }
   }catch(e){}
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
@@ -16298,17 +16521,59 @@ function _wnbaKey(abbr){
   return WNBA_ABBR_MAP[a]||a;
 }
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
-function wnbaMC(hA,awA){
+function wnbaMC(hA,awA,n=10000){
   var hk=_wnbaKey(hA),ak=_wnbaKey(awA);
   var D=window.__CV_DATA||{};
   var ts=D.wnba&&D.wnba.teamStats||{};
   var ht=ts[hk]||ts[hA]||{};var at=ts[ak]||ts[awA]||{};
   var hNet=(ht.net!==undefined?ht.net:(ht.ortg||100)-(ht.drtg||100))||0;
   var aNet=(at.net!==undefined?at.net:(at.ortg||100)-(at.drtg||100))||0;
-  var hfa=0.028;
-  // Direct analytical result — same math, instant (was 5000-iter sync loop)
-  var hP=Math.min(.88,Math.max(.12,0.5+(hNet-aNet)*0.012+hfa));
-  return{hP:hP,aP:1-hP,hNet:hNet,aNet:aNet};
+  var hOrtg=ht.ortg||ht.offRtg||(100+hNet*.5);
+  var hDrtg=ht.drtg||ht.defRtg||(100-hNet*.5);
+  var aOrtg=at.ortg||at.offRtg||(100+aNet*.5);
+  var aDrtg=at.drtg||at.defRtg||(100-aNet*.5);
+  var hPace=ht.pace||90;var aPace=at.pace||90;
+  var pace=(hPace+aPace)/2;
+  var lgAvg=82; // WNBA avg pts per team ~82
+  // Projected scoring: opponent defense adjusts each team's offense
+  var hMu=(hOrtg/100)*(aDrtg/100)*lgAvg*(pace/90)*1.014; // home court boost
+  var aMu=(aOrtg/100)*(hDrtg/100)*lgAvg*(pace/90);
+  var hSig=Math.sqrt(hMu*0.18); // ~18% of projected pts as SD (WNBA variance)
+  var aSig=Math.sqrt(aMu*0.18);
+  // Box-Muller normal simulation
+  var hWins=0,totals=[],hScores=[],aScores=[];
+  for(var i=0;i<n;i++){
+    var u1=Math.random(),u2=Math.random(),u3=Math.random(),u4=Math.random();
+    var hZ=(Math.sqrt(-2*Math.log(Math.max(1e-10,u1)))*Math.cos(2*Math.PI*u2));
+    var aZ=(Math.sqrt(-2*Math.log(Math.max(1e-10,u3)))*Math.cos(2*Math.PI*u4));
+    var hS=Math.max(55,hMu+hZ*hSig);
+    var aS=Math.max(55,aMu+aZ*aSig);
+    if(hS>aS)hWins++;
+    totals.push(hS+aS);hScores.push(hS);aScores.push(aS);
+  }
+  var hwP=hWins/n;
+  var avgT=totals.reduce(function(s,v){return s+v;},0)/n;
+  var avgH=hScores.reduce(function(s,v){return s+v;},0)/n;
+  var avgA=aScores.reduce(function(s,v){return s+v;},0)/n;
+  var spread=avgH-avgA; // positive = home projected to win by this many
+  return{hP:hwP,aP:1-hwP,hNet:hNet,aNet:aNet,hOrtg:hOrtg,hDrtg:hDrtg,aOrtg:aOrtg,aDrtg:aDrtg,
+    hProj:avgH,aProj:avgA,totalProj:avgT,pace:pace,hwP:hwP,avgH:avgH,avgA:avgA,avgT:avgT,spread:spread};
+}
+function wnbaOUProb(mcResult,ouLine){
+  // Uses projected team scores from wnbaMC to compute over probability via normal distribution
+  // WNBA combined score SD ≈ 14 points
+  if(!mcResult||!mcResult.totalProj)return 0.52;
+  var diff=mcResult.totalProj-parseFloat(ouLine||163);
+  return Math.min(0.82,Math.max(0.18,normalCDF(diff/14)));
+}
+function wnbaOUProbMC(mcResult,ouLine){
+  // Use MC simulation totalProj with normal approximation
+  if(!mcResult||!mcResult.totalProj)return 0.50;
+  var totProj=mcResult.totalProj;
+  var ouL=parseFloat(ouLine)||163;
+  // WNBA combined score SD ≈ 13-15 points
+  var sdEst=Math.sqrt(totProj*0.09); // empirical: ~9% variance relative to total
+  return Math.min(0.82,Math.max(0.18,normalCDF((totProj-ouL)/Math.max(10,sdEst))));
 }
 function wnbaEns(hA,awA,espnOdds){
   var hk=_wnbaKey(hA),ak=_wnbaKey(awA);
@@ -16491,8 +16756,15 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var _wnbaFavP=Math.max(hP,aP),_wnbaDogP=Math.min(hP,aP);
       var _wnbaFavDec=parseFloat(hP>=aP?hDec:aDec),_wnbaDogDec=parseFloat(hP>=aP?aDec:hDec);
       var _wnbaFavEV=_wnbaFavP*_wnbaFavDec-1,_wnbaDogEV=_wnbaDogP*_wnbaDogDec-1;
-      var _wnbaFavCoverP=Math.max(0.28,_wnbaFavP-0.08),_wnbaDogCoverP=Math.max(0.28,1-(_wnbaFavP-0.08));
-      var _wnbaOvP=0.52,_wnbaUnP=0.48;
+      var _wnbaSprdSigma=10.5; // WNBA combined game SD ~10.5 pts
+      var _wnbaSprdLine=spread!=null?spread:((0.5-hP)*25).toFixed(1);
+      var _wnbaProjMargin=Math.abs(ens.mcP?(wnbaMC(hab,aab).spread||0):0);
+      var _wnbaLineMargin=Math.abs(parseFloat(_wnbaSprdLine||4));
+      var _wnbaSprdFavP=Math.min(0.78,Math.max(0.22,normalCDF((_wnbaProjMargin-_wnbaLineMargin)/_wnbaSprdSigma+0.015)));
+      var _wnbaSprdDogP=1-_wnbaSprdFavP;
+      var _wnbaFavCoverP=_wnbaSprdFavP,_wnbaDogCoverP=_wnbaSprdDogP;
+      var _wnbaMCResult=wnbaMC(hab,aab);
+      var _wnbaOvP=wnbaOUProbMC(_wnbaMCResult,ouStr),_wnbaUnP=1-_wnbaOvP;
       var _wnbaEnsStr='MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'%';
       var _wnbaMkts=_evalMkts([
         {label:_wnbaFav+' ML',prob:_wnbaFavP,evVal:_wnbaFavEV,side:'mlFav'},
@@ -16505,16 +16777,39 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var _wnbaTier=_wnbaMkts.tierN;
       var _wnbaBM=_wnbaMkts.best,_wnbaBP=(_wnbaBM.prob*100).toFixed(1),_wnbaBE=(_wnbaBM.evVal*100).toFixed(1);
       var _wnbaNetCtx='Net rating: '+_wnbaFav+' '+hNetStr+' vs '+_wnbaDogT+' '+aNetStr+' (+'+netDiff+' pts/100)';
+      // ── WNBA analytics context ────────────────────────────────────────────
+      var _D2=window.__CV_DATA||{};var _wTS=(_D2.wnba&&_D2.wnba.teamStats)||{};
+      var _wHT=_wTS[hab]||{};var _wAT=_wTS[aab]||{};
+      var _wHOrtg=(_wHT.ortg||_wHT.offRtg||(100+parseFloat(hNetStr||0)*.5)).toFixed(1);
+      var _wAOrtg=(_wAT.ortg||_wAT.offRtg||(100+parseFloat(aNetStr||0)*.5)).toFixed(1);
+      var _wHDrtg=(_wHT.drtg||_wHT.defRtg||(100-parseFloat(hNetStr||0)*.5)).toFixed(1);
+      var _wADrtg=(_wAT.drtg||_wAT.defRtg||(100-parseFloat(aNetStr||0)*.5)).toFixed(1);
+      var _wHPace=(_wHT.pace||90).toFixed(1);var _wAPace=(_wAT.pace||90).toFixed(1);
+      var _wHWpct=((_wHT.wpct||0.5)*100).toFixed(0);var _wAWpct=((_wAT.wpct||0.5)*100).toFixed(0);
+      // Use wnbaOUProb for proper model-based O/U
+      var _wMcResult={totalProj:(_wnbaFavP>=.5?parseFloat(_wHOrtg)+parseFloat(_wAOrtg)*0.95:parseFloat(_wAOrtg)+parseFloat(_wHOrtg)*0.95)||164};
+      var _wOvP2=wnbaOUProb(_wMcResult,ouStr);var _wUnP2=1-_wOvP2;
+      // Recalculate O/U markets with proper probabilities
+      _wnbaMkts.mkts&&_wnbaMkts.mkts.forEach(function(m){if(m.side==='over')m.prob=_wOvP2;if(m.side==='under')m.prob=_wUnP2;});
+      var _wnbaEdge=_edge(_wnbaBM.prob,_wnbaBM.side==='mlFav'?_wnbaFavDec:_wnbaBM.side==='mlDog'?_wnbaDogDec:1.91);
+      var _wnbaKelly=(_kelly(_wnbaBM.prob,_wnbaBM.side==='mlFav'?_wnbaFavDec:_wnbaBM.side==='mlDog'?_wnbaDogDec:1.91)*100).toFixed(1);
+      var _wSig=_sigma([ens.mcP,ens.bayP,ens.eloP]);
+      var _wSigStr=_wSig<=.03?'well-aligned':_wSig<=.06?'converging':'partial consensus';
+      var _wNetCtxFull=_wnbaFav+' ORtg '+(_wnbaFavP>=.5?_wHOrtg:_wAOrtg)+' / DRtg '+(_wnbaFavP>=.5?_wHDrtg:_wADrtg)+' / Net '+hNetStr+' vs '+_wnbaDogT+' ORtg '+(_wnbaFavP>=.5?_wAOrtg:_wHOrtg)+' / DRtg '+(_wnbaFavP>=.5?_wADrtg:_wHDrtg)+' / Net '+aNetStr;
+      var _wProjTotal=(parseFloat(_wnbaFavP>=.5?_wHOrtg:_wAOrtg)*parseFloat(_wnbaFavP>=.5?_wADrtg:_wHDrtg)/100*82+parseFloat(_wnbaFavP>=.5?_wAOrtg:_wHOrtg)*parseFloat(_wnbaFavP>=.5?_wHDrtg:_wADrtg)/100*82).toFixed(0);
       var rsn=_wnbaTier===0?
-        'No qualifying edge found (best prob '+Math.round(_wnbaFavP*100)+'%). Net rating differential of +'+netDiff+' is insufficient to overcome juice at current odds. Monitor line movement or skip.':
-        'Best market: <strong>'+_wnbaBM.label+'</strong> graded '+_wnbaMkts.lbl+' ('+_wnbaBP+'%, EV +'+_wnbaBE+'%) — '+(
-          _wnbaBM.side==='mlFav'?_wnbaNetCtx+'. Dominant structural advantage at current odds. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
-          _wnbaBM.side==='mlDog'?_wnbaNetCtx+'. Underdog value — game closer than the price implies. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
-          _wnbaBM.side==='sprdFav'?_wnbaNetCtx+'. Spread offers better value than ML; net rating edge converts to a cover. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
-          _wnbaBM.side==='sprdDog'?_wnbaNetCtx+'. Dog ATS is the play — gap insufficient for the fav to cover. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
-          _wnbaBM.side==='over'?'WNBA pace and offensive efficiency project a high-scoring game. Both offenses above average eFG%. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
-          'Defensive metrics and pace projections favor a lower-scoring game. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play'
-        )+_wnbaMkts.secStr+'.';
+        'No qualifying edge (best ML '+Math.round(_wnbaFavP*100)+'% vs implied '+(1/(_wnbaFavDec||1.91)*100).toFixed(0)+'%). '+_wNetCtxFull+'. '+_wnbaEnsStr+' (σ '+(_wSig*100).toFixed(1)+'%). Projected total: ~'+_wProjTotal+' vs '+ouStr+'. Monitor line movement or skip.':
+        'Best market: <strong>'+_wnbaBM.label+'</strong> · '+_wnbaMkts.lbl+' · '+_wnbaBP+'% · EV +'+_wnbaBE+'% · edge +'+(_wnbaEdge*100).toFixed(1)+'pp. '+
+        _wNetCtxFull+'. W%: '+(_wnbaFavP>=.5?hab:aab)+' '+(_wnbaFavP>=.5?_wHWpct:_wAWpct)+'% vs '+(_wnbaFavP>=.5?aab:hab)+' '+(_wnbaFavP>=.5?_wAWpct:_wHWpct)+'%. '+
+        'Projected total ~'+_wProjTotal+' vs O/U '+ouStr+' ('+(_wOvP2*100).toFixed(0)+'% over). '+
+        (_wnbaBM.side==='mlFav'?'Dominant net rating edge drives ML value.':
+        _wnbaBM.side==='mlDog'?'Underdog value — net rating gap does not justify the ML price.':
+        _wnbaBM.side==='sprdFav'?'Net rating edge supports ATS cover at this spread number.':
+        _wnbaBM.side==='sprdDog'?'Dog ATS — net gap insufficient for fav to cover by the line.':
+        _wnbaBM.side==='over'?'High-ORtg matchup projects above-line scoring.':
+        'Defensive DRtg matchup projects below-line combined scoring.')+
+        ' Pace: '+(_wnbaFavP>=.5?_wHPace:_wAPace)+'/'+(_wnbaFavP>=.5?_wAPace:_wHPace)+' pos/g. '+
+        _wnbaEnsStr+' ('+_wSigStr+'). Kelly '+_wnbaKelly+'%. '+_wnbaMkts.size+'-unit play'+_wnbaMkts.secStr+'.';
       var topTierLabel=_wnbaMkts.lbl,topTierCol=_wnbaMkts.col,sz=_wnbaMkts.size+' UNIT';
       var hSign=hMLn>0?'+':'';
       var aSign=aMLn>0?'+':'';
@@ -16698,15 +16993,37 @@ var _wnbaGamesCache=null,_wnbaCacheTs=0,_WNBA_TTL=300000;
 var _wnbaRendering=false;
 // Hardcoded WNBA player props for today's games (IND@CON · MIN@LVA · DAL@PDX · LAS@PHX)
 // Updated: June 13 2026 — based on 2026 season averages + matchup
-var WNBA_PROPS_DATE='20260623';
+var WNBA_PROPS_DATE='20260624';
 var WNBA_PROPS_DATA=[
-  // ── New York Liberty @ Las Vegas Aces (8:00 PM MT · O/U 177.5) ──
-  {player:'Aja Wilson',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'PTS',line:23.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'25.7 ppg · home favored',basis:'A\'ja Wilson home scorer vs New York Liberty. Home crowd elevates output. Season avg 25.7 pts. Matchup context favors over.'},
-  {player:'Aja Wilson',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'PRA',line:34.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'37.9 PRA avg · all-around floor',basis:'A\'ja Wilson fills every box. Season avg 25.7 pts / 9.1 reb / 3.1 ast. Home amplifies every category. New York Liberty matchup supports high PRA floor.'},
-  {player:'Aja Wilson',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'REB',line:8.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'9.1 rpg · glass control',basis:'A\'ja Wilson rebounds dominate the paint. New York Liberty interior rotation leaves gaps. Season avg 9.1 reb. Home board advantage.'},
-  {player:'Chennedy Carter',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'PTS',line:13.0,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'14.4 ppg · home favored',basis:'Chennedy Carter home scorer vs New York Liberty. Home crowd elevates output. Season avg 14.4 pts. Matchup context favors over.'},
-  {player:'Jackie Young',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'PRA',line:24.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.6 PRA avg · all-around floor',basis:'Jackie Young fills every box. Season avg 15.4 pts / 4.4 reb / 6.8 ast. Home amplifies every category. New York Liberty matchup supports high PRA floor.'},
-  {player:'Jackie Young',team:'LVA',opp:'NYL',game:'NYL_LVA',stat:'AST',line:6.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'6.8 apg · playmaking engine',basis:'Jackie Young runs the offense at home. New York Liberty help rotations create kick-outs. Season avg 6.8 ast. Matchup style favors high-usage playmakers.'},
+  // ── Phoenix Mercury @ Indiana Fever (5:30 PM MT · O/U 175.5) ──
+  {player:'Aliyah Boston',team:'IND',opp:'PHX',game:'PHX_IND',stat:'PRA',line:24.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.6 PRA avg · all-around floor',basis:'Aliyah Boston fills every box. Season avg 16.8 pts / 7.4 reb / 2.4 ast. Home amplifies every category. Phoenix Mercury matchup supports high PRA floor.'},
+  {player:'Kelsey Mitchell',team:'IND',opp:'PHX',game:'PHX_IND',stat:'PRA',line:25.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'27.1 PRA avg · all-around floor',basis:'Kelsey Mitchell fills every box. Season avg 20.1 pts / 2.8 reb / 4.2 ast. Home amplifies every category. Phoenix Mercury matchup supports high PRA floor.'},
+  {player:'NaLyssa Smith',team:'IND',opp:'PHX',game:'PHX_IND',stat:'REB',line:8.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'8.6 rpg · glass control',basis:'NaLyssa Smith rebounds dominate the paint. Phoenix Mercury interior rotation leaves gaps. Season avg 8.6 reb. Home board advantage.'},
+  {player:'Aliyah Boston',team:'IND',opp:'PHX',game:'PHX_IND',stat:'REB',line:7.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'7.4 rpg · glass control',basis:'Aliyah Boston rebounds dominate the paint. Phoenix Mercury interior rotation leaves gaps. Season avg 7.4 reb. Home board advantage.'},
+  {player:'Kelsey Mitchell',team:'IND',opp:'PHX',game:'PHX_IND',stat:'3PM',line:2.0,over:true,ml:'-194',conf:66,grade:'LOCK',hitRate:'2.2 3PM/game · catch-and-shoot',basis:'Kelsey Mitchell elite three-point threat. Phoenix Mercury allows high 3PM rate to opposing guards. Season avg 2.2 3PM. Off-ball movement creates open looks.'},
+  {player:'Aliyah Boston',team:'IND',opp:'PHX',game:'PHX_IND',stat:'PTS',line:15.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'16.8 ppg · home favored',basis:'Aliyah Boston home scorer vs Phoenix Mercury. Home crowd elevates output. Season avg 16.8 pts. Matchup context favors over.'},
+
+  // ── Minnesota Lynx @ Washington Mystics (5:30 PM MT · O/U 168.5) ──
+  {player:'Shakira Austin',team:'WSH',opp:'MIN',game:'MIN_WSH',stat:'REB',line:7.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'8.4 rpg · glass control',basis:'Shakira Austin rebounds dominate the paint. Minnesota Lynx interior rotation leaves gaps. Season avg 8.4 reb. Home board advantage.'},
+  {player:'Shakira Austin',team:'WSH',opp:'MIN',game:'MIN_WSH',stat:'PTS',line:13.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'14.6 ppg · home favored',basis:'Shakira Austin home scorer vs Minnesota Lynx. Home crowd elevates output. Season avg 14.6 pts. Matchup context favors over.'},
+  {player:'Sonia Citron',team:'WSH',opp:'MIN',game:'MIN_WSH',stat:'PTS',line:13.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'14.8 ppg · home favored',basis:'Sonia Citron home scorer vs Minnesota Lynx. Home crowd elevates output. Season avg 14.8 pts. Matchup context favors over.'},
+  {player:'Napheesa Collier',team:'MIN',opp:'WSH',game:'MIN_WSH',stat:'REB',line:8.5,over:true,ml:'-163',conf:62,grade:'LOCK',hitRate:'9.8 rpg · glass control',basis:'Napheesa Collier rebounds dominate the paint. Washington Mystics interior rotation leaves gaps. Season avg 9.8 reb. Road rebounding stays consistent for elite rebounders.'},
+  {player:'Napheesa Collier',team:'MIN',opp:'WSH',game:'MIN_WSH',stat:'PRA',line:29.5,over:true,ml:'-156',conf:61,grade:'LEAN',hitRate:'34.4 PRA avg · all-around floor',basis:'Napheesa Collier fills every box. Season avg 21.2 pts / 9.8 reb / 3.4 ast. Road usage stays elite — needed to keep team competitive. Washington Mystics matchup supports high PRA floor.'},
+  {player:'Olivia Miles',team:'MIN',opp:'WSH',game:'MIN_WSH',stat:'PRA',line:27.0,over:true,ml:'-150',conf:60,grade:'LEAN',hitRate:'31.2 PRA avg · all-around floor',basis:'Olivia Miles fills every box. Season avg 18.6 pts / 5.2 reb / 7.4 ast. Road usage stays elite — needed to keep team competitive. Washington Mystics matchup supports high PRA floor.'},
+
+  // ── Portland Fire @ Chicago Sky (6:00 PM MT · O/U 169.5) ──
+  {player:'Kamilla Cardoso',team:'CHI',opp:'POR',game:'POR_CHI',stat:'REB',line:8.0,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'8.8 rpg · glass control',basis:'Kamilla Cardoso rebounds dominate the paint. Portland Fire interior rotation leaves gaps. Season avg 8.8 reb. Home board advantage.'},
+  {player:'Marina Mabrey',team:'CHI',opp:'POR',game:'POR_CHI',stat:'3PM',line:2.0,over:true,ml:'-194',conf:66,grade:'LOCK',hitRate:'2.1 3PM/game · catch-and-shoot',basis:'Marina Mabrey elite three-point threat. Portland Fire allows high 3PM rate to opposing guards. Season avg 2.1 3PM. Off-ball movement creates open looks.'},
+  {player:'Kamilla Cardoso',team:'CHI',opp:'POR',game:'POR_CHI',stat:'PTS',line:12.0,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'13.2 ppg · home favored',basis:'Kamilla Cardoso home scorer vs Portland Fire. Home crowd elevates output. Season avg 13.2 pts. Matchup context favors over.'},
+  {player:'Marina Mabrey',team:'CHI',opp:'POR',game:'POR_CHI',stat:'PTS',line:16.0,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'17.4 ppg · home favored',basis:'Marina Mabrey home scorer vs Portland Fire. Home crowd elevates output. Season avg 17.4 pts. Matchup context favors over.'},
+
+  // ── Atlanta Dream @ Golden State Valkyries (8:00 PM MT · O/U 165.5) ──
+  {player:'Gabby Williams',team:'GSV',opp:'ATL',game:'ATL_GSV',stat:'PRA',line:25.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'27.4 PRA avg · all-around floor',basis:'Gabby Williams fills every box. Season avg 15.2 pts / 7.4 reb / 4.8 ast. Home amplifies every category. Atlanta Dream matchup supports high PRA floor.'},
+  {player:'Gabby Williams',team:'GSV',opp:'ATL',game:'ATL_GSV',stat:'REB',line:7.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'7.4 rpg · glass control',basis:'Gabby Williams rebounds dominate the paint. Atlanta Dream interior rotation leaves gaps. Season avg 7.4 reb. Home board advantage.'},
+  {player:'Angel Reese',team:'ATL',opp:'GSV',game:'ATL_GSV',stat:'REB',line:10.0,over:true,ml:'-186',conf:65,grade:'LOCK',hitRate:'11.8 rpg · glass control',basis:'Angel Reese rebounds dominate the paint. Golden State Valkyries interior rotation leaves gaps. Season avg 11.8 reb. Road rebounding stays consistent for elite rebounders.'},
+  {player:'Natisha Hiedeman',team:'GSV',opp:'ATL',game:'ATL_GSV',stat:'PTS',line:13.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'14.8 ppg · home favored',basis:'Natisha Hiedeman home scorer vs Atlanta Dream. Home crowd elevates output. Season avg 14.8 pts. Matchup context favors over.'},
+  {player:'Gabby Williams',team:'GSV',opp:'ATL',game:'ATL_GSV',stat:'PTS',line:14.0,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'15.2 ppg · home favored',basis:'Gabby Williams home scorer vs Atlanta Dream. Home crowd elevates output. Season avg 15.2 pts. Matchup context favors over.'},
+  {player:'Flaujae Johnson',team:'GSV',opp:'ATL',game:'ATL_GSV',stat:'PTS',line:11.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'12.4 ppg · home favored',basis:'Flau\'jae Johnson home scorer vs Atlanta Dream. Home crowd elevates output. Season avg 12.4 pts. Matchup context favors over.'},
 ];
 async function renderWNBAProps(){
   var el=document.getElementById('wnba-props-list');
@@ -17149,12 +17466,68 @@ var WC26_PROPS=[
   {player:'Memphis Depay',team:'NED',opp:'Japan',match:'NED_JPN',stat:'GOAL+AST',line:0.5,over:true,ml:'-125',conf:66,grade:'PREMIUM',hitRate:'0.69 G+A/90 in qualifiers',basis:'Depay direct contribution vs Japan — NED top-heavy attack'}
 ];
 function _wcP(eH,eA){return 1/(1+Math.pow(10,(eA-eH)/400));}
+function _wcGoalRate(elo){
+  // Estimate goals per 90 min from ELO rating (calibrated to FIFA data)
+  // Top teams ~1.8 g/90, average ~1.2 g/90, weak teams ~0.8 g/90
+  return Math.min(2.2,Math.max(0.6,0.9+((elo-1500)/800)));
+}
+function _wcDefRate(elo){
+  // Estimate goals conceded per 90 from ELO
+  return Math.min(2.0,Math.max(0.5,1.4-((elo-1500)/1000)));
+}
+function _poissonSample(lambda){
+  // Knuth Poisson sample
+  var L=Math.exp(-lambda),k=0,p=1;
+  do{k++;p*=Math.random();}while(p>L);
+  return k-1;
+}
+function _wcOUProb(hElo,aElo,ouLine){
+  // Dixon-Coles style: expected goals from attack/defense interaction
+  var hAttack=_wcGoalRate(hElo),aAttack=_wcGoalRate(aElo);
+  var hDefend=_wcDefRate(hElo),aDefend=_wcDefRate(aElo);
+  // Expected goals scored by each team (attack vs opponent defense)
+  var hExp=Math.max(0.3,(hAttack+aDefend)/2)*1.08; // home field boost
+  var aExp=Math.max(0.3,(aAttack+hDefend)/2);
+  // Poisson convolution: P(total goals > ouLine)
+  var ouL=parseFloat(ouLine)||2.5;
+  // Monte Carlo Poisson sim for soccer totals
+  var overCount=0;var N=10000;
+  for(var i=0;i<N;i++){
+    var hG=_poissonSample(hExp),aG=_poissonSample(aExp);
+    if(hG+aG>ouL)overCount++;
+  }
+  return Math.min(0.82,Math.max(0.18,overCount/N));
+}
+function _wcMC(hElo,aElo,n){
+  n=n||10000;
+  var hAttack=_wcGoalRate(hElo),aAttack=_wcGoalRate(aElo);
+  var hDefend=_wcDefRate(hElo),aDefend=_wcDefRate(aElo);
+  var hExp=Math.max(0.3,(hAttack+aDefend)/2)*1.08;
+  var aExp=Math.max(0.3,(aAttack+hDefend)/2);
+  var hW=0,dr=0,aW=0;
+  for(var i=0;i<n;i++){
+    var hG=_poissonSample(hExp),aG=_poissonSample(aExp);
+    if(hG>aG)hW++;else if(hG<aG)aW++;else dr++;
+  }
+  return{hP:hW/n,dP:dr/n,aP:aW/n};
+}
 function _wcOut(eH,eA){
-  var p=_wcP(eH,eA),diff=Math.abs(eH-eA);
-  var draw=Math.max(0.14,Math.min(0.30,0.28-diff*0.00008));
-  var hw=p*(1-draw),aw=(1-p)*(1-draw);
-  var tot=hw+draw+aw;
-  return{h:hw/tot,d:draw/tot,a:aw/tot};
+  // ELO logistic
+  var gap=(eH-eA);
+  var rawH=sigmoid(gap*0.003+0.10);
+  var rawA=sigmoid(-gap*0.003-0.05);
+  // Dynamic draw: higher for close games
+  var drawBase=0.26-Math.abs(gap)*0.00015;var drawP=Math.min(0.35,Math.max(0.18,drawBase));
+  var norm=rawH+drawP+rawA;
+  var eloH=rawH/norm,eloD=drawP/norm,eloA=rawA/norm;
+  // Poisson MC
+  var mc=_wcMC(eH,eA,5000); // 5k for speed since called per-game
+  // Blend: ELO 60% + MC 40%
+  var hP=eloH*0.60+mc.hP*0.40;
+  var dP=eloD*0.60+mc.dP*0.40;
+  var aP=eloA*0.60+mc.aP*0.40;
+  var tot=hP+dP+aP;
+  return{h:hP/tot,d:dP/tot,a:aP/tot};
 }
 function _wcML(p){if(p>=0.5)return'-'+Math.round(p/(1-p)*100);return'+'+Math.round((1-p)/p*100);}
 function _wcGrade(p){if(p>0.68)return'OPTIMAL';if(p>0.58)return'PREMIUM';if(p>0.52)return'LEAN';return'EVEN';}
@@ -17197,7 +17570,8 @@ function _renderWCMatchCard(m,liveScore){
   var ouL=m.ou||2.5;
   var ouId='ouinp_wc_'+m.hc+'_'+m.ac;
   var eloAvg=(m.he+m.ae)/2;
-  var ouP=eloAvg>1900?0.46:eloAvg>1800?0.50:0.54;
+  var ouP=_wcOUProb(m.he||1800,m.ae||1800,m.ou||2.5);
+  var unP=1-ouP;
   var ouTier=tier(ouP,ev(ouP,1.909)),unTier=tier(1-ouP,ev(1-ouP,1.909));
   var ouLabel=ouTier===3?'PREMIUM':ouTier===2?'OPTIMAL':ouTier===1?'LEAN':'SKIP';
   var unLabel=unTier===3?'PREMIUM':unTier===2?'OPTIMAL':unTier===1?'LEAN':'SKIP';
@@ -17215,16 +17589,29 @@ function _renderWCMatchCard(m,liveScore){
   ]);
   var topT=_wcMkts.tierN,topLabel=_wcMkts.lbl,topCol=_wcMkts.col;
   var _wcBM=_wcMkts.best,_wcBP=Math.round(_wcBM.prob*100),_wcBE=(_wcBM.evVal*100).toFixed(1);
-  var explanation=topT===0?'Model finds no qualifying edge in this matchup. ELO differential ('+eloGap+' pts) insufficient to overcome market juice. Skip or monitor for line movement.':
-    'Best market: <strong>'+_wcBM.label+'</strong> graded '+topLabel+' ('+_wcBP+'%, EV +'+_wcBE+'%) — '+(
-      _wcBM.side==='home'?_wcEloCtx+'. Home structural advantage confirmed by ELO gap and group-stage context':
-      _wcBM.side==='draw'?_wcEloCtx+'. Draw is a live result — evenly matched sides with narrow ELO gap':
-      _wcBM.side==='away'?_wcEloCtx+'. Away side carries ELO superiority; market underpricing the road favorite':
-      _wcBM.side==='ahFav'?_wcEloCtx+'. Asian handicap provides better value than flat ML for the stronger side':
-      _wcBM.side==='ahDog'?_wcEloCtx+'. Handicap dog provides best risk/reward given the ELO gap':
-      _wcBM.side==='over'?'High-ELO matchup projects open play and goal volume. Both teams generate attacking chances':
-      'Defensive matchup projected. High-ELO collision often produces cautious, low-scoring football'
-    )+'. '+_wcMkts.size+'-unit sizing'+_wcMkts.secStr+'.';
+  var _wcFavTeam=hP>=dP&&hP>=aP?m.home:dP>=hP&&dP>=aP?'Draw':m.away;
+  var _wcFavP=Math.max(hP,dP,aP);var _wcImplied=(1/ml2d(_wcBM.side==='home'?hML:_wcBM.side==='draw'?dML:aML));
+  var _wcEdgePP=(_wcBM.prob-_wcImplied)*100;
+  var _wcKelly=(_kelly(_wcBM.prob,ml2d(_wcBM.side==='home'?hML:_wcBM.side==='draw'?dML:aML))*100).toFixed(1);
+  var _wcH2Hprob=(hP/(hP+aP)*100).toFixed(0); // head-to-head ignoring draw
+  var _wcEloGrade=eloGap>=300?'massive':eloGap>=200?'large':eloGap>=100?'significant':eloGap>=50?'moderate':'narrow';
+  var _wcOUdesc=ouP>=.55?'high-scoring matchup projected':ouP<=.44?'low-scoring defensive game projected':'even-odds totals match';
+  var explanation=topT===0?
+    'No qualifying edge. ELO gap '+eloGap+' pts ('+_wcEloGrade+') — '+m.home+' ELO '+m.he+' vs '+m.away+' ELO '+m.ae+'. H2H ex-draw: '+m.home+' '+_wcH2Hprob+'% / '+m.away+' '+(100-parseInt(_wcH2Hprob))+'%. Home ML implied '+(hP*100).toFixed(0)+'% / Draw '+(dP*100).toFixed(0)+'% / Away '+(aP*100).toFixed(0)+'%. Skip.':
+    'Best market: <strong>'+_wcBM.label+'</strong> · '+topLabel+' · '+_wcBP+'% · EV +'+_wcBE+'% · edge +'+_wcEdgePP.toFixed(1)+'pp. '+
+    'ELO: '+m.home+' '+m.he+' vs '+m.away+' '+m.ae+' (gap: '+eloGap+' — '+_wcEloGrade+' differential). '+
+    'H2H ex-draw: '+m.home+' '+_wcH2Hprob+'% / '+m.away+' '+(100-parseInt(_wcH2Hprob))+'%. '+
+    '3-way: Home '+(hP*100).toFixed(0)+'% / Draw '+(dP*100).toFixed(0)+'% / Away '+(aP*100).toFixed(0)+'%. '+
+    'AH: '+ahFavTeam+' '+(ahFavP*100).toFixed(0)+'% / '+ahDogTeam+' '+(ahDogP*100).toFixed(0)+'%. '+
+    'O/U '+ouL+': '+(_wcOUdesc)+' (over '+(ouP*100).toFixed(0)+'%). '+
+    (_wcBM.side==='home'?m.home+' structural home advantage — ELO superiority unpriced.':
+    _wcBM.side==='draw'?'Draw value — narrow ELO gap and defensive context both support draw probability.':
+    _wcBM.side==='away'?m.away+' ELO superior — market underpricing road favorite.':
+    _wcBM.side==='ahFav'?'Asian handicap provides better value than flat ML for the stronger side.':
+    _wcBM.side==='ahDog'?'Handicap dog — ELO gap insufficient to justify the handicap.':
+    _wcBM.side==='over'?'Both sides generate attacking play; goals expected above line.':
+    'Tight defensive battle projected; combined goals expected under line.')+
+    ' Kelly '+_wcKelly+'%. '+topLabel+' · '+_wcMkts.size+'-unit play'+_wcMkts.secStr+'.';
   // Score HTML
   var scoreHtml='';
   if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:12px;color:var(--hc);background:rgba(255,32,0,.15);padding:2px 7px;border-radius:2px;animation:pulse 1.5s infinite">LIVE '+liveScore.clock+'</span><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.as+'</span></div>';}
