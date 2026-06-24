@@ -1148,6 +1148,7 @@ body{line-height:1.5}
               <option value="NBA">NBA</option>
               <option value="NHL">NHL</option>
               <option value="WNBA">WNBA</option>
+              <option value="CBB">CBB</option>
               <option value="TEN">TENNIS</option>
               <option value="SOC">SOCCER</option>
               <option value="NFL">NFL</option>
@@ -1388,6 +1389,7 @@ body{line-height:1.5}
             <option value="NHL">NHL</option>
             <option value="TEN">TENNIS</option>
             <option value="WNBA">WNBA</option>
+            <option value="CBB">CBB</option>
           </select>
           <select id="tracker-filter-status" class="fi" style="font-size:12px;padding:3px 6px" onchange="renderLockedTracker()">
             <option value="all">ALL</option>
@@ -5231,7 +5233,7 @@ function showManualBetImport(){
         <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">SPORT</div>
         <select id="ibs-sport" ${sel('sport')} onchange="window._ibsUpdateLeague(this.value)">
           <option value="MLB">MLB</option><option value="NBA">NBA</option><option value="NFL">NFL</option>
-          <option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CFB">CFB</option>
+          <option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CBB">CBB</option><option value="CFB">CFB</option>
           <option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option><option value="OTHER">OTHER</option>
         </select>
       </div>
@@ -17359,6 +17361,94 @@ function _pGe(lam,n){
 // Game data result cache — 5-min TTL avoids re-fetching ESPN every tab switch
 var _wnbaGamesCache=null,_wnbaCacheTs=0,_WNBA_TTL=300000;
 var _wnbaRendering=false;
+var _wnbaStatsCache=null,_wnbaStatsCacheDate='';
+async function _fetchWNBAPlayerStats(){
+  var td=today();
+  if(_wnbaStatsCacheDate===td&&_wnbaStatsCache)return _wnbaStatsCache;
+  try{
+    var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/statistics?limit=300',{signal:ctrl.signal});
+    var d=await r.json();
+    var byName={};
+    (d.athletes||[]).forEach(function(a){
+      var name=a.athlete&&a.athlete.displayName;if(!name)return;
+      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
+      var stats={};
+      (a.categories||[]).forEach(function(cat){
+        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
+      });
+      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
+      byName[name.toLowerCase()]={name,team,gp,
+        ppg:+((stats.points||stats.PTS||0)/gp).toFixed(1),
+        rpg:+((stats.totalRebounds||stats.REB||0)/gp).toFixed(1),
+        apg:+((stats.assists||stats.AST||0)/gp).toFixed(1),
+        tpg:+((stats.threePointFieldGoalsMade||stats.threePointersMade||0)/gp).toFixed(1),
+        spg:+((stats.steals||0)/gp).toFixed(1)
+      };
+    });
+    _wnbaStatsCache=byName;_wnbaStatsCacheDate=td;
+    console.log('[CV] WNBA stats loaded: '+Object.keys(byName).length+' players');
+    return byName;
+  }catch(e){console.warn('[CV] WNBA stats fetch err:',e);return null;}
+}
+function _generateWNBAPropsLive(games,statsData){
+  if(!statsData||!games||!games.length)return[];
+  var props=[];
+  var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
+  var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
+  var gradeP=function(p){return p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';};
+  var players=Object.values(statsData);
+  games.forEach(function(g){
+    var hn=g.hA||g.h||g.home,an=g.awA||g.a||g.away;if(!hn||!an)return;
+    var gamePlayers=players.filter(function(p){
+      return(p.team===hn||p.team===an)&&p.gp>=5;
+    }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,8);
+    var seen=new Set();
+    gamePlayers.forEach(function(pl){
+      // PTS prop
+      if(pl.ppg>=8&&!seen.has(pl.name+'_pts')){seen.add(pl.name+'_pts');
+        var line=Math.round(pl.ppg*2)/2;
+        var mc=propMC(pl.ppg,Math.max(3,pl.ppg*0.38),line,5000);
+        var grade=gradeP(mc.overP);if(grade==='SKIP')return;
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          stat:'PTS',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
+          conf:Math.round(mc.overP*100),grade,hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.ppg+'PPG / '+pl.gp+'G · MC sim: '+mc.hitRate+'% over '+line+' · ESPN 2026 season stats'});
+      }
+      // REB prop
+      if(pl.rpg>=5&&!seen.has(pl.name+'_reb')){seen.add(pl.name+'_reb');
+        var line=Math.round(pl.rpg*2)/2;
+        var mc=propMC(pl.rpg,Math.max(2,pl.rpg*0.45),line,5000);
+        if(mc.overP<0.55)return;
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          stat:'REB',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
+          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.rpg+'RPG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
+      }
+      // AST prop
+      if(pl.apg>=4&&!seen.has(pl.name+'_ast')){seen.add(pl.name+'_ast');
+        var line=Math.round(pl.apg*2)/2;
+        var mc=propMC(pl.apg,Math.max(1.5,pl.apg*0.50),line,5000);
+        if(mc.overP<0.55)return;
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          stat:'AST',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
+          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.apg+'APG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
+      }
+      // PRA combo
+      if((pl.ppg+pl.rpg+pl.apg)>=18&&!seen.has(pl.name+'_pra')){seen.add(pl.name+'_pra');
+        var mu=pl.ppg+pl.rpg+pl.apg;var line=Math.round(mu*2)/2;
+        var mc=propMC(mu,Math.max(4,mu*0.32),line,5000);
+        if(mc.overP<0.57)return;
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          stat:'PRA',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
+          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.ppg+'/'+pl.rpg+'/'+pl.apg+' PRA avg '+mu.toFixed(1)+'/G · MC: '+mc.hitRate+'% over '+line});
+      }
+    });
+  });
+  return props.sort(function(a,b){return b.prob-a.prob;});
+}
 // Hardcoded WNBA player props for today's games (IND@CON · MIN@LVA · DAL@PDX · LAS@PHX)
 // Updated: June 13 2026 — based on 2026 season averages + matchup
 var WNBA_PROPS_DATE='20260624';
@@ -17457,7 +17547,49 @@ async function renderWNBAProps(){
     }
     return;
   }
-  // ── Primary fallback: hardcoded WNBA_PROPS_DATA ─────────────────────────────
+  // ── Primary fallback: live ESPN stats + propMC ──────────────────────────────
+  var _liveGameData=window._wnbaGameData||[];
+  if(!_liveGameData.length){try{if(typeof renderWNBAGames==='function')await renderWNBAGames();_liveGameData=window._wnbaGameData||[];}catch(e){}}
+  if(_liveGameData.length){
+    var _liveStats=await _fetchWNBAPlayerStats().catch(function(){return null;});
+    if(_liveStats&&Object.keys(_liveStats).length>0){
+      var _liveProps=_generateWNBAPropsLive(_liveGameData,_liveStats);
+      if(_liveProps.length>=2){
+        var _gradeC2={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)'};
+        var _srcHdrL='<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:13px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">WNBA PROPS · LIVE (ESPN+MC) · '+_liveProps.length+' TODAY</div><div style="color:var(--t3);font-size:12px">ESPN 2026 season stats · Monte Carlo 5k sims · auto-refreshes with WNBA tab</div></div>';
+        var _parlayLive=[];
+        el.innerHTML=_srcHdrL+_liveProps.map(function(p){
+          var c=_gradeC2[p.grade]||'var(--t2)';
+          var pKey=p.player.replace(/[\s']/g,'_')+'_'+p.stat;
+          var mlNum=parseInt(String(p.ml||'-110').replace('+',''))||(-110);
+          _parlayLive.push({label:p.player+' O'+p.line+' '+p.stat,ml:mlNum,prob:p.prob,key:pKey,line:p.line,player:p.player,stat:p.stat,over:true,team:p.team});
+          return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+c+'">'
+            +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">'
+            +'<div><span style="font-family:var(--orb);font-size:18px;font-weight:700">'+p.player+'</span>'
+            +'<span style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-left:6px">'+p.team+' vs '+p.opp+'</span></div>'
+            +'<div style="display:flex;gap:4px;align-items:center">'
+            +'<span style="font-family:var(--mono);font-size:12px;padding:2px 5px;border:1px solid rgba(255,255,255,.15);color:var(--t3);border-radius:2px">MC:'+p.hitRate+'</span>'
+            +'<span style="font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px;font-weight:700">'+p.grade+'</span>'
+            +'</div></div>'
+            +'<div style="font-family:var(--mono);font-size:18px;color:var(--gc);margin-bottom:4px;font-weight:700">▲ OVER '+p.line+' '+p.stat+' <span style="font-size:15px;font-weight:400;color:var(--t3)">'+p.ml+'</span></div>'
+            +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+            +'<div style="font-family:var(--orb);font-size:21px;font-weight:700;color:'+c+'">'+p.conf+'%</div>'
+            +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden"><div style="width:'+Math.min(100,p.conf)+'%;height:100%;background:'+c+';border-radius:1px;transition:width .4s"></div></div></div>'
+            +(p.basis?'<div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:6px">'+p.basis+'</div>':'')
+            +'<div style="display:flex;justify-content:flex-end;gap:5px">'
+            +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnba_'+pKey+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:14px;padding:2px 6px;border-radius:2px;text-align:center">'
+            +'<button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO(\'padj_wnba_'+pKey+'\',\''+p.team+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.prob.toFixed(3)+',\''+p.ml+'\')">▲O</button>'
+            +'<button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU(\'padj_wnba_'+pKey+'\',\''+p.team+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.prob.toFixed(3)+',\''+p.ml+'\')">▼U</button>'
+            +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' O'+p.line+' '+p.stat+'\','+mlNum+','+p.prob.toFixed(3)+',\''+p.team+' PROP\',\'PROP\')">+PAR</button>'
+            +'</div></div>';
+        }).join('');
+        var ppList=document.getElementById('wnba-par-props-list');
+        if(ppList&&_parlayLive.length){ppList.innerHTML=_parlayLive.map(function(p){var ms=p.ml>0?'+':'';var pid='ppar_wnba_'+p.key;return'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(10,0,24,.7);border:1px solid rgba(187,255,0,.15);border-radius:2px;margin-bottom:4px;font-family:var(--mono);font-size:12px"><span style="color:var(--t2)">'+p.label+'</span><div style="display:flex;gap:4px;align-items:center"><span style="color:var(--vc)">'+ms+p.ml+'</span><span style="color:var(--t3)">'+Math.round(p.prob*100)+'%</span><input type="number" step="0.5" value="'+(p.line||'')+'" id="'+pid+'" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:12px;padding:1px 4px;border-radius:2px;text-align:center"><button class="btn btn-o btn-sm" style="font-size:11px;padding:2px 6px" onclick="_adjParLeg(\''+pid+'\',\'wnba\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.over+','+p.ml+','+p.prob.toFixed(4)+',\'WNBA PROP\')">+PAR</button></div></div>';}).join('');}
+        return;
+      }
+    }
+  }
+  // ── Last-resort fallback: hardcoded WNBA_PROPS_DATA (only if current date) ───
   if(typeof WNBA_PROPS_DATA!=='undefined'&&WNBA_PROPS_DATA.length>=3){
     var _wnbaPropsDate=typeof WNBA_PROPS_DATE!=='undefined'?WNBA_PROPS_DATE:'';
     var _todayKeyW=typeof today==='function'?today().replace(/-/g,''):'';
