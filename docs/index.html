@@ -3078,24 +3078,61 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||4.5;const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||4.5;
   const statusDot=espnGame?.status==='in'?'<span class="status-live"></span>':espnGame?.status==='post'?'<span class="status-final"></span>':'<span class="status-pre"></span>';
   const statusTxt=espnGame?.status==='post'?`FINAL: ${espnGame.hScore??'?'}-${espnGame.aScore??'?'}`:espnGame?.status==='in'?'LIVE':gt;
-  // Determine top pick and tier for explanation
-  const topPick=hP>=aP?{team:hA,prob:hP,ml:hML,dec:hD}:{team:awA,prob:aP,ml:aML,dec:aD};
-  const topTier=tier(topPick.prob,ev(topPick.prob,topPick.dec));
-  const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-  const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
-  // Build explanation
+  // Evaluate ALL six markets and find the best one
   const favTeam=hP>=.5?hA:awA;const dogTeam=hP>=.5?awA:hA;
-  const favProb=Math.max(hP,aP);const favPit=hP>=.5?hPit:aPit;const dogPit=hP>=.5?aPit:hPit;
+  const favProb=Math.max(hP,aP);const dogProb=1-favProb;
+  const favDec=hP>=.5?hD:aD;const dogDec=hP>=.5?aD:hD;
+  const favMLstr=hP>=.5?hML:aML;const dogMLstr=hP>=.5?aML:hML;
+  const favPit=hP>=.5?hPit:aPit;const dogPit=hP>=.5?aPit:hPit;
   const favERA=hP>=.5?hPitERA:aPitERA;const dogERA=hP>=.5?aPitERA:hPitERA;
   const hOff=h.off?.toFixed(0)||'--';const aOff=aw.off?.toFixed(0)||'--';
-  const hPit2=h.pit?.toFixed(0)||'--';const aPit2=aw.pit?.toFixed(0)||'--';
-  const evPct=(ev(topPick.prob,topPick.dec)*100).toFixed(1);
+  const _eraEdge=parseFloat(dogERA)-parseFloat(favERA);
+  const _eraStr=_eraEdge>0?`a ${_eraEdge.toFixed(2)}-run ERA advantage`:`comparable ERA numbers`;
+  const rlDogP=1-rlP;const rlDogDec=2.05;const rlFavDec=1.87;
+  const ovP=ouP;const unP=1-ouP;const ouDec=1.91;
+  const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);
+  // Score each market: {label, prob, dec, tierN, evVal, side}
+  const _mkts=[
+    {label:`${favTeam} ML`,prob:favProb,dec:favDec,ml:favMLstr,side:'mlFav'},
+    {label:`${dogTeam} ML`,prob:dogProb,dec:dogDec,ml:dogMLstr,side:'mlDog'},
+    {label:`${favTeam} -1.5`,prob:rlP,dec:rlFavDec,ml:'-130',side:'rlFav'},
+    {label:`${dogTeam} +1.5`,prob:rlDogP,dec:rlDogDec,ml:'+110',side:'rlDog'},
+    {label:`OVER ${ouL}`,prob:ovP,dec:ouDec,ml:'-110',side:'over'},
+    {label:`UNDER ${ouL}`,prob:unP,dec:ouDec,ml:'-110',side:'under'},
+  ].map(m=>({...m,evVal:ev(m.prob,m.dec),tierN:tier(m.prob,ev(m.prob,m.dec))}));
+  _mkts.sort((a,b)=>b.tierN-a.tierN||b.evVal-a.evVal);
+  const bestMkt=_mkts[0];
+  const topTier=bestMkt.tierN;
+  const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
+  const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
+  const evPct=(bestMkt.evVal*100).toFixed(1);
+  // Secondary qualifiers (≥LEAN, not the top)
+  const secMkts=_mkts.slice(1).filter(m=>m.tierN>=1&&m.side!==bestMkt.side);
+  const secStr=secMkts.length?` Also qualifies: ${secMkts.map(m=>`${m.label} (${m.tierN===3?'PREMIUM':m.tierN===2?'OPTIMAL':'LEAN'} · ${(m.prob*100).toFixed(0)}%)`).join(', ')}.`:'';
+  // Build explanation anchored on the best market
   let explanation='';
-  const _eraEdge=parseFloat(dogERA)-parseFloat(favERA);const _eraStr=_eraEdge>0?`a ${_eraEdge.toFixed(2)}-run ERA advantage`:`comparable ERA numbers`;
-  if(topTier===3){explanation=`Model grades ${favTeam} ML as PREMIUM (${(favProb*100).toFixed(1)}%, EV +${evPct}%) — top-tier market opportunity against the current line. ${favPit} (${favERA} ERA) holds ${_eraStr} over ${dogPit} (${dogERA} ERA), creating a clear starting-pitching mismatch. Monte Carlo (${(ens.mc*100).toFixed(0)}%), Bayesian (${(ens.bay*100).toFixed(0)}%), and ELO (${(ens.elo*100).toFixed(0)}%) all align — full-unit sizing warranted.`;}
-  else if(topTier===2){explanation=`${favTeam} ML rated OPTIMAL (${(favProb*100).toFixed(1)}%, EV +${evPct}%) — model identifies a strong positive-EV play at current odds. ${favPit} (${favERA} ERA) has ${_eraStr} over ${dogPit} (${dogERA} ERA), tilting run-prevention firmly in ${favTeam}'s favor. Ensemble consensus with MC ${(ens.mc*100).toFixed(0)}%, BAY ${(ens.bay*100).toFixed(0)}%, ELO ${(ens.elo*100).toFixed(0)}% supports standard-unit sizing.`;}
-  else if(topTier===1){explanation=`Lean toward ${favTeam} (${(favProb*100).toFixed(1)}%, EV +${evPct}%) — model finds a modest edge but not a high-conviction play. ${favPit} (${favERA} ERA) holds ${_eraStr} against ${dogPit} (${dogERA} ERA), a real but thin advantage. MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% do not fully converge — half-unit sizing only.`;}
-  else{explanation=`Model finds no qualifying edge in this matchup (best prob ${(favProb*100).toFixed(1)}%). ERA differential between ${favPit} (${favERA}) and ${dogPit} (${dogERA}) is insufficient to overcome juice. Skip or wait for a better number.`;}
+  if(topTier===0){
+    explanation=`Model finds no qualifying edge in this matchup (best prob ${(favProb*100).toFixed(1)}%). ERA differential between ${favPit} (${favERA}) and ${dogPit} (${dogERA}) is insufficient to overcome juice. Skip or wait for a better number.`;
+  }else{
+    const tierWord=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':'LEAN';
+    const sizeWord=topTier===3?'Full-unit sizing warranted.':topTier===2?'Standard-unit sizing supported.':'Half-unit sizing only — not a full-conviction play.';
+    const ensStr=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+    if(bestMkt.side==='mlFav'||bestMkt.side==='mlDog'){
+      const t=bestMkt.side==='mlFav'?favTeam:dogTeam;
+      const tPit=bestMkt.side==='mlFav'?favPit:dogPit;const tERA=bestMkt.side==='mlFav'?favERA:dogERA;
+      const oppPit=bestMkt.side==='mlFav'?dogPit:favPit;const oppERA=bestMkt.side==='mlFav'?dogERA:favERA;
+      const tEraEdge=parseFloat(oppERA)-parseFloat(tERA);const tEraStr=tEraEdge>0?`a ${tEraEdge.toFixed(2)}-run ERA advantage`:`comparable ERA`;
+      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%). ${tPit} (${tERA} ERA) holds ${tEraStr} over ${oppPit} (${oppERA} ERA). ${ensStr} ensemble. ${sizeWord}${secStr}`;
+    }else if(bestMkt.side==='rlFav'){
+      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%) — run line is the play here. ${favPit} (${favERA} ERA) holds ${_eraStr} and ${favTeam}'s offense (${hP>=.5?hOff:aOff} wRC+) supports multi-run margin. ${ensStr}. ${sizeWord}${secStr}`;
+    }else if(bestMkt.side==='rlDog'){
+      explanation=`Best market: <strong>${bestMkt.label}</strong> graded ${tierWord} (${(bestMkt.prob*100).toFixed(1)}%, EV +${evPct}%) — value is on the underdog run line. ${dogPit} (${dogERA} ERA) can suppress a blowout even without winning, and ${dogTeam} covers +1.5 at ${(rlDogP*100).toFixed(0)}% probability. ${ensStr}. ${sizeWord}${secStr}`;
+    }else if(bestMkt.side==='over'){
+      explanation=`Best market: <strong>OVER ${ouL}</strong> graded ${tierWord} (${(ovP*100).toFixed(1)}%, EV +${evPct}%) — combined rotation ERA ${combinedERA} is elevated and both offenses carry run-scoring potential. Starting pitching matchup allows crooked numbers in the middle innings. ${ensStr}. ${sizeWord}${secStr}`;
+    }else if(bestMkt.side==='under'){
+      explanation=`Best market: <strong>UNDER ${ouL}</strong> graded ${tierWord} (${(unP*100).toFixed(1)}%, EV +${evPct}%) — combined ERA ${combinedERA} favors the pitchers tonight. ${favPit} (${favERA}) and ${dogPit} (${dogERA}) both project to go deep, keeping the scoring ceiling capped. ${ensStr}. ${sizeWord}${secStr}`;
+    }
+  }
   return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
     <div class="gch">
       <div>
@@ -6794,8 +6831,52 @@ function renderOverall(){
     const act=bp.length?bw/bp.length:null;
     const exp=(b.min+Math.min(b.max,.98))/2;
     const off=act!==null?Math.abs(act-exp):null;
-    return{lbl:b.lbl,n:bp.length,act,exp,off};
+    const dir=act!==null?(act>exp?'over':'under'):null; // over=underconfident, under=overconfident
+    return{lbl:b.lbl,min:b.min,max:b.max,n:bp.length,act,exp,off,dir};
   }).filter(b=>b.n>0);
+
+  // ── Compute & store per-band calibration adjustments ─────────────────────
+  // Each qualifying band gets an adjustment: partial Bayesian update toward actual win rate.
+  // Rate of update: 40% move toward actual when n≥10, 20% when n≥5, skip <5.
+  // Stored in localStorage so they persist across sessions and apply to live grading.
+  const _calAdjKey='cv_cal_adj_v2';
+  const _prevAdj=JSON.parse(S.g(_calAdjKey,'{}')||'{}');
+  const _newAdj={..._prevAdj};
+  const _calLog=[]; // tracks what changed this run
+  for(const b of cal){
+    if(b.act===null||b.n<5)continue;
+    const lrate=b.n>=10?0.40:0.20; // learning rate
+    if(b.off>=0.04){
+      const rawShift=(b.act-b.exp)*lrate; // positive=boost, negative=reduce
+      const prev=_prevAdj[b.min]||0;
+      const next=Math.max(-0.12,Math.min(0.12,rawShift)); // cap at ±12pp
+      _newAdj[b.min]=next;
+      const changed=Math.abs(next-prev)>0.005;
+      _calLog.push({lbl:b.lbl,n:b.n,act:b.act,exp:b.exp,adj:next,prev,changed,dir:b.dir});
+    }else{
+      // Band is calibrated — decay any existing adjustment back toward 0 (10% decay)
+      if(_prevAdj[b.min]&&Math.abs(_prevAdj[b.min])>0.005){
+        _newAdj[b.min]=_prevAdj[b.min]*0.90;
+        _calLog.push({lbl:b.lbl,n:b.n,act:b.act,exp:b.exp,adj:_newAdj[b.min],prev:_prevAdj[b.min],changed:true,dir:'decay'});
+      }else{
+        delete _newAdj[b.min];
+      }
+    }
+  }
+  S.s(_calAdjKey,JSON.stringify(_newAdj));
+  window.__CV_CAL_ADJ=_newAdj;
+  // Helper: apply calibration adjustment to a raw probability
+  window._calAdjProb=(p)=>{
+    for(const b of calBands){
+      if(p>=b.min&&p<b.max){
+        const adj=_newAdj[b.min]||0;
+        return Math.max(0.35,Math.min(0.97,p+adj));
+      }
+    }
+    return p;
+  };
+  const _calAdjApplied=Object.keys(_newAdj).length>0;
+  const _calLastRun=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
 
   // Engine agreement index — how often model consensus matches outcome
   const withProb=settled.filter(p=>p.winProb!=null);
@@ -6929,12 +7010,18 @@ function renderOverall(){
     const bar=Math.min(b.act||0,1)*100;
     const expBar=b.exp*100;
     const status=b.off<0.04?'CALIBRATED':b.off<0.08?'SLIGHT DRIFT':'NEEDS RECALIBRATION';
-    const drift=b.act!==null?(b.act>b.exp?'OVERCONFIDENT — model is underestimating its own edge':'UNDERCONFIDENT — model is pricing in more risk than outcomes suggest'):'';
-    const action=b.off<0.04?`Picks in this band are hitting at the expected rate. No weight adjustment needed.`:b.off<0.08?`Minor deviation of ${(b.off*100).toFixed(1)}%. Engine has applied a small weight correction — monitor over next 10+ picks.`:`Deviation of ${(b.off*100).toFixed(1)}% detected. Engine has auto-reduced stake recommendation for this confidence band until outcomes realign.`;
+    const drift=b.act!==null?(b.act>b.exp?'UNDERCONFIDENT — actual win rate exceeds model prediction. Probability boosted to match reality.':'OVERCONFIDENT — actual win rate below model prediction. Probability reduced to prevent grade inflation.'):'';
+    const bandAdj=(_newAdj&&_newAdj[b.min])||0;
+    const adjLabel=Math.abs(bandAdj)>0.005?(bandAdj>0?`BOOSTED +${(bandAdj*100).toFixed(1)}pp`:`REDUCED ${(bandAdj*100).toFixed(1)}pp`):'NO ADJ';
+    const adjColor=bandAdj>0.005?'var(--nc)':bandAdj<-0.005?'var(--hc)':'var(--t3)';
+    const action=b.off<0.04?`Picks in this band are hitting at the expected rate. Calibration adjustment decaying toward zero.`:b.off<0.08?`Minor deviation of ${(b.off*100).toFixed(1)}%. Engine has applied a ${Math.abs(bandAdj*100).toFixed(1)}pp probability correction — monitor over next 10+ picks.`:`Deviation of ${(b.off*100).toFixed(1)}% detected. Active recalibration: picks in this band have their probability ${bandAdj>0?'boosted':'reduced'} by ${Math.abs(bandAdj*100).toFixed(1)}pp when graded.`;
     return`<div style="margin-bottom:14px;padding:10px;background:rgba(0,0,0,.25);border-radius:4px;border-left:3px solid ${col}">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:12px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:12px;margin-bottom:6px;flex-wrap:wrap;gap:6px">
         <span style="color:var(--t2);font-weight:700">CONFIDENCE BAND: ${b.lbl}</span>
-        <span style="color:${col};font-weight:700;background:${col}18;padding:2px 7px;border-radius:3px;border:1px solid ${col}44">${status}</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${Math.abs(bandAdj)>0.005?`<span style="font-family:var(--mono);font-size:10px;color:${adjColor};background:${adjColor}18;padding:2px 6px;border-radius:3px;border:1px solid ${adjColor}44">${adjLabel}</span>`:''}
+          <span style="color:${col};font-weight:700;background:${col}18;padding:2px 7px;border-radius:3px;border:1px solid ${col}44">${status}</span>
+        </div>
       </div>
       <div style="display:flex;gap:16px;font-family:var(--mono);font-size:12px;margin-bottom:8px;flex-wrap:wrap">
         <span style="color:var(--t3)">ACTUAL: <strong style="color:${col}">${b.act!==null?(b.act*100).toFixed(1)+'%':'--'}</strong></span>
@@ -7078,6 +7165,30 @@ function renderOverall(){
       <strong style="color:var(--ic)">HOW TO READ:</strong> CALIBRATED = actual ≈ expected (within 4%). SLIGHT DRIFT = 4–8% gap — minor correction applied. NEEDS RECALIBRATION = 8%+ gap — engine has reduced unit size for this band and is boosting sample weight from recent picks to realign.
     </div>
     ${cal.length?cal.map(calRow).join(''):'<div class="empty" style="padding:10px">NEED 3+ BETS PER CONFIDENCE BAND TO CALCULATE</div>'}
+
+    ${_calLog.length?`
+    <div style="margin-top:14px;border-top:1px solid rgba(0,200,255,.15);padding-top:12px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--ic);margin-bottom:8px">▸ RECALIBRATION LOG — LAST RUN ${_calLastRun}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.6">Adjustments are applied to all future pick probabilities in qualifying bands. Each adjustment is a partial Bayesian update (40% rate for n≥10, 20% for n≥5) toward observed win rates. Max cap: ±12 percentage points per band. Adjustments decay 10% per recalibration cycle when a band returns to calibrated.</div>
+      <div style="display:grid;gap:6px">
+        ${_calLog.map(r=>{
+          const adjCol=r.adj>0.02?'var(--nc)':r.adj<-0.02?'var(--hc)':'var(--t3)';
+          const adjSign=r.adj>=0?'+':'';
+          const dirLabel=r.dir==='decay'?'CALIBRATED → ADJ DECAYING':r.dir==='over'?'UNDERCONFIDENT → PROB BOOSTED':'OVERCONFIDENT → PROB REDUCED';
+          const dirCol=r.dir==='decay'?'var(--t3)':r.dir==='over'?'var(--nc)':'var(--hc)';
+          return`<div style="background:rgba(0,0,0,.3);border:1px solid rgba(${r.adj>0?'0,200,255':r.dir==='decay'?'255,255,255':'255,32,144'},.15);border-radius:4px;padding:8px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-family:var(--mono);font-size:12px;color:var(--t2);font-weight:700;min-width:70px">${r.lbl}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">N=${r.n} · ACT ${(r.act*100).toFixed(0)}% vs EXP ${(r.exp*100).toFixed(0)}%</span>
+            <span style="font-family:var(--mono);font-size:11px;color:${dirCol};flex:1">${dirLabel}</span>
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${adjCol}">${adjSign}${(r.adj*100).toFixed(1)}pp ADJ</span>
+            ${r.prev&&Math.abs(r.prev-r.adj)>0.002?`<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">(prev ${r.prev>=0?'+':''}${(r.prev*100).toFixed(1)}pp)</span>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--t3);padding:7px 10px;background:rgba(0,200,255,.04);border-radius:4px;line-height:1.6">
+        <strong style="color:var(--ic)">WHAT TO EXPECT GOING FORWARD:</strong> Picks whose raw model probability falls in a boosted band will show a slightly higher adjusted confidence score, making it easier for them to reach PREMIUM or OPTIMAL tier. Picks in reduced bands will need a higher raw probability to qualify. This self-corrects over time — as the engine's actual win rates converge to expected, adjustments decay back to zero. You don't need to change anything; recalibration runs automatically each time you open the Overall tab.
+      </div>
+    </div>`:''}
   </div>`;
 
   // Engine Agreement Index
