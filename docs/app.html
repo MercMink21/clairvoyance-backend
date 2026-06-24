@@ -9735,13 +9735,15 @@ function renderDailyBriefing(){
   let hotSport='',hotPct=0;
   sports.forEach(sp=>{const sb=settled.filter(p=>p.sport===sp&&p.lockedAt&&p.lockedAt>=wk7ts);if(sb.length>=2){const wp=sb.filter(p=>p.outcome==='win').length/sb.length;if(wp>hotPct){hotPct=wp;hotSport=sp;}}});
 
-  // ── Game count across all sport sources ────────────────────────────────
-  let gameCount=0;
-  try{gameCount+=(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).length;}catch(e){}
-  try{gameCount+=(D.nhl?.today||[]).length;}catch(e){}
-  try{gameCount+=(D.nba?.today||[]).length;}catch(e){}
-  try{gameCount+=(window._wnbaGameData||[]).length;}catch(e){}
-  try{gameCount+=(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).length;}catch(e){}
+  // ── Game counts by sport ────────────────────────────────────────────────
+  const sportCounts={MLB:0,NHL:0,NBA:0,WNBA:0,WC:0,TEN:0};
+  try{sportCounts.MLB=(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).length;}catch(e){}
+  try{sportCounts.NHL=(D.nhl?.today||[]).length;}catch(e){}
+  try{sportCounts.NBA=(D.nba?.today||[]).length;}catch(e){}
+  try{sportCounts.WNBA=(window._wnbaGameData||[]).length;}catch(e){}
+  try{sportCounts.WC=(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).length;}catch(e){}
+  const gameCount=Object.values(sportCounts).reduce((a,v)=>a+v,0);
+  const sportCountStr=Object.entries(sportCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(' · ');
 
   // ── Top pick candidates ─────────────────────────────────────────────────
   const candidates=[];
@@ -9749,15 +9751,59 @@ function renderDailyBriefing(){
   const _normProb=v=>v==null?0:v>1?v/100:v;
   const _normEv=v=>v==null?null:Math.abs(v)>2?v/100:v;
   const _mapGrade=g=>{const m={GOOD:'OPTIMAL',GREAT:'PREMIUM',SOLID:'LEAN',OK:'LEAN'};return(['PREMIUM','OPTIMAL','LEAN','SKIP'].includes(g))?g:(m[g]||'OPTIMAL');};
-  try{(D.bestBets||D.heroPicksForDay||[]).filter(b=>b.date===todayStr).forEach(b=>{const g=_mapGrade(b.grade||'OPTIMAL');if(g==='SKIP')return;candidates.push({sport:b.sport||'MLB',matchup:`${b.away||b.awA||''} @ ${b.home||b.hA||''}`,pick:b.pick||b.betOn||b.selection||'',grade:g,prob:_normProb(b.confidence||b.prob||0),ev:_normEv(b.ev||b.evPct)});});}catch(e){}
-  try{(window._mlbDPData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'MLB',matchup:`${p.awA} @ ${p.hA}`,pick:`${p.player} ${p.over?.toUpperCase()||''} ${p.line} ${p.stat}`,grade:p.grade,prob:_normProb(p.prob||0),ev:_normEv(p.ev)});}});}catch(e){}
-  try{(window._nhlPickData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'NHL',matchup:`${p.awA||''} @ ${p.hA||''}`,pick:p.pick||p.betOn||'',grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev)});}});}catch(e){}
-  try{(window._wnbaPickData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'WNBA',matchup:`${p.awA||''} @ ${p.hA||''}`,pick:p.pick||p.betOn||'',grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev)});}});}catch(e){}
-  candidates.sort((a,b)=>{const go={PREMIUM:0,OPTIMAL:1,LEAN:2,SKIP:3};const gd=(go[a.grade]||3)-(go[b.grade]||3);return gd!==0?gd:(b.prob||0)-(a.prob||0);});
-  const top=candidates.slice(0,6);
-  const nPremium=candidates.filter(c=>c.grade==='PREMIUM').length;
-  const nOptimal=candidates.filter(c=>c.grade==='OPTIMAL').length;
-  const nLean=candidates.filter(c=>c.grade==='LEAN').length;
+  const _addCand=(sport,matchup,pick,prob,evVal,dec)=>{
+    const adjP=typeof tier==='function'?prob:prob;
+    const evV=evVal!=null?evVal:ev(prob,dec||1.91);
+    const t=typeof tier==='function'?tier(prob,evV,sport==='WC'||sport==='MLB'?'ML':'ML'):0;
+    const g=['SKIP','LEAN','OPTIMAL','PREMIUM'][t]||'SKIP';
+    if(t>=1)candidates.push({sport,matchup,pick,grade:g,prob,ev:evV,tierN:t});
+  };
+  // bestBets.json (cron-updated)
+  try{(D.bestBets||[]).filter(b=>b.date===todayStr).forEach(b=>{const g=_mapGrade(b.grade||'OPTIMAL');if(g==='SKIP')return;candidates.push({sport:b.sport||'MLB',matchup:b.game||'',pick:b.pick||'',grade:g,prob:_normProb(b.confidence||b.prob||0),ev:_normEv(b.ev||b.evPct),tierN:g==='PREMIUM'?3:g==='OPTIMAL'?2:1});});}catch(e){}
+  // WC today — inline ELO model
+  try{(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).forEach(g=>{
+    if(typeof _wcOut!=='function')return;
+    const out=_wcOut(g.he||1800,g.ae||1800);
+    const hP=out.hW||0.33,aP=out.aW||0.33;
+    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);const dogP=Math.min(hP,aP);
+    const favTeam=favIsHome?g.home:g.away;const dogTeam=favIsHome?g.away:g.home;
+    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);
+    const t=tier(favP,favEV,'ML');
+    if(t>=1)candidates.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`${favTeam} ML (Grp ${g.group})`,grade:['SKIP','LEAN','OPTIMAL','PREMIUM'][t],prob:favP,ev:favEV,tierN:t});
+    // O/U
+    if(typeof _wcOUProb==='function'&&g.ou){const ovP=_wcOUProb(g.he||1800,g.ae||1800,g.ou);const ouDec=1.91;const ouEV=ev(ovP,ouDec);const ouT=tier(ovP,ouEV,'OU');if(ouT>=2)candidates.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`OVER ${g.ou}`,grade:['SKIP','LEAN','OPTIMAL','PREMIUM'][ouT],prob:ovP,ev:ouEV,tierN:ouT});}
+  });}catch(e){}
+  // WNBA today — inline ensemble
+  try{(window._wnbaGameData||[]).forEach(game=>{
+    if(typeof wnbaEns!=='function')return;
+    const ens=wnbaEns(game.hA||game.home,game.awA||game.away,null);
+    const hP=ens.hP||0.5,aP=ens.aP||0.5;
+    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
+    const favTeam=favIsHome?(game.hA||game.home):(game.awA||game.away);
+    const favDec=ml2d(typeof _wnbaML==='function'?_wnbaML(favP):p2ml(favP));
+    const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
+    if(t>=1)candidates.push({sport:'WNBA',matchup:`${game.awA||game.away||''} @ ${game.hA||game.home||''}`,pick:`${favTeam} ML`,grade:['SKIP','LEAN','OPTIMAL','PREMIUM'][t],prob:favP,ev:favEV,tierN:t});
+  });}catch(e){}
+  // MLB / ESPN games
+  try{(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).forEach(g=>{
+    if(!g.homeML&&!g.awayML)return;
+    const hP=g.homeML?1/ml2d(g.homeML):0.5,aP=g.awayML?1/ml2d(g.awayML):0.5;
+    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
+    const favTeam=favIsHome?g.hA:g.awA;const favML=favIsHome?g.homeML:g.awayML;
+    const favDec=ml2d(favML);const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
+    if(t>=1)candidates.push({sport:'MLB',matchup:`${g.awA} @ ${g.hA}`,pick:`${favTeam} ML ${favML}`,grade:['SKIP','LEAN','OPTIMAL','PREMIUM'][t],prob:favP,ev:favEV,tierN:t});
+  });}catch(e){}
+  // window pick-data caches from sport renderers
+  try{(window._mlbDPData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'MLB',matchup:`${p.awA} @ ${p.hA}`,pick:`${p.player} ${p.over?.toUpperCase()||''} ${p.line} ${p.stat}`,grade:p.grade,prob:_normProb(p.prob||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:p.grade==='OPTIMAL'?2:1});}});}catch(e){}
+  try{(window._nhlPickData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'NHL',matchup:`${p.awA||''} @ ${p.hA||''}`,pick:p.pick||p.betOn||'',grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:2});}});}catch(e){}
+  // Deduplicate by pick+sport
+  const seen=new Set();
+  const deduped=candidates.filter(c=>{const k=`${c.sport}|${c.pick}`;if(seen.has(k))return false;seen.add(k);return true;});
+  deduped.sort((a,b)=>{const gd=(b.tierN||0)-(a.tierN||0);return gd!==0?gd:(b.prob||0)-(a.prob||0);});
+  const top=deduped.slice(0,8);
+  const nPremium=deduped.filter(c=>c.grade==='PREMIUM').length;
+  const nOptimal=deduped.filter(c=>c.grade==='OPTIMAL').length;
+  const nLean=deduped.filter(c=>c.grade==='LEAN').length;
 
   // ── Engine-voice blurb ──────────────────────────────────────────────────
   let blurb;
@@ -9817,40 +9863,50 @@ function renderDailyBriefing(){
         ${pill('7D UNITS',wk7P.n?fmtU(wk7P.u):' — ',uCol(wk7P.u),'')}
         ${pill('ALL UNITS',allP.n?fmtU(allP.u):' — ',uCol(allP.u),'')}
         ${gameCount?pill('GAMES TODAY',gameCount,'var(--ic)','ON SLATE'):pill('GAMES TODAY','—','var(--t3)','')}
+        ${nPremium?pill('PREMIUM',nPremium,'var(--gc)','≥67%+EV5%'):''}
+        ${nOptimal?pill('OPTIMAL',nOptimal,'var(--pc)','≥62%+EV3%'):''}
+        ${nLean?pill('LEAN',nLean,'var(--nc)','55-62%'):''}
       </div>
 
-      <!-- grade breakdown bar -->
-      ${gameCount&&(nPremium||nOptimal||nLean)?`
-      <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:12px;margin-bottom:14px">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">▸ SLATE SIGNAL BREAKDOWN</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          ${nPremium?`<div style="display:flex;align-items:center;gap:5px;background:rgba(255,221,0,.08);border:1px solid rgba(255,221,0,.3);border-radius:4px;padding:5px 10px"><span style="font-family:var(--orb);font-size:16px;font-weight:800;color:var(--gc)">${nPremium}</span><div><div style="font-family:var(--mono);font-size:10px;color:var(--gc);letter-spacing:1px">PREMIUM</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">≥67% + EV&gt;5%</div></div></div>`:''}
-          ${nOptimal?`<div style="display:flex;align-items:center;gap:5px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.3);border-radius:4px;padding:5px 10px"><span style="font-family:var(--orb);font-size:16px;font-weight:800;color:var(--pc)">${nOptimal}</span><div><div style="font-family:var(--mono);font-size:10px;color:var(--pc);letter-spacing:1px">OPTIMAL</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">≥62% + EV&gt;3%</div></div></div>`:''}
-          ${nLean?`<div style="display:flex;align-items:center;gap:5px;background:rgba(0,255,136,.06);border:1px solid rgba(0,255,136,.2);border-radius:4px;padding:5px 10px"><span style="font-family:var(--orb);font-size:16px;font-weight:800;color:var(--nc)">${nLean}</span><div><div style="font-family:var(--mono);font-size:10px;color:var(--nc);letter-spacing:1px">LEAN</div><div style="font-family:var(--mono);font-size:10px;color:var(--t3)">55–62%</div></div></div>`:''}
-          <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-left:4px">${gameCount} total game${gameCount===1?'':'s'} · ${nPremium+nOptimal+nLean} qualified signal${nPremium+nOptimal+nLean===1?'':'s'}</div>
-        </div>
+      <!-- sport slate breakdown -->
+      ${gameCount?`
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:7px 10px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:4px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1.5px;margin-right:4px">SLATE:</span>
+        ${Object.entries(sportCounts).filter(([,v])=>v>0).map(([k,v])=>`<span style="font-family:var(--mono);font-size:11px;color:var(--t2);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 8px">${v} ${k}</span>`).join('')}
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:auto">${nPremium+nOptimal+nLean} qualified signal${nPremium+nOptimal+nLean===1?'':'s'} of ${gameCount} game${gameCount===1?'':'s'}</span>
       </div>`:''}
 
       <!-- top moves grid -->
       ${top.length?`
       <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:14px">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">▸ TOP MOVES TODAY — HIGHEST PROBABILITY ELITE SIGNALS</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
-          ${top.map((t,i)=>{const gc=gradeColor[t.grade]||'var(--pc)';const isPremium=t.grade==='PREMIUM';return`<div style="position:relative;background:linear-gradient(135deg,rgba(0,0,0,.5),${isPremium?'rgba(255,221,0,.05)':'rgba(0,0,0,.3)'});border:1px solid ${isPremium?'rgba(255,221,0,.25)':'rgba(255,255,255,.08)'};border-left:3px solid ${gc};border-radius:4px;padding:10px 12px;overflow:hidden">
-            <div style="position:absolute;top:0;right:0;width:50px;height:50px;background:radial-gradient(circle,${gc}15,transparent 70%);pointer-events:none"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <span style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:2px">${t.sport}</span>
-              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${gc};background:${gc}18;padding:2px 7px;border-radius:3px;border:1px solid ${gc}44">${t.grade}</span>
-            </div>
-            <div style="font-family:var(--mono);font-size:13px;color:var(--t);font-weight:600;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.pick||'—'}</div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.matchup}</div>
-            <div style="display:flex;gap:8px;font-family:var(--mono);font-size:11px">
-              ${t.prob?`<span style="color:${gc}">${(t.prob*100).toFixed(0)}% CONF</span>`:''}
-              ${t.ev!=null?`<span style="color:var(--t3)">EV +${typeof t.ev==='number'?(t.ev*100).toFixed(1):t.ev}%</span>`:''}
-            </div>
-          </div>`;}).join('')}
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">▸ TOP MOVES TODAY — HIGHEST PROBABILITY SIGNALS ACROSS ALL SPORTS</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+          ${top.map((m,i)=>{
+            const gc=gradeColor[m.grade]||'var(--pc)';
+            const isPrem=m.grade==='PREMIUM';
+            const isOpt=m.grade==='OPTIMAL';
+            const bgGrad=isPrem?'rgba(255,221,0,.06)':isOpt?'rgba(240,0,255,.05)':'rgba(0,255,136,.03)';
+            const borderCol=isPrem?'rgba(255,221,0,.3)':isOpt?'rgba(240,0,255,.25)':'rgba(0,255,136,.18)';
+            const confBar=m.prob?Math.round(m.prob*100):0;
+            const evDisp=m.ev!=null?(m.ev*100).toFixed(1):null;
+            return`<div style="position:relative;background:linear-gradient(145deg,rgba(0,0,0,.55),${bgGrad});border:1px solid ${borderCol};border-left:3px solid ${gc};border-radius:4px;padding:11px 13px;overflow:hidden">
+              <div style="position:absolute;top:-8px;right:-8px;width:60px;height:60px;background:radial-gradient(circle,${gc}18,transparent 70%);pointer-events:none"></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+                <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--t3);background:rgba(255,255,255,.07);padding:2px 7px;border-radius:2px;letter-spacing:1px">${m.sport}</span>
+                <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${gc};background:${gc}15;border:1px solid ${gc}44;padding:2px 8px;border-radius:3px;letter-spacing:1px">${m.grade}</span>
+              </div>
+              <div style="font-family:var(--mono);font-size:13px;color:var(--t);font-weight:700;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(m.pick||'').replace(/"/g,"'")}">${m.pick||'—'}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.matchup||''}</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                ${m.prob?`<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${gc}">${confBar}%</span>`:''}
+                ${evDisp!=null?`<span style="font-family:var(--mono);font-size:11px;color:${parseFloat(evDisp)>=0?'var(--nc)':'var(--hc)'}">EV ${parseFloat(evDisp)>=0?'+':''}${evDisp}%</span>`:''}
+              </div>
+              ${m.prob?`<div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(100,confBar)}%;background:${gc};border-radius:2px;transition:width .4s"></div></div>`:''}
+            </div>`;}).join('')}
         </div>
-      </div>`:''}
+      </div>`:
+      gameCount?`<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:12px;font-family:var(--mono);font-size:12px;color:var(--t3);text-align:center">${gameCount} game${gameCount===1?'':'s'} on slate — engine computing grades, visit sport tabs to load picks.</div>`:''
+      }
 
     </div>
   </div>`;
