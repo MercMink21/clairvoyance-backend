@@ -2637,7 +2637,19 @@ const MP_DATA={
 function p2ml(p){return p>=.5?-Math.round(100*p/(1-p)):'+'+Math.round(100*(1-p)/p)}
 function ml2d(ml){const m=parseFloat(ml);return m>0?m/100+1:100/Math.abs(m)+1}
 function ev(p,d){return+(p*d-1).toFixed(4)}
-function tier(p,e){if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;}
+function tier(p,e){
+  // Apply calibration adjustment if available (computed by renderOverall or loaded from localStorage)
+  if(window._calAdjProb&&p>0&&p<1){
+    const adjP=window._calAdjProb(p);
+    if(adjP!==p&&adjP>0&&adjP<1){
+      // Scale EV proportionally: adjE = adjP * (e+1)/p - 1
+      // This preserves the odds (dec = (e+1)/p) while re-pricing at the corrected probability
+      e=+(adjP*(e+1)/p-1).toFixed(4);
+      p=adjP;
+    }
+  }
+  if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;
+}
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
@@ -14822,6 +14834,20 @@ function checkInjuryImpactOnBets(){
 
 document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   startSplash();
+  // ── Load calibration adjustments from localStorage so tier() works on first render ──
+  try{
+    const _storedAdj=JSON.parse(S.g('cv_cal_adj_v2','{}')||'{}');
+    const _calBandsInit=[{min:.50,max:.55},{min:.55,max:.60},{min:.60,max:.65},{min:.65,max:.70},{min:.70,max:.75},{min:.75,max:1.0}];
+    if(Object.keys(_storedAdj).length>0){
+      window.__CV_CAL_ADJ=_storedAdj;
+      window._calAdjProb=(p)=>{
+        for(const b of _calBandsInit){
+          if(p>=b.min&&p<b.max){const adj=_storedAdj[b.min]||0;return Math.max(0.35,Math.min(0.97,p+adj));}
+        }
+        return p;
+      };
+    }
+  }catch(e){}
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
   try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
   try{const be=S.g('nba_ens');if(be)NBA_ENS=be;}catch{}
