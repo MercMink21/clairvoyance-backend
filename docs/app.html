@@ -16574,24 +16574,28 @@ function wnbaMC(hA,awA,n=10000){
   var aMu=(aOrtg/100)*(hDrtg/100)*lgAvg*(pace/90);
   var hSig=Math.sqrt(hMu*0.18); // ~18% of projected pts as SD (WNBA variance)
   var aSig=Math.sqrt(aMu*0.18);
-  // Box-Muller normal simulation
-  var hWins=0,totals=[],hScores=[],aScores=[];
+  // Box-Muller normal simulation — track cover counts in-loop for direct cover rate
+  var hWins=0,hCovers=0,aCovers=0,overCt=0,sumH=0,sumA=0,sumT=0;
+  var _line=arguments[2]!=null?parseFloat(arguments[2]):null; // optional home-signed spread line
   for(var i=0;i<n;i++){
     var u1=Math.random(),u2=Math.random(),u3=Math.random(),u4=Math.random();
     var hZ=(Math.sqrt(-2*Math.log(Math.max(1e-10,u1)))*Math.cos(2*Math.PI*u2));
     var aZ=(Math.sqrt(-2*Math.log(Math.max(1e-10,u3)))*Math.cos(2*Math.PI*u4));
     var hS=Math.max(55,hMu+hZ*hSig);
     var aS=Math.max(55,aMu+aZ*aSig);
-    if(hS>aS)hWins++;
-    totals.push(hS+aS);hScores.push(hS);aScores.push(aS);
+    var diff=hS-aS;
+    if(diff>0)hWins++;
+    if(_line!==null){if(diff>-_line)hCovers++;else aCovers++;} // home covers if margin > -line (line is neg for home fav)
+    sumH+=hS;sumA+=aS;sumT+=hS+aS;
   }
   var hwP=hWins/n;
-  var avgT=totals.reduce(function(s,v){return s+v;},0)/n;
-  var avgH=hScores.reduce(function(s,v){return s+v;},0)/n;
-  var avgA=aScores.reduce(function(s,v){return s+v;},0)/n;
+  var avgH=sumH/n,avgA=sumA/n,avgT=sumT/n;
   var spread=avgH-avgA; // positive = home projected to win by this many
+  var hCoverP=_line!==null?hCovers/n:null; // fraction of sims home team covered
+  var aCoverP=_line!==null?aCovers/n:null;
   return{hP:hwP,aP:1-hwP,hNet:hNet,aNet:aNet,hOrtg:hOrtg,hDrtg:hDrtg,aOrtg:aOrtg,aDrtg:aDrtg,
-    hProj:avgH,aProj:avgA,totalProj:avgT,pace:pace,hwP:hwP,avgH:avgH,avgA:avgA,avgT:avgT,spread:spread};
+    hProj:avgH,aProj:avgA,totalProj:avgT,pace:pace,hwP:hwP,avgH:avgH,avgA:avgA,avgT:avgT,spread:spread,
+    hCoverP:hCoverP,aCoverP:aCoverP};
 }
 function wnbaOUProb(mcResult,ouLine){
   // Uses projected team scores from wnbaMC to compute over probability via normal distribution
@@ -16790,16 +16794,30 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var _wnbaFavP=Math.max(hP,aP),_wnbaDogP=Math.min(hP,aP);
       var _wnbaFavDec=parseFloat(hP>=aP?hDec:aDec),_wnbaDogDec=parseFloat(hP>=aP?aDec:hDec);
       var _wnbaFavEV=_wnbaFavP*_wnbaFavDec-1,_wnbaDogEV=_wnbaDogP*_wnbaDogDec-1;
-      var _wnbaSprdSigma=10.5; // WNBA combined game SD ~10.5 pts
-      var _wnbaSprdLine=spread!=null?spread:((0.5-hP)*25).toFixed(1);
-      var _wnbaProjMargin=Math.abs(ens.mcP?(wnbaMC(hab,aab).spread||0):0);
-      var _wnbaLineMargin=Math.abs(parseFloat(_wnbaSprdLine||4));
-      var _wnbaSprdFavP=Math.min(0.78,Math.max(0.22,normalCDF((_wnbaProjMargin-_wnbaLineMargin)/_wnbaSprdSigma+0.015)));
-      var _wnbaSprdDogP=1-_wnbaSprdFavP;
-      var _wnbaFavCoverP=_wnbaSprdFavP,_wnbaDogCoverP=_wnbaSprdDogP;
-      var _wnbaMCResult=wnbaMC(hab,aab);
+      var _wnbaSprdLine=spread!=null?spread:+((0.5-hP)*25).toFixed(1);
+      var _wnbaLineNum=parseFloat(_wnbaSprdLine)||0;
+      // Run MC once, passing home-signed spread line so cover counts are tracked in-sim
+      var _wnbaMCResult=wnbaMC(hab,aab,_wnbaLineNum);
       var _wnbaOvP=wnbaOUProbMC(_wnbaMCResult,ouStr),_wnbaUnP=1-_wnbaOvP;
+      // MC projected margin (home-signed); convert to fav-signed for spread analysis
+      var _mcRawSpread=_wnbaMCResult.spread||0; // positive = home winning
+      var _wnbaFavProjMargin=hP>=aP?_mcRawSpread:-_mcRawSpread; // fav's projected winning margin
+      var _wnbaLineMargin=Math.abs(_wnbaLineNum);
+      // Primary cover probs: direct from 10k MC cover counts (most accurate)
+      // hCoverP = fraction of sims home team covers; aCoverP = away covers
+      var _mcHCover=_wnbaMCResult.hCoverP,_mcACover=_wnbaMCResult.aCoverP;
+      // Fav/dog cover rate from MC
+      var _wnbaFavCoverMC=hP>=aP?(_mcHCover!=null?_mcHCover:0.5):(_mcACover!=null?_mcACover:0.5);
+      var _wnbaDogCoverMC=1-_wnbaFavCoverMC;
+      // Blend MC cover rate (70%) with normalCDF analytical (30%) for stability
+      var _wnbaSprdSigma=10.5;
+      var _wnbaNormFavP=normalCDF((_wnbaFavProjMargin-_wnbaLineMargin)/_wnbaSprdSigma+0.015);
+      var _wnbaFavCoverP=Math.min(0.80,Math.max(0.20,0.70*_wnbaFavCoverMC+0.30*_wnbaNormFavP));
+      var _wnbaDogCoverP=1-_wnbaFavCoverP;
+      var _wnbaProjMargin=Math.abs(_wnbaFavProjMargin);
       var _wnbaEnsStr='MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'%';
+      var _wnbaMCCoverStr=_wnbaFavCoverMC!=null?('MC cover rate: '+(_wnbaFavCoverMC*100).toFixed(1)+'% fav / '+(_wnbaDogCoverMC*100).toFixed(1)+'% dog (10k sims)'):'';
+      var _wnbaSprdStr=_wnbaFavProjMargin.toFixed(1)+'-pt proj margin vs '+Math.abs(_wnbaLineNum).toFixed(1)+' line';
       var _wnbaMkts=_evalMkts([
         {label:_wnbaFav+' ML',prob:_wnbaFavP,evVal:_wnbaFavEV,side:'mlFav'},
         {label:_wnbaDogT+' ML',prob:_wnbaDogP,evVal:_wnbaDogEV,side:'mlDog'},
@@ -16838,8 +16856,8 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         'Projected total ~'+_wProjTotal+' vs O/U '+ouStr+' ('+(_wOvP2*100).toFixed(0)+'% over). '+
         (_wnbaBM.side==='mlFav'?'Dominant net rating edge drives ML value.':
         _wnbaBM.side==='mlDog'?'Underdog value — net rating gap does not justify the ML price.':
-        _wnbaBM.side==='sprdFav'?'Net rating edge supports covering -'+Math.abs(parseFloat(_wnbaSprdLine)).toFixed(1)+' (MC proj margin: '+Math.abs(_wnbaProjMargin).toFixed(1)+' pts).':
-        _wnbaBM.side==='sprdDog'?'Dog +'+Math.abs(parseFloat(_wnbaSprdLine)).toFixed(1)+' — MC projects '+Math.abs(_wnbaProjMargin).toFixed(1)+'-pt margin, insufficient to cover the line.':
+        _wnbaBM.side==='sprdFav'?'Fav covers -'+Math.abs(_wnbaLineNum).toFixed(1)+' in '+(_wnbaFavCoverMC*100).toFixed(1)+'% of 10k sims. '+_wnbaSprdStr+'. '+_wnbaMCCoverStr+'.':
+        _wnbaBM.side==='sprdDog'?'Dog +'+Math.abs(_wnbaLineNum).toFixed(1)+' covers in '+(_wnbaDogCoverMC*100).toFixed(1)+'% of 10k sims. '+_wnbaSprdStr+' — fav proj margin falls short. '+_wnbaMCCoverStr+'.':
         _wnbaBM.side==='over'?'High-ORtg matchup projects above-line scoring.':
         'Defensive DRtg matchup projects below-line combined scoring.')+
         ' Pace: '+(_wnbaFavP>=.5?_wHPace:_wAPace)+'/'+(_wnbaFavP>=.5?_wAPace:_wHPace)+' pos/g. '+
