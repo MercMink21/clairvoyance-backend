@@ -2651,6 +2651,17 @@ function tier(p,e){
   if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;
 }
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
+// ── Universal best-market evaluator — used by all sport reasoning blocks ──────
+function _evalMkts(mkts){
+  mkts=mkts.map(m=>({...m,tierN:tier(m.prob,m.evVal)})).sort((a,b)=>b.tierN-a.tierN||b.evVal-a.evVal);
+  const best=mkts[0];const n=best.tierN;
+  const lbl=n===3?'PREMIUM':n===2?'OPTIMAL':n===1?'LEAN':'SKIP';
+  const col=n===3?'var(--gc)':n===2?'var(--nc)':n===1?'var(--ic)':'var(--t3)';
+  const size=n===3?'Full':n===2?'Standard':'Half';
+  const sec=mkts.slice(1).filter(m=>m.tierN>=1&&m.side!==best.side);
+  const secStr=sec.length?' · Also: '+sec.map(m=>`${m.label} (${['SKIP','LEAN','OPTIMAL','PREMIUM'][m.tierN]})`).join(', '):'';
+  return{best,tierN:n,lbl,col,size,sec,secStr};
+}
 function evGrd(evPct){if(evPct>=12)return{lbl:'EV A+',col:'var(--gc)'};if(evPct>=8)return{lbl:'EV A',col:'var(--nc)'};if(evPct>=4)return{lbl:'EV B',col:'var(--pc)'};if(evPct>=1)return{lbl:'EV C',col:'var(--t2)'};return{lbl:'EV D',col:'var(--t3)'};}
 function pois(l){const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1;}
 function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
@@ -3981,18 +3992,32 @@ function renderNHLTonight(){
       const plP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38),plCS=chipC(plP,ev(plP,1.87));
       const statusDot='<span class="status-pre"></span>';
       const statusTxt=gh.time+' · '+gh.net;
-      const topP=Math.max(hP,aP),topTeam=hP>=aP?gh.h:gh.a,topML=hP>=aP?hML:aML,topD=hP>=aP?hD:aD,topEV=hP>=aP?hEV:aEV;
-      const topTier=tier(topP,topEV);
-      const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-      const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
-      const evPct=(topEV*100).toFixed(1);
+      const favTeam=hP>=aP?gh.h:gh.a,dogTeam=hP>=aP?gh.a:gh.h;
+      const favP=Math.max(hP,aP),dogP=Math.min(hP,aP);
+      const favD=hP>=aP?hD:aD,dogD=hP>=aP?aD:hD;
+      const favEV=hP>=aP?hEV:aEV,dogEV=hP>=aP?aEV:hEV;
+      const plDogP=Math.max(0.25,1-plP);
       const favGsax=hP>=.5?(h.gsax||0):(aw.gsax||0),dogGsax=hP>=.5?(aw.gsax||0):(h.gsax||0);
+      const _gsaxStr=`GSAx: ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
+      const _ensStr1=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+      const _nm1=_evalMkts([
+        {label:`${favTeam} ML`,prob:favP,evVal:favEV,side:'mlFav'},
+        {label:`${dogTeam} ML`,prob:dogP,evVal:dogEV,side:'mlDog'},
+        {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
+        {label:`${dogTeam} +1.5`,prob:plDogP,evVal:ev(plDogP,2.05),side:'plDog'},
+        {label:`OVER ${gh.ou}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+        {label:`UNDER ${gh.ou}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+      ]);
+      const topTier=_nm1.tierN,topTierLabel=_nm1.lbl,topTierCol=_nm1.col;
+      const _bm1=_nm1.best,evPct=(_bm1.evVal*100).toFixed(1),_bp1=(_bm1.prob*100).toFixed(1);
       let explanation='';
-      const _gsaxStr=`GSAx edge: ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
-      if(topTier===3)explanation=`Model grades ${topTeam} ML as PREMIUM (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model identifies a clear market mismatch at these odds. Goaltending is the primary driver: ${_gsaxStr}, a material advantage that compounds over 60 minutes. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% all converge — full-unit play.`;
-      else if(topTier===2)explanation=`${topTeam} ML rated OPTIMAL (${(topP*100).toFixed(1)}%, EV +${evPct}%) — ensemble signals are aligned and the line offers value. ${_gsaxStr} tilts puck-stopping quality toward ${topTeam}, reinforcing the model's win probability. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% consensus supports standard-unit sizing.`;
-      else if(topTier===1)explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model finds a modest positive-EV opportunity but components are not fully aligned. ${_gsaxStr} provides a real but incremental edge. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — proceed with half-unit sizing.`;
-      else explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). Monitor line movement before ${gh.time}.`;
+      if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(favP*100).toFixed(1)}%). Monitor line movement before ${gh.time}.`;}
+      else if(_bm1.side==='mlFav'){explanation=`Best market: <strong>${favTeam} ML</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — clear market mismatch at current odds. ${_gsaxStr} is the primary structural driver. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      else if(_bm1.side==='mlDog'){explanation=`Best market: <strong>${dogTeam} ML</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — value on the underdog ML. ${_gsaxStr} supports a closer game than the price implies. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      else if(_bm1.side==='plFav'){explanation=`Best market: <strong>${favTeam} -1.5</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — puck line offers better value than flat ML. ${_gsaxStr} signals dominant team performance supporting a multi-goal margin. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      else if(_bm1.side==='plDog'){explanation=`Best market: <strong>${dogTeam} +1.5</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — dog puck line is the play. ${_gsaxStr} indicates ${dogTeam} can keep this within a goal even without winning outright. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      else if(_bm1.side==='over'){explanation=`Best market: <strong>OVER ${gh.ou}</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — high-event game projected. Both offenses generate quality chances despite ${_gsaxStr}. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
+      else{explanation=`Best market: <strong>UNDER ${gh.ou}</strong> graded ${topTierLabel} (${_bp1}%, EV +${evPct}%) — low-scoring contest projected. ${_gsaxStr} sets up a tight, goaltending-driven game. ${_ensStr1}. ${_nm1.size}-unit play${_nm1.secStr}.`;}
       html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)"><div class="gch"><div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${gh.a}</span><span style="color:var(--t3);font-size:12px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${gh.h}</span></div><div class="gsp">GOALIES: ${aw.g1} vs ${h.g1}</div><div class="gsp">${gh.ctx?'G'+gh.gn+' · '+gh.ctx+' · ':''}<span style="color:var(--vc)">O/U ${gh.ou}</span></div></div><div style="text-align:right"><div class="np mono" style="font-size:16px">${statusDot}${statusTxt}</div></div></div><div class="brow"><div class="${hCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.h}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${gh.h}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div><div class="${aCS.c} chip" style="flex:1" onclick="lockH('${gh.h}','${gh.a}','ML','${gh.a}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${gh.a}</div><div class="cho">${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div><div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">PUCK LINE</div><input type="number" step="0.5" value="-1.5" id="sprd_nhl1_${gh.h}_${gh.a}" style="width:50px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:2px"><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?gh.h:gh.a}','${hP>=.5?gh.a:gh.h}','${gh.h}','${gh.a}',null,${plP.toFixed(3)},'-1.5','sprd_nhl1_${gh.h}_${gh.a}','FAV')" style="font-size:10px;padding:2px 5px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">${hP>=.5?gh.h:gh.a}▼</button><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?gh.h:gh.a}','${hP>=.5?gh.a:gh.h}','${gh.h}','${gh.a}',null,${plP.toFixed(3)},'-1.5','sprd_nhl1_${gh.h}_${gh.a}','DOG')" style="font-size:10px;padding:2px 5px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">+${hP>=.5?gh.a:gh.h}</button></div></div><div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px">O/U LINE</div><input type="number" step="0.5" value="${gh.ou}" id="ouinp_nhl1_${gh.h}_${gh.a}" style="width:52px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:13px;padding:2px 4px;border-radius:2px;text-align:center"><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','OVER')" style="font-size:10px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${gh.h}','${gh.a}',null,${ouP.toFixed(3)},'${gh.ou}','ouinp_nhl1_${gh.h}_${gh.a}','UNDER')" style="font-size:10px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div></div><div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">ENGINE REASONING</span></div><div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7">${explanation}</div></div><div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px"><span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · PROJ ${mc?mc.avgH.toFixed(1)+'-'+mc.avgA.toFixed(1):'—'} · OT ${mc?(mc.otP*100).toFixed(0):0}%</span><button class="btn btn-o" style="padding:2px 6px;font-size:12px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${gh.a} at ${gh.h}')">+PAR</button></div></div>`;
     }
     el.innerHTML=html||'<div class="empty">NO NHL GAMES TONIGHT</div>';
@@ -4014,19 +4039,32 @@ function renderNHLTonight(){
     const statusDot='<span class="status-pre"></span>';
     const statusTxt=g.time+' · '+g.net;
     // Engine reasoning
-    const topP=Math.max(hP,aP),topTeam=hP>=aP?g.h:g.a,topML=hP>=aP?hML:aML,topD=hP>=aP?hD:aD,topEV=hP>=aP?hEV:aEV;
-    const topTier=tier(topP,topEV);
-    const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-    const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
-    const evPct=(topEV*100).toFixed(1);
-    const favTeam=hP>=.5?g.h:g.a,dogTeam=hP>=.5?g.a:g.h;
-    const favP=Math.max(hP,aP),hGsax=h.gsax||0,aGsax=aw.gsax||0,favGsax=hP>=.5?hGsax:aGsax,dogGsax=hP>=.5?aGsax:hGsax;
+    const favTeam=hP>=aP?g.h:g.a,dogTeam=hP>=aP?g.a:g.h;
+    const favP=Math.max(hP,aP),dogP=Math.min(hP,aP);
+    const favD=hP>=aP?hD:aD,dogD=hP>=aP?aD:hD;
+    const favEV2=hP>=aP?hEV:aEV,dogEV2=hP>=aP?aEV:hEV;
+    const plDogP2=Math.max(0.25,1-plP);
+    const hGsax=h.gsax||0,aGsax=aw.gsax||0,favGsax=hP>=.5?hGsax:aGsax,dogGsax=hP>=.5?aGsax:hGsax;
+    const _g2gsax=`GSAx: ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
+    const _ensStr2=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+    const _nm2=_evalMkts([
+      {label:`${favTeam} ML`,prob:favP,evVal:favEV2,side:'mlFav'},
+      {label:`${dogTeam} ML`,prob:dogP,evVal:dogEV2,side:'mlDog'},
+      {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
+      {label:`${dogTeam} +1.5`,prob:plDogP2,evVal:ev(plDogP2,2.05),side:'plDog'},
+      {label:`OVER ${g.ou||5.5}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+      {label:`UNDER ${g.ou||5.5}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+    ]);
+    const topTier=_nm2.tierN,topTierLabel=_nm2.lbl,topTierCol=_nm2.col;
+    const _bm2=_nm2.best,evPct=(_bm2.evVal*100).toFixed(1),_bp2=(_bm2.prob*100).toFixed(1);
     let explanation='';
-    const _g2gsax=`GSAx ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
-    if(topTier===3){explanation=`Model grades ${favTeam} ML as PREMIUM (${(favP*100).toFixed(1)}%, EV +${evPct}%) — top-tier edge against current market pricing. Goaltending heavily favors ${favTeam} (${_g2gsax}), a difference that becomes decisive in close, low-scoring hockey. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% all align — full-unit play with high conviction.`;}
-    else if(topTier===2){explanation=`${favTeam} ML rated OPTIMAL (${(favP*100).toFixed(1)}%, EV +${evPct}%) — ensemble signals converge on a strong positive-EV play. Goaltending edge (${_g2gsax}) reinforces the model's structural advantage for ${favTeam} in this matchup. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% consensus — standard-unit sizing.`;}
-    else if(topTier===1){explanation=`Lean toward ${favTeam} (${(favP*100).toFixed(1)}%, EV +${evPct}%) — a real but thin edge with components only partially aligned. Goaltending differential (${_g2gsax}) tilts the matchup modestly toward ${favTeam} without a dominant signal. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — half-unit sizing only.`;}
-    else{explanation=`Model finds no qualifying edge (best prob ${(favP*100).toFixed(1)}%). Series pressure creates inefficiency — skip or watch live line movement before ${g.time}.`;}
+    if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(favP*100).toFixed(1)}%). Series pressure creates inefficiency — skip or watch live line movement before ${g.time}.`;}
+    else if(_bm2.side==='mlFav'){explanation=`Best market: <strong>${favTeam} ML</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — top-tier edge against current market pricing. Goaltending heavily favors ${favTeam} (${_g2gsax}). ${_ensStr2} all align. ${_nm2.size}-unit play${_nm2.secStr}.`;}
+    else if(_bm2.side==='mlDog'){explanation=`Best market: <strong>${dogTeam} ML</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — value on the underdog. ${_g2gsax} supports a closer game than the line suggests. ${_ensStr2}. ${_nm2.size}-unit play${_nm2.secStr}.`;}
+    else if(_bm2.side==='plFav'){explanation=`Best market: <strong>${favTeam} -1.5</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — puck line provides better value than flat ML. ${_g2gsax} signals dominant ${favTeam} performance. ${_ensStr2}. ${_nm2.size}-unit play${_nm2.secStr}.`;}
+    else if(_bm2.side==='plDog'){explanation=`Best market: <strong>${dogTeam} +1.5</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — dog puck line is the play. ${_g2gsax} suggests ${dogTeam} can keep this within a goal. ${_ensStr2}. ${_nm2.size}-unit play${_nm2.secStr}.`;}
+    else if(_bm2.side==='over'){explanation=`Best market: <strong>OVER ${g.ou||5.5}</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — high-event game projected. Offenses generate quality chances. ${_g2gsax}. ${_ensStr2}. ${_nm2.size}-unit play${_nm2.secStr}.`;}
+    else{explanation=`Best market: <strong>UNDER ${g.ou||5.5}</strong> graded ${topTierLabel} (${_bp2}%, EV +${evPct}%) — low-scoring game projected. ${_g2gsax} sets up a tight goaltending duel. ${_ensStr2}. ${_nm2.size}-unit play${_nm2.secStr}.`;}
     html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)">
   <div class="gch">
     <div>
@@ -4214,15 +4252,37 @@ async function renderNHLGames(day){
       const nhlOuL=_liveNHL?.ou??6.0;
       const ouP=0.50,ouD=ml2d('-110'),ouCS=chipC(ouP,ev(ouP,ouD));
       const seriesNote=hNHL.series||aNHL.series||'';
-      // Engine reasoning
-      const topP=Math.max(hP,aP),topTeam=hP>=aP?hn:an,topEV=hP>=aP?hEV:aEV;
-      const topTier=tier(topP,topEV);
-      const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-      const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
+      // Engine reasoning — best-market evaluation across ML, puck line, O/U
+      const _nhlFav3=hP>=aP?hn:an,_nhlDog3=hP>=aP?an:hn;
+      const _nhlFavP3=Math.max(hP,aP),_nhlDogP3=Math.min(hP,aP);
+      const _nhlFavD3=hP>=aP?hD:aD,_nhlDogD3=hP>=aP?aD:hD;
+      const _nhlFavEV3=hP>=aP?hEV:aEV,_nhlDogEV3=hP>=aP?aEV:hEV;
+      const _plDog3=Math.max(0.25,1-plP);
+      const _ensStr3=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+      const _nm3=_evalMkts([
+        {label:`${_nhlFav3} ML`,prob:_nhlFavP3,evVal:_nhlFavEV3,side:'mlFav'},
+        {label:`${_nhlDog3} ML`,prob:_nhlDogP3,evVal:_nhlDogEV3,side:'mlDog'},
+        {label:`${_nhlFav3} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
+        {label:`${_nhlDog3} +1.5`,prob:_plDog3,evVal:ev(_plDog3,2.05),side:'plDog'},
+        {label:`OVER ${nhlOuL}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+        {label:`UNDER ${nhlOuL}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+      ]);
+      const topTier=_nm3.tierN,topTierLabel=_nm3.lbl,topTierCol=_nm3.col;
+      const _bm3=_nm3.best,_topP3=_nhlFavP3;
       let explanation='';
       if(post){explanation=`FINAL — ${parseInt(as2)>parseInt(hs)?an:hn} WIN · ${Math.max(parseInt(as2),parseInt(hs))}-${Math.min(parseInt(as2),parseInt(hs))}${seriesNote?' · '+seriesNote:''}.`;}
       else if(live){explanation=`IN PROGRESS · P${c.status?.period||'?'} ${c.status?.displayClock||''} · ${an} ${as2}–${hs} ${hn}. Live model suspended during game.`;}
-      else{const ensStr=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;const _sevPct=(topEV*100).toFixed(1);if(topTier===3)explanation=`${topTeam} PREMIUM grade (${(topP*100).toFixed(1)}%, EV ${topEV>=0?'+':''}${_sevPct}%) — model identifies a dominant pre-game edge${seriesNote?' in '+seriesNote:' at current series odds'}. Shot quality and goaltending metrics strongly favor ${topTeam}, with xGF and GSAx both pointing to a structural mismatch the market has not fully priced. Ensemble aligned — ${ensStr} — full-unit play.`;else if(topTier===2)explanation=`${topTeam} OPTIMAL grade (${(topP*100).toFixed(1)}%, EV ${topEV>=0?'+':''}${_sevPct}%) — ensemble signals converge on a positive-EV play${seriesNote?' in '+seriesNote:''}. xGF and ELO both lean ${topTeam}, with series momentum and goaltending metrics providing structural support. ${ensStr} — standard-unit sizing.`;else if(topTier===1)explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV ${topEV>=0?'+':''}${_sevPct}%) — model finds a real but narrow edge${seriesNote?' in '+seriesNote:''}. Ensemble components are directionally aligned but not fully converged. ${ensStr} — half-unit sizing only.`;else explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). ${seriesNote||'Monitor line movement.'}`;}
+      else if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(_topP3*100).toFixed(1)}%). ${seriesNote||'Monitor line movement.'}`;}
+      else{
+        const _bp3=(_bm3.prob*100).toFixed(1),_ep3=(_bm3.evVal*100).toFixed(1);
+        const _sn=seriesNote?' in '+seriesNote:'';
+        if(_bm3.side==='mlFav')explanation=`Best market: <strong>${_nhlFav3} ML</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — shot quality, xGF, and GSAx all strongly favor ${_nhlFav3}. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+        else if(_bm3.side==='mlDog')explanation=`Best market: <strong>${_nhlDog3} ML</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — model finds underdog value. Series context supports a closer game than the odds imply. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+        else if(_bm3.side==='plFav')explanation=`Best market: <strong>${_nhlFav3} -1.5</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — dominant structural edge supports a multi-goal margin. Puck line provides better value than flat ML. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+        else if(_bm3.side==='plDog')explanation=`Best market: <strong>${_nhlDog3} +1.5</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — ${_nhlDog3} can stay within a goal. Dog puck line offers the clearest value. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+        else if(_bm3.side==='over')explanation=`Best market: <strong>OVER ${nhlOuL}</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — high-event game projected. Both teams generating quality chances. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+        else explanation=`Best market: <strong>UNDER ${nhlOuL}</strong> graded ${topTierLabel} (${_bp3}%, EV +${_ep3}%)${_sn} — tight defensive game projected. Goaltending metrics favor a low-scoring contest. ${_ensStr3}. ${_nm3.size}-unit play${_nm3.secStr}.`;
+      }
       return`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)">
   <div class="gch">
     <div>
@@ -4278,18 +4338,36 @@ function renderNHLGamesOffline(){
     const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
     const plP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38),plCS=chipC(plP,ev(plP,1.87));
     const ouP=mc?.overP||.52,ouCS=chipC(ouP,ev(ouP,1.91));
-    const topP=Math.max(hP,aP),topTeam=hP>=aP?g.h:g.a,topEV=hP>=aP?hEV:aEV;
-    const topTier=tier(topP,topEV);
-    const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-    const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
-    const evPct=(topEV*100).toFixed(1);
+    const _nhlFavOff=hP>=aP?g.h:g.a,_nhlDogOff=hP>=aP?g.a:g.h;
+    const _nhlFavPOff=Math.max(hP,aP),_nhlDogPOff=Math.min(hP,aP);
+    const _nhlFavDOff=hP>=aP?hD:aD,_nhlDogDOff=hP>=aP?aD:hD;
+    const _nhlFavEVOff=hP>=aP?hEV:aEV,_nhlDogEVOff=hP>=aP?aEV:hEV;
+    const _plDogOff=Math.max(0.25,1-plP);
     const favGsax=hP>=.5?(h.gsax||0):(aw.gsax||0),dogGsax=hP>=.5?(aw.gsax||0):(h.gsax||0);
+    const _g3gsax=`GSAx: ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
+    const _ensStrOff=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+    const _ouLOff=g.ou||5.5;
+    const _nmOff=_evalMkts([
+      {label:`${_nhlFavOff} ML`,prob:_nhlFavPOff,evVal:_nhlFavEVOff,side:'mlFav'},
+      {label:`${_nhlDogOff} ML`,prob:_nhlDogPOff,evVal:_nhlDogEVOff,side:'mlDog'},
+      {label:`${_nhlFavOff} -1.5`,prob:plP,evVal:ev(plP,1.87),side:'plFav'},
+      {label:`${_nhlDogOff} +1.5`,prob:_plDogOff,evVal:ev(_plDogOff,2.05),side:'plDog'},
+      {label:`OVER ${_ouLOff}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+      {label:`UNDER ${_ouLOff}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+    ]);
+    const topTier=_nmOff.tierN,topTierLabel=_nmOff.lbl,topTierCol=_nmOff.col;
+    const _bmOff=_nmOff.best,evPct=(_bmOff.evVal*100).toFixed(1);
     let explanation='';
-    const _g3gsax=`GSAx ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
-    if(topTier===3){explanation=`Model grades ${topTeam} ML as PREMIUM (${(topP*100).toFixed(1)}%, EV +${evPct}%) — strongest-tier grade indicating a material market inefficiency. Goaltending edge (${_g3gsax}) is a primary driver, with shot-quality metrics via xGF further reinforcing ${topTeam}'s structural advantage. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% all align — full-unit play.`;}
-    else if(topTier===2){explanation=`${topTeam} ML rated OPTIMAL (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model signals a strong, positive-EV opportunity at current odds. Shot quality and goaltending (${_g3gsax}) both lean ${topTeam}, with xGF and ensemble models confirming the edge. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — standard-unit sizing.`;}
-    else if(topTier===1){explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model sees a modest edge but components are partially aligned, not fully converged. Goaltending differential (${_g3gsax}) provides incremental support without a dominant signal. MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% — half-unit sizing only.`;}
-    else{explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). Skip or monitor line movement before ${g.time}.`;}
+    if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(_nhlFavPOff*100).toFixed(1)}%). Skip or monitor line movement before ${g.time}.`;}
+    else{
+      const _bpOff=(_bmOff.prob*100).toFixed(1);
+      if(_bmOff.side==='mlFav')explanation=`Best market: <strong>${_nhlFavOff} ML</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — material market inefficiency. ${_g3gsax} is the primary driver. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+      else if(_bmOff.side==='mlDog')explanation=`Best market: <strong>${_nhlDogOff} ML</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — underdog value. ${_g3gsax} supports a closer game. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+      else if(_bmOff.side==='plFav')explanation=`Best market: <strong>${_nhlFavOff} -1.5</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — puck line offers better value than ML. ${_g3gsax} signals dominant ${_nhlFavOff} performance. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+      else if(_bmOff.side==='plDog')explanation=`Best market: <strong>${_nhlDogOff} +1.5</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — dog puck line is the play. ${_g3gsax} suggests a tight game. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+      else if(_bmOff.side==='over')explanation=`Best market: <strong>OVER ${_ouLOff}</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — high-event game projected. Both offenses generate quality chances. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+      else explanation=`Best market: <strong>UNDER ${_ouLOff}</strong> graded ${topTierLabel} (${_bpOff}%, EV +${evPct}%) — low-scoring game projected. ${_g3gsax} favors a defensive contest. ${_ensStrOff}. ${_nmOff.size}-unit play${_nmOff.secStr}.`;
+    }
     html+=`<div class="gc" style="border-left:2px solid rgba(255,204,0,.5)">
   <div class="gch">
     <div>
@@ -5604,20 +5682,38 @@ async function renderNBAGames(day){
       // O/U chip — use MC overP when available, pass ESPN line to ensemble
       let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
       const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
-      // Engine reasoning (mirrors MLB explanation block)
-      const topP=Math.max(hP,aP);const topTeam=hP>=aP?hn:an;const topML=hP>=aP?hML:aML;
-      const topD=hP>=aP?hD:aD;const topEV=hP>=aP?hEV:aEV;
-      const topTier=tier(topP,topEV);
-      const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
-      const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
-      const evPct=(topEV*100).toFixed(1);
+      // Engine reasoning — best-market evaluation across ML, spread, O/U
+      const _nbaFav=hP>=aP?hn:an,_nbaDog=hP>=aP?an:hn;
+      const _nbaFavP=Math.max(hP,aP),_nbaDogP=Math.min(hP,aP);
+      const _nbaFavD=hP>=aP?hD:aD,_nbaDogD=hP>=aP?aD:hD;
+      const _nbaFavEV=hP>=aP?hEV:aEV,_nbaDogEV=hP>=aP?aEV:hEV;
+      const _nbaDogSprdP=Math.max(0.28,1-sprdP);
+      const _nbaEnsStr=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+      const _nbaMkts=[
+        {label:`${_nbaFav} ML`,prob:_nbaFavP,evVal:_nbaFavEV,side:'mlFav'},
+        {label:`${_nbaDog} ML`,prob:_nbaDogP,evVal:_nbaDogEV,side:'mlDog'},
+        {label:`${_nbaFav} -ATS`,prob:sprdP,evVal:ev(sprdP,1.87),side:'sprdFav'},
+        {label:`${_nbaDog} +ATS`,prob:_nbaDogSprdP,evVal:ev(_nbaDogSprdP,2.05),side:'sprdDog'},
+        ...(ouL?[
+          {label:`OVER ${ouL}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+          {label:`UNDER ${ouL}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
+        ]:[]),
+      ];
+      const _nmNBA=_evalMkts(_nbaMkts);
+      const topTier=_nmNBA.tierN,topTierLabel=_nmNBA.lbl,topTierCol=_nmNBA.col;
+      const _bmNBA=_nmNBA.best,evPct=(_bmNBA.evVal*100).toFixed(1);
       let explanation='';
       if(pre){
-        const ensStr=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
-        if(topTier===3)explanation=`Model grades ${topTeam} ML as PREMIUM (${(topP*100).toFixed(1)}%, EV +${evPct}%) — a top-tier market opportunity at current pricing. Net rating differential and pace-adjusted eFG% both strongly favor ${topTeam}, pointing to a structural mismatch the market has underpriced. Ensemble fully converged — ${ensStr} — full-unit sizing warranted.`;
-        else if(topTier===2)explanation=`${topTeam} ML rated OPTIMAL (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model identifies clear positive EV against the closing number. Net rating and pace-adjusted eFG% both tilt toward ${topTeam}, with rest advantage factored into the Bayesian component. Ensemble consensus: ${ensStr} — standard-unit sizing.`;
-        else if(topTier===1)explanation=`Lean toward ${topTeam} (${(topP*100).toFixed(1)}%, EV +${evPct}%) — model finds a real but narrow edge with components only partially aligned. Net rating differential provides a modest directional signal, though eFG% and rest factors are not decisively one-sided. ${ensStr} — half-unit sizing only.`;
-        else explanation=`Model finds no qualifying edge (best prob ${(topP*100).toFixed(1)}%). Line appears efficient — skip or wait for movement.`;
+        if(topTier===0){explanation=`Model finds no qualifying edge (best prob ${(_nbaFavP*100).toFixed(1)}%). Line appears efficient — skip or wait for movement.`;}
+        else{
+          const _bpNBA=(_bmNBA.prob*100).toFixed(1);
+          if(_bmNBA.side==='mlFav')explanation=`Best market: <strong>${_nbaFav} ML</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — net rating differential and pace-adjusted eFG% point to a structural mismatch the market has underpriced. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='mlDog')explanation=`Best market: <strong>${_nbaDog} ML</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — model finds underdog ML value. Net rating gap does not justify the spread in pricing. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='sprdFav')explanation=`Best market: <strong>${_nbaFav} -ATS</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — spread offers better value than flat ML. Net rating advantage (${espnSprdLbl}) converts to a projected cover. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='sprdDog')explanation=`Best market: <strong>${_nbaDog} +ATS</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — dog ATS is the strongest play. Net rating gap insufficient for fav to cover the number. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          else if(_bmNBA.side==='over')explanation=`Best market: <strong>OVER ${ouL}</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — pace and offensive efficiency project a high-scoring game. Both teams run above-average eFG%. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+          else explanation=`Best market: <strong>UNDER ${ouL}</strong> graded ${topTierLabel} (${_bpNBA}%, EV +${evPct}%) — defensive metrics and pace projections favor a lower-scoring game. Both teams' eFG% is suppressed by opponent defense. ${_nbaEnsStr}. ${_nmNBA.size}-unit sizing${_nmNBA.secStr}.`;
+        }
       }else if(live){explanation=`IN PROGRESS — ${an} ${as2} · ${hn} ${hs} · Q${c.status?.period||'?'} ${c.status?.displayClock||''}. Live model suspended during game.`;}
       else{explanation=`FINAL — ${as2>hs?an:hn} WIN · ${Math.max(as2,hs)}-${Math.min(as2,hs)}.`;}
       // Parlay button
@@ -16390,17 +16486,36 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var aNetStr=at2.net!==undefined?(at2.net>=0?'+':'')+parseFloat(at2.net).toFixed(1):'N/A';
       var hDec=_wnbaDec(hMLn).toFixed(2);
       var aDec=_wnbaDec(aMLn).toFixed(2);
-      var sz=topP>=.68?'FULL UNIT':topP>=.61?'FULL UNIT':topP>=.54?'HALF UNIT':'FADE';
       var netDiff=(ens.hNet-ens.aNet).toFixed(1);
-      var _wnbaTier=topP>=.68?3:topP>=.61?2:topP>=.54?1:0;
-      var _wnbaSz=_wnbaTier===3?'full-unit':_wnbaTier===2?'standard-unit':'half-unit';
-      var rsn=_wnbaTier===3?
-        hab+' PREMIUM grade ('+Math.round(topP*100)+'%, EV+'+((topP*(hP>=aP?parseFloat(hDec):parseFloat(aDec))-1)*100).toFixed(1)+'%) — model identifies a dominant structural advantage at current odds. Net rating edge of +'+netDiff+' pts/100 is the primary driver, reflecting a significant gap in offensive efficiency and defensive resistance. MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'% fully aligned — '+_wnbaSz+' play.':
-        _wnbaTier===2?
-        hab+' OPTIMAL grade ('+Math.round(topP*100)+'%) — ensemble signals converge on a positive-EV play at this line. Net rating differential of +'+netDiff+' pts/100 ('+hab+' '+hNetStr+' vs '+aab+' '+aNetStr+') confirms the model\'s edge. MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'% — '+_wnbaSz+' sizing.':
-        _wnbaTier===1?
-        'Lean '+hab+' ('+Math.round(topP*100)+'%) — model finds a real but narrow edge with components partially aligned. Net rating differential of +'+netDiff+' pts/100 provides directional support, though the gap is not wide enough for high conviction. MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'% — '+_wnbaSz+' sizing only.':
-        'No qualifying edge found (best prob '+Math.round(topP*100)+'%). Net rating differential of +'+netDiff+' is insufficient to overcome juice at current odds. Monitor line movement or skip.';
+      var _wnbaFav=hP>=aP?hab:aab,_wnbaDogT=hP>=aP?aab:hab;
+      var _wnbaFavP=Math.max(hP,aP),_wnbaDogP=Math.min(hP,aP);
+      var _wnbaFavDec=parseFloat(hP>=aP?hDec:aDec),_wnbaDogDec=parseFloat(hP>=aP?aDec:hDec);
+      var _wnbaFavEV=_wnbaFavP*_wnbaFavDec-1,_wnbaDogEV=_wnbaDogP*_wnbaDogDec-1;
+      var _wnbaFavCoverP=Math.max(0.28,_wnbaFavP-0.08),_wnbaDogCoverP=Math.max(0.28,1-(_wnbaFavP-0.08));
+      var _wnbaOvP=0.52,_wnbaUnP=0.48;
+      var _wnbaEnsStr='MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'%';
+      var _wnbaMkts=_evalMkts([
+        {label:_wnbaFav+' ML',prob:_wnbaFavP,evVal:_wnbaFavEV,side:'mlFav'},
+        {label:_wnbaDogT+' ML',prob:_wnbaDogP,evVal:_wnbaDogEV,side:'mlDog'},
+        {label:_wnbaFav+' -ATS',prob:_wnbaFavCoverP,evVal:ev(_wnbaFavCoverP,1.87),side:'sprdFav'},
+        {label:_wnbaDogT+' +ATS',prob:_wnbaDogCoverP,evVal:ev(_wnbaDogCoverP,2.05),side:'sprdDog'},
+        {label:'OVER '+ouStr,prob:_wnbaOvP,evVal:ev(_wnbaOvP,1.91),side:'over'},
+        {label:'UNDER '+ouStr,prob:_wnbaUnP,evVal:ev(_wnbaUnP,1.91),side:'under'},
+      ]);
+      var _wnbaTier=_wnbaMkts.tierN;
+      var _wnbaBM=_wnbaMkts.best,_wnbaBP=(_wnbaBM.prob*100).toFixed(1),_wnbaBE=(_wnbaBM.evVal*100).toFixed(1);
+      var _wnbaNetCtx='Net rating: '+_wnbaFav+' '+hNetStr+' vs '+_wnbaDogT+' '+aNetStr+' (+'+netDiff+' pts/100)';
+      var rsn=_wnbaTier===0?
+        'No qualifying edge found (best prob '+Math.round(_wnbaFavP*100)+'%). Net rating differential of +'+netDiff+' is insufficient to overcome juice at current odds. Monitor line movement or skip.':
+        'Best market: <strong>'+_wnbaBM.label+'</strong> graded '+_wnbaMkts.lbl+' ('+_wnbaBP+'%, EV +'+_wnbaBE+'%) — '+(
+          _wnbaBM.side==='mlFav'?_wnbaNetCtx+'. Dominant structural advantage at current odds. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
+          _wnbaBM.side==='mlDog'?_wnbaNetCtx+'. Underdog value — game closer than the price implies. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
+          _wnbaBM.side==='sprdFav'?_wnbaNetCtx+'. Spread offers better value than ML; net rating edge converts to a cover. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
+          _wnbaBM.side==='sprdDog'?_wnbaNetCtx+'. Dog ATS is the play — gap insufficient for the fav to cover. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
+          _wnbaBM.side==='over'?'WNBA pace and offensive efficiency project a high-scoring game. Both offenses above average eFG%. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play':
+          'Defensive metrics and pace projections favor a lower-scoring game. '+_wnbaEnsStr+'. '+_wnbaMkts.size+'-unit play'
+        )+_wnbaMkts.secStr+'.';
+      var topTierLabel=_wnbaMkts.lbl,topTierCol=_wnbaMkts.col,sz=_wnbaMkts.size+' UNIT';
       var hSign=hMLn>0?'+':'';
       var aSign=aMLn>0?'+':'';
       // Live score badge
@@ -16526,7 +16641,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         }())
         +'<div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-        +'<span style="font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid '+topGr.c+';color:'+topGr.c+';border-radius:2px">'+topGr.g+'</span>'
+        +'<span style="font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid '+topTierCol+';color:'+topTierCol+';border-radius:2px">'+topTierLabel+'</span>'
         +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">ENGINE REASONING</span>'
         +'<span style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-left:6px">SIZE: '+sz+'</span>'
         +'</div>'
@@ -17087,14 +17202,29 @@ function _renderWCMatchCard(m,liveScore){
   var ouLabel=ouTier===3?'PREMIUM':ouTier===2?'OPTIMAL':ouTier===1?'LEAN':'SKIP';
   var unLabel=unTier===3?'PREMIUM':unTier===2?'OPTIMAL':unTier===1?'LEAN':'SKIP';
   var ouCol=gCol(ouTier),unCol=gCol(unTier);
-  // Top pick
-  var topP=Math.max(hP,dP,aP);
-  var topTeam=hP>=dP&&hP>=aP?m.home:dP>=hP&&dP>=aP?'DRAW':m.away;
-  var topT=hP>=dP&&hP>=aP?tier(hP,ev(hP,1.909)):dP>=hP&&dP>=aP?tier(dP,ev(dP,1.909)):tier(aP,ev(aP,1.909));
-  var topLabel=topT===3?'PREMIUM':topT===2?'OPTIMAL':topT===1?'LEAN':'SKIP';
-  var topCol=gCol(topT);
   var eloGap=Math.abs(m.he-m.ae);
-  var explanation=topT===3?'Model grades '+topTeam+' as PREMIUM ('+Math.round(topP*100)+'%) — ELO gap of '+eloGap+' points creates a structural mismatch with significant positive expected value. '+m.home+' (ELO '+m.he+') vs '+m.away+' (ELO '+m.ae+'). Full-unit sizing warranted.':topT===2?topTeam+' rated OPTIMAL ('+Math.round(topP*100)+'%) — strong positive EV from '+eloGap+'-point ELO differential. '+m.home+' ('+m.he+') vs '+m.away+' ('+m.ae+'). Standard-unit sizing appropriate.':topT===1?'Lean toward '+topTeam+' ('+Math.round(topP*100)+'%) — modest edge from ELO differential ('+eloGap+' pts). Not a high-conviction play. Half-unit sizing only.':'Model finds no qualifying edge in this matchup. ELO differential ('+eloGap+' pts) insufficient to overcome market juice. Skip or monitor for line movement.';
+  var _wcEloCtx=m.home+' ELO '+m.he+' vs '+m.away+' ELO '+m.ae+' (gap: '+eloGap+')';
+  var _wcMkts=_evalMkts([
+    {label:m.home+' Win',prob:hP,evVal:ev(hP,ml2d(hML)),side:'home'},
+    {label:'Draw',prob:dP,evVal:ev(dP,ml2d(dML)),side:'draw'},
+    {label:m.away+' Win',prob:aP,evVal:ev(aP,ml2d(aML)),side:'away'},
+    {label:m.home+' AH',prob:ahFavP,evVal:ev(ahFavP,1.909),side:'ahFav'},
+    {label:m.away+' AH',prob:ahDogP,evVal:ev(ahDogP,1.909),side:'ahDog'},
+    {label:'OVER '+ouL,prob:ouP,evVal:ev(ouP,1.909),side:'over'},
+    {label:'UNDER '+ouL,prob:1-ouP,evVal:ev(1-ouP,1.909),side:'under'},
+  ]);
+  var topT=_wcMkts.tierN,topLabel=_wcMkts.lbl,topCol=_wcMkts.col;
+  var _wcBM=_wcMkts.best,_wcBP=Math.round(_wcBM.prob*100),_wcBE=(_wcBM.evVal*100).toFixed(1);
+  var explanation=topT===0?'Model finds no qualifying edge in this matchup. ELO differential ('+eloGap+' pts) insufficient to overcome market juice. Skip or monitor for line movement.':
+    'Best market: <strong>'+_wcBM.label+'</strong> graded '+topLabel+' ('+_wcBP+'%, EV +'+_wcBE+'%) — '+(
+      _wcBM.side==='home'?_wcEloCtx+'. Home structural advantage confirmed by ELO gap and group-stage context':
+      _wcBM.side==='draw'?_wcEloCtx+'. Draw is a live result — evenly matched sides with narrow ELO gap':
+      _wcBM.side==='away'?_wcEloCtx+'. Away side carries ELO superiority; market underpricing the road favorite':
+      _wcBM.side==='ahFav'?_wcEloCtx+'. Asian handicap provides better value than flat ML for the stronger side':
+      _wcBM.side==='ahDog'?_wcEloCtx+'. Handicap dog provides best risk/reward given the ELO gap':
+      _wcBM.side==='over'?'High-ELO matchup projects open play and goal volume. Both teams generate attacking chances':
+      'Defensive matchup projected. High-ELO collision often produces cautious, low-scoring football'
+    )+'. '+_wcMkts.size+'-unit sizing'+_wcMkts.secStr+'.';
   // Score HTML
   var scoreHtml='';
   if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:12px;color:var(--hc);background:rgba(255,32,0,.15);padding:2px 7px;border-radius:2px;animation:pulse 1.5s infinite">LIVE '+liveScore.clock+'</span><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.as+'</span></div>';}
