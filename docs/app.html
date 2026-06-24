@@ -842,7 +842,7 @@ body{line-height:1.5}
   <div id="nba-nba" class="subp act" style="overflow:hidden">
     <nav class="inav" id="nba-in">
       <button class="nb act" onclick="T('nba','games')">TODAY</button>
-      <button class="nb" onclick="T('nba','props')">PROPS</button>
+      <button class="nb" onclick="T('nba','props');renderNBADailyProps()">PROPS</button>
       <button class="nb" onclick="T('nba','parlay')">PARLAY</button>
       <button class="nb" onclick="T('nba','model')">MODEL</button>
       <button class="nb" onclick="T('nba','config')">CONFIG</button>
@@ -865,12 +865,11 @@ body{line-height:1.5}
         <div id="nba-players"><div class="loading"><span class="spi"></span></div></div>
       </div>
       <div id="nba-tab-props" class="tab">
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center">
-          <div style="font-family:var(--orb);font-size:22px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--vc),var(--pc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">NBA PROPS · OFFSEASON</div>
-          <div style="font-family:var(--mono);font-size:13px;letter-spacing:3px;color:var(--t3);margin-bottom:12px">NO ACTIVE GAMES · SEASON CONCLUDED</div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--t3);max-width:320px;line-height:1.7">NBA Player Props — points, rebounds, assists, and more — activate with the 2026–27 season. Full prop model with hit-rate analysis and market comparison returns in October.</div>
-          <div style="margin-top:20px;font-family:var(--orb);font-size:13px;letter-spacing:3px;color:var(--vc)">ACTIVATES · OCTOBER 2026</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="sh" style="margin:0"><span class="i"></span> NBA PLAYER PROPS · <span id="nba-dp-date"></span></div>
+          <button class="btn btn-p btn-sm" onclick="renderNBADailyProps()">↻ REFRESH</button>
         </div>
+        <div id="nba-dp-list"><div class="empty">TAP REFRESH TO LOAD</div></div>
       </div>
       <div id="nba-tab-parlay" class="tab">
         <div class="sh"><span class="i"></span> NBA PARLAY BUILDER</div>
@@ -947,7 +946,7 @@ body{line-height:1.5}
     </div>
     <nav id="mn3" style="display:none">
       <button class="mb" onclick="T('nba','games')"><span class="mbi"></span>TODAY</button>
-      <button class="mb" onclick="T('nba','props')"><span class="mbi"></span>PROPS</button>
+      <button class="mb" onclick="T('nba','props');renderNBADailyProps()"><span class="mbi"></span>PROPS</button>
       <button class="mb" onclick="T('nba','parlay')"><span class="mbi"></span>PARLAY</button>
       <button class="mb" onclick="T('nba','model')"><span class="mbi"></span>MODEL</button>
       <button class="mb" onclick="T('nba','config')"><span class="mbi"></span>CONFIG</button>
@@ -2650,6 +2649,52 @@ function tier(p,e,mktType){
   if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;
 }
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
+/* Generic prop Monte Carlo — normal distribution */
+function propMC(mu,sigma,line,n){
+  if(!n)n=5000;if(mu<=0)return{overP:0.5,hitRate:50,avgStat:mu};
+  if(!sigma||sigma<=0)sigma=Math.max(0.5,mu*0.4);
+  var over=0,sumS=0;
+  for(var i=0;i<n;i+=2){
+    var u1=Math.random(),u2=Math.random();
+    var z=Math.sqrt(-2*Math.log(Math.max(1e-10,u1)))*Math.cos(2*Math.PI*u2);
+    var z2=Math.sqrt(-2*Math.log(Math.max(1e-10,u1)))*Math.sin(2*Math.PI*u2);
+    var s1=Math.max(0,mu+z*sigma);var s2=Math.max(0,mu+z2*sigma);
+    if(s1>line)over++;if(s2>line)over++;
+    sumS+=s1+s2;
+  }
+  return{overP:over/n,hitRate:Math.round(over/n*100),avgStat:+(sumS/n).toFixed(2)};
+}
+
+/* Multi-book line comparison row for game cards */
+function _bookLinesHTML(bookLines,homeAbbr,awayAbbr){
+  if(!bookLines||!bookLines.length)return'';
+  var bookLabel={'draftkings':'DK','fanduel':'FD','betmgm':'MGM','caesars':'CZR','pointsbetus':'PB','betrivers':'BR','barstool':'BST','bet365':'B365','bovada':'BOV'};
+  var rows=bookLines.map(function(b){
+    var lbl=bookLabel[b.book]||(b.book||'').toUpperCase().slice(0,4);
+    var hML=b.homeML!=null?(b.homeML>0?'+'+b.homeML:''+b.homeML):'—';
+    var aML=b.awayML!=null?(b.awayML>0?'+'+b.awayML:''+b.awayML):'—';
+    var sprd=b.spread!=null?(b.spread>0?'+'+b.spread:''+b.spread):'—';
+    var ou=b.ou!=null?''+b.ou:'—';
+    return'<div style="display:flex;gap:4px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);padding:2px 0">'
+      +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);min-width:30px">'+lbl+'</span>'
+      +'<span style="font-family:var(--mono);font-size:11px;color:var(--nc);flex:1">'+hML+'</span>'
+      +'<span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex:1">'+aML+'</span>'
+      +'<span style="font-family:var(--mono);font-size:11px;color:var(--vc);flex:1">'+sprd+'</span>'
+      +'<span style="font-family:var(--mono);font-size:11px;color:var(--ic);flex:1">'+ou+'</span>'
+    +'</div>';
+  }).join('');
+  return'<details style="margin-top:4px"><summary style="font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:1px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:4px">▶ BOOK LINES ('+bookLines.length+' books)</summary>'
+    +'<div style="margin-top:4px;padding:4px 6px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(255,255,255,.06)">'
+    +'<div style="display:flex;gap:4px;padding-bottom:3px;margin-bottom:2px;border-bottom:1px solid rgba(255,255,255,.08)">'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);min-width:30px">BOOK</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex:1">'+homeAbbr+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex:1">'+awayAbbr+'</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex:1">SPRD</span>'
+    +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex:1">O/U</span>'
+    +'</div>'
+    +rows+'</div></details>';
+}
+
 // ── MC PROJ bar — shared across all sport game cards ─────────────────────────
 function _mcProjBarHTML(mc,ouL,hTeam,aTeam,opts){
   if(!mc)return'';
@@ -3335,6 +3380,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
     </div>
     <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
       <span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnGame?.hML?' ESPN:blended':''}</span>
+      ${(()=>{const liveEv=typeof _clvGetLiveOdds==='function'?_clvGetLiveOdds('MLB',hA,awA):null;return liveEv&&liveEv.bookLines?_bookLinesHTML(liveEv.bookLines,hA,awA):'';})()}
       <button class="btn btn-o" style="padding:2px 6px;font-size:12px;margin-left:auto" onclick="addLeg2('${hA}','${awA}','${date||today()}')">+PAR</button>
     </div>
   </div>`;
@@ -5967,6 +6013,7 @@ async function renderNBAGames(day){
   </div>
   <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
     <span class="mono" style="font-size:13px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnHL?' ESPN:blended':''}</span>
+    ${(()=>{const liveEv=_clvGetLiveOdds&&_clvGetLiveOdds('NBA',hn,an);return liveEv&&liveEv.bookLines?_bookLinesHTML(liveEv.bookLines,hn,an):'';})()}
     ${pre?parlayBtn:''}
   </div>
 </div>`;
@@ -6749,6 +6796,95 @@ function _mlbDPRender(){
   }).join('');
 }
 
+/* ── NBA player stats from ESPN + props generation ── */
+var _nbaStatsCache=null,_nbaStatsCacheDate='';
+async function _fetchNBAPlayerStats(){
+  var td=today();
+  if(_nbaStatsCacheDate===td&&_nbaStatsCache)return _nbaStatsCache;
+  try{
+    var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/statistics?limit=300',{signal:ctrl.signal});
+    var d=await r.json();
+    var byName={};
+    (d.athletes||[]).forEach(function(a){
+      var name=a.athlete&&a.athlete.displayName;if(!name)return;
+      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
+      var stats={};(a.categories||[]).forEach(function(cat){
+        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
+      });
+      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
+      byName[name.toLowerCase()]={name,team,gp,
+        ppg:+(( stats.points||stats.PTS||0)/gp).toFixed(1),
+        rpg:+((stats.totalRebounds||stats.REB||0)/gp).toFixed(1),
+        apg:+((stats.assists||stats.AST||0)/gp).toFixed(1),
+        tpg:+((stats.threePointFieldGoalsMade||stats.threePointersMade||0)/gp).toFixed(1),
+        bpg:+((stats.blockedShots||stats.blocks||0)/gp).toFixed(1),
+        spg:+((stats.steals||0)/gp).toFixed(1),
+        sigma:stats.pointsPerGame?Math.sqrt(stats.pointsPerGame)*1.2:5.0
+      };
+    });
+    _nbaStatsCache=byName;_nbaStatsCacheDate=td;
+    console.log('[CV] NBA stats loaded: '+Object.keys(byName).length+' players');
+    return byName;
+  }catch(e){console.warn('[CV] NBA stats fetch err:',e);return null;}
+}
+
+function _generateNBAProps(games,statsData){
+  if(!statsData)return[];
+  var props=[];
+  var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
+  var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
+  var gradeP=function(p){return p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';};
+  var players=Object.values(statsData);
+
+  (games||[]).forEach(function(g){
+    var hn=g.h||g.hA||g.home,an=g.a||g.awA||g.away;if(!hn||!an)return;
+    var gamePlayers=players.filter(function(p){
+      return(p.team===hn||p.team===an)&&p.gp>=10;
+    }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,6);
+    var seen=new Set();
+    gamePlayers.forEach(function(pl){
+      // Points prop
+      if(pl.ppg>=12&&!seen.has(pl.name+'_pts')){seen.add(pl.name+'_pts');
+        var line=Math.round(pl.ppg*2)/2;
+        var sigma=Math.max(4,pl.ppg*0.38);
+        var mc=propMC(pl.ppg,sigma,line,5000);
+        var grade=gradeP(mc.overP);if(grade==='SKIP')return;
+        var ml=p2ml(mc.overP);
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          pos:'Guard/Forward',stat:'PTS',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
+          grade,hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.ppg+'PPG / '+pl.gp+'G · MC sim: '+mc.hitRate+'% over '+line});
+      }
+      // Rebounds prop
+      if(pl.rpg>=6&&!seen.has(pl.name+'_reb')){seen.add(pl.name+'_reb');
+        var line=Math.round(pl.rpg*2)/2;
+        var sigma=Math.max(2,pl.rpg*0.45);
+        var mc=propMC(pl.rpg,sigma,line,5000);
+        if(mc.overP<0.55)return;
+        var ml=p2ml(mc.overP);
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          pos:'Forward/Center',stat:'REB',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
+          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.rpg+'RPG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
+      }
+      // Assists prop
+      if(pl.apg>=5&&!seen.has(pl.name+'_ast')){seen.add(pl.name+'_ast');
+        var line=Math.round(pl.apg*2)/2;
+        var sigma=Math.max(1.5,pl.apg*0.50);
+        var mc=propMC(pl.apg,sigma,line,5000);
+        if(mc.overP<0.55)return;
+        var ml=p2ml(mc.overP);
+        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
+          pos:'Guard',stat:'AST',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
+          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
+          basis:pl.name+' · '+pl.apg+'APG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
+      }
+    });
+  });
+  return props.sort(function(a,b){return b.prob-a.prob;});
+}
+
 async function renderMLBDailyProps(){
   const el=document.getElementById('mlb-dp-list');if(!el)return;
   const dateEl=document.getElementById('mlb-dp-date');if(dateEl)dateEl.textContent=today();
@@ -6764,6 +6900,39 @@ async function renderMLBDailyProps(){
   _mlbDPData=_mlbGenerateDailyProps(games,statsData);
   _mlbDPRender();
   _mlbDPPopulateParlay();
+}
+
+var _nbaDPData=[];
+async function renderNBADailyProps(){
+  var el=document.getElementById('nba-dp-list');if(!el)return;
+  var dateEl=document.getElementById('nba-dp-date');if(dateEl)dateEl.textContent=today();
+  el.innerHTML='<div style="text-align:center;padding:20px;font-family:var(--mono);font-size:13px;color:var(--t3)"><span class="spi"></span> FETCHING NBA PLAYER STATS…</div>';
+  var statsData=await _fetchNBAPlayerStats();
+  if(!statsData){el.innerHTML='<div class="empty">NBA STATS UNAVAILABLE — RETRY</div>';return;}
+  var games=(window._nbaTodayGames||NBA_TONIGHT||[]);
+  _nbaDPData=_generateNBAProps(games,statsData);
+  if(!_nbaDPData.length){el.innerHTML='<div class="empty">NO NBA PROPS GENERATED — NO GAMES OR STATS</div>';return;}
+  var gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'};
+  el.innerHTML='<div style="margin-bottom:8px;font-family:var(--mono);font-size:11px;color:var(--t3)">'+_nbaDPData.length+' PROPS · MC-simulated vs season avg</div>'
+    +_nbaDPData.map(function(p,i){
+    var c=gradeC[p.grade]||'var(--t3)';
+    var mlStr=p.ml;
+    return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+c+'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">'
+      +'<div><span style="font-family:var(--orb);font-size:17px;font-weight:700">'+p.player+'</span>'
+      +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-left:5px">'+p.team+' vs '+p.opp+'</span></div>'
+      +'<div style="display:flex;gap:4px;align-items:center">'
+      +'<span style="font-family:var(--mono);font-size:13px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">MC:'+p.hitRate+'</span>'
+      +'<span style="font-family:var(--mono);font-size:13px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
+      +'</div></div>'
+      +'<div style="font-family:var(--mono);font-size:17px;color:var(--nc);margin-bottom:3px">▲ OVER '+p.line+' '+p.stat+' <span style="color:var(--t2);font-size:15px">· '+mlStr+' · '+(p.prob*100).toFixed(0)+'% MODEL</span></div>'
+      +'<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:4px">'+p.basis+'</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-family:var(--mono);font-size:13px;color:var(--t3)">SRC: ESPN Stats + MC Sim (5k)</span>'
+      +'<button class="btn btn-o btn-sm" onclick="lockMLBProp(\''+p.team+'\',\''+p.opp+'\',\''+p.player+'\',\''+p.stat+' O'+p.line+'\',true,'+p.prob.toFixed(2)+',\''+p.ml+'\')">LOCK</button>'
+      +'</div>'
+    +'</div>';
+  }).join('');
 }
 
 function _mlbDPPopulateParlay(){
@@ -21940,7 +22109,8 @@ var _ODDS_API_SPORT_MAP={
   NHL:'icehockey_nhl',
   NFL:'americanfootball_nfl',
   CFB:'americanfootball_ncaaf',
-  TEN:'tennis_atp'
+  TEN:'tennis_atp',
+  WC:'soccer_fifa_world_cup_2026'
 };
 
 /* Full team name → engine abbreviation */
@@ -22066,6 +22236,10 @@ async function _clvFetchOddsAPI(sport){
 
       var avgF=function(arr){return arr.length?+(arr.reduce(function(a,b){return a+b;},0)/arr.length).toFixed(1):null;};
 
+      var allBooks=(ev.bookmakers||[]).slice().sort(function(a,b){
+        var ai=_ODDS_PREF_BOOKS.indexOf(a.key),bi=_ODDS_PREF_BOOKS.indexOf(b.key);
+        return(ai<0?999:ai)-(bi<0?999:bi);
+      });
       return{
         id:ev.id,
         sport:(sport||'').toUpperCase(),
@@ -22080,10 +22254,85 @@ async function _clvFetchOddsAPI(sport){
         ouML:-110,
         date:ev.commence_time||'',
         homeScore:null,awayScore:null,
-        source:'oddsapi'
+        source:'oddsapi',
+        bookLines:allBooks.map(function(bk){
+          var bML={},bSprd=null,bOU=null;
+          (bk.markets||[]).forEach(function(mkt){
+            if(mkt.key==='h2h')(mkt.outcomes||[]).forEach(function(o){
+              var p=parseInt(o.price);if(isNaN(p))return;
+              if(o.name===homeFull)bML.home=p;
+              else if(o.name===awayFull)bML.away=p;
+            });
+            if(mkt.key==='spreads')(mkt.outcomes||[]).forEach(function(o){
+              if(o.name===homeFull&&o.point!=null)bSprd=+o.point;
+            });
+            if(mkt.key==='totals')(mkt.outcomes||[]).forEach(function(o){
+              if(o.name==='Over'&&o.point!=null)bOU=+o.point;
+            });
+          });
+          return{book:bk.key,homeML:bML.home||null,awayML:bML.away||null,spread:bSprd,ou:bOU};
+        }).filter(function(b){return b.homeML||b.awayML;}),
+        oddsApiEventId:ev.id
       };
     });
   }catch(e){console.warn('[OddsAPI] Error:',e);return[];}
+}
+
+/* Fetch player prop markets from Odds API for given sport + event IDs */
+var _PROPS_CACHE={};var _PROPS_CACHE_TS={};
+async function _clvFetchPlayerPropsAPI(sport,eventIds){
+  var apiKey=_getOddsApiKey();if(!apiKey||!eventIds||!eventIds.length)return{};
+  var sportKey=_ODDS_API_SPORT_MAP[(sport||'').toUpperCase()];if(!sportKey)return{};
+  var now=Date.now();var cacheKey=sport+'_'+eventIds.slice(0,3).join('_');
+  if(_PROPS_CACHE[cacheKey]&&now-(_PROPS_CACHE_TS[cacheKey]||0)<900000)return _PROPS_CACHE[cacheKey];
+
+  // Pick prop markets by sport
+  var mkts={
+    MLB:'player_strikeouts,player_hits,player_home_runs,player_rbis,player_earned_runs',
+    NBA:'player_points,player_rebounds,player_assists,player_threes,player_blocks_steals',
+    NHL:'player_shots_on_goal,player_points,player_saves',
+    WNBA:'player_points,player_rebounds,player_assists'
+  }[(sport||'').toUpperCase()]||'player_points';
+
+  var result={};
+  // Fetch top 3 events (to save quota)
+  var toFetch=eventIds.slice(0,3);
+  await Promise.all(toFetch.map(async function(evId){
+    try{
+      var url='https://api.the-odds-api.com/v4/sports/'+sportKey+'/events/'+evId+'/odds/'
+        +'?apiKey='+apiKey+'&regions=us&markets='+mkts+'&oddsFormat=american&dateFormat=iso';
+      var resp=await fetch(url,{mode:'cors',cache:'no-store'});
+      var rem=resp.headers.get('x-requests-remaining');
+      if(rem!=null){window._oddsApiRemaining=+rem;localStorage.setItem('cv_odds_rem',rem);}
+      if(!resp.ok)return;
+      var d=await resp.json();
+      if(!d||!d.bookmakers)return;
+      // Collect outcomes across all books, dedupe by player+market
+      var propsMap={};
+      d.bookmakers.forEach(function(bk){
+        var pri=_ODDS_PREF_BOOKS.indexOf(bk.key);if(pri<0)pri=999;
+        (bk.markets||[]).forEach(function(mkt){
+          (mkt.outcomes||[]).forEach(function(o){
+            var k=mkt.key+'::'+o.description+'::'+o.name;
+            if(!propsMap[k]||pri<propsMap[k]._pri)
+              propsMap[k]={market:mkt.key,player:o.description||o.name,side:o.name,point:o.point,price:o.price,book:bk.key,_pri:pri};
+          });
+        });
+      });
+      // Group by player+market
+      var byPlayer={};
+      Object.values(propsMap).forEach(function(p){
+        var pk=p.player+'::'+p.market;
+        if(!byPlayer[pk])byPlayer[pk]={player:p.player,market:p.market,line:p.point,overML:null,underML:null,book:p.book};
+        if(p.side==='Over')byPlayer[pk].overML=p.price;
+        else if(p.side==='Under')byPlayer[pk].underML=p.price;
+        if(p.point!=null)byPlayer[pk].line=p.point;
+      });
+      result[evId]=Object.values(byPlayer).filter(function(p){return p.player&&p.line!=null;});
+    }catch(e){console.warn('[OddsAPI] Props fetch err',evId,e);}
+  }));
+  _PROPS_CACHE[cacheKey]=result;_PROPS_CACHE_TS[cacheKey]=now;
+  return result;
 }
 
 /* Live odds lookup — returns {homeML, awayML, ou, spread, source} or null */
@@ -22113,7 +22362,8 @@ function _clvGetLiveOdds(sport,hA,awA){
     homeML:ev.currentHomeML,awayML:ev.currentAwayML,
     ou:ev.currentOU,spread:ev.currentSpread,
     source:ev.oddsApiSource?'oddsapi':'espn',
-    openHomeML:ev.openHomeML,openAwayML:ev.openAwayML
+    openHomeML:ev.openHomeML,openAwayML:ev.openAwayML,
+    bookLines:ev.bookLines||[]
   };
 }
 window._clvGetLiveOdds=_clvGetLiveOdds;
@@ -22275,6 +22525,7 @@ async function _clvScanAllSports(){
           openHomeML:hML,openAwayML:aML,openOU:ou,openSpread:spread,
           openTS:Date.now(),oddsApiSource:oddsApiSource,
           currentHomeML:hML,currentAwayML:aML,currentOU:ou,currentSpread:spread,
+          bookLines:oddsEv&&oddsEv.bookLines||[],
           statusState:espnEv.statusState,
           snapshots:[{ts:Date.now(),homeML:hML,awayML:aML,ou:ou,spread:spread,note:'OPEN',src:oddsApiSource?'oddsapi':'espn'}]
         };
@@ -22293,6 +22544,7 @@ async function _clvScanAllSports(){
         store[key].currentSpread=spread;
         store[key].statusState=espnEv.statusState;
         store[key].oddsApiSource=store[key].oddsApiSource||oddsApiSource;
+        if(oddsEv&&oddsEv.bookLines&&oddsEv.bookLines.length)store[key].bookLines=oddsEv.bookLines;
       }
       fetchedCount++;
     });
@@ -22312,6 +22564,7 @@ async function _clvScanAllSports(){
         if(oddsEv.awayML!=null)store[matchedKey].currentAwayML=oddsEv.awayML;
         if(oddsEv.overUnder!=null)store[matchedKey].currentOU=oddsEv.overUnder;
         if(oddsEv.spread!=null)store[matchedKey].currentSpread=oddsEv.spread;
+        if(oddsEv.bookLines&&oddsEv.bookLines.length)store[matchedKey].bookLines=oddsEv.bookLines;
         return;
       }
       /* No ESPN match — store Odds API event directly under its own id */
@@ -22324,6 +22577,7 @@ async function _clvScanAllSports(){
             openHomeML:oddsEv.homeML,openAwayML:oddsEv.awayML,openOU:oddsEv.overUnder,openSpread:oddsEv.spread,
             openTS:Date.now(),oddsApiSource:true,
             currentHomeML:oddsEv.homeML,currentAwayML:oddsEv.awayML,currentOU:oddsEv.overUnder,currentSpread:oddsEv.spread,
+            bookLines:oddsEv.bookLines||[],
             statusState:'pre',
             snapshots:[{ts:Date.now(),homeML:oddsEv.homeML,awayML:oddsEv.awayML,ou:oddsEv.overUnder,spread:oddsEv.spread,note:'OPEN',src:'oddsapi'}]
           };
