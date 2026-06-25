@@ -7321,8 +7321,7 @@ function renderOverall(){
   const lastMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
   const moLbl    = firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
   const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime(); // July 1 2026 00:00 ET
-  const launchLive=now>=LAUNCH_TS;
-  const sinceLaunchPerf=launchLive?calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS)):null;
+  const sinceLaunchPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
   // By sport — full names, no emojis
   const sportMap=[
@@ -7570,12 +7569,12 @@ function renderOverall(){
   const accColor=a=>a===null?'var(--t3)':a>=.56?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';
   const unitColor=u=>u>=0?'var(--nc)':'var(--hc)';
 
-  const periodCard=(lbl,perf,col)=>`
+  const periodCard=(lbl,perf,col)=>{const empty=perf.n===0;return`
     <div class="card" style="padding:10px;border-top:2px solid ${col}">
       <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:${col};margin-bottom:7px">${lbl}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="text-align:center;min-width:44px">
-          <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${accColor(perf.acc)}">${perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
+          <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${empty?'var(--t3)':accColor(perf.acc)}">${empty?'N/A':perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">WIN%</div>
         </div>
         <div style="text-align:center;min-width:60px">
@@ -7583,11 +7582,11 @@ function renderOverall(){
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">RECORD</div>
         </div>
         <div style="text-align:center;min-width:44px">
-          <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${unitColor(perf.units)}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}</div>
+          <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${empty?'var(--t3)':unitColor(perf.units)}">${empty?'N/A':(perf.units>=0?'+':'')+perf.units.toFixed(1)}</div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">UNITS</div>
         </div>
       </div>
-    </div>`;
+    </div>`;};
 
   const sportRow=(d)=>{
     const indent=d.sub?'padding-left:14px;border-left:2px solid rgba(0,240,255,.18);margin-left:4px;':'';
@@ -7698,8 +7697,7 @@ function renderOverall(){
     ${periodCard('THIS MONTH',moPerf,'var(--pc)')}
     ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
   </div>
-  ${launchLive?`<div style="margin-bottom:14px">${periodCard('SINCE LAUNCH (JUL 1)',sinceLaunchPerf,'var(--hc)')}</div>`
-    :`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);border:1px solid rgba(255,32,144,.15);border-radius:3px;padding:8px 12px;margin-bottom:14px;text-align:center">SINCE LAUNCH RECORD — ACTIVE FROM JULY 1</div>`}`;
+  <div style="margin-bottom:14px">${periodCard('SINCE LAUNCH (JUL 1, 2026)',sinceLaunchPerf,'var(--hc)')}</div>`;
 
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
@@ -10288,8 +10286,7 @@ function renderHomePage(){
     const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
     const rAll = hCalc(allBets);
     const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime();
-    const launchLive=now>=LAUNCH_TS;
-    const rLaunch=launchLive?hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS)):null;
+    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;
@@ -10311,7 +10308,7 @@ function renderHomePage(){
           <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${pc}">${pct!==null?(pct*100).toFixed(1)+'%':'--'}</span>
           <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${uc}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}u</span>
         </div>`
-        :`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);padding:12px 0;text-align:center">NO BETS</div>`}
+        :`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><span style="font-family:var(--orb);font-size:19px;font-weight:900;color:var(--t1)">0W<span style="color:var(--t3);font-size:15px">-</span>0L</span></div><div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px"></div><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--t3)">N/A%</span><span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t3)">N/A u</span></div>`}
       </div>`;
     };
 
@@ -10327,8 +10324,7 @@ function renderHomePage(){
       ${perfCard('THIS MONTH',rMo,'rgba(0,240,255,.7)',thisMonthLbl)}
       ${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}
       ${perfCard('ALL TIME',rAll,'rgba(255,221,0,.9)')}
-      ${launchLive?perfCard('SINCE LAUNCH',rLaunch,'rgba(255,32,144,.9)','JUL 1')
-        :`<div class="card" style="padding:11px 12px;border-top:2px solid rgba(255,32,144,.4);grid-column:1/-1;text-align:center"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:rgba(255,32,144,.5)">SINCE LAUNCH — ACTIVE FROM JULY 1</div></div>`}
+      ${perfCard('SINCE LAUNCH',rLaunch,'rgba(255,32,144,.9)','JUL 1, 2026')}
     </div>`;
   }
 
@@ -14674,7 +14670,7 @@ function renderTrackRecord(){
     {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
     {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
     {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#f000ff', perf:cP(allBets)},
-    ...(Date.now()>=new Date('2026-07-01T04:00:00Z').getTime()?[{key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1 2026',pC:'#ff2090',perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))}]:[]),
+    {key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1, 2026',pC:'#ff2090',perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))},
   ];
   window._cvPerfPeriods=periods;
 
@@ -14709,7 +14705,7 @@ function renderTrackRecord(){
         <div style="text-align:right">
           <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:rgb(230,235,255)">${unitStr}</div>
         </div>
-      `:`<div style="grid-column:2/-1;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">NO SETTLED BETS</div>`}
+      `:`<div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:rgba(220,190,255,.35)">0W-0L</div></div><div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:rgba(220,190,255,.35)">N/A%</div></div><div style="text-align:right"><div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:rgba(220,190,255,.35)">N/A</div></div>`}
     </div>`;
   }).join('');
 
