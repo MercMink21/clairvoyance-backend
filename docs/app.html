@@ -7331,10 +7331,10 @@ function renderOverall(){
     {lbl:'HOCKEY',      codes:['NHL','PWHL']},
     {lbl:'TENNIS',      codes:['TEN','tennis']},
     {lbl:'SOCCER',      codes:['SOC','WC','PL','LIGA','BL','MLS']},
-    {lbl:'↳ PREM LG',  codes:['PL'],   sub:true},
-    {lbl:'↳ LA LIGA',  codes:['LIGA'], sub:true},
-    {lbl:'↳ BUNDESLIGA',codes:['BL'],  sub:true},
-    {lbl:'↳ MLS',       codes:['MLS'], sub:true},
+    {lbl:'↳ Premier',   codes:['PL'],   sub:true,always:true},
+    {lbl:'↳ La Liga',   codes:['LIGA'], sub:true,always:true},
+    {lbl:'↳ Bundesliga',codes:['BL'],  sub:true,always:true},
+    {lbl:'↳ MLS',       codes:['MLS'], sub:true,always:true},
   ];
   const bySport=sportMap.map(sm=>{
     const sp=settled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
@@ -7362,10 +7362,10 @@ function renderOverall(){
     {lbl:'WNBA',         codes:['WNBA']},
     {lbl:'TEN',          codes:['TEN']},
     {lbl:'WORLD CUP',    codes:['SOC','WC']},
-    {lbl:'PREMIER LG',   codes:['PL']},
-    {lbl:'LA LIGA',      codes:['LIGA']},
-    {lbl:'BUNDESLIGA',   codes:['BL']},
-    {lbl:'MLS',          codes:['MLS']},
+    {lbl:'Premier',      codes:['PL'],   always:true},
+    {lbl:'La Liga',      codes:['LIGA'], always:true},
+    {lbl:'Bundesliga',   codes:['BL'],  always:true},
+    {lbl:'MLS',          codes:['MLS'], always:true},
     {lbl:'NFL',          codes:['NFL','FB']},
     {lbl:'CFB',          codes:['CFB']},
     {lbl:'PWHL',         codes:['PWHL']},
@@ -7375,8 +7375,8 @@ function renderOverall(){
   ];
   const byLeague=leagueMap.map(lm=>{
     const lb=settled.filter(p=>lm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
-    return{lbl:lm.lbl,...calcPerf(lb)};
-  }).filter(d=>d.n>0);
+    return{lbl:lm.lbl,always:!!lm.always,...calcPerf(lb)};
+  }).filter(d=>d.n>0||d.always);
 
   // Last N
   const lastN=[10,25,50,75,100];
@@ -7592,7 +7592,7 @@ function renderOverall(){
   const sportRow=(d)=>{
     const indent=d.sub?'padding-left:14px;border-left:2px solid rgba(0,240,255,.18);margin-left:4px;':'';
     const lsize=d.sub?'11px':'13px'; const lcol=d.sub?'var(--t3)':'var(--t)';
-    if(d.n===0)return d.sub?'':`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${d.lbl}</span><span style="font-family:var(--mono);font-size:12px;color:rgba(150,130,180,.35)">NO BETS YET</span></div>`;
+    if(d.n===0){if(d.always)return`<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><span style="font-family:var(--mono);font-size:11px;color:rgba(150,130,180,.35)">0W-0L</span></div>`;if(d.sub)return'';return`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${d.lbl}</span><span style="font-family:var(--mono);font-size:12px;color:rgba(150,130,180,.35)">NO BETS YET</span></div>`;}
     return`<div style="display:flex;justify-content:space-between;align-items:center;padding:${d.sub?'3px 0':'5px 0'};border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><div style="display:flex;gap:8px"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:${lsize};font-weight:700;color:${accColor(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${unitColor(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
   };
 
