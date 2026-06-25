@@ -7842,8 +7842,8 @@ function renderOverallVisuals(){
     <circle cx="${px(pts.length-1).toFixed(1)}" cy="${py(pts[pts.length-1]).toFixed(1)}" r="3" fill="${pts[pts.length-1]>=0?'#00f0ff':'#ff2090'}" filter="url(#glow1)"/>
   </svg>`;
   // 2. Win Rate by Sport
-  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TEN:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff'};
-  const sData=['MLB','NHL','NBA','TEN','F1','WNBA','SOC'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
+  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TEN:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff',SOC:'#00f0aa',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b'};
+  const sData=['MLB','NHL','NBA','TEN','F1','WNBA','SOC','PL','LIGA','BL','MLS'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
   const barW=260,barH=sData.length*22+10;
   const barSVG=`<svg width="${barW}" height="${barH}">
     ${sData.map((d,i)=>{const bw=(d.pct||0)*(barW-80);const col=sportColors[d.s]||'var(--nc)';return`<g transform="translate(0,${i*22})">
@@ -7940,7 +7940,7 @@ function renderOverallAnalytics(filterUpdate){
   if(N<3){el.innerHTML=`<div style="padding:10px">${buildAlyFilters(allRaw,F)}</div><div class="empty" style="font-family:var(--mono)">NOT ENOUGH DATA · OPTIMAL MORE PICKS TO UNLOCK ANALYTICS</div>`;return;}
 
   // ── Filter strip ──────────────────────────────────────────────────────────
-  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC','PL','LIGA','BL','MLS'].map(s=>chip(s,'sport',s,F.sport)).join('');
   const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   const filtersHtml=`<div style="${glowBox('#f000ff')};border-radius:3px;padding:8px 10px;margin-bottom:10px">
@@ -8335,7 +8335,7 @@ function initAnalyticsExpand(){
 
 function buildAlyFilters(allRaw,F){
   const chip=(lbl,key,val,cur)=>{const a=cur===val;return`<button onclick="renderOverallAnalytics({${key}:'${val}'})" style="font-family:var(--mono);font-size:14px;padding:3px 8px;border-radius:2px;border:1px solid ${a?'#f000ff':'rgba(240,0,255,.2)'};background:${a?'rgba(240,0,255,.18)':'rgba(240,0,255,.04)'};color:${a?'#f000ff':'rgba(220,190,255,.88)'};cursor:pointer;white-space:nowrap">${lbl}</button>`;};
-  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC'].map(s=>chip(s,'sport',s,F.sport)).join('');
+  const sportChips=['ALL','MLB','NHL','NBA','TEN','SOC','PL','LIGA','BL','MLS'].map(s=>chip(s,'sport',s,F.sport)).join('');
   const typeChips=['ALL','ML','OU','RL','PL','PROP'].map(t=>chip(t,'type',t,F.type)).join('');
   const rangeChips=[['ALL','ALL'],['D7','7D'],['D10','10D'],['D15','15D'],['D30','30D'],['D45','45D'],['D60','60D']].map(([v,l])=>chip(l,'range',v,F.range)).join('');
   return`<div style="background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:3px;padding:8px 10px">
@@ -8407,7 +8407,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     FOOTBALL:  ['NFL','CFB','FB'],
     HOCKEY:    ['NHL','PWHL','NCAAH','KHL','SHL','LIIGA'],
     TENNIS:    ['WTA','ATP','TEN'],
-    SOCCER:    ['SOC','WC'],
+    SOCCER:    ['SOC','WC','PL','LIGA','BL','MLS'],
   };
   // Normalize sport tags in bets to canonical league codes for matching
   const _normSport=s=>{
@@ -8428,7 +8428,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}):'');
 
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',SOC:'var(--nc)',WC:'var(--nc)',default:'var(--t3)'};
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',PROP:'var(--gc)',SOC:'var(--nc)',WC:'var(--nc)',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b',default:'var(--t3)'};
   // Build filter controls
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
@@ -8439,7 +8439,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     {key:'FOOTBALL',  label:'FOOTBALL',  color:'var(--hc)', leagues:[{key:'NFL',label:'NFL'},{key:'CFB',label:'COLLEGE'}]},
     {key:'HOCKEY',    label:'HOCKEY',    color:'var(--ic)', leagues:[{key:'NHL',label:'NHL'},{key:'PWHL',label:'PWHL'},{key:'NCAAH',label:'COLLEGE'},{key:'KHL',label:'KHL'},{key:'SHL',label:'SHL'},{key:'LIIGA',label:'LIIGA'}]},
     {key:'TENNIS',    label:'TENNIS',    color:'var(--mc)', leagues:[{key:'WTA',label:'WTA'},{key:'ATP',label:'ATP'}]},
-    {key:'SOCCER',    label:'SOCCER',    color:'var(--nc)', leagues:[{key:'SOC',label:'WORLD CUP'}]},
+    {key:'SOCCER',    label:'SOCCER',    color:'var(--nc)', leagues:[{key:'SOC',label:'WORLD CUP'},{key:'PL',label:'PREM LG'},{key:'LIGA',label:'LA LIGA'},{key:'BL',label:'BUNDESLIGA'},{key:'MLS',label:'MLS'}]},
   ];
   // Determine active sport group (for sub-row display)
   const _activeSportGroup=_sportDefs.find(sd=>sd.key===sf||(sd.leagues||[]).some(l=>l.key===sf));
@@ -14100,7 +14100,11 @@ function _normSport(p){
   if(raw==='NBA'||raw==='BASKETBALL')return'NBA';
   if(raw==='NFL'||raw==='FOOTBALL')return'NFL';
   if(raw==='CFB'||raw==='COLLEGE FOOTBALL'||raw==='NCAAF')return'CFB';
-  if(raw==='WC'||raw==='WORLDCUP'||raw==='WORLD CUP'||raw==='SOCCER'||raw==='SOC')return'WC';
+  if(raw==='WC'||raw==='WORLDCUP'||raw==='WORLD CUP'||raw==='SOC')return'WC';
+  if(raw==='PL'||raw==='PREMIER LEAGUE')return'PL';
+  if(raw==='LIGA'||raw==='LA LIGA')return'LIGA';
+  if(raw==='BL'||raw==='BUNDESLIGA')return'BL';
+  if(raw==='MLS')return'MLS';
   if(raw==='TEN'||raw==='TENNIS')return'TEN';
   const h=(p.hA||'').trim().toUpperCase(),a=(p.awA||'').trim().toUpperCase();
   if(!h&&!a)return raw||'MISC';
@@ -20014,13 +20018,13 @@ function renderBySportAnalytics(key){
   if(!key)key='all';
   // Sport group definitions — leagues is null for single-league sports (no sub-filter shown)
   const SPORT_DEFS={
-    all:      {label:'ALL SPORTS', codes:['MLB','NHL','NBA','WNBA','TEN','NFL','CFB','FB','PWHL','KHL','SHL','LIIGA','SOC'], color:'var(--nc)', leagues:null},
+    all:      {label:'ALL SPORTS', codes:['MLB','NHL','NBA','WNBA','TEN','NFL','CFB','FB','PWHL','KHL','SHL','LIIGA','SOC','WC','PL','LIGA','BL','MLS'], color:'var(--nc)', leagues:null},
     baseball: {label:'BASEBALL',   codes:['MLB'],                          color:'var(--vc)', leagues:null},
     basketball:{label:'BASKETBALL',codes:['NBA','WNBA'],                   color:'var(--pc)', leagues:[{k:'NBA',label:'NBA'},{k:'WNBA',label:'WNBA'}]},
     hockey:   {label:'HOCKEY',     codes:['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'], color:'var(--ic)', leagues:[{k:'NHL',label:'NHL'},{k:'PWHL',label:'PWHL'},{k:'KHL',label:'KHL'},{k:'SHL',label:'SHL'},{k:'LIIGA',label:'LIIGA'}]},
     tennis:   {label:'TENNIS',     codes:['TEN'],                          color:'var(--mc)', leagues:null},
     football: {label:'FOOTBALL',   codes:['NFL','CFB','FB'],               color:'var(--hc)', leagues:[{k:'NFL',label:'NFL'},{k:'CFB',label:'COLLEGE'}]},
-    soccer:   {label:'SOCCER',     codes:['SOC'],                          color:'var(--gc)', leagues:[{k:'SOC',label:'WC 2026'}]},
+    soccer:   {label:'SOCCER',     codes:['SOC','WC','PL','LIGA','BL','MLS'], color:'var(--gc)', leagues:[{k:'SOC',label:'WC 2026'},{k:'PL',label:'PREM LG'},{k:'LIGA',label:'LA LIGA'},{k:'BL',label:'BUNDESLIGA'},{k:'MLS',label:'MLS'}]},
     wnba:     {label:'WNBA',       codes:['WNBA'],                         color:'var(--pc)', leagues:[{k:'ML',label:'ML'},{k:'PROP',label:'PROP'}]},
   };
 
