@@ -7328,6 +7328,9 @@ function renderOverall(){
   const moPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
   const lastMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
   const moLbl    = firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
+  const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime(); // July 1 2026 00:00 ET
+  const launchLive=now>=LAUNCH_TS;
+  const sinceLaunchPerf=launchLive?calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS)):null;
 
   // By sport — full names, no emojis
   const sportMap=[
@@ -7692,7 +7695,9 @@ function renderOverall(){
   <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
     ${periodCard('THIS MONTH',moPerf,'var(--pc)')}
     ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
-  </div>`;
+  </div>
+  ${launchLive?`<div style="margin-bottom:14px">${periodCard('SINCE LAUNCH (JUL 1)',sinceLaunchPerf,'var(--hc)')}</div>`
+    :`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);border:1px solid rgba(255,32,144,.15);border-radius:3px;padding:8px 12px;margin-bottom:14px;text-align:center">SINCE LAUNCH RECORD — ACTIVE FROM JULY 1</div>`}`;
 
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
@@ -10277,6 +10282,9 @@ function renderHomePage(){
     const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
     const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
     const rAll = hCalc(allBets);
+    const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime();
+    const launchLive=now>=LAUNCH_TS;
+    const rLaunch=launchLive?hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS)):null;
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;
@@ -10314,6 +10322,8 @@ function renderHomePage(){
       ${perfCard('THIS MONTH',rMo,'rgba(0,240,255,.7)',thisMonthLbl)}
       ${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}
       ${perfCard('ALL TIME',rAll,'rgba(255,221,0,.9)')}
+      ${launchLive?perfCard('SINCE LAUNCH',rLaunch,'rgba(255,32,144,.9)','JUL 1')
+        :`<div class="card" style="padding:11px 12px;border-top:2px solid rgba(255,32,144,.4);grid-column:1/-1;text-align:center"><div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:rgba(255,32,144,.5)">SINCE LAUNCH — ACTIVE FROM JULY 1</div></div>`}
     </div>`;
   }
 
@@ -14655,6 +14665,7 @@ function renderTrackRecord(){
     {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
     {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
     {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#f000ff', perf:cP(allBets)},
+    ...(Date.now()>=new Date('2026-07-01T04:00:00Z').getTime()?[{key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1 2026',pC:'#ff2090',perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))}]:[]),
   ];
   window._cvPerfPeriods=periods;
 
