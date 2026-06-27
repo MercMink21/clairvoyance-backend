@@ -14292,9 +14292,12 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   const dateStr=moves[0]?.date||today();
   const cardTitle=(tm||{}).title||'Base Intelligence Brief';
   // CF background: diagonal weave + dark base
-  const cfBg='repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
-    +'repeating-linear-gradient(-45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
-    +'linear-gradient(135deg,rgba(4,0,12,1),rgba(18,0,36,1))';
+  const cfBg='linear-gradient(135deg,rgba(22,18,35,.85),rgba(22,18,35,.85)),'
+    +'linear-gradient(45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
+    +'linear-gradient(45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
+    +'rgb(8,10,11)';
   // Group picks by grade tier first so we know total visual row count
   const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
   const grpMap={};
@@ -14329,7 +14332,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     return'<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:2px">'+header+grpMap[k].map(pickCell).join('')+'</div>';
   }).join('');
 
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,30px 30px,30px 30px,30px 30px,30px 30px,100% 100%;background-position:0 0,0 0,0 0,15px 0,15px 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
     +'<div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle,rgba(240,0,255,.1) 0%,transparent 70%);pointer-events:none"></div>'
     // Row 1: CLAIRVOYANCE centered · tier label pinned top-right
@@ -14445,26 +14448,34 @@ function shareLeagueCard(idx){
 // PERFORMANCE GRAPHIC EXPORT — Canvas 1080×1080
 // ═══════════════════════════════════════════════════════════════════════════
 function _cfBg(ctx,W,H){
-  ctx.fillStyle='rgb(16,16,16)';ctx.fillRect(0,0,W,H);
-  const S=14;
-  for(let row=0;row<Math.ceil(H/(S/2))+2;row++){
-    for(let col=0;col<Math.ceil(W/S)+2;col++){
-      const x=col*S-S,y=row*(S/2)-(S/2);
-      const ox=(row%2===1)?S/2:0;
-      const g=ctx.createLinearGradient(x+ox,y,x+ox+S,y+S/2);
-      g.addColorStop(0,'rgba(10,10,10,.95)');g.addColorStop(0.35,'rgba(32,32,32,.8)');
-      g.addColorStop(0.5,'rgba(50,50,51,1)');g.addColorStop(0.65,'rgba(32,32,32,.8)');
-      g.addColorStop(1,'rgba(10,10,10,.95)');
-      ctx.fillStyle=g;ctx.fillRect(x+ox,y,S,S/2);
-    }
+  // Base dark fill
+  ctx.fillStyle='rgb(8,10,11)';ctx.fillRect(0,0,W,H);
+  // Navy/purple screen tint
+  ctx.fillStyle='rgba(22,18,35,.85)';ctx.fillRect(0,0,W,H);
+  // Primary teal diamond grid (45° / -45°)
+  const S=30,half=Math.ceil(Math.max(W,H)*0.85);
+  const cx=W/2,cy=H/2,c=Math.cos(Math.PI/4),s=Math.sin(Math.PI/4);
+  ctx.save();ctx.globalAlpha=0.82;ctx.strokeStyle='rgb(0,160,160)';ctx.lineWidth=1;
+  for(let i=-half;i<=half;i+=S){
+    ctx.beginPath();ctx.moveTo(cx+i*c-(-half)*s,cy+i*s+(-half)*c);ctx.lineTo(cx+i*c-half*s,cy+i*s+half*c);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+(-half)*c-i*s,cy+(-half)*s+i*c);ctx.lineTo(cx+half*c-i*s,cy+half*s+i*c);ctx.stroke();
   }
-  ctx.save();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=.5;
-  for(let x=0;x<W;x+=S){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=S/2){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Secondary offset grid (muted teal-grey)
+  const off=S/2;
+  ctx.globalAlpha=0.63;ctx.strokeStyle='rgb(55,85,90)';
+  for(let i=-half;i<=half;i+=S){
+    ctx.beginPath();ctx.moveTo(cx+(i+off)*c-(-half)*s,cy+(i+off)*s+(-half)*c);ctx.lineTo(cx+(i+off)*c-half*s,cy+(i+off)*s+half*c);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+(-half)*c-(i+off)*s,cy+(-half)*s+(i+off)*c);ctx.lineTo(cx+half*c-(i+off)*s,cy+half*s+(i+off)*c);ctx.stroke();
+  }
   ctx.restore();
-  const v=ctx.createRadialGradient(W/2,H/2,W*.15,W/2,H/2,W*.75);
-  v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.55)');
-  ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+  // Radial teal glow at top-center
+  const gl=ctx.createRadialGradient(cx,H*.4,0,cx,H*.4,W*.52);
+  gl.addColorStop(0,'rgba(0,180,180,.12)');gl.addColorStop(1,'rgba(0,180,180,0)');
+  ctx.fillStyle=gl;ctx.fillRect(0,0,W,H);
+  // Vignette
+  const vg=ctx.createRadialGradient(cx,cy,W*.28,cx,cy,W*.75);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.6)');
+  ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
 }
 function _hudCorners(ctx,W,H){
   const ARM=54,IN=22,LW=2.5,C='rgb(0,215,240)';
@@ -14682,9 +14693,12 @@ function renderTrackRecord(){
   const uC=u=>u>=0?'#00f0ff':'#ff2090';
 
   // CF background CSS for HTML preview
-  const cfBg='repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
-    +'repeating-linear-gradient(-45deg,rgba(255,255,255,.025) 0px,rgba(255,255,255,.025) 1px,transparent 1px,transparent 5px),'
-    +'linear-gradient(135deg,rgba(4,0,12,1),rgba(16,0,32,1))';
+  const cfBg='linear-gradient(135deg,rgba(22,18,35,.85),rgba(22,18,35,.85)),'
+    +'linear-gradient(45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
+    +'linear-gradient(45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
+    +'rgb(8,10,11)';
 
   const periodRows=periods.map(per=>{
     const p=per.perf;
@@ -14721,8 +14735,8 @@ function renderTrackRecord(){
   <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:12px">1080×1080 PNG · Carbon fiber · Fit for X & Instagram</div>
 
   <!-- Combined square card preview -->
-  <div style="aspect-ratio:1/1;background:${cfBg};border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
-    <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>
+  <div style="aspect-ratio:1/1;background:${cfBg};background-size:100% 100%,30px 30px,30px 30px,30px 30px,30px 30px,100% 100%;background-position:0 0,0 0,0 0,15px 0,15px 0,0 0;border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,180,180,.08) 0%,transparent 65%),radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(0,0,0,.55) 100%);pointer-events:none"></div>
     <!-- Header -->
     <div style="position:relative;text-align:center;margin-bottom:8px">
       <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
@@ -14767,8 +14781,8 @@ function renderTrackRecord(){
     ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
   </div>
 
-  <div style="aspect-ratio:1/1;background:${cfBg};border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
-    <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>
+  <div style="aspect-ratio:1/1;background:${cfBg};background-size:100% 100%,30px 30px,30px 30px,30px 30px,30px 30px,100% 100%;background-position:0 0,0 0,0 0,15px 0,15px 0,0 0;border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,180,180,.08) 0%,transparent 65%),radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(0,0,0,.55) 100%);pointer-events:none"></div>
     <!-- Header -->
     <div style="position:relative;text-align:center;margin-bottom:8px">
       <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
