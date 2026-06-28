@@ -11861,9 +11861,11 @@ function tennisMatchWinProbFull(p1,p2,surface,bo5=false){
   const serveP=sigmoid(serveEdge);
   // Fatigue (more matches = slight penalty)
   const fatAdj=Math.max(0.94,Math.min(1.06,(p2.fat-p1.fat)*0.01));
-  // Weighted blend — on grass, blend in 3% MCP tactical edge when available
-  let raw=0.30*eloP+0.40*mcP+0.15*formP+0.10*serveP+0.05*fatAdj;
-  if(surface==='grass'){const mcpE=grassMcpEdge(p1,p2);if(mcpE!==0.5)raw=0.97*raw+0.03*mcpE;}
+  // Weighted blend — MC carries all W/UFE + MCP stats via tennisServeWinRateAdv
+  let raw=0.22*eloP+0.50*mcP+0.15*formP+0.08*serveP+0.05*fatAdj;
+  // MCP/W-UFE surface tactical overlay on all surfaces (5% weight)
+  const mcpE=mcpSurfaceEdge(p1,p2,surface);
+  if(mcpE!==0.5)raw=0.95*raw+0.05*mcpE;
   return sportCalibrate(Math.min(0.93,Math.max(0.07,raw)),'TEN');
 }
 function tennisEV(winP,ml){
@@ -11891,20 +11893,64 @@ function wimPickReasoning(p1name,p2name,mcP,p1ml,bo5,grade){
   return lines.join(' ');
 }
 
-// ── Match Charting Project tactical edge on grass ─────────────
-function grassMcpEdge(p1,p2){
-  if(!p1||!p2||p1.mcpNetFreq==null||p2.mcpNetFreq==null)return 0.5;
-  // Net effectiveness: freq × win% — grass rewards net play heavily
-  const net1=p1.mcpNetFreq*p1.mcpNetW, net2=p2.mcpNetFreq*p2.mcpNetW;
-  // Serve-and-volley dominance
-  const snv1=p1.mcpSnV||0, snv2=p2.mcpSnV||0;
-  // Rally aggression (positive = shorter rallies = grass advantage)
-  const agg1=(p1.mcpRallyAgg||0)/200, agg2=(p2.mcpRallyAgg||0)/200;
-  // Winner rate edge (FH+BH)
-  const wnr1=(p1.mcpFhWnr||0)+(p1.mcpBhWnr||0), wnr2=(p2.mcpFhWnr||0)+(p2.mcpBhWnr||0);
-  const edge=(net1-net2)*2+(snv1-snv2)*1.5+(agg1-agg2)*0.5+(wnr1-wnr2)*0.5;
-  return 1/(1+Math.exp(-edge*8));
+// ── MC game-count simulation ───────────────────────────────────
+function tennisSimGames(p1,p2,surface,bo5,N=5000){
+  // Returns {expected, std} total games using same serve-win logic as the MC model
+  const p1h=tennisPgame(tennisServeWinRateAdv(p1,p2,surface));
+  const p2h=tennisPgame(tennisServeWinRateAdv(p2,p1,surface));
+  const sTW=bo5?3:2;
+  let sum=0,sum2=0;
+  for(let i=0;i<N;i++){
+    let s1=0,s2=0,g=0;
+    while(s1<sTW&&s2<sTW){
+      let sg1=0,sg2=0,srv=Math.random()<.5;
+      while(true){
+        if(srv){if(Math.random()<p1h)sg1++;else sg2++;}
+        else{if(Math.random()<p2h)sg2++;else sg1++;}
+        srv=!srv;
+        if(sg1>=6&&sg1-sg2>=2){g+=sg1+sg2;s1++;break;}
+        if(sg2>=6&&sg2-sg1>=2){g+=sg1+sg2;s2++;break;}
+        if(sg1===6&&sg2===6){g+=13;if(Math.random()<p1h/(p1h+p2h))s1++;else s2++;break;}
+      }
+    }
+    sum+=g;sum2+=g*g;
+  }
+  const mean=sum/N;
+  const std=Math.sqrt(Math.max(0,sum2/N-mean*mean));
+  return{expected:+mean.toFixed(1),std:+std.toFixed(1)};
 }
+function tennisGamesLine(sim,bo5){
+  // Find nearest standard O/U line and compute directional probability
+  const{expected,std}=sim;
+  const sigma=std||(bo5?5.5:3.5);
+  const lines=bo5?[32.5,33.5,34.5,35.5,36.5,37.5,38.5,39.5,40.5,41.5]:[17.5,18.5,19.5,20.5,21.5,22.5,23.5,24.5];
+  const nearLine=lines.reduce((b,l)=>Math.abs(l-expected)<Math.abs(b-expected)?l:b,lines[0]);
+  const overP=1-normalCDF((nearLine-expected)/sigma);
+  const dir=overP>=0.5?'OVER':'UNDER';
+  const conf=Math.round(Math.max(overP,1-overP)*100);
+  const grade=conf>=65?'OPTIMAL':conf>=58?'LEAN':'MONITOR';
+  const gradeCol=grade==='OPTIMAL'?'var(--nc)':grade==='LEAN'?'var(--ic)':'var(--t3)';
+  return{line:nearLine,overP:+overP.toFixed(3),underP:+(1-overP).toFixed(3),dir,conf,grade,gradeCol,expected};
+}
+// ── MCP/W-UFE surface tactical edge (all surfaces) ─────────────
+function mcpSurfaceEdge(p1,p2,surface){
+  if(!p1||!p2||p1.mcpNetFreq==null||p2.mcpNetFreq==null)return 0.5;
+  const net1=p1.mcpNetFreq*(p1.mcpNetW||.70),net2=p2.mcpNetFreq*(p2.mcpNetW||.70);
+  const snv1=p1.mcpSnV||0,snv2=p2.mcpSnV||0;
+  const agg1=(p1.mcpRallyAgg||0)/200,agg2=(p2.mcpRallyAgg||0)/200;
+  const wnr1=(p1.mcpFhWnr||0)+(p1.mcpBhWnr||0),wnr2=(p2.mcpFhWnr||0)+(p2.mcpBhWnr||0);
+  const we1=p1.weRatio||1.0,we2=p2.weRatio||1.0;
+  const rip1=p1.mcpRiPW||0.70,rip2=p2.mcpRiPW||0.70;
+  // Surface-specific weights: grass rewards net/SnV; clay rewards rally/rip; hard balanced
+  let nW,sW,aW,wW,weW,rW;
+  if(surface==='grass'){nW=2.0;sW=1.5;aW=0.5;wW=0.6;weW=0.8;rW=1.0;}
+  else if(surface==='clay'){nW=0.4;sW=0.1;aW=-0.4;wW=0.8;weW=1.0;rW=1.6;}
+  else{nW=1.0;sW=0.7;aW=0.3;wW=0.7;weW=0.9;rW=1.3;}
+  const edge=(net1-net2)*nW+(snv1-snv2)*sW+(agg1-agg2)*aW+(wnr1-wnr2)*wW+(we1-we2)*weW+(rip1-rip2)*rW;
+  return 1/(1+Math.exp(-edge*5));
+}
+// ── Legacy alias kept for any remaining references ────────────
+function grassMcpEdge(p1,p2){return mcpSurfaceEdge(p1,p2,'grass');}
 // ── Grand Slam Schedule Data ──────────────────────────────────
 const SLAMS={
   ao:{name:'Australian Open',surface:'hard',dates:'Jan 13 – Feb 2',draws:{m:'128',w:'128'},location:'Melbourne, AUS',prize:'$86.5M AUD'},
@@ -12048,17 +12094,42 @@ function renderTennisPicks(){
     const formAdv=favForm&&dogForm?favForm>dogForm?`${pk.pick} also holds a recent-form edge (Form ELO ${Math.round(favForm)} vs ${Math.round(dogForm)}).`:`Recent form is close, but surface and serve metrics sustain the structural advantage.`:'Surface ELO and serve/return metrics are the primary model inputs.';
     const evPctStr=(pk.ev*100).toFixed(1);
     const sz=pk.winP>=.67?'Full-unit':pk.winP>=.62?'Standard-unit':'Half-unit';
-    const tenRsn=t.lbl!=='SKIP'
-      ?`${t.lbl}: ${pk.pick} grades at ${(pk.winP*100).toFixed(1)}% win probability with +${evPctStr}% EV at ML ${pk.ml>0?'+':''}${pk.ml} — model identifies a positive-EV opportunity on ${pk.surface.toUpperCase()}. Surface ELO edge of +${eloGap} points (${favSurfElo} vs ${dogSurfElo}) confirms ${pk.pick}'s structural advantage on this court type. ${formAdv} ${sz} sizing — ELO ${(pk.winP*100).toFixed(0)}% / MC and Bayesian components aligned.`
-      :'No qualifying edge — model output below minimum threshold.';
+    // Games O/U chip for picks card
+    const _gSim=tennisSimGames(p1d,p2d,pk.surface,pk.match.bo5||false,5000);
+    const _gLine=tennisGamesLine(_gSim,pk.match.bo5||false);
+    const _csG={c:_gLine.grade==='OPTIMAL'?'chip-n':_gLine.grade==='LEAN'?'chip-i':'chip-d',pl:_gLine.grade==='OPTIMAL'?'pill-n':_gLine.grade==='LEAN'?'pill-i':'pill-d'};
+    // Stat-rich reasoning incorporating all available player stats
+    const favD=pk.pick===pk.match.p1?p1d:p2d;const dogD=pk.pick===pk.match.p1?p2d:p1d;
+    let tenRsn='No qualifying edge — model output below minimum threshold.';
+    if(t.lbl!=='SKIP'){
+      const weAvg=pk.tour==='WTA'?0.85:1.0;
+      const weEdge=favD.weRatio!=null&&dogD.weRatio!=null?` W/UFE ${favD.weRatio.toFixed(1)} vs ${dogD.weRatio.toFixed(1)} (avg ${weAvg} — ${favD.weRatio>=dogD.weRatio?'cleaner ball-striking':'unfavorable error rate'}).`:'';
+      const ripEdge=favD.mcpRiPW!=null&&dogD.mcpRiPW!=null?` Return-in-play win: ${(favD.mcpRiPW*100).toFixed(0)}% vs ${(dogD.mcpRiPW*100).toFixed(0)}%.`:'';
+      const wnrEdge=favD.mcpFhWnr!=null&&dogD.mcpFhWnr!=null?` Rally winner rate: ${((favD.mcpFhWnr+favD.mcpBhWnr)*100).toFixed(0)}% vs ${((dogD.mcpFhWnr+dogD.mcpBhWnr)*100).toFixed(0)}%.`:'';
+      const rallyEdge=favD.rallyWPt!=null&&dogD.rallyWPt!=null?` Rally W/Pt ${(favD.rallyWPt*100).toFixed(1)}%/${(dogD.rallyWPt*100).toFixed(1)}%, UFE/Pt ${(favD.rallyUPt*100).toFixed(1)}%/${(dogD.rallyUPt*100).toFixed(1)}%.`:'';
+      const netEdge=favD.mcpNetFreq!=null&&dogD.mcpNetFreq!=null?` Net: ${(favD.mcpNetFreq*100).toFixed(1)}%@${(favD.mcpNetW*100).toFixed(0)}% vs ${(dogD.mcpNetFreq*100).toFixed(1)}%@${(dogD.mcpNetW*100).toFixed(0)}%.`:'';
+      tenRsn=`${t.lbl}: ${pk.pick} ${(pk.winP*100).toFixed(1)}% win (EV +${evPctStr}% at ${pk.ml>0?'+':''}${pk.ml}) — Surface Elo +${eloGap}pts (${favSurfElo} vs ${dogSurfElo}). ${formAdv}${weEdge}${ripEdge}${wnrEdge}${rallyEdge}${netEdge} Model: 22% Elo · 50% MC · 15% form · 8% serve · 5% tactical overlay. ${sz} sizing.`;
+    }
+    // Sets O/U line
+    const _tenGender=(pk.tour||'ATP').indexOf('WTA')>=0?'W':'M';
+    const _tenSOUs=_tennisSetOU(pk.winP,_tenGender);
+    const _tenMain=pk.match.bo5?_tenSOUs.find(s=>s.line===3.5)||_tenSOUs[0]:_tenSOUs[0];
+    const _tenSetsHtml=_tenMain?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:3px">SETS O/U ${_tenMain.line}: <strong style="color:var(--ic)">${_tenMain.overP>0.5?'OVER':'UNDER'}</strong> ${(_tenMain.overP>0.5?_tenMain.overP:1-_tenMain.overP)*100|0}% · GAMES O/U ${_gLine.line}: <strong style="color:${_gLine.gradeCol}">${_gLine.dir}</strong> ${_gLine.conf}% (exp ${_gLine.expected})</div>`:'';
     return`<div class="pk" style="border-left:2px solid ${t.c}">
       <div class="pkb ${t.cl}">${t.lbl}</div>
       <div style="flex:1">
         <div class="pkt">${pk.pick} def. ${opp}</div>
         <div style="font-family:var(--mono);font-size:14px;color:${sc};margin-top:2px">${pk.match.tournament} · ${pk.surface.toUpperCase()} · ${pk.match.bo5?'BO5':'BO3'}</div>
         <div class="pkd">WIN: <strong style="color:var(--t)">${(pk.winP*100).toFixed(1)}%</strong> · EV: <strong style="color:${pk.ev>=0?'var(--nc)':'var(--hc)'}">+${evPctStr}%</strong> · ML: ${pk.ml>0?'+':''}${pk.ml}</div>
-        ${(()=>{const _tenGender=(pk.tour||'ATP').indexOf('WTA')>=0?'W':'M';const _tenSOUs=_tennisSetOU(pk.winP,_tenGender);const _tenMainLine=pk.match.bo5?_tenSOUs.find(function(s){return s.line===3.5;})||_tenSOUs[0]:_tenSOUs[0];const _tenSetsOuLine=_tenMainLine.line;const _tenSetsOverP=_tenMainLine.overP;const _tenSetsUnderP=1-_tenSetsOverP;const _tenSetsAllMkts=[];_tenSOUs.forEach(function(s){_tenSetsAllMkts.push({label:'OVER '+s.line+' sets',prob:s.overP,evVal:ev(s.overP,1.87),dec:1.87,side:'setsOver'+s.line});_tenSetsAllMkts.push({label:'UNDER '+s.line+' sets',prob:1-s.overP,evVal:ev(1-s.overP,1.91),dec:1.91,side:'setsUnder'+s.line});});const _tenSetsOUMkts=_evalMkts(_tenSetsAllMkts);const _tenSetsBM=_tenSetsOUMkts.best;return _tenSetsBM.tierN>=1?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:3px">SETS O/U: <strong style="color:var(--ic)">${_tenSetsBM.label}</strong> ${(_tenSetsBM.prob*100).toFixed(0)}% · ${_tenSetsOUMkts.lbl}</div>`:'';})()}
-        <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:3px">MODEL: ${(pk.winP*100).toFixed(1)}% win · DEC ODDS: ${dec.toFixed(3)} · ${pk.tour}</div>
+        ${_tenSetsHtml}
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <div class="${_csG.c} chip" style="flex:1;min-width:120px">
+            <div class="cht">O/U ${_gLine.line} GAMES</div>
+            <div class="cho" style="color:${_gLine.gradeCol}">${_gLine.dir}</div>
+            <div class="chp">${_gLine.conf}% <span style="font-size:10px;opacity:.7">(${_gLine.expected})</span></div>
+            <div style="margin-top:2px"><span class="pill ${_csG.pl}">${_gLine.grade}</span></div>
+          </div>
+        </div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.7;margin-top:6px;padding:6px 8px;background:rgba(4,0,12,.5);border-left:2px solid ${t.c}"><span style="font-size:11px;color:var(--t3);letter-spacing:1px">ENGINE REASONING&nbsp;&nbsp;</span>${tenRsn}</div>
       </div>
       <button class="btn btn-o" style="padding:3px 8px;font-size:13px;align-self:center;flex-shrink:0" onclick="lockPick('${pk.pick}','${opp}','TEN','${pk.pick}',${pk.winP.toFixed(3)},'${pk.ml>0?'+':''}${pk.ml}',${dec.toFixed(3)},'${today()}')">OPTIMAL</button>
@@ -12618,14 +12689,26 @@ function renderWimDraw(tour,round){
         const ouMain=bo5?ou.find(o=>o.line===3.5):ou[0];
         const ouDir=ouMain&&ouMain.overP>0.5?'OVER':'UNDER';
         const ouConf=ouMain?Math.round(Math.max(ouMain.overP,1-ouMain.overP)*100):50;
-        const reasoning=wimPickReasoning(m.p1,m.p2,mcP,m.p1ml,bo5,m.grade);
+        // Games O/U from MC simulation
+        const _wGSim=tennisSimGames(d1,d2,'grass',bo5,5000);
+        const _wGLine=tennisGamesLine(_wGSim,bo5);
+        const _wGCol=_wGLine.gradeCol;
+        // Full stat-aware reasoning
+        const _leanD=m.lean===1?d1:d2;const _dogWD=m.lean===1?d2:d1;
+        const _weStr=_leanD.weRatio!=null&&_dogWD.weRatio!=null?` W/UFE ${_leanD.weRatio.toFixed(1)} vs ${_dogWD.weRatio.toFixed(1)}.`:'';
+        const _ripStr=_leanD.mcpRiPW!=null&&_dogWD.mcpRiPW!=null?` RiP-Win ${(_leanD.mcpRiPW*100).toFixed(0)}% vs ${(_dogWD.mcpRiPW*100).toFixed(0)}%.`:'';
+        const _wnrStr=_leanD.mcpFhWnr!=null&&_dogWD.mcpFhWnr!=null?` Rally Wnr ${((_leanD.mcpFhWnr+_leanD.mcpBhWnr)*100).toFixed(0)}% vs ${((_dogWD.mcpFhWnr+_dogWD.mcpBhWnr)*100).toFixed(0)}%.`:'';
+        const _netStr=_leanD.mcpNetFreq!=null&&_dogWD.mcpNetFreq!=null?` Net ${(_leanD.mcpNetFreq*100).toFixed(1)}%@${(_leanD.mcpNetW*100).toFixed(0)}% vs ${(_dogWD.mcpNetFreq*100).toFixed(1)}%@${(_dogWD.mcpNetW*100).toFixed(0)}%.`:'';
+        const _rallyStr=_leanD.rallyWPt!=null&&_dogWD.rallyWPt!=null?` Rally W/Pt ${(_leanD.rallyWPt*100).toFixed(1)}/${(_dogWD.rallyWPt*100).toFixed(1)}, UFE/Pt ${(_leanD.rallyUPt*100).toFixed(1)}/${(_dogWD.rallyUPt*100).toFixed(1)}.`:'';
+        const reasoning=wimPickReasoning(m.p1,m.p2,mcP,m.p1ml,bo5,m.grade)+_weStr+_ripStr+_wnrStr+_rallyStr+_netStr;
         mcHtml=`<div style="background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.12);border-radius:3px;padding:8px 10px;margin-bottom:7px">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:5px">// 10K MONTE CARLO · GRASS ELO BLEND</div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:5px">// 10K MONTE CARLO · GRASS ELO · MCP + W/UFE BLEND</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
             <div style="text-align:center;min-width:80px"><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">MC WIN%</div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--nc)">${(mcP*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${m.p1}</div></div>
             <div style="text-align:center;min-width:80px"><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">MC WIN%</div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--t2)">${((1-mcP)*100).toFixed(1)}%</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${m.p2}</div></div>
             <div style="text-align:center;min-width:80px"><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">MODEL EV</div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${ev1>=0?'var(--rc)':'var(--hc)'}">${ev1>=0?'+':''}${ev1.toFixed(1)}%</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${m.p1} EV</div></div>
             ${ouMain?`<div style="text-align:center;min-width:80px"><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">O/U ${ouMain.line} SETS</div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:var(--gc)">${ouDir} ${ouConf}%</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${bo5?'BO5':'BO3'} SETS</div></div>`:''}
+            <div style="text-align:center;min-width:80px"><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">O/U ${_wGLine.line} GAMES</div><div style="font-family:var(--orb);font-size:17px;font-weight:700;color:${_wGCol}">${_wGLine.dir} ${_wGLine.conf}%</div><div style="font-family:var(--mono);font-size:11px;color:var(--t3)">EXP ${_wGLine.expected} total</div></div>
           </div>
           <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.6;border-top:1px solid rgba(0,240,255,.1);padding-top:6px">${reasoning}</div>
         </div>`;
@@ -16335,13 +16418,53 @@ function renderTennisToday(filterTour){
     const ouGradeCol=ouGrade==='OPTIMAL'?'var(--nc)':ouGrade==='LEAN'?'var(--ic)':'var(--t3)';
     const csOU={c:ouGrade==='OPTIMAL'?'chip-n':ouGrade==='LEAN'?'chip-i':'chip-d',pl:ouGrade==='OPTIMAL'?'pill-n':ouGrade==='LEAN'?'pill-i':'pill-d',lb:ouGrade};
 
+    // Total games O/U (MC-simulated)
+    let gamesChipHtml='';
+    if(d1&&d2){
+      const gSim=tennisSimGames(d1,d2,m.surface,m.bo5||false,5000);
+      const gLine=tennisGamesLine(gSim,m.bo5||false);
+      const csG={c:gLine.grade==='OPTIMAL'?'chip-n':gLine.grade==='LEAN'?'chip-i':'chip-d',pl:gLine.grade==='OPTIMAL'?'pill-n':gLine.grade==='LEAN'?'pill-i':'pill-d'};
+      gamesChipHtml=`<div class="${csG.c} chip" style="flex:1">
+        <div class="cht">O/U ${gLine.line} GAMES</div>
+        <div class="cho" style="color:${gLine.gradeCol}">${gLine.dir}</div>
+        <div class="chp">${gLine.conf}% <span style="font-size:10px;opacity:.7">(exp ${gLine.expected})</span></div>
+        <div style="margin-top:2px"><span class="pill ${csG.pl}">${gLine.grade}</span></div>
+      </div>`;
+    }
+
+    // Stat snapshot for reasoning (when DB entries exist)
+    let statSnap='';
+    if(d1&&d2){
+      const weStr1=d1.weRatio!=null?`W/UFE ${d1.weRatio.toFixed(1)}`:null;
+      const weStr2=d2.weRatio!=null?`W/UFE ${d2.weRatio.toFixed(1)}`:null;
+      const ripStr1=d1.mcpRiPW!=null?`RiP ${(d1.mcpRiPW*100).toFixed(0)}%`:null;
+      const ripStr2=d2.mcpRiPW!=null?`RiP ${(d2.mcpRiPW*100).toFixed(0)}%`:null;
+      const wnrStr1=d1.mcpFhWnr!=null?`Wnr ${((d1.mcpFhWnr+d1.mcpBhWnr)*100).toFixed(0)}%`:null;
+      const wnrStr2=d2.mcpFhWnr!=null?`Wnr ${((d2.mcpFhWnr+d2.mcpBhWnr)*100).toFixed(0)}%`:null;
+      const p1snap=[weStr1,ripStr1,wnrStr1].filter(Boolean).join(' · ');
+      const p2snap=[weStr2,ripStr2,wnrStr2].filter(Boolean).join(' · ');
+      if(p1snap||p2snap) statSnap=` | ${m.p1}: ${p1snap} / ${m.p2}: ${p2snap}`;
+    }
+
     // Reasoning
-    const favP=p1Win>=0.5?m.p1:m.p2;
+    const favP=p1Win>=0.5?m.p1:m.p2;const favD=p1Win>=0.5?d1:d2;const dogD=p1Win>=0.5?d2:d1;
     const favWin=Math.max(p1Win,p2Win);
     const imp1=m.p1ml<0?Math.abs(m.p1ml)/(Math.abs(m.p1ml)+100):100/(100+m.p1ml);
     const modelEdge=((p1Win-imp1)*100).toFixed(1);
     const sizeStr=favWin>=.67?'Full-unit':favWin>=.62?'Standard-unit':'Half-unit';
-    const reasoning=`${hasModel?'OPTIMAL':'LEAN'}: 10,000 Monte Carlo simulations (grass Elo blend) give ${m.p1} a ${(p1Win*100).toFixed(1)}% win probability. Market-implied is ${(imp1*100).toFixed(1)}% — model edge of ${modelEdge>=0?'+':''}${modelEdge}%. O/U ${ouMain?ouMain.line:''} sets: model projects ${ouDir} at ${ouConf}% confidence. ${sizeStr} sizing. Confirm at post-time.`;
+    const favGrade=favWin>=.67?'PREMIUM':favWin>=.62?'OPTIMAL':favWin>=.55?'LEAN':'MONITOR';
+    // Build rich reasoning string referencing all integrated stats
+    let reasoning=`${favGrade}: 10K MC (22% Elo · 50% MC simulation · 15% form · 8% serve edge · 5% tactical overlay) gives ${m.p1} ${(p1Win*100).toFixed(1)}% / ${m.p2} ${(p2Win*100).toFixed(1)}%. Market-implied ${(imp1*100).toFixed(1)}%, model edge ${modelEdge>=0?'+':''}${modelEdge}pp.`;
+    if(hasModel&&d1&&d2){
+      const surfEloKey=m.surface==='clay'?'clayElo':m.surface==='grass'?'grassElo':'hardElo';
+      const eloGap=(d1[surfEloKey]||0)-(d2[surfEloKey]||0);
+      reasoning+=` Surface Elo gap: ${eloGap>=0?'+':''}${eloGap} (${m.surface.toUpperCase()}).`;
+      if(d1.weRatio!=null&&d2.weRatio!=null) reasoning+=` W/UFE — ${m.p1} ${d1.weRatio.toFixed(1)} vs ${m.p2} ${d2.weRatio.toFixed(1)} (higher=cleaner ball-striking, avg 1.0 ATP/0.85 WTA).`;
+      if(d1.mcpRiPW!=null&&d2.mcpRiPW!=null) reasoning+=` Return-in-play win% — ${m.p1} ${(d1.mcpRiPW*100).toFixed(0)}% vs ${m.p2} ${(d2.mcpRiPW*100).toFixed(0)}%.`;
+      if(d1.rallyWPt!=null&&d2.rallyWPt!=null) reasoning+=` Rally Wnr/Pt — ${m.p1} ${(d1.rallyWPt*100).toFixed(1)}% vs ${m.p2} ${(d2.rallyWPt*100).toFixed(1)}%; Rally UFE/Pt — ${m.p1} ${(d1.rallyUPt*100).toFixed(1)}% vs ${m.p2} ${(d2.rallyUPt*100).toFixed(1)}%.`;
+      if(d1.mcpNetFreq!=null&&d2.mcpNetFreq!=null) reasoning+=` Net freq — ${m.p1} ${(d1.mcpNetFreq*100).toFixed(1)}% (${(d1.mcpNetW*100).toFixed(0)}% win) vs ${m.p2} ${(d2.mcpNetFreq*100).toFixed(1)}% (${(d2.mcpNetW*100).toFixed(0)}% win).`;
+    }
+    reasoning+=` ${sizeStr} sizing. Confirm at post-time.`;
 
     // Build lock pick args
     const p1ld=d1ml.toFixed(3),p2ld=d2ml.toFixed(3);
@@ -16379,6 +16502,7 @@ function renderTennisToday(filterTour){
           <div class="chp">${ouConf}%</div>
           <div style="margin-top:2px"><span class="pill ${csOU.pl}">${csOU.lb}</span></div>
         </div>`:''}
+        ${gamesChipHtml}
       </div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.6;padding:8px 10px;background:rgba(0,240,255,.04);border-top:1px solid rgba(0,240,255,.08);margin-top:4px">${reasoning}</div>
     </div>`;
