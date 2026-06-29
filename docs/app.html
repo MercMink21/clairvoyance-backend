@@ -13198,20 +13198,27 @@ function generatePickCard(picks,title){
   const canvas=document.getElementById('pick-canvas');if(!canvas)return;
   const ctx=canvas.getContext('2d');const W=400,H=500;
   ctx.clearRect(0,0,W,H);
-  // Background: landing page style — dark indigo + straight cyan HUD grid
-  ctx.fillStyle='#16122a';ctx.fillRect(0,0,W,H);
-  // Cyan HUD grid
-  ctx.strokeStyle='rgba(0,240,255,.028)';ctx.lineWidth=1;
-  const GS=48;
-  for(let x=0;x<W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  // Magenta/purple bloom
+  // Background: dark navy matching bg.jpg
+  ctx.fillStyle='#0d1020';ctx.fillRect(0,0,W,H);
+  // Diagonal diamond grid (replicates bg.jpg)
+  const DS=Math.round(W/26); // ~15px at 400px wide
+  ctx.save();ctx.strokeStyle='rgba(100,130,190,.13)';ctx.lineWidth=1;
+  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+  ctx.restore();
+  // Cyan H/V grid overlay
+  const GS=Math.round(W/8); // ~48px at 400px wide
+  ctx.save();ctx.strokeStyle='rgba(0,240,255,.07)';ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<=H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+  // Magenta bloom
   const mg=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W*.55);
-  mg.addColorStop(0,'rgba(180,0,255,.09)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  mg.addColorStop(0,'rgba(180,0,255,.13)');mg.addColorStop(0.5,'rgba(180,0,255,.05)');mg.addColorStop(1,'rgba(180,0,255,0)');
   ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
   // Vignette
-  const vig=ctx.createRadialGradient(W/2,H/2,W*.2,W/2,H/2,W*.7);
-  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.5)');
+  const vig=ctx.createRadialGradient(W/2,H/2,W*.2,W/2,H/2,W*.72);
+  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.6)');
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   // Header bar
   const grad=ctx.createLinearGradient(0,0,W,0);grad.addColorStop(0,'rgba(0,240,255,0.15)');grad.addColorStop(1,'rgba(240,0,255,0.15)');
@@ -14657,12 +14664,13 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   const dispSport=_sportDisplayName(sport);
   const dateStr=moves[0]?.date||today();
   const cardTitle=(tm||{}).title||'Base Intelligence Brief';
-  // Background: landing page style — dark indigo + straight cyan HUD grid + magenta bloom
-  const cfBg='radial-gradient(ellipse 55% 45% at 50% 35%,rgba(180,0,255,.09) 0%,transparent 65%),'
-    +'radial-gradient(ellipse 40% 35% at 80% 78%,rgba(0,240,255,.05) 0%,transparent 65%),'
-    +'linear-gradient(rgba(0,240,255,.028) 1px,transparent 1px),'
-    +'linear-gradient(90deg,rgba(0,240,255,.028) 1px,transparent 1px),'
-    +'#16122a';
+  // Background: landing page style — dark navy + diagonal diamond grid (bg.jpg) + cyan H/V overlay + magenta bloom
+  const cfBg='radial-gradient(ellipse 55% 45% at 50% 32%,rgba(180,0,255,.13) 0%,rgba(180,0,255,.04) 55%,transparent 75%),'
+    +'linear-gradient(rgba(0,240,255,.07) 1px,transparent 1px),'
+    +'linear-gradient(90deg,rgba(0,240,255,.07) 1px,transparent 1px),'
+    +'linear-gradient(45deg,rgba(100,130,190,.13) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(100,130,190,.13) 1px,transparent 1px),'
+    +'#0d1020';
   // Group picks by grade tier first so we know total visual row count
   const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
   const grpMap={};
@@ -14697,7 +14705,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     return'<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:2px">'+header+grpMap[k].map(pickCell).join('')+'</div>';
   }).join('');
 
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,100% 100%,48px 48px,48px 48px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,48px 48px,48px 48px,15px 15px,15px 15px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
     +'<div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle,rgba(240,0,255,.1) 0%,transparent 70%);pointer-events:none"></div>'
     // Row 1: CLAIRVOYANCE centered · tier label pinned top-right
@@ -14814,25 +14822,29 @@ function shareLeagueCard(idx){
 // ═══════════════════════════════════════════════════════════════════════════
 function _cfBg(ctx,W,H){
   const cx=W/2,cy=H/2;
-  // Base: landing page dark indigo
-  ctx.fillStyle='#16122a';ctx.fillRect(0,0,W,H);
-  // Straight cyan HUD grid (matching clairvoyanceengine.info hero)
-  const S=48;
-  ctx.save();ctx.strokeStyle='rgba(0,240,255,.028)';ctx.lineWidth=1;
-  for(let x=0;x<W;x+=S){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=S){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Base: dark navy matching bg.jpg tone
+  ctx.fillStyle='#0d1020';ctx.fillRect(0,0,W,H);
+  // ── Diagonal diamond grid (replicates bg.jpg pattern) ──────────────────
+  const DS=Math.round(W/72); // ~15px at 1080
+  ctx.save();ctx.strokeStyle='rgba(100,130,190,.13)';ctx.lineWidth=1;
+  // +45° lines
+  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+  // -45° lines
+  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
   ctx.restore();
-  // Magenta/purple radial bloom at upper-center
-  const mg=ctx.createRadialGradient(cx,H*.35,0,cx,H*.35,W*.55);
-  mg.addColorStop(0,'rgba(180,0,255,.09)');mg.addColorStop(0.6,'rgba(180,0,255,.04)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  // ── Straight cyan H/V grid (hero CSS overlay) ──────────────────────────
+  const GS=Math.round(W/22.5); // ~48px at 1080
+  ctx.save();ctx.strokeStyle='rgba(0,240,255,.07)';ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<=H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+  // ── Magenta bloom upper-center ─────────────────────────────────────────
+  const mg=ctx.createRadialGradient(cx,H*.32,0,cx,H*.32,W*.55);
+  mg.addColorStop(0,'rgba(180,0,255,.13)');mg.addColorStop(0.5,'rgba(180,0,255,.05)');mg.addColorStop(1,'rgba(180,0,255,0)');
   ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
-  // Cyan accent bloom at lower-right
-  const cg=ctx.createRadialGradient(W*.8,H*.75,0,W*.8,H*.75,W*.4);
-  cg.addColorStop(0,'rgba(0,240,255,.05)');cg.addColorStop(1,'rgba(0,240,255,0)');
-  ctx.fillStyle=cg;ctx.fillRect(0,0,W,H);
-  // Vignette
-  const vg=ctx.createRadialGradient(cx,cy,W*.25,cx,cy,W*.72);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.55)');
+  // ── Vignette ───────────────────────────────────────────────────────────
+  const vg=ctx.createRadialGradient(cx,cy,W*.22,cx,cy,W*.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.62)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
 }
 function _hudCorners(ctx,W,H){
