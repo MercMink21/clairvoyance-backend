@@ -10405,66 +10405,103 @@ function renderHomePage(){
     }
   }
 
-  // ── Today's Top Picks — DARK HORSE / PREMIUM across all sports ────────────
+  // ── Today's Top Picks — oscillating ticker ────────────────────────────────
   const tpEl=document.getElementById('home-top-picks');
   if(tpEl){
-    // Pull all of today's locked pending bets that have model data
     const todayAll=allBets.filter(p=>p.date===todayStr&&p.winProb!=null);
-    // Categorise: PREMIUM = winProb≥0.67 + EV>3 (high certainty)
-    //             DARK HORSE = underdog (ml>0) + EV>4 + winProb≥0.48 (sleeper value)
-    const mlEV=(p,decOdds)=>p*(decOdds||2)-(1);
+    const mlEV=(wp,dec)=>wp*(dec||2)-1;
     const premiumPicks=[];const darkHorsePicks=[];
     for(const p of todayAll){
-      const wp=p.winProb||0;
-      const dec=parseFloat(p.decOdds)||2;
-      const evVal=mlEV(wp,dec);
+      const wp=p.winProb||0;const dec=parseFloat(p.decOdds)||2;const evVal=mlEV(wp,dec);
       const mlNum=parseFloat((p.ml||'').replace('+',''))||0;
-      const isUndg=mlNum>0;
-      if(wp>=0.67&&evVal>0.03)premiumPicks.push({...p,_evVal:evVal});
-      else if(isUndg&&wp>=0.47&&evVal>0.04)darkHorsePicks.push({...p,_evVal:evVal});
+      if(wp>=0.67&&evVal>0.03)premiumPicks.push({...p,_evVal:evVal,_bucket:'PREMIUM'});
+      else if(mlNum>0&&wp>=0.47&&evVal>0.04)darkHorsePicks.push({...p,_evVal:evVal,_bucket:'SLEEPER'});
     }
-    // Sort by ev desc within each bucket
     premiumPicks.sort((a,b)=>b._evVal-a._evVal);
     darkHorsePicks.sort((a,b)=>b._evVal-a._evVal);
-    const sc=s=>{const m={MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--pc)',TEN:'var(--mc)',SOC:'var(--nc)',WC:'var(--nc)',default:'var(--t3)'};return m[s]||m.default;};
-    const mkCard=(p,badge,badgeCol)=>{
-      const mu=_gameTitle(p.hA,p.awA,p.sport)||'';
-      const conf=p.winProb?(p.winProb*100).toFixed(0)+'%':'';
-      const mlStr=p.ml?`${p.ml.startsWith('-')?'':'+'}${p.ml.replace('+','')}`.replace('+-','-'):'';
-      const evPct=p._evVal!=null?(p._evVal*100).toFixed(1)+'% EV':'';
-      return`<div style="padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:flex-start;gap:10px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;padding-top:1px">
-          <span style="font-family:var(--mono);font-size:10px;padding:2px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
-          <span style="font-family:var(--mono);font-size:9px;padding:1px 4px;border:1px solid ${badgeCol};color:${badgeCol};border-radius:2px;letter-spacing:1px">${badge}</span>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:2px">${mu}</div>
-          <div style="font-family:var(--mono);font-size:14px;color:var(--t1);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
-          <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap">
-            ${mlStr?`<span style="font-family:var(--mono);font-size:12px;color:${badgeCol};font-weight:700">${mlStr}</span>`:''}
-            ${conf?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${conf} WIN PROB</span>`:''}
-            ${evPct?`<span style="font-family:var(--mono);font-size:11px;color:var(--nc)">${evPct}</span>`:''}
+    const allPicks=[...premiumPicks,...darkHorsePicks];
+    if(!allPicks.length){tpEl.innerHTML='';tpEl.style.display='none';}
+    else{
+      tpEl.style.display='';
+      const sc=s=>({MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--pc)',TEN:'var(--mc)',SOC:'var(--nc)',WC:'var(--nc)'}[s]||'var(--t3)');
+      const bc=b=>b==='PREMIUM'?'var(--gc)':'var(--hc)';
+      const mkTickerCard=(p)=>{
+        const mu=_gameTitle(p.hA,p.awA,p.sport)||`${p.hA||''} vs ${p.awA||''}`;
+        const conf=p.winProb?(p.winProb*100).toFixed(0)+'%':'';
+        const mlStr=p.ml?String(p.ml).replace(/^\+/,'').replace(/^(-?)(\d)/,'$1+$2').replace('+-','-').replace(/^\+/,'+'):'';
+        const evPct=p._evVal!=null?(p._evVal*100).toFixed(1)+'%':'';
+        const col=bc(p._bucket);
+        const bet=(_expandBetOn(p.betOn||'',p.sport)||p.betOn||'').slice(0,38);
+        return`<div style="flex-shrink:0;width:248px;background:rgba(4,0,12,.85);border:1px solid ${col}44;border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;cursor:default;transition:border-color .2s" onmouseenter="this.style.borderColor='${col}99'" onmouseleave="this.style.borderColor='${col}44'">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <span style="font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
+            <span style="font-family:var(--mono);font-size:9px;padding:1px 5px;background:${col}22;border:1px solid ${col};color:${col};border-radius:2px;letter-spacing:1px">${p._bucket}</span>
           </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mu}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t1);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${bet}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:1px">
+            ${p.ml?`<span style="font-family:var(--mono);font-size:13px;color:${col};font-weight:700">${p.ml}</span>`:''}
+            ${conf?`<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${conf}</span>`:''}
+            ${evPct?`<span style="font-family:var(--mono);font-size:10px;color:var(--nc);margin-left:auto">${evPct} EV</span>`:''}
+          </div>
+        </div>`;
+      };
+      // Duplicate picks for seamless oscillation feel (fill space generously)
+      const cards=allPicks.map(mkTickerCard).join('');
+      const premCount=premiumPicks.length,dhCount=darkHorsePicks.length;
+      const titleHtml=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3)">
+          ${premCount?`<span style="color:var(--gc)">◆ ${premCount} PREMIUM</span>`:''}
+          ${premCount&&dhCount?`<span style="color:rgba(255,255,255,.2)"> · </span>`:''}
+          ${dhCount?`<span style="color:var(--hc)">⚡ ${dhCount} SLEEPER</span>`:''}
+        </div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <button id="tp-btn-slow" onclick="window._tpSpeedStep&&window._tpSpeedStep(-1)" title="Slow down" style="font-family:var(--mono);font-size:11px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t3);border-radius:2px;cursor:pointer">‹‹</button>
+          <button id="tp-btn-pause" onclick="window._tpTogglePause&&window._tpTogglePause()" title="Pause/Resume" style="font-family:var(--mono);font-size:11px;padding:2px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t2);border-radius:2px;cursor:pointer">⏸</button>
+          <button id="tp-btn-fast" onclick="window._tpSpeedStep&&window._tpSpeedStep(1)" title="Speed up" style="font-family:var(--mono);font-size:11px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t3);border-radius:2px;cursor:pointer">››</button>
         </div>
       </div>`;
-    };
-    if(!premiumPicks.length&&!darkHorsePicks.length){
-      tpEl.innerHTML='';
-    } else {
-      let tpHtml='';
-      if(premiumPicks.length){
-        tpHtml+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--gc);margin-bottom:4px">◆ PREMIUM · HIGHEST PROBABILITY — ${premiumPicks.length} PICK${premiumPicks.length>1?'S':''}</div>
-        <div style="border:1px solid rgba(187,255,0,.3);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6);margin-bottom:10px">
-          ${premiumPicks.slice(0,5).map(p=>mkCard(p,'PREMIUM','var(--gc)')).join('')}
-        </div>`;
+      // Outer: fade edges via mask
+      tpEl.innerHTML=titleHtml+`<div id="tp-mask" style="position:relative;border-radius:4px;overflow:hidden">
+        <div id="tp-track" style="display:flex;gap:10px;overflow-x:auto;scroll-behavior:auto;padding:4px 2px 10px;scrollbar-width:none;-ms-overflow-style:none;cursor:grab;user-select:none">${cards}</div>
+      </div>`;
+      // Hide native scrollbar
+      const trackEl=document.getElementById('tp-track');
+      if(trackEl){
+        trackEl.style.cssText+=';scrollbar-width:none;-ms-overflow-style:none;';
+        // Ticker oscillation engine
+        if(!window._tpEngine){
+          let _speed=1.4,_dir=1,_paused=false,_dragging=false,_dragStart=0,_dragSL=0;
+          const speeds=[0.5,0.9,1.4,2.2,3.5,5.5];let _sIdx=2;
+          window._tpSpeedStep=(d)=>{_sIdx=Math.max(0,Math.min(speeds.length-1,_sIdx+d));_speed=speeds[_sIdx];};
+          window._tpTogglePause=()=>{
+            _paused=!_paused;
+            const btn=document.getElementById('tp-btn-pause');
+            if(btn)btn.textContent=_paused?'▶':'⏸';
+          };
+          // Drag-to-scroll (mouse)
+          document.addEventListener('mousedown',e=>{const t=e.target.closest('#tp-track');if(!t)return;_dragging=true;_dragStart=e.clientX;_dragSL=t.scrollLeft;t.style.cursor='grabbing';e.preventDefault();});
+          document.addEventListener('mousemove',e=>{if(!_dragging)return;const t=document.getElementById('tp-track');if(t){t.scrollLeft=_dragSL-(e.clientX-_dragStart);}});
+          document.addEventListener('mouseup',()=>{_dragging=false;const t=document.getElementById('tp-track');if(t)t.style.cursor='grab';});
+          // Touch support
+          document.addEventListener('touchstart',e=>{const t=e.target.closest('#tp-track');if(!t)return;_dragging=true;_dragStart=e.touches[0].clientX;_dragSL=t.scrollLeft;},{passive:true});
+          document.addEventListener('touchmove',e=>{if(!_dragging)return;const t=document.getElementById('tp-track');if(t){t.scrollLeft=_dragSL-(e.touches[0].clientX-_dragStart);}},{passive:true});
+          document.addEventListener('touchend',()=>{_dragging=false;});
+          // Pause on hover
+          document.addEventListener('mouseover',e=>{if(e.target.closest('#tp-track'))window._tpHover=true;});
+          document.addEventListener('mouseout',e=>{if(e.target.closest('#tp-track'))window._tpHover=false;});
+          window._tpEngine=setInterval(()=>{
+            if(_paused||_dragging||window._tpHover)return;
+            const el=document.getElementById('tp-track');
+            if(!el)return;
+            const max=el.scrollWidth-el.clientWidth;
+            if(max<=0)return;
+            el.scrollLeft+=_dir*_speed;
+            if(el.scrollLeft>=max-1){_dir=-1;}
+            if(el.scrollLeft<=1){_dir=1;}
+          },16);
+        }
       }
-      if(darkHorsePicks.length){
-        tpHtml+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--hc);margin-bottom:4px">⚡ DARK HORSE · SLEEPER VALUE — ${darkHorsePicks.length} PICK${darkHorsePicks.length>1?'S':''}</div>
-        <div style="border:1px solid rgba(255,32,144,.3);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6);margin-bottom:10px">
-          ${darkHorsePicks.slice(0,5).map(p=>mkCard(p,'SLEEPER','var(--hc)')).join('')}
-        </div>`;
-      }
-      tpEl.innerHTML=tpHtml;
     }
   }
 
