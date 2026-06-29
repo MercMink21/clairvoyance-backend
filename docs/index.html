@@ -10490,15 +10490,18 @@ function renderHomePage(){
           // Pause on hover
           document.addEventListener('mouseover',e=>{if(e.target.closest('#tp-track'))window._tpHover=true;});
           document.addEventListener('mouseout',e=>{if(e.target.closest('#tp-track'))window._tpHover=false;});
+          let _dwell=0;// frames to hold at boundary before reversing
           window._tpEngine=setInterval(()=>{
             if(_paused||_dragging||window._tpHover)return;
             const el=document.getElementById('tp-track');
             if(!el)return;
             const max=el.scrollWidth-el.clientWidth;
             if(max<=0)return;
-            el.scrollLeft+=_dir*_speed;
-            if(el.scrollLeft>=max-1){_dir=-1;}
-            if(el.scrollLeft<=1){_dir=1;}
+            if(_dwell>0){_dwell--;return;}
+            const next=el.scrollLeft+_dir*_speed;
+            if(next>=max){el.scrollLeft=max;_dir=-1;_dwell=40;}// ~640ms pause at right end
+            else if(next<=0){el.scrollLeft=0;_dir=1;_dwell=40;}// ~640ms pause at left end
+            else{el.scrollLeft=next;}
           },16);
         }
       }
@@ -13808,7 +13811,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-28 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-29 15:02 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
