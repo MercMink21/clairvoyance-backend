@@ -13198,27 +13198,27 @@ function generatePickCard(picks,title){
   const canvas=document.getElementById('pick-canvas');if(!canvas)return;
   const ctx=canvas.getContext('2d');const W=400,H=500;
   ctx.clearRect(0,0,W,H);
-  // Background: dark navy matching bg.jpg
-  ctx.fillStyle='#0d1020';ctx.fillRect(0,0,W,H);
-  // Diagonal diamond grid (replicates bg.jpg)
-  const DS=Math.round(W/26); // ~15px at 400px wide
-  ctx.save();ctx.strokeStyle='rgba(100,130,190,.13)';ctx.lineWidth=1;
-  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
-  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+  // Background: match landing page bg.jpg (1920×1080, ~43px diamond cells)
+  ctx.fillStyle='#0b0d1e';ctx.fillRect(0,0,W,H);
+  // Diagonal diamond grid — proportional to bg.jpg cell size at this canvas width
+  const DS=Math.max(6,Math.round(W*43/1920));
+  ctx.save();ctx.strokeStyle='rgba(70,105,175,.22)';ctx.lineWidth=1;
+  for(let i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+  for(let i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
   ctx.restore();
-  // Cyan H/V grid overlay
-  const GS=Math.round(W/8); // ~48px at 400px wide
-  ctx.save();ctx.strokeStyle='rgba(0,240,255,.07)';ctx.lineWidth=1;
+  // Cyan H/V grid — hero CSS overlay proportional
+  const GS=Math.max(20,Math.round(W*48/1920));
+  ctx.save();ctx.strokeStyle='rgba(0,240,255,.09)';ctx.lineWidth=1;
   for(let x=0;x<=W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=0;y<=H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
   ctx.restore();
   // Magenta bloom
-  const mg=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W*.55);
-  mg.addColorStop(0,'rgba(180,0,255,.13)');mg.addColorStop(0.5,'rgba(180,0,255,.05)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  const mg=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W*.58);
+  mg.addColorStop(0,'rgba(180,0,255,.15)');mg.addColorStop(0.45,'rgba(180,0,255,.06)');mg.addColorStop(1,'rgba(180,0,255,0)');
   ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
   // Vignette
-  const vig=ctx.createRadialGradient(W/2,H/2,W*.2,W/2,H/2,W*.72);
-  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.6)');
+  const vig=ctx.createRadialGradient(W/2,H/2,W*.18,W/2,H/2,W*.70);
+  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.58)');
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   // Header bar
   const grad=ctx.createLinearGradient(0,0,W,0);grad.addColorStop(0,'rgba(0,240,255,0.15)');grad.addColorStop(1,'rgba(240,0,255,0.15)');
@@ -14664,13 +14664,14 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   const dispSport=_sportDisplayName(sport);
   const dateStr=moves[0]?.date||today();
   const cardTitle=(tm||{}).title||'Base Intelligence Brief';
-  // Background: landing page style — dark navy + diagonal diamond grid (bg.jpg) + cyan H/V overlay + magenta bloom
-  const cfBg='radial-gradient(ellipse 55% 45% at 50% 32%,rgba(180,0,255,.13) 0%,rgba(180,0,255,.04) 55%,transparent 75%),'
-    +'linear-gradient(rgba(0,240,255,.07) 1px,transparent 1px),'
-    +'linear-gradient(90deg,rgba(0,240,255,.07) 1px,transparent 1px),'
-    +'linear-gradient(45deg,rgba(100,130,190,.13) 1px,transparent 1px),'
-    +'linear-gradient(-45deg,rgba(100,130,190,.13) 1px,transparent 1px),'
-    +'#0d1020';
+  // Background: landing page — dark navy + diagonal diamond grid (bg.jpg) + cyan H/V grid + magenta bloom
+  // bg.jpg is 1920×1080 with ~43px diamond cells; displayed cards are ~300px so CSS cell ≈ 43×(300/1920)≈7px → use 12px for HTML cards
+  const cfBg='radial-gradient(ellipse 60% 50% at 50% 30%,rgba(180,0,255,.18) 0%,rgba(180,0,255,.06) 50%,transparent 72%),'
+    +'linear-gradient(rgba(0,240,255,.09) 1px,transparent 1px),'
+    +'linear-gradient(90deg,rgba(0,240,255,.09) 1px,transparent 1px),'
+    +'linear-gradient(45deg,rgba(70,105,175,.22) 1px,transparent 1px),'
+    +'linear-gradient(-45deg,rgba(70,105,175,.22) 1px,transparent 1px),'
+    +'#0b0d1e';
   // Group picks by grade tier first so we know total visual row count
   const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
   const grpMap={};
@@ -14705,7 +14706,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     return'<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:2px">'+header+grpMap[k].map(pickCell).join('')+'</div>';
   }).join('');
 
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,48px 48px,48px 48px,15px 15px,15px 15px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,40px 40px,40px 40px,12px 12px,12px 12px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
     +'<div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle,rgba(240,0,255,.1) 0%,transparent 70%);pointer-events:none"></div>'
     // Row 1: CLAIRVOYANCE centered · tier label pinned top-right
@@ -14822,29 +14823,40 @@ function shareLeagueCard(idx){
 // ═══════════════════════════════════════════════════════════════════════════
 function _cfBg(ctx,W,H){
   const cx=W/2,cy=H/2;
-  // Base: dark navy matching bg.jpg tone
-  ctx.fillStyle='#0d1020';ctx.fillRect(0,0,W,H);
-  // ── Diagonal diamond grid (replicates bg.jpg pattern) ──────────────────
-  const DS=Math.round(W/72); // ~15px at 1080
-  ctx.save();ctx.strokeStyle='rgba(100,130,190,.13)';ctx.lineWidth=1;
-  // +45° lines
-  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
-  // -45° lines
-  for(let i=-H;i<W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+  // ── Base: dark navy matching bg.jpg (#0b0d1e at 1920×1080) ────────────
+  ctx.fillStyle='#0b0d1e';ctx.fillRect(0,0,W,H);
+  // ── Diagonal diamond grid — bg.jpg has ~43px cells at 1920px wide ──────
+  // Scale proportionally: 43 × (W/1920) — gives ~24px at W=1080
+  const DS=Math.max(8,Math.round(W*43/1920));
+  ctx.save();
+  ctx.strokeStyle='rgba(70,105,175,.22)';ctx.lineWidth=1;
+  // +45° lines: from (i,0)→(i+H,H)
+  for(let i=-H;i<=W+H;i+=DS){
+    ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();
+  }
+  // -45° lines: from (i,H)→(i+H,0)
+  for(let i=-H;i<=W+H;i+=DS){
+    ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();
+  }
   ctx.restore();
-  // ── Straight cyan H/V grid (hero CSS overlay) ──────────────────────────
-  const GS=Math.round(W/22.5); // ~48px at 1080
-  ctx.save();ctx.strokeStyle='rgba(0,240,255,.07)';ctx.lineWidth=1;
+  // ── Straight H/V cyan grid — hero CSS overlay (48px at 1920px display) ─
+  // Scale: 48 × (W/1920) — gives ~27px at 1080; keep at minimum 40px so
+  // it stays visually distinct from the dense diagonal grid
+  const GS=Math.max(40,Math.round(W*48/1920));
+  ctx.save();
+  ctx.strokeStyle='rgba(0,240,255,.09)';ctx.lineWidth=1;
   for(let x=0;x<=W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=0;y<=H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
   ctx.restore();
-  // ── Magenta bloom upper-center ─────────────────────────────────────────
-  const mg=ctx.createRadialGradient(cx,H*.32,0,cx,H*.32,W*.55);
-  mg.addColorStop(0,'rgba(180,0,255,.13)');mg.addColorStop(0.5,'rgba(180,0,255,.05)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  // ── Magenta/purple bloom upper-center (hero radial gradient) ───────────
+  const mg=ctx.createRadialGradient(cx,H*.30,0,cx,H*.30,W*.58);
+  mg.addColorStop(0,'rgba(180,0,255,.15)');
+  mg.addColorStop(0.45,'rgba(180,0,255,.07)');
+  mg.addColorStop(1,'rgba(180,0,255,0)');
   ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
   // ── Vignette ───────────────────────────────────────────────────────────
-  const vg=ctx.createRadialGradient(cx,cy,W*.22,cx,cy,W*.72);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.62)');
+  const vg=ctx.createRadialGradient(cx,cy,W*.18,cx,cy,W*.70);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.58)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
 }
 function _hudCorners(ctx,W,H){
