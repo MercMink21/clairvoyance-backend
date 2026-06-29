@@ -10545,7 +10545,12 @@ function renderHomeLiveGames(){
       nba:{label:'NBA',color:'var(--pc)',icon:''},
       nhl:{label:'NHL',color:'var(--ic)',icon:''},
       wnba:{label:'WNBA',color:'var(--pc)',icon:''},
-      tennis:{label:'TEN',color:'var(--mc)',icon:''}
+      tennis:{label:'TEN',color:'var(--mc)',icon:''},
+      soc:{label:'SOC',color:'var(--gc)',icon:''},
+      wc:{label:'WC',color:'#ffdd00',icon:''},
+      nfl:{label:'NFL',color:'var(--hc)',icon:''},
+      cfb:{label:'CFB',color:'var(--hc)',icon:''},
+      cbb:{label:'CBB',color:'var(--pc)',icon:''}
     };
     for(const [sk,conf] of Object.entries(sportConf)){
       const games=(ld[sk]||[]).filter(g=>g.state==='in'||g.state==='pre');
@@ -10576,7 +10581,15 @@ function renderHomeLiveGames(){
       const perLabel=per===4?'OT':per===5?'SO':`P${per}`;
       stateStr=`${perLabel} ${clock}`.trim();
     } else if(g._sport==='tennis'){
-      stateStr=g.note||g.set||'LIVE';
+      stateStr=g.sets?`${g.sets} · SET ${g.currentSet||''}`.trim():g.note||g.set||'LIVE';
+    } else if(g._sport==='soc'||g._sport==='wc'){
+      stateStr=g.minute?`${g.minute}'`:g.clock||'LIVE';
+    } else if(g._sport==='nfl'||g._sport==='cfb'){
+      const q=g.quarter||g.period||'--';const clock=g.displayClock||g.clock||'';
+      stateStr=`Q${q} ${clock}`.trim();
+    } else if(g._sport==='cbb'){
+      const h=g.half||g.period||'--';const clock=g.displayClock||g.clock||'';
+      stateStr=`H${h} ${clock}`.trim();
     }
     const awayS=g.awayScore??'–';
     const homeS=g.homeScore??'–';
@@ -16851,7 +16864,21 @@ function _tenMatchCard(m,tourney,roundName){
     </div>`:''}
   </div>`;
 
-  return`<div class="gc" style="border-left:2px solid ${gradeCol}44;margin-bottom:8px">
+  // Live state lookup from home page live data
+  const _tenLive=(()=>{try{const ld=window.__CV_LIVE;if(!ld||!ld.tennis)return null;const p1n=m.p1.split('.').pop()||m.p1;const p2n=m.p2.split('.').pop()||m.p2;return ld.tennis.find(g=>{const h=(g.home||g.p1||'');const a=(g.away||g.p2||'');return(h.includes(p1n)||a.includes(p1n))&&(h.includes(p2n)||a.includes(p2n));});}catch(e){return null;}})();
+  const _tenIsLive=_tenLive&&(_tenLive.state==='in'||_tenLive.status==='in');
+  const _tenIsFinal=_tenLive&&(_tenLive.state==='post'||_tenLive.status==='post');
+  const _tenScoreStr=(()=>{if(!_tenLive)return'';const hs=_tenLive.homeScore??_tenLive.hs??'';const as=_tenLive.awayScore??_tenLive.as??'';const sets=_tenLive.sets||_tenLive.note||'';const sv=_tenLive.server?(_tenLive.server===1?m.p1:m.p2):'';return sets?`${m.p1} ${hs}–${as} ${m.p2} · ${sets}`:`${m.p1} ${hs}–${as} ${m.p2}${sv?' · Srv: '+sv:''}`;})(  );
+  const _tenLiveBanner=_tenIsLive?`<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,221,0,.08);border:1px solid rgba(255,221,0,.35);border-radius:3px;margin-bottom:8px">
+    <span style="font-family:var(--mono);font-size:12px;color:#ffdd00;font-weight:700;letter-spacing:1px;animation:pulse 1.5s infinite">● LIVE</span>
+    <span style="font-family:var(--orb);font-size:16px;font-weight:900;color:#ffdd00;flex:1">${_tenScoreStr||'IN PROGRESS'}</span>
+    ${_tenLive.currentSet?`<span style="font-family:var(--mono);font-size:11px;color:rgba(255,221,0,.7)">SET ${_tenLive.currentSet}</span>`:''}
+  </div>`:_tenIsFinal?`<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:3px;margin-bottom:8px">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px">FINAL</span>
+    <span style="font-family:var(--orb);font-size:15px;font-weight:700;color:var(--nc)">${_tenScoreStr}</span>
+  </div>`:'';
+  return`<div class="gc" style="border-left:2px solid ${_tenIsLive?'#ffdd00':gradeCol+'44'};margin-bottom:8px">
+    ${_tenLiveBanner}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:4px;margin-bottom:6px">
       <div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -19340,7 +19367,7 @@ function _renderWCMatchCard(m,liveScore){
     ' Kelly '+_wcKelly+'%. '+topLabel+' · '+_wcMkts.size+'-unit play'+_wcMkts.secStr+'.';
   // Score HTML
   var scoreHtml='';
-  if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:12px;color:var(--hc);background:rgba(255,32,0,.15);padding:2px 7px;border-radius:2px;animation:pulse 1.5s infinite">LIVE '+liveScore.clock+'</span><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:var(--hc)">'+liveScore.as+'</span></div>';}
+  if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:#ffdd00">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:12px;color:#ffdd00;background:rgba(255,221,0,.12);padding:2px 7px;border-radius:2px;border:1px solid rgba(255,221,0,.4);animation:pulse 1.5s infinite">● LIVE '+(liveScore.clock||liveScore.minute?(liveScore.clock||liveScore.minute+"'"):'')+'</span><span style="font-family:var(--orb);font-size:22px;font-weight:900;color:#ffdd00">'+liveScore.as+'</span></div>';}
   else if(isFinal){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:21px;font-weight:900;color:var(--nc)">'+liveScore.hs+'</span><span style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:2px 6px;border:1px solid rgba(255,255,255,.12);border-radius:2px">FT</span><span style="font-family:var(--orb);font-size:21px;font-weight:900;color:var(--nc)">'+liveScore.as+'</span></div>';}
   var statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
   var statusTxt=isFinal?'FINAL':isLive?'LIVE':m.time;
