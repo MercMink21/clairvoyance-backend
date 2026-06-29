@@ -13198,11 +13198,21 @@ function generatePickCard(picks,title){
   const canvas=document.getElementById('pick-canvas');if(!canvas)return;
   const ctx=canvas.getContext('2d');const W=400,H=500;
   ctx.clearRect(0,0,W,H);
-  // Background
-  ctx.fillStyle='#010006';ctx.fillRect(0,0,W,H);
-  // Grid lines
-  ctx.strokeStyle='rgba(240,0,255,0.04)';ctx.lineWidth=1;
-  for(let y=20;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Background: landing page style — dark indigo + straight cyan HUD grid
+  ctx.fillStyle='#16122a';ctx.fillRect(0,0,W,H);
+  // Cyan HUD grid
+  ctx.strokeStyle='rgba(0,240,255,.028)';ctx.lineWidth=1;
+  const GS=48;
+  for(let x=0;x<W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Magenta/purple bloom
+  const mg=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W*.55);
+  mg.addColorStop(0,'rgba(180,0,255,.09)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
+  // Vignette
+  const vig=ctx.createRadialGradient(W/2,H/2,W*.2,W/2,H/2,W*.7);
+  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.5)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   // Header bar
   const grad=ctx.createLinearGradient(0,0,W,0);grad.addColorStop(0,'rgba(0,240,255,0.15)');grad.addColorStop(1,'rgba(240,0,255,0.15)');
   ctx.fillStyle=grad;ctx.fillRect(0,0,W,54);
@@ -13541,7 +13551,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-06-27 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-06-28 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -14647,13 +14657,12 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   const dispSport=_sportDisplayName(sport);
   const dateStr=moves[0]?.date||today();
   const cardTitle=(tm||{}).title||'Base Intelligence Brief';
-  // CF background: diagonal weave + dark base
-  const cfBg='linear-gradient(135deg,rgba(22,18,35,.85),rgba(22,18,35,.85)),'
-    +'linear-gradient(45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
-    +'linear-gradient(-45deg,rgba(0,160,160,.82) 1px,transparent 1px),'
-    +'linear-gradient(45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
-    +'linear-gradient(-45deg,rgba(55,85,90,.63) 1px,transparent 1px),'
-    +'rgb(8,10,11)';
+  // Background: landing page style — dark indigo + straight cyan HUD grid + magenta bloom
+  const cfBg='radial-gradient(ellipse 55% 45% at 50% 35%,rgba(180,0,255,.09) 0%,transparent 65%),'
+    +'radial-gradient(ellipse 40% 35% at 80% 78%,rgba(0,240,255,.05) 0%,transparent 65%),'
+    +'linear-gradient(rgba(0,240,255,.028) 1px,transparent 1px),'
+    +'linear-gradient(90deg,rgba(0,240,255,.028) 1px,transparent 1px),'
+    +'#16122a';
   // Group picks by grade tier first so we know total visual row count
   const grpLabel={ELITE:'ELITE',PREMIUM:'ELITE',OPTIMAL:'OPTIMAL',LEAN:'LEAN'};
   const grpMap={};
@@ -14688,7 +14697,7 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     return'<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:2px">'+header+grpMap[k].map(pickCell).join('')+'</div>';
   }).join('');
 
-  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,30px 30px,30px 30px,30px 30px,30px 30px,100% 100%;background-position:0 0,0 0,0 0,15px 0,15px 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
+  return'<div id="lcard-'+idx+'" style="position:relative;aspect-ratio:1/1;background:'+cfBg+';background-size:100% 100%,100% 100%,48px 48px,48px 48px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0;border:1px solid rgba(240,0,255,.3);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:6px 8px 5px;box-sizing:border-box">'
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
     +'<div style="position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle,rgba(240,0,255,.1) 0%,transparent 70%);pointer-events:none"></div>'
     // Row 1: CLAIRVOYANCE centered · tier label pinned top-right
@@ -14804,33 +14813,26 @@ function shareLeagueCard(idx){
 // PERFORMANCE GRAPHIC EXPORT — Canvas 1080×1080
 // ═══════════════════════════════════════════════════════════════════════════
 function _cfBg(ctx,W,H){
-  // Base dark fill
-  ctx.fillStyle='rgb(8,10,11)';ctx.fillRect(0,0,W,H);
-  // Navy/purple screen tint
-  ctx.fillStyle='rgba(22,18,35,.85)';ctx.fillRect(0,0,W,H);
-  // Primary teal diamond grid (45° / -45°)
-  const S=30,half=Math.ceil(Math.max(W,H)*0.85);
-  const cx=W/2,cy=H/2,c=Math.cos(Math.PI/4),s=Math.sin(Math.PI/4);
-  ctx.save();ctx.globalAlpha=0.82;ctx.strokeStyle='rgb(0,160,160)';ctx.lineWidth=1;
-  for(let i=-half;i<=half;i+=S){
-    ctx.beginPath();ctx.moveTo(cx+i*c-(-half)*s,cy+i*s+(-half)*c);ctx.lineTo(cx+i*c-half*s,cy+i*s+half*c);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(cx+(-half)*c-i*s,cy+(-half)*s+i*c);ctx.lineTo(cx+half*c-i*s,cy+half*s+i*c);ctx.stroke();
-  }
-  // Secondary offset grid (muted teal-grey)
-  const off=S/2;
-  ctx.globalAlpha=0.63;ctx.strokeStyle='rgb(55,85,90)';
-  for(let i=-half;i<=half;i+=S){
-    ctx.beginPath();ctx.moveTo(cx+(i+off)*c-(-half)*s,cy+(i+off)*s+(-half)*c);ctx.lineTo(cx+(i+off)*c-half*s,cy+(i+off)*s+half*c);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(cx+(-half)*c-(i+off)*s,cy+(-half)*s+(i+off)*c);ctx.lineTo(cx+half*c-(i+off)*s,cy+half*s+(i+off)*c);ctx.stroke();
-  }
+  const cx=W/2,cy=H/2;
+  // Base: landing page dark indigo
+  ctx.fillStyle='#16122a';ctx.fillRect(0,0,W,H);
+  // Straight cyan HUD grid (matching clairvoyanceengine.info hero)
+  const S=48;
+  ctx.save();ctx.strokeStyle='rgba(0,240,255,.028)';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=S){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=S){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
   ctx.restore();
-  // Radial teal glow at top-center
-  const gl=ctx.createRadialGradient(cx,H*.4,0,cx,H*.4,W*.52);
-  gl.addColorStop(0,'rgba(0,180,180,.12)');gl.addColorStop(1,'rgba(0,180,180,0)');
-  ctx.fillStyle=gl;ctx.fillRect(0,0,W,H);
+  // Magenta/purple radial bloom at upper-center
+  const mg=ctx.createRadialGradient(cx,H*.35,0,cx,H*.35,W*.55);
+  mg.addColorStop(0,'rgba(180,0,255,.09)');mg.addColorStop(0.6,'rgba(180,0,255,.04)');mg.addColorStop(1,'rgba(180,0,255,0)');
+  ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
+  // Cyan accent bloom at lower-right
+  const cg=ctx.createRadialGradient(W*.8,H*.75,0,W*.8,H*.75,W*.4);
+  cg.addColorStop(0,'rgba(0,240,255,.05)');cg.addColorStop(1,'rgba(0,240,255,0)');
+  ctx.fillStyle=cg;ctx.fillRect(0,0,W,H);
   // Vignette
-  const vg=ctx.createRadialGradient(cx,cy,W*.28,cx,cy,W*.75);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.6)');
+  const vg=ctx.createRadialGradient(cx,cy,W*.25,cx,cy,W*.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.55)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
 }
 function _hudCorners(ctx,W,H){
