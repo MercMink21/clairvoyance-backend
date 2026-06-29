@@ -407,6 +407,8 @@ body{line-height:1.5}
     <!-- Engine performance section -->
     <div id="home-engine-record" style="margin-bottom:14px"></div>
     <!-- Daily briefing -->
+    <!-- Today's top picks across all sports -->
+    <div id="home-top-picks" style="margin-bottom:14px"></div>
     <!-- Today's pending bets -->
     <div id="home-pending-bets" style="margin-bottom:14px"></div>
     <!-- Utility buttons -->
@@ -7628,7 +7630,7 @@ function renderOverall(){
     const indent=d.sub?'padding-left:14px;border-left:2px solid rgba(0,240,255,.18);margin-left:4px;':'';
     const lsize=d.sub?'11px':'13px'; const lcol=d.sub?'var(--t3)':'var(--t)';
     if(d.n===0){if(d.always)return`<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><span style="font-family:var(--mono);font-size:11px;color:rgba(150,130,180,.35)">0W-0L</span></div>`;if(d.sub)return'';return`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${d.lbl}</span><span style="font-family:var(--mono);font-size:12px;color:rgba(150,130,180,.35)">NO BETS YET</span></div>`;}
-    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:${d.sub?'3px 0':'5px 0'};border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><div style="display:flex;gap:8px"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:${lsize};font-weight:700;color:${accColor(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${unitColor(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
+    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:${d.sub?'3px 0':'5px 0'};border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:9px;color:rgba(150,130,180,.55);border:1px solid rgba(150,130,180,.2);padding:0 3px;border-radius:2px">${d.n}</span><span style="font-family:var(--mono);font-size:${lsize};font-weight:700;color:${accColor(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${unitColor(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
   };
 
   const calRow=(b)=>{
@@ -10403,6 +10405,69 @@ function renderHomePage(){
     }
   }
 
+  // ── Today's Top Picks — DARK HORSE / PREMIUM across all sports ────────────
+  const tpEl=document.getElementById('home-top-picks');
+  if(tpEl){
+    // Pull all of today's locked pending bets that have model data
+    const todayAll=allBets.filter(p=>p.date===todayStr&&p.winProb!=null);
+    // Categorise: PREMIUM = winProb≥0.67 + EV>3 (high certainty)
+    //             DARK HORSE = underdog (ml>0) + EV>4 + winProb≥0.48 (sleeper value)
+    const mlEV=(p,decOdds)=>p*(decOdds||2)-(1);
+    const premiumPicks=[];const darkHorsePicks=[];
+    for(const p of todayAll){
+      const wp=p.winProb||0;
+      const dec=parseFloat(p.decOdds)||2;
+      const evVal=mlEV(wp,dec);
+      const mlNum=parseFloat((p.ml||'').replace('+',''))||0;
+      const isUndg=mlNum>0;
+      if(wp>=0.67&&evVal>0.03)premiumPicks.push({...p,_evVal:evVal});
+      else if(isUndg&&wp>=0.47&&evVal>0.04)darkHorsePicks.push({...p,_evVal:evVal});
+    }
+    // Sort by ev desc within each bucket
+    premiumPicks.sort((a,b)=>b._evVal-a._evVal);
+    darkHorsePicks.sort((a,b)=>b._evVal-a._evVal);
+    const sc=s=>{const m={MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--pc)',TEN:'var(--mc)',SOC:'var(--nc)',WC:'var(--nc)',default:'var(--t3)'};return m[s]||m.default;};
+    const mkCard=(p,badge,badgeCol)=>{
+      const mu=_gameTitle(p.hA,p.awA,p.sport)||'';
+      const conf=p.winProb?(p.winProb*100).toFixed(0)+'%':'';
+      const mlStr=p.ml?`${p.ml.startsWith('-')?'':'+'}${p.ml.replace('+','')}`.replace('+-','-'):'';
+      const evPct=p._evVal!=null?(p._evVal*100).toFixed(1)+'% EV':'';
+      return`<div style="padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:flex-start;gap:10px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;padding-top:1px">
+          <span style="font-family:var(--mono);font-size:10px;padding:2px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
+          <span style="font-family:var(--mono);font-size:9px;padding:1px 4px;border:1px solid ${badgeCol};color:${badgeCol};border-radius:2px;letter-spacing:1px">${badge}</span>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:2px">${mu}</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--t1);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
+          <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap">
+            ${mlStr?`<span style="font-family:var(--mono);font-size:12px;color:${badgeCol};font-weight:700">${mlStr}</span>`:''}
+            ${conf?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${conf} WIN PROB</span>`:''}
+            ${evPct?`<span style="font-family:var(--mono);font-size:11px;color:var(--nc)">${evPct}</span>`:''}
+          </div>
+        </div>
+      </div>`;
+    };
+    if(!premiumPicks.length&&!darkHorsePicks.length){
+      tpEl.innerHTML='';
+    } else {
+      let tpHtml='';
+      if(premiumPicks.length){
+        tpHtml+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--gc);margin-bottom:4px">◆ PREMIUM · HIGHEST PROBABILITY — ${premiumPicks.length} PICK${premiumPicks.length>1?'S':''}</div>
+        <div style="border:1px solid rgba(187,255,0,.3);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6);margin-bottom:10px">
+          ${premiumPicks.slice(0,5).map(p=>mkCard(p,'PREMIUM','var(--gc)')).join('')}
+        </div>`;
+      }
+      if(darkHorsePicks.length){
+        tpHtml+=`<div style="font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--hc);margin-bottom:4px">⚡ DARK HORSE · SLEEPER VALUE — ${darkHorsePicks.length} PICK${darkHorsePicks.length>1?'S':''}</div>
+        <div style="border:1px solid rgba(255,32,144,.3);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6);margin-bottom:10px">
+          ${darkHorsePicks.slice(0,5).map(p=>mkCard(p,'SLEEPER','var(--hc)')).join('')}
+        </div>`;
+      }
+      tpEl.innerHTML=tpHtml;
+    }
+  }
+
   // ── Hero stats (legacy hidden elements) ────────────────────────────────────
   try{
     const _ha=settled;const _hw=_ha.filter(p=>p.outcome==='win').length,_hl=_ha.filter(p=>p.outcome==='loss').length;
@@ -10442,6 +10507,7 @@ function renderHomeLiveGames(){
       mlb:{label:'MLB',color:'var(--hc)',icon:''},
       nba:{label:'NBA',color:'var(--pc)',icon:''},
       nhl:{label:'NHL',color:'var(--ic)',icon:''},
+      wnba:{label:'WNBA',color:'var(--pc)',icon:''},
       tennis:{label:'TEN',color:'var(--mc)',icon:''}
     };
     for(const [sk,conf] of Object.entries(sportConf)){
@@ -10463,7 +10529,7 @@ function renderHomeLiveGames(){
       const inn=g.inning||'--';
       const outs=g.outs!=null?` · ${g.outs} out`:'';
       stateStr=`${half} ${inn}${outs}`;
-    } else if(g._sport==='nba'){
+    } else if(g._sport==='nba'||g._sport==='wnba'){
       const q=g.quarter||'--';
       const clock=g.displayClock||'';
       stateStr=`Q${q} ${clock}`.trim();
@@ -10485,7 +10551,7 @@ function renderHomeLiveGames(){
         <span style="font-family:var(--mono);font-size:14px;color:${awayWin?'var(--t)':'var(--t2)'}${awayWin?';font-weight:700':''}">${g.away||g.p1||'--'}</span>
         <div style="text-align:center;flex-shrink:0">
           <div style="font-family:var(--orb);font-size:17px;font-weight:900;color:var(--t)">${awayS}&nbsp;–&nbsp;${homeS}</div>
-          <div style="font-family:var(--mono);font-size:11px;color:${isLive?'var(--nc)':'var(--t3)'};letter-spacing:1px;margin-top:1px">${isLive?'● LIVE':stateStr}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:${isLive?'#ffdd00':'var(--t3)'};letter-spacing:1px;margin-top:1px">${isLive?'● '+stateStr:stateStr}</div>
         </div>
         <span style="font-family:var(--mono);font-size:14px;color:${homeWin?'var(--t)':'var(--t2)'}${homeWin?';font-weight:700':''};text-align:right">${g.home||g.p2||'--'}</span>
       </div>
@@ -14035,6 +14101,7 @@ async function loadLiveData(){
     if(d.mlb?.length)patchLiveMLB(d.mlb);
     if(d.nba?.length)patchLiveNBA(d.nba);
     if(d.nhl?.length)patchLiveNHL(d.nhl);
+    if(d.wnba?.length)try{patchLiveWNBA(d.wnba);}catch(e){}
     if(d.tennis?.length)window._liveTennisMatches=d.tennis;
     if(d.liveBets?.length)renderLiveBetMeters(d.liveBets);
     // Auto-settle newly finished games
