@@ -819,7 +819,6 @@ body{line-height:1.5}
     <nav class="inav" id="wc-in">
       <button class="nb act" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
       <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
-      <button class="nb" onclick="T('wc','standings');renderWCStandings()">STANDINGS</button>
       <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
     </nav>
     <div class="sa" id="wc-sa">
@@ -827,7 +826,6 @@ body{line-height:1.5}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:12px"><span style="color:var(--t3);letter-spacing:1px;font-size:11px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
         <div id="wc-matches-list" style="padding:4px 0"></div>
       </div>
-      <div id="wc-tab-standings" class="tab"><div id="wc-standings-list" style="padding:12px 0"></div></div>
       <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-props" class="tab">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:12px"><span style="color:var(--t3);letter-spacing:1px;font-size:11px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
@@ -16638,13 +16636,13 @@ function _tenMatchCard(m,tourney,roundName){
         <div class="chp">${(p2Win*100).toFixed(1)}%</div>
         <div style="margin-top:2px"><span class="pill ${cs2.pl}">${cs2.lb}</span></div>
       </div>
-      ${ouMain?`<div class="${ouGradeC} chip" style="flex:1">
+      ${ouMain?`<div class="${ouGradeC} chip" style="flex:1" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${ouDir} ${ouMain.line} SETS',${(ouDir==='OVER'?ouOverP:ouUnderP).toFixed(4)},'-110',1.909,'${td}')">
         <div class="cht">O/U ${ouMain.line} SETS</div>
         <div class="cho" style="color:${ouGradeCol}">${ouDir}</div>
         <div class="chp">${ouConf}%</div>
         <div style="margin-top:2px"><span class="pill ${ouPillC}">${ouGradeLbl}</span></div>
       </div>`:''}
-      ${gLine?`<div class="${gLine.grade==='OPTIMAL'?'chip-n':gLine.grade==='LEAN'?'chip-i':'chip-d'} chip" style="flex:1">
+      ${gLine?`<div class="${gLine.grade==='OPTIMAL'?'chip-n':gLine.grade==='LEAN'?'chip-i':'chip-d'} chip" style="flex:1" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${gLine.dir} ${gLine.line} GAMES',${(gLine.dir==='OVER'?gOverP:gUnderP).toFixed(4)},'-110',1.909,'${td}')">
         <div class="cht">O/U ${gLine.line} GAMES</div>
         <div class="cho" style="color:${gLine.gradeCol}">${gLine.dir}</div>
         <div class="chp">${gLine.conf}% <span style="font-size:10px;opacity:.7">(exp ${gLine.expected})</span></div>
@@ -19537,9 +19535,8 @@ function renderWCGroups(){
         var hasGames=groupData.length&&groupData.some(function(g){return g.entries.some(function(e){return e.gp>0;});});
         if(hasGames){
           _wcStandingsSave(groupData);
-          if(document.getElementById('wc-standings-list')){
-            document.getElementById('wc-standings-list').innerHTML=_buildWCGroupsHTML(groupData,Date.now());
-          }
+          var _wcSEl=document.getElementById('wc-standings-list');
+          if(_wcSEl){_wcSEl.innerHTML=_buildWCGroupsHTML(groupData,Date.now());}
         }
       })
       .catch(function(){clearTimeout(tid);});
