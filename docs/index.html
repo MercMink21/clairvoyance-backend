@@ -7898,8 +7898,10 @@ function renderOverallVisuals(){
     <circle cx="${px(pts.length-1).toFixed(1)}" cy="${py(pts[pts.length-1]).toFixed(1)}" r="3" fill="${pts[pts.length-1]>=0?'#00f0ff':'#ff2090'}" filter="url(#glow1)"/>
   </svg>`;
   // 2. Win Rate by Sport
-  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TEN:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff',SOC:'#00f0aa',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b'};
-  const sData=['MLB','NBA','WNBA','CBB','NFL','CFB','NHL','NCAAH','SHL','LIIGA','KHL','PWHL','TEN','ATP','WTA','SOC','WC','PL','LIGA','BL','MLS'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
+  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TENNIS:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff',SOC:'#00f0aa',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b'};
+  const sDataRaw=['MLB','NBA','WNBA','CBB','NFL','CFB','NHL','NCAAH','SHL','LIIGA','KHL','PWHL','SOC','WC','PL','LIGA','BL','MLS'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
+  const tenSp=settled.filter(p=>p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA');const tenW=tenSp.filter(p=>p.outcome==='win').length;
+  const sData=[...sDataRaw,{s:'TENNIS',n:tenSp.length,w:tenW,pct:tenSp.length?tenW/tenSp.length:null}];
   const barW=260,barH=sData.length*22+10;
   const barSVG=`<svg width="${barW}" height="${barH}">
     ${sData.map((d,i)=>{const bw=(d.pct||0)*(barW-80);const col=sportColors[d.s]||'var(--nc)';return`<g transform="translate(0,${i*22})">
@@ -8881,7 +8883,7 @@ function renderOverallTrends(){
   });
 
   // ── Self-assessment ───────────────────────────────────────────────────────
-  const spStats=['MLB','NHL','NBA','TEN'].map(s=>{const sb=all.filter(p=>p.sport===s);const p=perfOf(sb);return{s,...p};}).filter(d=>d.n>=3);
+  const spStats=[...['MLB','NHL','NBA'].map(s=>{const sb=all.filter(p=>p.sport===s);const p=perfOf(sb);return{s,...p};}),{s:'TENNIS',...perfOf(all.filter(p=>p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA'))}].filter(d=>d.n>=3);
   spStats.sort((a,b)=>(b.acc||0)-(a.acc||0));
   const bestSp=spStats[0],worstSp=spStats[spStats.length-1];
   const typeStats=['ML','RL','PL','OU','PROP'].map(t=>{const tb=all.filter(p=>p.betType===t);const p=perfOf(tb);return{t,...p};}).filter(d=>d.n>=3);
@@ -12346,11 +12348,11 @@ const TEN_TOURNAMENTS=[{
         {p1:'K.Muchova',s1:'(10)',p2:'A.Zakharova',s2:'',p1ml:-320,p2ml:260,lean:1,grade:'LEAN',basis:'Muchova seeded 10th, creative net game and variety — very suited to Wimbledon. Zakharova outranked. Lean Muchova.',winner:'K.Muchova'},
         {p1:'B.Andreescu',s1:'',p2:'Z.Shuai',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Andreescu Canadian returning form, solid on grass. Shuai veteran Chinese, ranked lower. Lean Andreescu.'},
         {p1:'A.Parks',s1:'',p2:'A.Dudeney',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Parks American with solid grass game. Dudeney British, competitive but ranked lower. Lean Parks.',winner:'A.Parks'},
-        {p1:'M.Sawangkaew',s1:'',p2:'M.Chwalinska',s2:'(20)',p1ml:220,p2ml:-260,lean:2,grade:'LEAN',basis:'Chwalinska seeded 20th, Polish with strong serve. Sawangkaew Thai qualifier, outranked. Lean Chwalinska.',winner:'M.Chwalinska'},
+        {p1:'M.Sawangkaew',s1:'',p2:'M.Chwalinska',s2:'(20)',p1ml:220,p2ml:-260,lean:2,grade:'LEAN',basis:'Chwalinska seeded 20th, Polish with strong serve. Sawangkaew Thai qualifier, outranked. Lean Chwalinska.',winner:'M.Sawangkaew'},
         {p1:'K.Siniakova',s1:'(32)',p2:'Q.Zheng',s2:'',p1ml:-200,p2ml:168,lean:1,grade:'LEAN',basis:'Siniakova seeded 32nd, Czech veteran with outstanding net game — grass Elo 1800. Zheng Chinese, competitive but ranked lower. Lean Siniakova.',winner:'K.Siniakova'},
-        {p1:'P.Stearns',s1:'',p2:'N.Bartunkova',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Stearns American with solid baseline game. Bartunkova Czech, ranked lower. Lean Stearns.',winner:'N.Bartunkova'},
+        {p1:'P.Stearns',s1:'',p2:'N.Bartunkova',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Stearns American with solid baseline game. Bartunkova Czech, ranked lower. Lean Stearns.',winner:'P.Stearns'},
         {p1:'B.Krejcikova',s1:'',p2:'H.Klugman',s2:'',p1ml:-200,p2ml:168,lean:1,grade:'LEAN',basis:'Krejcikova defending Wimbledon champion — grass Elo 1916 is exceptional. Klugman young South African, outranked. Lean Krejcikova.',winner:'B.Krejcikova'},
-        {p1:'M.Linette',s1:'',p2:'M.Andreeva',s2:'(5)',p1ml:320,p2ml:-400,lean:2,grade:'LEAN',basis:'Andreeva seeded 5th — #1 yElo on WTA 2026 at 2145, RG champion. Grass Elo 1827 reflects limited grass results but R1 is safe. Linette outranked. Lean Andreeva.',winner:'M.Andreeva'},
+        {p1:'M.Linette',s1:'',p2:'M.Andreeva',s2:'(5)',p1ml:320,p2ml:-400,lean:2,grade:'LEAN',basis:'Andreeva seeded 5th — #1 yElo on WTA 2026 at 2145, RG champion. Grass Elo 1827 reflects limited grass results but R1 is safe. Linette outranked. Lean Andreeva.',winner:'M.Linette'},
         // ── SECTION 3: Pegula eighth ────────────────────────────────────────
         {p1:'J.Pegula',s1:'(4)',p2:'D.Vidmanova',s2:'',p1ml:-600,p2ml:420,lean:1,grade:'OPTIMAL',basis:'Pegula grass Elo 1903 — 2nd highest WTA. yElo 2105, 10.5% title prob. Vidmanova outside top 100. Clean draw — lean Pegula.',winner:'J.Pegula'},
         {p1:'S.Sorribes Tormo',s1:'',p2:'V.Jimenez Kasintseva',s2:'',p1ml:-150,p2ml:128,lean:1,grade:'LEAN',basis:'Sorribes Tormo Spanish grinder, seasoned on all surfaces. Jimenez Kasintseva Andorran, ranked lower. Lean Sorribes Tormo.',winner:'S.Sorribes Tormo'},
@@ -12359,52 +12361,52 @@ const TEN_TOURNAMENTS=[{
         {p1:'E.Alexandrova',s1:'(18)',p2:'P.Udvardy',s2:'',p1ml:-280,p2ml:235,lean:1,grade:'LEAN',basis:'Alexandrova seeded 18th, big serve and clean ball-striking. Udvardy Hungarian, ranked lower. Lean Alexandrova.',winner:'E.Alexandrova'},
         {p1:'L.Tararudee',s1:'',p2:'L.Tagger',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Tararudee Thai qualifier, competitive. Tagger ranked lower. Lean Tararudee.'},
         {p1:'Y.Putintseva',s1:'',p2:'T.Maria',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Putintseva Kazakhstani with good grasscourt movement. Maria 37-year-old German veteran, declining. Lean Putintseva.',winner:'Y.Putintseva'},
-        {p1:'J.Cristian',s1:'',p2:'I.Jovic',s2:'(16)',p1ml:260,p2ml:-320,lean:2,grade:'LEAN',basis:'Jovic seeded 16th, 19-year-old Serbian rapidly improving. Cristian Romanian, outranked. Lean Jovic.',winner:'I.Jovic'},
+        {p1:'J.Cristian',s1:'',p2:'I.Jovic',s2:'(16)',p1ml:260,p2ml:-320,lean:2,grade:'LEAN',basis:'Jovic seeded 16th, 19-year-old Serbian rapidly improving. Cristian Romanian, outranked. Lean Jovic.',winner:'J.Cristian'},
         // ── SECTION 4: Bencic/Gauff eighth ──────────────────────────────────
         {p1:'B.Bencic',s1:'(11)',p2:'M.Stojsavljevic',s2:'',p1ml:-300,p2ml:248,lean:1,grade:'LEAN',basis:'Bencic seeded 11th, athletic Swiss with exceptional variety — very suited to Wimbledon. Stojsavljevic British qualifier, outranked. Lean Bencic.',winner:'B.Bencic'},
         {p1:'W.Xinyu',s1:'',p2:'E.Cocciaretto',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Wang Xinyu Chinese with improving all-court game. Cocciaretto Italian, ranked lower. Lean Wang Xinyu.',winner:'W.Xinyu'},
-        {p1:'F.Jones',s1:'',p2:'D.Parry',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Jones British with solid grass game. Parry French, competitive but ranked lower. Lean Jones.',winner:'D.Parry'},
-        {p1:'M.Frech',s1:'',p2:'A.Kalinskaya',s2:'(19)',p1ml:240,p2ml:-290,lean:2,grade:'LEAN',basis:'Kalinskaya seeded 19th, aggressive flat hitter, grass Elo 1848. Frech Polish, outranked. Lean Kalinskaya.',winner:'A.Kalinskaya'},
+        {p1:'F.Jones',s1:'',p2:'D.Parry',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Jones British with solid grass game. Parry French, competitive but ranked lower. Lean Jones.'},
+        {p1:'M.Frech',s1:'',p2:'A.Kalinskaya',s2:'(19)',p1ml:240,p2ml:-290,lean:2,grade:'LEAN',basis:'Kalinskaya seeded 19th, aggressive flat hitter, grass Elo 1848. Frech Polish, outranked. Lean Kalinskaya.',winner:'M.Frech'},
         {p1:'A.Li',s1:'(28)',p2:'Z.Sonmez',s2:'',p1ml:-240,p2ml:200,lean:1,grade:'LEAN',basis:'Li seeded 28th, American veteran with solid grass game. Sonmez Turkish, outranked. Lean Li.'},
         {p1:'C.Liu',s1:'',p2:'H.Vandewinkel',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Liu American with solid baseline game. Vandewinkel Belgian, ranked lower. Lean Liu.'},
         {p1:'S.Sierra',s1:'',p2:'A.Bondar',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Sierra Colombian qualifier, competitive. Bondar Belarusian, ranked lower on grass. Lean Sierra.'},
-        {p1:'T.Korpatsch',s1:'',p2:'C.Gauff',s2:'(7)',p1ml:360,p2ml:-500,lean:2,grade:'OPTIMAL',basis:'Gauff seeded 7th, grass Elo 1823, serve improving. 4.0% title prob. Korpatsch outside top 100. Lean Gauff R1.'},
+        {p1:'T.Korpatsch',s1:'',p2:'C.Gauff',s2:'(7)',p1ml:360,p2ml:-500,lean:2,grade:'OPTIMAL',basis:'Gauff seeded 7th, grass Elo 1823, serve improving. 4.0% title prob. Korpatsch outside top 100. Lean Gauff R1.',winner:'T.Korpatsch'},
         // ── SECTION 5: Svitolina eighth ─────────────────────────────────────
-        {p1:'E.Svitolina',s1:'(8)',p2:'D.Snigur',s2:'',p1ml:-380,p2ml:285,lean:1,grade:'LEAN',basis:'Svitolina seeded 8th, yElo 2113 — 3rd highest WTA 2026. Slice game suits grass. Snigur Ukrainian, outranked. Lean Svitolina.'},
-        {p1:'V.Erjavec',s1:'',p2:'L.Jeanjean',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Erjavec Slovenian with solid game. Jeanjean French, ranked lower. Lean Erjavec.'},
+        {p1:'E.Svitolina',s1:'(8)',p2:'D.Snigur',s2:'',p1ml:-380,p2ml:285,lean:1,grade:'LEAN',basis:'Svitolina seeded 8th, yElo 2113 — 3rd highest WTA 2026. Slice game suits grass. Snigur Ukrainian, outranked. Lean Svitolina.',winner:'E.Svitolina'},
+        {p1:'V.Erjavec',s1:'',p2:'L.Jeanjean',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Erjavec Slovenian with solid game. Jeanjean French, ranked lower. Lean Erjavec.',winner:'L.Jeanjean'},
         {p1:'A.Tomljanovic',s1:'',p2:'M.Bolkvadze',s2:'',p1ml:-150,p2ml:128,lean:1,grade:'LEAN',basis:'Tomljanovic Australian veteran, solid grass game. Bolkvadze Georgian, ranked lower. Lean Tomljanovic.'},
-        {p1:'A.Krueger',s1:'',p2:'D.Vekic',s2:'(31)',p1ml:240,p2ml:-290,lean:2,grade:'LEAN',basis:'Vekic seeded 31st, Croatian with strong serve and aggressive baseline. Krueger American, outranked. Lean Vekic.'},
-        {p1:'E.Navarro',s1:'(23)',p2:'P.Badosa',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Navarro seeded 23rd, grass Elo 1860 — powerful American improving. Badosa Spanish, grass Elo limited. Lean Navarro.'},
-        {p1:'O.Selekhmeteva',s1:'',p2:'S.Kraus',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Selekhmeteva Russian, improving tour-level player. Kraus ranked lower. Lean Selekhmeteva.'},
+        {p1:'A.Krueger',s1:'',p2:'D.Vekic',s2:'(31)',p1ml:240,p2ml:-290,lean:2,grade:'LEAN',basis:'Vekic seeded 31st, Croatian with strong serve and aggressive baseline. Krueger American, outranked. Lean Vekic.',winner:'A.Krueger'},
+        {p1:'E.Navarro',s1:'(23)',p2:'P.Badosa',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Navarro seeded 23rd, grass Elo 1860 — powerful American improving. Badosa Spanish, grass Elo limited. Lean Navarro.',winner:'E.Navarro'},
+        {p1:'O.Selekhmeteva',s1:'',p2:'S.Kraus',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Selekhmeteva Russian, improving tour-level player. Kraus ranked lower. Lean Selekhmeteva.',winner:'O.Selekhmeteva'},
         {p1:'Y.Starodubtseva',s1:'',p2:'A.Blinkova',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Starodubtseva Ukrainian, solid grasscourt game. Blinkova Russian, ranked similarly. Lean Starodubtseva on recent form.'},
         {p1:'N.Podoroska',s1:'',p2:'M.Kostyuk',s2:'(12)',p1ml:280,p2ml:-340,lean:2,grade:'LEAN',basis:'Kostyuk seeded 12th, solid Ukrainian all-courter, grass Elo 1870. Podoroska outranked on this surface. Lean Kostyuk.'},
         // ── SECTION 6: Paolini/Sakkari eighth ───────────────────────────────
-        {p1:'J.Paolini',s1:'(13)',p2:'R.Montgomery',s2:'',p1ml:-300,p2ml:245,lean:1,grade:'LEAN',basis:'Paolini seeded 13th, 2024 Wimbledon finalist — proven on grass. Montgomery solid but outranked. Lean Paolini.'},
-        {p1:'I.Shymanovich',s1:'',p2:'V.Golubic',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Shymanovich Belarusian, solid grass game. Golubic Swiss veteran, ranked lower. Lean Shymanovich.'},
-        {p1:'A.Kalinina',s1:'',p2:'K.Rakhimova',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Kalinina Ukrainian, steady game. Rakhimova Russian, competitive but ranked lower. Lean Kalinina.'},
-        {p1:'M.Sakkari',s1:'',p2:'C.Tauson',s2:'(24)',p1ml:210,p2ml:-250,lean:2,grade:'LEAN',basis:'Tauson seeded 24th, Danish all-courter, grass Elo 1862. Sakkari powerful but not seeded. Lean Tauson on seeding and grass Elo.'},
+        {p1:'J.Paolini',s1:'(13)',p2:'R.Montgomery',s2:'',p1ml:-300,p2ml:245,lean:1,grade:'LEAN',basis:'Paolini seeded 13th, 2024 Wimbledon finalist — proven on grass. Montgomery solid but outranked. Lean Paolini.',winner:'J.Paolini'},
+        {p1:'I.Shymanovich',s1:'',p2:'V.Golubic',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Shymanovich Belarusian, solid grass game. Golubic Swiss veteran, ranked lower. Lean Shymanovich.',winner:'I.Shymanovich'},
+        {p1:'A.Kalinina',s1:'',p2:'K.Rakhimova',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Kalinina Ukrainian, steady game. Rakhimova Russian, competitive but ranked lower. Lean Kalinina.',winner:'A.Kalinina'},
+        {p1:'M.Sakkari',s1:'',p2:'C.Tauson',s2:'(24)',p1ml:210,p2ml:-250,lean:2,grade:'LEAN',basis:'Tauson seeded 24th, Danish all-courter, grass Elo 1862. Sakkari powerful but not seeded. Lean Tauson on seeding and grass Elo.',winner:'M.Sakkari'},
         {p1:'A.Eala',s1:'(29)',p2:'R.Zarazua',s2:'',p1ml:-240,p2ml:200,lean:1,grade:'LEAN',basis:'Eala seeded 29th, Filipino 20-year-old with massive upside. Zarazua Mexican, outranked. Lean Eala.'},
         {p1:'S.Williams',s1:'',p2:'M.Joint',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'S.Williams American veteran (not Serena) with tour-level experience. Joint Belgian, ranked lower. Lean Williams.'},
-        {p1:'T.Valentova',s1:'',p2:'K.Pliskova',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Valentova young Czech with improving game. Pliskova veteran Czech (Kristyna), solid serve. Lean Valentova on youth and form.'},
+        {p1:'T.Valentova',s1:'',p2:'K.Pliskova',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Valentova young Czech with improving game. Pliskova veteran Czech (Kristyna), solid serve. Lean Valentova on youth and form.',winner:'T.Valentova'},
         {p1:'T.Townsend',s1:'',p2:'I.Swiatek',s2:'(3)',p1ml:320,p2ml:-400,lean:2,grade:'LEAN',basis:'SURFACE ALERT: Swiatek seeded 3rd, grass Elo 1936 but multiple early Wimbledon exits. 11.2% title prob. Townsend solid but outranked. Lean Swiatek R1 with caution.'},
         // ── SECTION 7: Anisimova/Keys eighth ─────────────────────────────────
-        {p1:'A.Anisimova',s1:'(6)',p2:'L.Gjorcheska',s2:'',p1ml:-380,p2ml:290,lean:1,grade:'LEAN',basis:'Anisimova seeded 6th, flat ball-striking suits grass. Gjorcheska North Macedonian, ranked lower. Lean Anisimova.'},
-        {p1:'P.Marcinko',s1:'',p2:'S.Kenin',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Marcinko Polish, competitive on grass. Kenin former AO champ but grass results inconsistent. Lean Marcinko.'},
+        {p1:'A.Anisimova',s1:'(6)',p2:'L.Gjorcheska',s2:'',p1ml:-380,p2ml:290,lean:1,grade:'LEAN',basis:'Anisimova seeded 6th, flat ball-striking suits grass. Gjorcheska North Macedonian, ranked lower. Lean Anisimova.',winner:'A.Anisimova'},
+        {p1:'P.Marcinko',s1:'',p2:'S.Kenin',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Marcinko Polish, competitive on grass. Kenin former AO champ but grass results inconsistent. Lean Marcinko.',winner:'P.Marcinko'},
         {p1:'I.Begu',s1:'',p2:'K.Swan',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Begu Romanian veteran, solid grass game. Swan British wildcard, home crowd but outranked. Lean Begu.'},
         {p1:'K.Day',s1:'',p2:'M.Keys',s2:'(26)',p1ml:240,p2ml:-290,lean:2,grade:'LEAN',basis:'Keys seeded 26th, grass Elo 1890 — power game suits Wimbledon. Day American, outranked. Lean Keys.'},
-        {p1:'S.Cirstea',s1:'(17)',p2:'S.Bejlek',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Cirstea seeded 17th, Romanian veteran — good at SW19, grass Elo 1865. Bejlek young Czech, outranked. Lean Cirstea.'},
-        {p1:'K.Birrell',s1:'',p2:'A.Korneeva',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Birrell Australian with grass-suited game. Korneeva Spanish-Russian, ranked lower. Lean Birrell.'},
+        {p1:'S.Cirstea',s1:'(17)',p2:'S.Bejlek',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Cirstea seeded 17th, Romanian veteran — good at SW19, grass Elo 1865. Bejlek young Czech, outranked. Lean Cirstea.',winner:'S.Cirstea'},
+        {p1:'K.Birrell',s1:'',p2:'A.Korneeva',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Birrell Australian with grass-suited game. Korneeva Spanish-Russian, ranked lower. Lean Birrell.',winner:'K.Birrell'},
         {p1:'C.Osorio',s1:'',p2:'S.Waltert',s2:'',p1ml:-140,p2ml:118,lean:1,grade:'LEAN',basis:'Osorio Colombian with solid all-court game. Waltert Swiss, ranked lower. Lean Osorio.'},
         {p1:'E.Seidel',s1:'',p2:'L.Noskova',s2:'(9)',p1ml:300,p2ml:-370,lean:2,grade:'LEAN',basis:'DARK HORSE: Noskova seeded 9th, grass Elo 1875 — 3rd highest WTA. 7.4% title prob. Massive flat serve. Seidel outranked. Lean Noskova and watch closely.'},
         // ── SECTION 8: Shnaider/Rybakina eighth ─────────────────────────────
-        {p1:'D.Shnaider',s1:'(15)',p2:'E.Lys',s2:'',p1ml:-280,p2ml:235,lean:1,grade:'LEAN',basis:'Shnaider seeded 15th, Russian 21-year-old with grass Elo 1842 — powerful flat hitter. Lys German, outranked. Lean Shnaider.'},
+        {p1:'D.Shnaider',s1:'(15)',p2:'E.Lys',s2:'',p1ml:-280,p2ml:235,lean:1,grade:'LEAN',basis:'Shnaider seeded 15th, Russian 21-year-old with grass Elo 1842 — powerful flat hitter. Lys German, outranked. Lean Shnaider.',winner:'D.Shnaider'},
         {p1:'P.Kudermetova',s1:'',p2:'L.Samsonova',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Kudermetova Russian with solid game. Samsonova grass Elo 1892 — big serve but ranked lower. Close — lean Kudermetova on form.'},
-        {p1:'K.Boulter',s1:'',p2:'T.Grant',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Boulter British with strong grass game — home crowd at SW19. Grant South African, outranked. Lean Boulter.'},
-        {p1:'T.Gibson',s1:'',p2:'M.Bouzkova',s2:'(21)',p1ml:230,p2ml:-280,lean:2,grade:'LEAN',basis:'Bouzkova seeded 21st, Czech veteran — solid at SW19. Gibson American, outranked. Lean Bouzkova.'},
-        {p1:'E.Mertens',s1:'(25)',p2:'L.Siegemund',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Mertens seeded 25th, Belgian veteran with strong grass game. Siegemund veteran German, 36 years old. Lean Mertens.'},
-        {p1:'B.Haddad Maia',s1:'',p2:'M.Timofeeva',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Haddad Maia Brazilian with solid grass-adapted game. Timofeeva Russian, ranked lower. Lean Haddad Maia.'},
-        {p1:'E.Ruse',s1:'',p2:'C.McNally',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Ruse Romanian, solid tour-level player. McNally American with competitive baseline game. Lean Ruse on ranking.'},
-        {p1:'L.Boisson',s1:'',p2:'E.Rybakina',s2:'(2)',p1ml:480,p2ml:-700,lean:2,grade:'OPTIMAL',basis:'Rybakina seeded 2nd, 2022 Wimbledon champion. Massive flat serve built for grass. Boisson French, no match. Lean Rybakina emphatically in R1.'},
+        {p1:'K.Boulter',s1:'',p2:'T.Grant',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Boulter British with strong grass game — home crowd at SW19. Grant South African, outranked. Lean Boulter.',winner:'K.Boulter'},
+        {p1:'T.Gibson',s1:'',p2:'M.Bouzkova',s2:'(21)',p1ml:230,p2ml:-280,lean:2,grade:'LEAN',basis:'Bouzkova seeded 21st, Czech veteran — solid at SW19. Gibson American, outranked. Lean Bouzkova.',winner:'T.Gibson'},
+        {p1:'E.Mertens',s1:'(25)',p2:'L.Siegemund',s2:'',p1ml:-220,p2ml:185,lean:1,grade:'LEAN',basis:'Mertens seeded 25th, Belgian veteran with strong grass game. Siegemund veteran German, 36 years old. Lean Mertens.',winner:'E.Mertens'},
+        {p1:'B.Haddad Maia',s1:'',p2:'M.Timofeeva',s2:'',p1ml:-160,p2ml:135,lean:1,grade:'LEAN',basis:'Haddad Maia Brazilian with solid grass-adapted game. Timofeeva Russian, ranked lower. Lean Haddad Maia.',winner:'B.Haddad Maia'},
+        {p1:'E.Ruse',s1:'',p2:'C.McNally',s2:'',p1ml:-130,p2ml:110,lean:1,grade:'LEAN',basis:'Ruse Romanian, solid tour-level player. McNally American with competitive baseline game. Lean Ruse on ranking.',winner:'E.Ruse'},
+        {p1:'L.Boisson',s1:'',p2:'E.Rybakina',s2:'(2)',p1ml:480,p2ml:-700,lean:2,grade:'OPTIMAL',basis:'Rybakina seeded 2nd, 2022 Wimbledon champion. Massive flat serve built for grass. Boisson French, no match. Lean Rybakina emphatically in R1.',winner:'E.Rybakina'},
       
       ]
     },
