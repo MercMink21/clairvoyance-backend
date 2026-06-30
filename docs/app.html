@@ -12375,8 +12375,8 @@ const TEN_TOURNAMENTS=[{
   ]
 }];
 // ── Legacy today arrays (used by picks engine) ─────────────────
-const TEN_TODAY_ATP=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.atp.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Men,p1ml:m.p1ml,p2ml:m.p2ml,date:'2026-06-29'}));})();
-const TEN_TODAY_WTA=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.wta.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Women,p1ml:m.p1ml,p2ml:m.p2ml,date:'2026-06-29'}));})();
+const TEN_TODAY_ATP=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.atp.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Men,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
+const TEN_TODAY_WTA=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.wta.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Women,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
 function renderTennisPicks(){
   const el=document.getElementById('ten-picks-list');if(!el)return;
   const all=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
@@ -12976,6 +12976,38 @@ function renderRGDraw(tour,round){
   }
   el.innerHTML=html||'<div class="empty">SELECT A ROUND TO VIEW</div>';
 }
+function fixWimPickDates(){
+  // Build player→matchDate map from R1 data.
+  // Completed matches (have winner) played Jun 29; pending matches play today.
+  const r0=TEN_TOURNAMENTS[0]?.rounds[0];
+  if(!r0)return;
+  const playerDate={};
+  [...(r0.atp||[]),...(r0.wta||[])].forEach(m=>{
+    const d=m.matchDate||(m.winner?'2026-06-29':today());
+    if(m.p1)playerDate[m.p1]=d;
+    if(m.p2)playerDate[m.p2]=d;
+  });
+  const preds=getP();
+  const log=getDailyLog();
+  let fixed=0;
+  preds.forEach(p=>{
+    if(p.sport!=='TEN'&&p.sport!=='ATP'&&p.sport!=='WTA')return;
+    const correctDate=playerDate[p.hA]||playerDate[p.awA];
+    if(!correctDate||p.date===correctDate)return;
+    const oldDate=p.date;
+    // Move out of old daily log locked list
+    if(log[oldDate]){
+      log[oldDate].locked=(log[oldDate].locked||[]).filter(lb=>lb!==p.betOn);
+    }
+    p.date=correctDate;
+    // Add to new daily log
+    if(!log[correctDate])log[correctDate]={recs:[],locked:[],assessed:false};
+    if(!log[correctDate].locked.includes(p.betOn))log[correctDate].locked.push(p.betOn);
+    fixed++;
+  });
+  if(fixed){saveP(preds);saveDailyLog(log);toast(`// FIXED ${fixed} WIMBLEDON PICK DATE${fixed>1?'S':''}`);try{renderHomeLockedBets();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderHomePage();}catch(e){}}
+  else toast('// ALL WIMBLEDON PICK DATES ALREADY CORRECT');
+}
 function renderWimDraw(tour,round){
   const el=document.getElementById('wim-draw-content');if(!el)return;
   const isMen=tour==='men';
@@ -13018,7 +13050,7 @@ function renderWimDraw(tour,round){
           <div style="font-family:var(--mono);font-size:13px;color:var(--gc);margin-bottom:4px">LEAN: ${leanP} <span style="color:var(--nc)">${mlStr}</span></div>
           <div style="font-family:var(--mono);font-size:12px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
           ${mcHtml}
-          <button class="btn btn-n btn-sm" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${leanP.replace(/'/g,"\\'")}',0.72,'${mlStr}',1.0,'2026-06-30')">LOCK ${leanP}</button>
+          <button class="btn btn-n btn-sm" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${leanP.replace(/'/g,"\\'")}',0.72,'${mlStr}',1.0,'${m.matchDate||today()}')">LOCK ${leanP}</button>
         </div>`;
       }).join('');
     } else {
@@ -13091,7 +13123,7 @@ function renderWimDraw(tour,round){
           <div style="text-align:right"><span style="font-family:var(--orb);font-size:18px;font-weight:700">${m.p2}</span><span style="font-family:var(--mono);font-size:13px;color:var(--t3)"> ${m.s2}</span></div>
         </div>
         ${mcHtml}
-        <button class="btn btn-n btn-sm" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${leanP.replace(/'/g,"\\'")}',0.62,'${leanML}',1.0,'2026-07-02')">LOCK ${leanP}</button>
+        <button class="btn btn-n btn-sm" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${leanP.replace(/'/g,"\\'")}',0.62,'${leanML}',1.0,'${m.matchDate||today()}')">LOCK ${leanP}</button>
       </div>`;
     }).join('');
   }
@@ -13229,6 +13261,7 @@ function renderSlam(code){
       <button class="btn btn-o btn-sm" onclick="renderWimDraw('women','r2')">WOMENS R2</button>
       <button class="btn btn-o btn-sm" onclick="renderWimDraw('men','futures')">ATP FUTURES</button>
       <button class="btn btn-o btn-sm" onclick="renderWimDraw('women','futures')">WTA FUTURES</button>
+      <button class="btn btn-p btn-sm" onclick="fixWimPickDates()">FIX PICK DATES</button>
     </div>`;
     html+=`<div id="wim-draw-content"></div>`;
     // ATP Seeds
