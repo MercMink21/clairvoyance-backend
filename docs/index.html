@@ -2740,7 +2740,19 @@ function tier(p,e,mktType){
       p=adjP;
     }
   }
-  if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=-.02)return 1;return 0;
+  if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=.01)return 1;return 0;
+}
+// MLB-specific tier: tighter thresholds + ensemble convergence requirement
+function _mlbTier(p,e,sigmaV){
+  // sigmaV = std-dev across [mc,bay,elo] — high sigma = models disagree, cap grade
+  const sig=sigmaV||0;
+  // PREMIUM: 68%+, 7%+ EV, models converged (sigma <= 0.08)
+  if(p>=.68&&e>=.07&&sig<=.08)return 3;
+  // OPTIMAL: 63%+, 4%+ EV, models reasonably aligned (sigma <= 0.11)
+  if(p>=.63&&e>=.04&&sig<=.11)return 2;
+  // LEAN: 56%+, genuine positive EV (1%+), not wildly divergent (sigma <= 0.14)
+  if(p>=.56&&e>=.01&&sig<=.14)return 1;
+  return 0;
 }
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 /* Generic prop Monte Carlo — normal distribution */
@@ -3277,7 +3289,7 @@ function mlbEns(hA,awA,espnGame){
   // Blend with ESPN implied prob if available
   if(espnGame?.hML){
     const mld=ml2d(espnGame.hML);const imp=1/mld;
-    p=p*.75+imp*.25; // 25% weight to market
+    p=p*.70+imp*.30; // 30% weight to market — ESPN lines are sharp, lean on them more
   }
   p=sportCalibrate(p,'MLB');
   const injH=computeInjuryImpact(hA,'mlb');
@@ -3336,6 +3348,8 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const ovP=ouP;const unP=1-ouP;const ouDec=1.91;
   const combinedERA=(parseFloat(hPitERA)+parseFloat(aPitERA)).toFixed(2);
   // Evaluate ALL 6 markets through the unified multi-factor scorer
+  // Compute ensemble sigma early — needed for MLB tier gating
+  const _ensSigEarly=_sigma([ens.mc,ens.bay,ens.elo]);
   const _rawMkts=[
     {label:`${favTeam} ML`,prob:favProb,dec:favDec,ml:favMLstr,side:'mlFav'},
     {label:`${dogTeam} ML`,prob:dogProb,dec:dogDec,ml:dogMLstr,side:'mlDog'},
@@ -3346,9 +3360,10 @@ function mlbCard(hA,awA,gt,date,espnGame){
   ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
   const _nm=_evalMkts(_rawMkts); // ranks by composite mfScore, not just tier+EV
   const bestMkt=_nm.best;
-  const topTier=_nm.tierN;
-  const topTierLabel=_nm.lbl;
-  const topTierCol=_nm.col;
+  // Use MLB-specific tighter tier for the card-level grade (with ensemble sigma)
+  const topTier=_mlbTier(bestMkt.prob,bestMkt.evVal,_ensSigEarly);
+  const topTierLabel=topTier===3?'PREMIUM':topTier===2?'OPTIMAL':topTier===1?'LEAN':'SKIP';
+  const topTierCol=topTier===3?'var(--gc)':topTier===2?'var(--nc)':topTier===1?'var(--ic)':'var(--t3)';
   const evPct=(bestMkt.evVal*100).toFixed(1);
   // Secondary qualifiers + full market rankings line for ENGINE REASONING footer
   const secStr=_nm.secStr;
@@ -9289,6 +9304,7 @@ function renderAdaptiveLearning(){
     HOCKEY:{sports:['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'],color:'var(--ic)'},
     TENNIS:{sports:['TEN','WTA','ATP'],color:'var(--mc)'},
     FOOTBALL:{sports:['NFL','CFB','FB'],color:'var(--hc)'},
+    SOCCER:{sports:['SOC','WC','PL','LIGA','BL','MLS'],color:'var(--nc)'},
   };
   const perfAll=getP().filter(p=>p.outcome!=='pending');
   html+=`<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">`;
@@ -9298,7 +9314,8 @@ function renderAdaptiveLearning(){
     const w=bets.filter(p=>p.outcome==='win').length;const acc=bets.length?w/bets.length:null;
     const units=bets.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);
     // Per-league inside group
-    const leagueRows=sports.map(s=>{const lb=bets.filter(p=>(p.sport||'').toUpperCase()===s);if(!lb.length)return'';const lw=lb.filter(p=>p.outcome==='win').length;const lu=lb.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);const lacc=lb.length?lw/lb.length:null;return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 20px;border-top:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${s}</span><span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${lw}W-${lb.length-lw}L</span><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pCol(lacc||0)}">${lacc!==null?(lacc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${units>=0?'var(--nc)':'var(--hc)'}">${lu>=0?'+':''}${lu.toFixed(1)}u</span></div>`;}).filter(Boolean).join('');
+    const _lgLabel={SOC:'WORLD CUP',WC:'WORLD CUP',PL:'PREMIER LEAGUE',LIGA:'LA LIGA',BL:'BUNDESLIGA',MLS:'MLS',TEN:'TENNIS',WTA:'WTA',ATP:'ATP',NHL:'NHL',MLB:'MLB',NBA:'NBA',NFL:'NFL'};
+    const leagueRows=sports.map(s=>{const lb=bets.filter(p=>(p.sport||'').toUpperCase()===s);if(!lb.length)return'';const lw=lb.filter(p=>p.outcome==='win').length;const lu=lb.reduce((a,p)=>a+(p.outcome==='win'?(parseFloat(p.decOdds)||2)-1:p.outcome==='push'?0:-1),0);const lacc=lb.length?lw/lb.length:null;return`<div style="display:flex;justify-content:space-between;padding:3px 8px 3px 20px;border-top:1px solid rgba(255,255,255,.04)"><span style="font-family:var(--mono);font-size:12px;color:var(--t3)">${_lgLabel[s]||s}</span><span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${lw}W-${lb.length-lw}L</span><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pCol(lacc||0)}">${lacc!==null?(lacc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:11px;color:${lu>=0?'var(--nc)':'var(--hc)'}">${lu>=0?'+':''}${lu.toFixed(1)}u</span></div>`;}).filter(Boolean).join('');
     const fid2='adsp_'+grp;
     html+=`<div style="border:1px solid rgba(255,255,255,.08);border-radius:3px;overflow:hidden">
       <div onclick="const c=document.getElementById('${fid2}');c.style.display=c.style.display==='none'?'block':'none'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7)">
@@ -13773,8 +13790,12 @@ function adaptiveTick(){
 
   // Per-sport performance
   const sportPerf={};
-  for(const sport of['MLB','NHL','NBA','TEN']){
-    const sp=W30.filter(p=>p.sport===sport);if(!sp.length)continue;
+  for(const sport of['MLB','NHL','NBA','TEN','SOC']){
+    // SOC aggregates all soccer leagues
+    const sp=sport==='SOC'
+      ?W30.filter(p=>['SOC','WC','PL','LIGA','BL','MLS'].includes((p.sport||'').toUpperCase()))
+      :W30.filter(p=>p.sport===sport);
+    if(!sp.length)continue;
     const w=sp.filter(p=>p.outcome==='win').length;
     sportPerf[sport]={acc:w/sp.length,n:sp.length,wins:w,losses:sp.length-w};
   }
