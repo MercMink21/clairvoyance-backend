@@ -13279,10 +13279,8 @@ function fixWimPickDates(){
   else toast('// ALL WIMBLEDON PICK DATES + SPORT TAGS CORRECT');
 }
 function renderWimDraw(tour,round){
-  // If futures round, delegate directly
   if(round==='futures'){_renderWimFutures(tour);return;}
-  // Otherwise render full ESPN-style bracket
-  _renderWimBracket(tour);
+  _renderWimBracket(tour,'bracket');
 }
 function _renderWimFutures(tour){
   const el=document.getElementById('wim-draw-content');if(!el)return;
@@ -13298,188 +13296,209 @@ function _renderWimFutures(tour){
   </div>`).join('');
   el.innerHTML=html;
 }
-function _renderWimBracket(tour){
+function _renderWimBracket(tour,activeRound){
   const el=document.getElementById('wim-draw-content');if(!el)return;
   const isMen=tour==='men';
   const key=isMen?'atp':'wta';
-  const bo5=isMen;
   const t=TEN_TOURNAMENTS[0];
+  activeRound=activeRound||'bracket';
 
-  // Get R3 data
+  // R3 data: 16 matches total (8 completed top half + 8 upcoming bottom half)
   const r3d=t.rounds.find(r=>r.id==='r3')?.[key]||[];
-  function _ww(rnd){return JSON.parse(localStorage.getItem('wim_wins_'+rnd+'_'+key)||'{}')}
+  function _ww(rnd){try{return JSON.parse(localStorage.getItem('wim_wins_'+rnd+'_'+key)||'{}')}catch(e){return{}}}
 
-  // Build winners at each round
+  // Build winners arrays for each round
   const r3wins=_ww('r3');
-  // R3 winners: use data .winner if set, else localStorage
   const r3w=r3d.map((m,i)=>m.winner||r3wins[i]||null);
 
-  // R4: pair consecutive R3 winners (0+1, 2+3, ...)
+  // R4: pair R3 winners (0+1, 2+3 ... 14+15 → 8 R4 matches)
   const r4data=[];
-  for(let i=0;i<8;i+=2){
-    const p1=r3w[i]||null, p2=r3w[i+1]||null;
-    const s1=p1?(r3d[i]?.(p1===r3d[i].p1?r3d[i].s1:r3d[i].s2)||''):'';
-    const s2=p2?(r3d[i+1]?.(p2===r3d[i+1].p1?r3d[i+1].s1:r3d[i+1].s2)||''):'';
+  for(let i=0;i<16;i+=2){
+    const p1=i<r3w.length?r3w[i]||null:null;
+    const p2=(i+1)<r3w.length?r3w[i+1]||null:null;
+    const m1=r3d[i]||{};const m2=r3d[i+1]||{};
+    const s1=p1&&m1.p1?(p1===m1.p1?m1.s1:m1.s2)||''  :'';
+    const s2=p2&&m2.p1?(p2===m2.p1?m2.s1:m2.s2)||''  :'';
     r4data.push({p1,s1,p2,s2});
   }
   const r4wins=_ww('r4');
   const r4w=r4data.map((m,i)=>r4wins[i]||null);
 
-  // QF: pair consecutive R4 winners (0+1, 2+3)
+  // QF: pair R4 winners (0+1, 2+3, 4+5, 6+7 → 4 QF matches)
   const qfdata=[];
-  for(let i=0;i<4;i+=2){
-    const p1=r4w[i]||null, p2=r4w[i+1]||null;
-    const s1=p1?(r4data[i]?.(p1===r4data[i].p1?r4data[i].s1:r4data[i].s2)||''):'';
-    const s2=p2?(r4data[i+1]?.(p2===r4data[i+1].p1?r4data[i+1].s1:r4data[i+1].s2)||''):'';
+  for(let i=0;i<8;i+=2){
+    const p1=r4w[i]||null;const p2=r4w[i+1]||null;
+    const m1=r4data[i]||{};const m2=r4data[i+1]||{};
+    const s1=p1&&m1.p1?(p1===m1.p1?m1.s1:m1.s2)||''  :'';
+    const s2=p2&&m2.p1?(p2===m2.p1?m2.s1:m2.s2)||''  :'';
     qfdata.push({p1,s1,p2,s2});
   }
   const qfwins=_ww('qf');
   const qfw=qfdata.map((m,i)=>qfwins[i]||null);
 
-  // SF: pair QF winners (0+1)
-  const sfdata=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''}];
+  // SF: pair QF winners (0+1, 2+3 → 2 SF matches)
+  const sfdata=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''},{p1:qfw[2]||null,s1:'',p2:qfw[3]||null,s2:''}];
   const sfwins=_ww('sf');
-  const sfw=[sfwins[0]||null];
+  const sfw=sfdata.map((m,i)=>sfwins[i]||null);
 
   // Final
-  const fdata=[{p1:sfw[0]||null,s1:'',p2:qfw[2]&&qfw[3]?null:null,s2:''}];
-  // Actually SF has only 1 match from top half — let's do 2 SF from 4 QF winners
-  // Re-derive: QF[0] winner vs QF[1] winner = SF[0]; QF[2] winner vs QF[3] winner = SF[1]
-  // But we only have 8 R3 matches → 4 R4 → 2 QF → 1 SF → Final
-  // Let's redo: 8 R3 → 4 R4 (pair 0+1,2+3,4+5,6+7) → 2 QF (pair R4[0]+R4[1], R4[2]+R4[3]) → 1 SF (pair QF[0]+QF[1]) → Final
-  // Already done above correctly with 2 QF matches. SF has 1 match.
-  const sfdata2=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''}];
-  const sf2wins=_ww('sf');
-  const sf2w=[sf2wins[0]||null];
-  const fdata2=[{p1:sf2w[0]||null,s1:'',p2:null,s2:''}];
+  const fdata=[{p1:sfw[0]||null,s1:'',p2:sfw[1]||null,s2:''}];
   const fwins=_ww('f');
+  const fw=[fwins[0]||null];
 
-  // Helper: match box
-  function _box(p1,s1,p2,s2,winner,rnd,idx,extraStyle){
-    p2=p2||'TBD';
-    const w1=winner===p1&&winner;
-    const w2=winner===p2&&winner;
-    const c1=w1?'#00f0ff':winner?'rgba(180,160,220,.3)':'rgba(220,190,255,.7)';
-    const c2=w2?'#00f0ff':winner?'rgba(180,160,220,.3)':'rgba(220,190,255,.7)';
-    const needBtns=!winner&&p2&&p2!=='TBD';
-    const p1last=(p1||'').split('.').pop();
-    const p2last=(p2||'').split('.').pop();
-    return`<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;margin:2px 0;min-width:148px;${extraStyle||''}">
-  <div style="padding:4px 7px;border-bottom:1px solid rgba(255,255,255,.06);font-family:var(--mono);font-size:11px;color:${c1};display:flex;justify-content:space-between;align-items:center">
-    <span>${s1?`<span style="color:rgba(180,160,220,.5);font-size:9px">${s1} </span>`:''}${p1||'TBD'}</span>
-    ${w1?`<span style="color:#00f0ff;font-size:9px">✓</span>`:''}
+  // ── Helper: single match box ──
+  function _box(p1,s1,p2,s2,winner,rnd,idx){
+    p1=p1||'TBD';p2=p2||'TBD';
+    const w1=winner&&winner===p1;
+    const w2=winner&&winner===p2;
+    const c1=w1?'#00f0ff':winner?'rgba(150,120,180,.4)':'rgba(220,190,255,.75)';
+    const c2=w2?'#00f0ff':winner?'rgba(150,120,180,.4)':'rgba(220,190,255,.75)';
+    const needBtns=!winner&&p1!=='TBD'&&p2!=='TBD';
+    const p1last=(p1).split('.').pop();
+    const p2last=(p2).split('.').pop();
+    return`<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,${winner?'.06':'.12'});border-radius:3px;margin:2px 0;min-width:140px">
+  <div style="padding:3px 6px;border-bottom:1px solid rgba(255,255,255,.06);font-family:var(--mono);font-size:10px;color:${c1};display:flex;justify-content:space-between;align-items:center">
+    <span>${s1?`<span style="color:rgba(0,240,255,.4);font-size:8px">${s1} </span>`:''}${p1}</span>
+    ${w1?'<span style="color:#00f0ff;font-size:9px">✓</span>':''}
   </div>
-  <div style="padding:4px 7px;font-family:var(--mono);font-size:11px;color:${c2};display:flex;justify-content:space-between;align-items:center">
-    <span>${s2?`<span style="color:rgba(180,160,220,.5);font-size:9px">${s2} </span>`:''}${p2}</span>
-    ${w2?`<span style="color:#00f0ff;font-size:9px">✓</span>`:''}
+  <div style="padding:3px 6px;font-family:var(--mono);font-size:10px;color:${c2};display:flex;justify-content:space-between;align-items:center">
+    <span>${s2?`<span style="color:rgba(0,240,255,.4);font-size:8px">${s2} </span>`:''}${p2}</span>
+    ${w2?'<span style="color:#00f0ff;font-size:9px">✓</span>':''}
   </div>
-  ${needBtns?`<div style="display:flex;gap:2px;padding:3px 4px;background:rgba(0,0,0,.3)">
-    <button onclick="window.setWimWinner('${rnd}','${key}',${idx},'${p1}')" style="flex:1;font-size:9px;padding:2px 3px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.3);color:#00f0ff;border-radius:2px;cursor:pointer">✓ ${p1last}</button>
-    <button onclick="window.setWimWinner('${rnd}','${key}',${idx},'${p2}')" style="flex:1;font-size:9px;padding:2px 3px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:#ffd700;border-radius:2px;cursor:pointer">✓ ${p2last}</button>
+  ${needBtns?`<div style="display:flex;gap:2px;padding:2px 3px;background:rgba(0,0,0,.3)">
+    <button onclick="window.setWimWinner('${rnd}','${key}',${idx},'${p1}')" style="flex:1;font-size:8px;padding:2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:#00f0ff;border-radius:2px;cursor:pointer">✓ ${p1last}</button>
+    <button onclick="window.setWimWinner('${rnd}','${key}',${idx},'${p2}')" style="flex:1;font-size:8px;padding:2px;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.25);color:#ffd700;border-radius:2px;cursor:pointer">✓ ${p2last}</button>
   </div>`:''}
 </div>`;
   }
 
-  // Column: array of match objects {p1,s1,p2,s2,winner}, round id, flex-grow spacers
-  function _col(label,matches,winners,rnd,spacerStyle){
-    const colStyle='display:flex;flex-direction:column;flex-shrink:0;width:160px;';
-    let inner='';
-    const n=matches.length;
+  // ── Connector lines between columns ──
+  function _conn(n){
+    let s='';
     for(let i=0;i<n;i++){
-      const m=matches[i];
-      if(spacerStyle&&i>0)inner+=`<div style="${spacerStyle}"></div>`;
-      inner+=_box(m.p1,m.s1||'',m.p2,m.s2||'',winners[i]||null,rnd,i);
+      s+=`<div style="height:50%;display:flex;flex-direction:column">
+  <div style="flex:1;border-right:1px solid rgba(0,240,255,.2);border-bottom:1px solid rgba(0,240,255,.2)"></div>
+  <div style="flex:1;border-right:1px solid rgba(0,240,255,.2);border-top:1px solid rgba(0,240,255,.2)"></div>
+</div>`;
     }
-    return`<div style="${colStyle}">
-  <div style="font-family:var(--orb);font-size:9px;color:#00f0ff;letter-spacing:2px;text-align:center;padding:4px;border-bottom:1px solid rgba(0,240,255,.3);margin-bottom:4px">${label}</div>
-  <div style="display:flex;flex-direction:column;flex:1">
-    ${inner}
-  </div>
+    return`<div style="width:14px;flex-shrink:0;display:flex;flex-direction:column;margin-top:24px;align-self:stretch">${s}</div>`;
+  }
+
+  // ── Column builder ──
+  function _col(label,matches,winners,rnd,borderColor){
+    borderColor=borderColor||'rgba(0,240,255,.3)';
+    const labelColor=borderColor.includes('215')?'#ffd700':'#00f0ff';
+    let rows='';
+    for(let i=0;i<matches.length;i++){
+      if(i>0)rows+=`<div style="flex:1;min-height:4px"></div>`;
+      rows+=_box(matches[i].p1,matches[i].s1||'',matches[i].p2,matches[i].s2||'',winners[i]||null,rnd,i);
+    }
+    return`<div style="flex-shrink:0;width:152px;display:flex;flex-direction:column">
+  <div style="font-family:var(--orb);font-size:8px;color:${labelColor};letter-spacing:2px;text-align:center;padding:3px;border-bottom:1px solid ${borderColor};margin-bottom:4px">${label}</div>
+  <div style="display:flex;flex-direction:column;flex:1;justify-content:space-around">${rows}</div>
 </div>`;
   }
 
-  // Connector column between two rounds
-  // nLeft = number of matches in left col, nRight = number in right col
-  // Each right match spans 2 left matches vertically
-  function _connector(nLeft){
-    const matchH=66; // approx px per match box
-    const gap=4;
-    const unit=matchH+gap;
-    let inner='';
-    for(let i=0;i<nLeft/2;i++){
-      // top arm, middle bar, bottom arm
-      inner+=`<div style="height:${unit}px;display:flex;flex-direction:column">
-  <div style="flex:1;border-right:1px solid rgba(0,240,255,.25);border-bottom:1px solid rgba(0,240,255,.25)"></div>
-  <div style="flex:1;border-right:1px solid rgba(0,240,255,.25);border-top:1px solid rgba(0,240,255,.25)"></div>
-</div>`;
-    }
-    return`<div style="width:16px;flex-shrink:0;display:flex;flex-direction:column;margin-top:26px">${inner}</div>`;
+  // ── Toggle button style ──
+  const tbtn=(active,color)=>`font-family:var(--mono);font-size:11px;padding:4px 14px;border-radius:3px;cursor:pointer;border:1px solid ${active?color||'#00f0ff':'rgba(0,240,255,.25)'};background:${active?'rgba(0,240,255,.12)':'rgba(0,240,255,.03)'};color:${active?color||'#00f0ff':'rgba(180,150,220,.6)'};letter-spacing:1px`;
+
+  // ── BRACKET VIEW ──
+  function _buildBracket(){
+    return`<div style="overflow-x:auto;padding-bottom:8px">
+<div style="display:flex;align-items:stretch;min-height:900px;gap:0">
+  ${_col('ROUND 3',r3d,r3w,'r3')}
+  ${_conn(8)}
+  ${_col('ROUND 4',r4data,r4w,'r4')}
+  ${_conn(4)}
+  ${_col('QUARTERFINALS',qfdata,qfw,'qf')}
+  ${_conn(2)}
+  ${_col('SEMIFINALS',sfdata,sfw,'sf')}
+  ${_conn(1)}
+  ${_col('FINAL',fdata,fw,'f','rgba(255,215,0,.4)')}
+</div></div>`;
   }
 
-  // R4 spacer between matches: each R4 match sits opposite 2 R3 matches
-  // R3 match box ~66px × 2 = 132px; R4 gets centered → spacer between R4 matches = 66px
-  const r4SpacerH=matchHpx=>`height:${matchHpx}px;`;
+  // ── MATCHES VIEW: show scheduled (upcoming) matches by round ──
+  function _buildMatches(selRound){
+    const allRounds=[
+      {id:'r3',label:'R3',data:r3d,winners:r3w},
+      {id:'r4',label:'R4',data:r4data,winners:r4w},
+      {id:'qf',label:'QF',data:qfdata,winners:qfw},
+      {id:'sf',label:'SF',data:sfdata,winners:sfw},
+      {id:'f', label:'FINAL',data:fdata,winners:fw},
+    ];
+    const rd=allRounds.find(r=>r.id===selRound)||allRounds[0];
+    // Filter: only show matches without a winner (upcoming/scheduled)
+    const upcoming=rd.data.filter((m,i)=>!rd.winners[i]&&(m.p1&&m.p1!=='TBD'||m.p2&&m.p2!=='TBD'));
+    const completed=rd.data.filter((m,i)=>rd.winners[i]);
 
-  // Build the 5-round bracket
-  // For proper vertical alignment: R4 matches need spacer = 1 R3 match height between them
-  // We'll use flex with grow spacers between matches within a column
-  function _colFlex(label,matches,winners,rnd){
-    let inner='';
-    const n=matches.length;
-    for(let i=0;i<n;i++){
-      if(i>0)inner+=`<div style="flex:1"></div>`;
-      inner+=_box(matches[i].p1,matches[i].s1||'',matches[i].p2,matches[i].s2||'',winners[i]||null,rnd,i);
+    const rndbts=allRounds.map(r=>`<button onclick="_renderWimBracket('${tour}','matches_${r.id}')" style="${tbtn(selRound===r.id)}">${r.label}</button>`).join('');
+
+    let html=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">${rndbts}</div>`;
+
+    if(completed.length){
+      html+=`<div style="font-family:var(--mono);font-size:10px;color:rgba(0,240,255,.4);letter-spacing:2px;margin-bottom:6px">// ${completed.length} COMPLETED — REMOVED</div>`;
     }
-    return`<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;">
-  <div style="font-family:var(--orb);font-size:9px;color:#00f0ff;letter-spacing:2px;text-align:center;padding:4px;border-bottom:1px solid rgba(0,240,255,.3);margin-bottom:4px">${label}</div>
-  <div style="display:flex;flex-direction:column;flex:1;justify-content:space-around">
-    ${inner}
-  </div>
-</div>`;
-  }
 
-  // R3 column: fixed spacing (8 matches, stacked)
-  let r3ColHtml=`<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;">
-  <div style="font-family:var(--orb);font-size:9px;color:#00f0ff;letter-spacing:2px;text-align:center;padding:4px;border-bottom:1px solid rgba(0,240,255,.3);margin-bottom:4px">ROUND 3</div>
-  <div style="display:flex;flex-direction:column;gap:4px">
-    ${r3d.map((m,i)=>_box(m.p1,m.s1||'',m.p2,m.s2||'',r3w[i],('r3'),i)).join('')}
+    if(!upcoming.length){
+      html+=`<div style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.4);padding:20px;text-align:center;border:1px dashed rgba(255,255,255,.1);border-radius:6px">NO SCHEDULED MATCHES<br><span style="font-size:11px;opacity:.6">All ${rd.label} matches complete or not yet seeded</span></div>`;
+    } else {
+      html+=`<div style="font-family:var(--mono);font-size:10px;color:rgba(0,240,255,.4);letter-spacing:2px;margin-bottom:8px">// ${upcoming.length} SCHEDULED — ${rd.label.toUpperCase()}</div>`;
+      html+=upcoming.map((m,i)=>{
+        const idx=rd.data.indexOf(m);
+        const p1last=(m.p1||'TBD').split('.').pop();
+        const p2last=(m.p2||'TBD').split('.').pop();
+        const hasPlayers=m.p1&&m.p2&&m.p1!=='TBD'&&m.p2!=='TBD';
+        return`<div class="card" style="margin-bottom:8px;border-left:3px solid var(--nc)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-family:var(--orb);font-size:11px;color:var(--nc);letter-spacing:2px">WIMBLEDON ${rd.label.toUpperCase()} · ${isMen?'ATP':'WTA'}</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${m.matchDate||''}</div>
   </div>
-</div>`;
-
-  const bracketHtml=`
-<div style="display:flex;align-items:stretch;min-width:950px;min-height:600px">
-  ${r3ColHtml}
-  ${_connector(8)}
-  ${_colFlex('ROUND 4',r4data,r4w,'r4')}
-  ${_connector(4)}
-  ${_colFlex('QUARTERFINALS',qfdata,qfw,'qf')}
-  ${_connector(2)}
-  ${_colFlex('SEMIFINALS',sfdata2,sf2w,'sf')}
-  <div style="width:16px;flex-shrink:0;display:flex;flex-direction:column;margin-top:26px">
-    <div style="flex:1;border-right:1px solid rgba(0,240,255,.25);border-bottom:1px solid rgba(0,240,255,.25)"></div>
-    <div style="flex:1;border-right:1px solid rgba(0,240,255,.25);border-top:1px solid rgba(0,240,255,.25)"></div>
-  </div>
-  <div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;">
-    <div style="font-family:var(--orb);font-size:9px;color:#ffd700;letter-spacing:2px;text-align:center;padding:4px;border-bottom:1px solid rgba(255,215,0,.3);margin-bottom:4px">FINAL</div>
-    <div style="display:flex;flex-direction:column;flex:1;justify-content:center">
-      ${_box(sf2w[0]||null,'',null,'',fwins[0]||null,'f',0)}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <div style="flex:1">
+      <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:rgba(220,190,255,.85)">${m.p1||'TBD'} ${m.s1?`<span style="font-size:11px;color:var(--nc)">${m.s1}</span>`:''}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${m.p1ml?`ML: ${m.p1ml>0?'+':''}${m.p1ml}`:''}</div>
+    </div>
+    <div style="font-family:var(--orb);font-size:13px;color:var(--t3);flex-shrink:0">VS</div>
+    <div style="flex:1;text-align:right">
+      <div style="font-family:var(--orb);font-size:16px;font-weight:700;color:rgba(220,190,255,.85)">${m.p2||'TBD'} ${m.s2?`<span style="font-size:11px;color:var(--nc)">${m.s2}</span>`:''}</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:1px">${m.p2ml?`ML: ${m.p2ml>0?'+':''}${m.p2ml}`:''}</div>
     </div>
   </div>
+  ${m.basis?`<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.07);line-height:1.4">${m.basis}</div>`:''}
+  ${hasPlayers?`<div style="display:flex;gap:4px;margin-top:8px">
+    <button onclick="lockPick('${m.p1||''}','${m.p2||''}','ML','p1',${m.p1ml||0},${m.p1ml||0},${m.p1ml||0},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:5px;background:rgba(0,240,255,.08);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:3px;cursor:pointer">LOCK ${p1last}</button>
+    <button onclick="lockPick('${m.p2||''}','${m.p1||''}','ML','p1',${m.p2ml||0},${m.p2ml||0},${m.p2ml||0},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:5px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:3px;cursor:pointer">LOCK ${p2last}</button>
+  </div>`:''}
 </div>`;
+      }).join('');
+    }
+    return html;
+  }
+
+  // ── Determine view ──
+  let contentHtml='';
+  if(activeRound==='bracket'){
+    contentHtml=_buildBracket();
+  } else {
+    const selRnd=activeRound.replace('matches_','');
+    contentHtml=_buildMatches(selRnd);
+  }
 
   const toggleStyle=(active)=>`font-family:var(--mono);font-size:12px;padding:5px 16px;border-radius:3px;cursor:pointer;border:1px solid ${active?'#00f0ff':'rgba(0,240,255,.3)'};background:${active?'rgba(0,240,255,.15)':'rgba(0,240,255,.04)'};color:${active?'#00f0ff':'rgba(220,190,255,.6)'};letter-spacing:1px`;
 
-  el.innerHTML=`<div style="overflow-x:auto;padding:4px 0">
-  <div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:2px;margin-bottom:8px">// WIMBLEDON 2026 — ${isMen?'ATP MENS':'WTA WOMENS'} SINGLES DRAW</div>
-  <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    <button onclick="renderWimDraw('men','r3')" style="${toggleStyle(isMen)}">MENS</button>
-    <button onclick="renderWimDraw('women','r3')" style="${toggleStyle(!isMen)}">WOMENS</button>
-    <button onclick="renderWimDraw('${tour}','futures')" style="${toggleStyle(false)}">${isMen?'ATP':'WTA'} FUTURES</button>
-    <button onclick="window.clearWimRound('r3','${key}')" style="font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid rgba(255,32,144,.3);background:rgba(255,32,144,.05);color:rgba(255,80,150,.7);letter-spacing:1px">↺ RESET R3+</button>
-  </div>
-  ${bracketHtml}
-</div>`;
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35);letter-spacing:2px;margin-bottom:8px">// WIMBLEDON 2026 — ${isMen?'ATP MENS':'WTA WOMENS'} SINGLES</div>
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+  <button onclick="_renderWimBracket('men','bracket')" style="${toggleStyle(isMen&&activeRound==='bracket')}">MENS</button>
+  <button onclick="_renderWimBracket('women','bracket')" style="${toggleStyle(!isMen&&activeRound==='bracket')}">WOMENS</button>
+  <button onclick="renderWimDraw('${tour}','futures')" style="${toggleStyle(false)}">${isMen?'ATP':'WTA'} FUTURES</button>
+  <button onclick="_renderWimBracket('${tour}','bracket')" style="${toggleStyle(activeRound==='bracket')}">BRACKET</button>
+  <button onclick="_renderWimBracket('${tour}','matches_r3')" style="${toggleStyle(activeRound.startsWith('matches'))}">MATCHES</button>
+  <button onclick="window.clearWimRound('r3','${key}')" style="font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid rgba(255,32,144,.3);background:rgba(255,32,144,.04);color:rgba(255,80,150,.6);letter-spacing:1px">↺ RESET</button>
+</div>
+${contentHtml}`;
 }
+window._renderWimBracket=_renderWimBracket;
 // ── Legacy renderWimDraw sections (kept for reference, now all routed through bracket) ──
 function _renderWimDrawLegacy(tour,round){
   const el=document.getElementById('wim-draw-content');if(!el)return;
@@ -13746,13 +13765,12 @@ window.setWimWinner=function(round,key,matchIdx,winner){
   }catch(e){}
   // Re-render current view
   const tour=key==='atp'?'men':'women';
-  renderWimDraw(tour,round);
+  _renderWimBracket(tour,'bracket');
 };
 window.clearWimRound=function(round,key){
   localStorage.removeItem('wim_wins_'+round+'_'+key);
   const tour=key==='atp'?'men':'women';
-  const nextRnd={r2:'r3',r3:'r4',r4:'qf',qf:'sf',sf:'f'};
-  renderWimDraw(tour,nextRnd[round]||'r3');
+  _renderWimBracket(tour,'bracket');
 };
 // ── Render: Grand Slam ────────────────────────────────────────
 function renderSlam(code){
