@@ -16537,11 +16537,7 @@ async function exportLeagueCard(idx){
   _glowText(ctx,statsStr,W/2,fY+20,'600 11px "Orbitron"','rgba(0,240,255,.6)',4,'center');
   _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,fY+42,'700 12px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'Model outputs are probabilistic projections, not financial advice',W/2,fY+62,'400 9px "Orbitron"','rgba(220,190,255,.3)',2,'center');
-  const url=cv.toDataURL('image/png');
-  const a=document.createElement('a');a.href=url;
-  a.download='cv-intel-'+sport.toLowerCase()+'-'+dateStr.replace(/-/g,'')+'.png';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  toast('// '+sport+' INTEL BRIEF SAVED');
+  _saveCanvas(cv,'cv-intel-'+sport.toLowerCase()+'-'+dateStr.replace(/-/g,'')+'.png',sport+' INTEL BRIEF');
 }
 
 function shareLeagueCard(idx){
@@ -16556,6 +16552,51 @@ function shareLeagueCard(idx){
 // ═══════════════════════════════════════════════════════════════════════════
 // PERFORMANCE GRAPHIC EXPORT — Canvas 1080×1080
 // ═══════════════════════════════════════════════════════════════════════════
+// Cross-platform canvas saver. Desktop keeps the classic <a download> click
+// (unchanged). On mobile (iOS/iPadOS/Android) the <a download> click is a
+// no-op / opens a blank tab, so we route through the Web Share API instead —
+// which surfaces the native share sheet where the user taps "Save Image" to
+// send the PNG straight to their Photos library.
+function _cvIsMobile(){
+  try{
+    var ua=navigator.userAgent||'';
+    if(/iPhone|iPad|iPod|Android/i.test(ua))return true;
+    // iPadOS 13+ masquerades as desktop Safari — detect via touch points
+    if(/Macintosh/.test(ua)&&navigator.maxTouchPoints&&navigator.maxTouchPoints>1)return true;
+  }catch(e){}
+  return false;
+}
+function _saveCanvas(cv,filename,label){
+  label=label||'CARD';
+  function _dl(){
+    try{
+      var url=cv.toDataURL('image/png');
+      var a=document.createElement('a');a.href=url;a.download=filename;
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      toast('// '+label+' SAVED');
+    }catch(e){toast('// SAVE FAILED — LONG-PRESS THE IMAGE TO SAVE');}
+  }
+  if(!_cvIsMobile()){_dl();return;}
+  // Mobile: prefer native share sheet → "Save Image" to Photos
+  try{
+    cv.toBlob(function(blob){
+      if(!blob){_dl();return;}
+      try{
+        var file=new File([blob],filename,{type:'image/png'});
+        if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){
+          navigator.share({files:[file],title:label}).then(function(){
+            toast('// TAP "SAVE IMAGE" TO ADD TO PHOTOS');
+          }).catch(function(err){
+            if(err&&err.name==='AbortError')return; // user cancelled
+            _dl();
+          });
+          return;
+        }
+      }catch(e){}
+      _dl();
+    },'image/png');
+  }catch(e){_dl();}
+}
 function _cfBg(ctx,W,H){
   const cx=W/2,cy=H/2;
   // ── Base: dark navy matching bg.jpg (#0b0d1e at 1920×1080) ────────────
@@ -17138,11 +17179,7 @@ async function _genCombinedTrackGraphic(){
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
 
-  const url=cv.toDataURL('image/png');
-  const a=document.createElement('a');a.href=url;
-  a.download='cv-track-record-'+today().replace(/-/g,'')+'.png';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  toast('// TRACK RECORD SAVED');
+  _saveCanvas(cv,'cv-track-record-'+today().replace(/-/g,'')+'.png','TRACK RECORD');
 }
 
 async function _genSportPerfGraphic(){
@@ -17226,11 +17263,7 @@ async function _genSportPerfGraphic(){
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
 
-  const url=cv.toDataURL('image/png');
-  const a=document.createElement('a');a.href=url;
-  a.download='cv-sport-perf-'+today().replace(/-/g,'')+'.png';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  toast('// SPORT PERFORMANCE CARD SAVED');
+  _saveCanvas(cv,'cv-sport-perf-'+today().replace(/-/g,'')+'.png','SPORT PERFORMANCE CARD');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -17328,11 +17361,7 @@ async function _genLeaguePerfGraphic(){
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
 
-  const url=cv.toDataURL('image/png');
-  const a=document.createElement('a');a.href=url;
-  a.download='cv-league-perf-'+today().replace(/-/g,'')+'.png';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  toast('// LEAGUE PERFORMANCE CARD SAVED');
+  _saveCanvas(cv,'cv-league-perf-'+today().replace(/-/g,'')+'.png','LEAGUE PERFORMANCE CARD');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
