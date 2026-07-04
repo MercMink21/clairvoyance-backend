@@ -16824,9 +16824,12 @@ function renderTrackRecord(){
     const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);
     return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
   };
+  // Readable date sub-labels (match the header's "SAT, JUL 4, 2026" style) so
+  // TODAY/YESTERDAY unambiguously show their actual calendar date on exports.
+  const _fmtDay=s=>{try{return new Date(s+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(e){return s;}};
   const periods=[
-    {key:'TODAY',      label:'TODAY',      sub:todayStr,      pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===todayStr))},
-    {key:'YESTERDAY',  label:'YESTERDAY',  sub:ydStr,         pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===ydStr))},
+    {key:'TODAY',      label:'TODAY',      sub:_fmtDay(todayStr), pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===todayStr))},
+    {key:'YESTERDAY',  label:'YESTERDAY',  sub:_fmtDay(ydStr),    pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===ydStr))},
     {key:'ROLLING 7D', label:'ROLLING 7D', sub:'',            pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
     {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
     {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
