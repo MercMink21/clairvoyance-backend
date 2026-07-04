@@ -1489,7 +1489,6 @@ body{line-height:1.5}
   </div>
 </div>
 
-<div 
 <div id="sp-trainer" class="spane">
   <div class="sa" style="padding:14px">
     <div class="sh" style="margin-bottom:10px"><span class="p"></span> TRAINING SIMULATOR <span style="font-family:var(--mono);font-size:13px;color:var(--t3);font-weight:400;margin-left:8px">OFFSEASON ENGINE BUILDER</span></div>
@@ -1735,7 +1734,7 @@ body{line-height:1.5}
   </div>
 </div>
 
-id="sp-tracker" class="spane" style="display:none!important">
+<div id="sp-tracker" class="spane" style="display:none!important">
   <nav class="snav">
     <button class="sb2 act" id="tracker-tab-locked" onclick="setTrackerTab('locked')">LOCKED BETS</button>
     <button class="sb2" id="tracker-tab-clv" onclick="setTrackerTab('clv')">CLV TRACKER</button>
@@ -10055,7 +10054,7 @@ async function opsRunProps(sport,btn){
       else if(s==='WNBA'){await Promise.resolve(renderWNBAProps&&renderWNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
       else if(s==='MLB'){await Promise.resolve(renderProps&&renderProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
       else if(s==='NHL'){await Promise.resolve(renderNHLPropsLive&&renderNHLPropsLive());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
-      else if(s==='WC'){await Promise.resolve(renderWCProps&&renderWCProps());_opsLog(sectionId,`  · ${s}: ✓ WC props rendered`);}
+      else if(s==='WC'){await Promise.resolve(typeof renderWCProps==='function'&&renderWCProps());_opsLog(sectionId,`  · ${s}: ✓ WC props rendered`);}
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   try{
@@ -10080,7 +10079,7 @@ async function opsRunStats(sport,btn){
       else if(s==='WNBA'){renderWNBAProps&&renderWNBAProps();_opsLog(sectionId,`  · ${s}: ✓ WNBA stats refreshed`);}
       else if(s==='MLB'){renderMLBEnginePicks&&renderMLBEnginePicks();_opsLog(sectionId,`  · ${s}: ✓ MLB model picks refreshed`);}
       else if(s==='NHL'){renderNHLPropsLive&&renderNHLPropsLive();_opsLog(sectionId,`  · ${s}: ✓ NHL stats refreshed`);}
-      else if(s==='WC'){renderWCMatches&&renderWCMatches();renderWCProps&&renderWCProps();_opsLog(sectionId,`  · ${s}: ✓ WC schedule + props refreshed`);}
+      else if(s==='WC'){typeof renderWCMatches==='function'&&renderWCMatches();typeof renderWCProps==='function'&&renderWCProps();_opsLog(sectionId,`  · ${s}: ✓ WC schedule + props refreshed`);}
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   _opsLog(sectionId,'✓ STAT UPDATE COMPLETE');
@@ -11463,7 +11462,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
       else if(tabId==='config'){}
     }catch(e){console.error('WNBA tab',tabId,e);}
   }
-  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='standings')renderWCStandings();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks')renderWCPicks();else if(tabId==='props')renderWCProps();}catch(e){console.warn('WC tab',tabId,e);}}
+  if(sport==='wc'){try{if(tabId==='matches')renderWCMatches();else if(tabId==='standings')renderWCStandings();else if(tabId==='bracket')renderWCBracket();else if(tabId==='picks'){if(typeof renderWCPicks==='function')renderWCPicks();}else if(tabId==='props'){if(typeof renderWCProps==='function')renderWCProps();}}catch(e){console.warn('WC tab',tabId,e);}}
   else if(sport==='pl'||sport==='liga'||sport==='bl'||sport==='mls'){
     try{if(tabId==='matches')renderLeagueMatches(sport);else if(tabId==='standings')renderLeagueStandings(sport);else if(tabId==='props')renderLeagueProps(sport);}catch(e){}
   }
@@ -21454,8 +21453,8 @@ function renderWCBracket(){
   var thirdCard=bCard(tp1.code,tp1.label,tp1.flag,thirdOv&&thirdOv===tp1.code,!!thirdOv,false,null,'');
   var thirdCard2=bCard(tp2.code,tp2.label,tp2.flag,thirdOv&&thirdOv===tp2.code,!!thirdOv,false,null,'');
   var thirdBtns=(tp1.code&&tp2.code&&!thirdOv)?'<div style="display:flex;gap:1px;margin-top:2px">'
-    +'<button onclick="wcPickWinner('third',''+tp1.code+'')" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp1.label+'▲</button>'
-    +'<button onclick="wcPickWinner('third',''+tp2.code+'')" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp2.label+'▲</button>'
+    +'<button onclick="wcPickWinner(\'third\','+"'"+tp1.code+"'"+')" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp1.label+'▲</button>'
+    +'<button onclick="wcPickWinner(\'third\','+"'"+tp2.code+"'"+')" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp2.label+'▲</button>'
     +'</div>':'';
   var thirdHtml='<div style="margin-top:12px;padding:8px;background:rgba(120,120,120,.08);border:1px solid rgba(120,120,120,.3);border-radius:4px">'
     +'<div style="font-family:var(--orb);font-size:9px;color:rgba(180,180,180,.6);letter-spacing:2px;text-align:center;margin-bottom:5px">🥉 3RD PLACE · Jul 18</div>'
@@ -21501,7 +21500,7 @@ function wcResetPicks(){
   renderWCBracket();
 }
 window.renderWCBracket=renderWCBracket;
-window.renderWCPicks=renderWCPicks;
+if(typeof renderWCPicks==='function')window.renderWCPicks=renderWCPicks;
 window.wcPickWinner=function(matchKey,code){
   var ov=JSON.parse(localStorage.getItem('wc_bracket_overrides')||'{}');
   var key=typeof matchKey==='number'?'r32_'+matchKey:matchKey;
@@ -21513,7 +21512,7 @@ window.wcResetPicks=function(){
   localStorage.removeItem('wc_bracket_overrides');
   renderWCBracket();
 };
-window.renderWCProps=renderWCProps;
+if(typeof renderWCProps==='function')window.renderWCProps=renderWCProps;
 
 // ═══════════════════════════════════════════════════════════════════════
 // EUROPEAN SOCCER + MLS ENGINE
@@ -22728,7 +22727,7 @@ function renderAnalyticsByBet(){
   var filterRow='<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">'+
     TYPE_DEFS.map(function(t){
       var isAct=t===tf;
-      return'<button class="btn btn-sm '+(isAct?'act btn-p':'btn-o')+'" style="font-size:13px" onclick="window._betTypeFilter=''+t+'';renderAnalyticsByBet()">'+t+'</button>';
+      return'<button class="btn btn-sm '+(isAct?'act btn-p':'btn-o')+'" style="font-size:13px" onclick="window._betTypeFilter=\''+t+'\';renderAnalyticsByBet()">'+t+'</button>';
     }).join('')+'</div>';
   // Filter bets
   var bets=tf==='ALL'?all:all.filter(function(p){return getType(p)===tf;});
