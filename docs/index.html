@@ -5416,10 +5416,13 @@ function showManualBetImport(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div>
         <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">SPORT</div>
-        <select id="ibs-sport" ${sel('sport')} onchange="window._ibsUpdateLeague(this.value)">
+        <select id="ibs-sport" ${sel('sport')}>
           <option value="MLB">MLB</option><option value="NBA">NBA</option><option value="NFL">NFL</option>
           <option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CBB">CBB</option><option value="CFB">CFB</option>
-          <option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option><option value="OTHER">OTHER</option>
+          <option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option>
+          <option value="PL">PREMIER LEAGUE</option><option value="LIGA">LA LIGA</option>
+          <option value="BL">BUNDESLIGA</option><option value="MLS">MLS</option><option value="CL">CHAMPIONS LEAGUE</option>
+          <option value="OTHER">OTHER</option>
         </select>
       </div>
       <div>
@@ -5429,12 +5432,12 @@ function showManualBetImport(){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">HOME TEAM</div>
-        <input type="text" id="ibs-home" ${inp('home')} placeholder="e.g. Yankees or NYY">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">HOME / PLAYER 1</div>
+        <input type="text" id="ibs-home" ${inp('home')} placeholder="e.g. Yankees or Sinner">
       </div>
       <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">AWAY TEAM</div>
-        <input type="text" id="ibs-away" ${inp('away')} placeholder="e.g. Red Sox or BOS">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">AWAY / PLAYER 2</div>
+        <input type="text" id="ibs-away" ${inp('away')} placeholder="e.g. Red Sox or Alcaraz">
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -5465,12 +5468,27 @@ function showManualBetImport(){
         <input type="number" id="ibs-wager" ${inp('wager')} placeholder="0" min="0" step="1">
       </div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">WIN PROB (%)</div>
+        <input type="number" id="ibs-prob" ${inp('prob')} placeholder="auto" min="1" max="99" step="1">
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">OUTCOME</div>
+        <select id="ibs-outcome" ${sel('outcome')}>
+          <option value="pending">PENDING</option>
+          <option value="win">WIN ✓</option>
+          <option value="loss">LOSS ✗</option>
+          <option value="push">PUSH</option>
+        </select>
+      </div>
+    </div>
     <div style="margin-bottom:16px">
       <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">NOTES (optional)</div>
-      <input type="text" id="ibs-notes" ${inp('notes')} placeholder="Any context...">
+      <input type="text" id="ibs-notes" ${inp('notes')} placeholder="Any context, result, score...">
     </div>
     <div style="display:flex;gap:10px">
-      <button class="btn btn-n" style="flex:1;padding:11px" onclick="window._ibsSubmit()">ADD TO PENDING</button>
+      <button class="btn btn-n" style="flex:1;padding:11px" onclick="window._ibsSubmit()">SAVE BET</button>
       <button class="btn btn-o" style="flex:1;padding:11px" onclick="document.getElementById('bet-import-overlay').remove()">CANCEL</button>
     </div>
   </div>`;
@@ -5487,27 +5505,47 @@ window._ibsSubmit=function(){
   const line=document.getElementById('ibs-line')?.value.trim()||'';
   const ml=document.getElementById('ibs-ml')?.value.trim()||'';
   const wager=parseFloat(document.getElementById('ibs-wager')?.value)||0;
+  const probInput=parseFloat(document.getElementById('ibs-prob')?.value)||0;
+  const outcome=document.getElementById('ibs-outcome')?.value||'pending';
   const notes=document.getElementById('ibs-notes')?.value.trim()||'';
   if(!betOn){toast('// ENTER BET ON FIELD');return;}
   const mlNum=parseFloat(ml)||0;
   const decOdds=mlNum>0?mlNum/100+1:mlNum<0?100/Math.abs(mlNum)+1:1.91;
-  const winProb=mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238;
-  // Resolve abbreviations → full team names at save time so sport detection is always accurate
+  const winProb=probInput>0?probInput/100:(mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238);
   const fullHome=_teamName(home,sport)||home;
   const fullAway=_teamName(away,sport)||away;
   const preds=getP();
+  const now=Date.now();
   const newBet={
-    id:'imp_'+Date.now(),date,sport,hA:fullHome,awA:fullAway,
+    id:'imp_'+now,date,sport,hA:fullHome,awA:fullAway,
     betType,betOn:betOn+(line?(' '+line):''),
     ml:ml||'—',decOdds,winProb,wager,
-    outcome:'pending',notes,
-    lockedAt:Date.now(),importedManually:true
+    outcome,notes,
+    lockedAt:now,importedManually:true
   };
+  if(outcome!=='pending'){newBet.settledAt=now;}
+  // Sync settled bets into daily log so history and analytics see them
+  if(outcome!=='pending'){
+    try{
+      const log=getDailyLog();
+      if(!log[date])log[date]={recs:[],locked:[],assessed:false};
+      const upsertId=`imp_${sport}_${fullHome}_${fullAway}_${betOn}`.replace(/\s/g,'_');
+      const existRec=log[date].recs.find(r=>r.id===upsertId);
+      if(!existRec){
+        log[date].recs.push({id:upsertId,ha:fullHome,awa:fullAway||'',lb:betOn+(line?' '+line:''),p:winProb,ev2:0,ml:mlNum||0,tier:winProb>=.67?3:winProb>=.62?2:1,gt:sport,locked:true,skipped:false,outcome});
+      }else{existRec.outcome=outcome;existRec.locked=true;}
+      saveDailyLog(log);
+    }catch(_e){}
+  }
   saveP([...preds,newBet]);
   document.getElementById('bet-import-overlay')?.remove();
-  if(typeof renderR==='function')try{renderR();}catch(e){}
-  if(typeof renderGlobalLiveBets==='function')try{renderGlobalLiveBets();}catch(e){}
-  toast(`// BET ADDED — ${sport} ${betOn}`);
+  updHdr();
+  try{renderOverall();}catch(e){}
+  try{renderOverallHistory();}catch(e){}
+  try{renderHomeLockedBets();}catch(e){}
+  try{renderHomePage();}catch(e){}
+  const outcomeLabel=outcome==='pending'?'PENDING':outcome.toUpperCase();
+  toast(`// BET SAVED — ${sport} ${betOn} [${outcomeLabel}]`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#00f0ff');
 };
 function renderCal(){const el=document.getElementById('cal');if(!el)return;const p=getP().filter(x=>x.outcome!=='pending'&&x.betType==='ML');if(p.length<10){el.innerHTML='<div class="empty" style="padding:12px">NEED 10+ SETTLED ML BETS</div>';return;}const bins=[{lo:.50,hi:.55},{lo:.55,hi:.60},{lo:.60,hi:.65},{lo:.65,hi:.70},{lo:.70,hi:1}];let html='';for(const b of bins){const inB=p.filter(x=>x.winProb>=b.lo&&x.winProb<b.hi);if(inB.length<2)continue;const act=inB.filter(x=>x.outcome==='win').length/inB.length;const pred=(b.lo+b.hi)/2;html+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div class="mono" style="font-size:14px;color:var(--t2);width:52px">${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%</div><div style="flex:1;height:8px;background:rgba(240,0,255,.1);border-radius:1px;overflow:hidden;position:relative"><div style="height:100%;width:${pred*100}%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div><div style="position:absolute;top:0;left:0;height:100%;width:${act*100}%;background:var(--pc);opacity:.7"></div></div><div class="mono" style="font-size:14px;width:30px;text-align:right;color:${Math.abs(act-pred)>.05?'var(--hc)':'var(--nc)'}">${(act*100).toFixed(0)}%</div><div style="font-size:13px;color:var(--t3)">n=${inB.length}</div></div>`;}el.innerHTML=html?`<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:8px">PURPLE=PREDICTED · NEON=ACTUAL</div>`+html:'<div class="empty">NO DATA</div>';}
 function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const sa=selfAssess();const p=getP().filter(x=>x.outcome!=='pending');let html=`<div class="g4" style="margin-bottom:10px">`;['ML','RL','OU','PARLAY'].forEach(bt=>{const bp=p.filter(x=>x.betType===bt);const bw=bp.filter(x=>x.outcome==='win').length;const bA=bp.length?bw/bp.length:null;html+=`<div class="card cp" style="text-align:center;padding:9px"><div class="ct">${bt}</div><div class="mono" style="font-size:21px;font-weight:700;color:${bA===null?'var(--t3)':bA>=.55?'var(--nc)':bA>=.45?'var(--vc)':'var(--hc)'}">${bA===null?'--':(bA*100).toFixed(0)+'%'}</div><div style="font-size:14px;color:var(--t3);font-family:var(--mono)">${bw}W/${bp.length-bw}L</div></div>`;});html+='</div>';for(const w of sa.warns)html+=`<div class="sa-warn">// ${w}</div>`;for(const ins of sa.insights)html+=`<div class="sa-ins">// ${ins}</div>`;el.innerHTML=html;}
@@ -17321,6 +17359,21 @@ function checkInjuryImpactOnBets(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{(async()=>{
+  // One-time cleanup: remove Cilic/Medvedev pending bet
+  if(!localStorage.getItem('_cv_cilic_cleanup_done')){
+    try{
+      const _bets=JSON.parse(localStorage.getItem('preds_v3')||'[]');
+      const _filtered=_bets.filter(b=>!(b.date==='2026-06-29'&&b.outcome==='pending'&&
+        ((b.hA||'').includes('Cilic')||(b.awA||'').includes('Cilic')||
+         (b.hA||'').includes('Medvedev')||(b.awA||'').includes('Medvedev')||
+         (b.betOn||'').includes('Medvedev'))));
+      if(_filtered.length<_bets.length){
+        localStorage.setItem('preds_v3',JSON.stringify(_filtered));
+      }
+    }catch(_e){}
+    localStorage.setItem('_cv_cilic_cleanup_done','1');
+  }
+
   startSplash();
   // ── Load calibration adjustments from localStorage so tier() works on first render ──
   try{
