@@ -5405,138 +5405,269 @@ function importBetsFromCode(code){
 }
 function showImportModal(){showManualBetImport();}
 function showManualBetImport(){
-  const overlay=document.createElement('div');
-  overlay.id='bet-import-overlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch';
-  const inp=n=>`style="width:100%;box-sizing:border-box;background:rgba(10,0,24,.85);border:1px solid rgba(0,240,255,.25);color:var(--t);font-family:var(--mono);font-size:15px;padding:8px 10px;border-radius:2px;outline:none" name="${n}"`;
-  const sel=n=>`style="width:100%;box-sizing:border-box;background:rgba(10,0,24,.85);border:1px solid rgba(0,240,255,.25);color:var(--t);font-family:var(--mono);font-size:15px;padding:8px 10px;border-radius:2px;appearance:none" name="${n}"`;
-  overlay.innerHTML=`
-  <div style="background:rgba(4,0,12,.99);border:1px solid rgba(0,240,255,.4);border-radius:4px;padding:20px;width:100%;max-width:460px;position:relative">
-    <div style="font-family:var(--orb);font-size:17px;color:var(--nc);letter-spacing:3px;margin-bottom:16px">// IMPORT BET</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">SPORT</div>
-        <select id="ibs-sport" ${sel('sport')}>
-          <option value="MLB">MLB</option><option value="NBA">NBA</option><option value="NFL">NFL</option>
-          <option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CBB">CBB</option><option value="CFB">CFB</option>
-          <option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option>
-          <option value="PL">PREMIER LEAGUE</option><option value="LIGA">LA LIGA</option>
-          <option value="BL">BUNDESLIGA</option><option value="MLS">MLS</option><option value="CL">CHAMPIONS LEAGUE</option>
-          <option value="OTHER">OTHER</option>
-        </select>
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">DATE</div>
-        <input type="date" id="ibs-date" ${inp('date')} value="${today()}">
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">HOME / PLAYER 1</div>
-        <input type="text" id="ibs-home" ${inp('home')} placeholder="e.g. Yankees or Sinner">
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">AWAY / PLAYER 2</div>
-        <input type="text" id="ibs-away" ${inp('away')} placeholder="e.g. Red Sox or Alcaraz">
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">BET TYPE</div>
-        <select id="ibs-type" ${sel('type')}>
-          <option value="ML">MONEYLINE</option><option value="RL">RUN/PUCK LINE</option>
-          <option value="OU">OVER/UNDER</option><option value="SPREAD">SPREAD</option>
-          <option value="PROP">PLAYER PROP</option><option value="PARLAY">PARLAY</option><option value="FUTURE">FUTURE</option>
-        </select>
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">BET ON</div>
-        <input type="text" id="ibs-beton" ${inp('beton')} placeholder="e.g. Yankees ML">
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">LINE / PROP</div>
-        <input type="text" id="ibs-line" ${inp('line')} placeholder="e.g. -1.5">
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">ODDS (US)</div>
-        <input type="text" id="ibs-ml" ${inp('ml')} placeholder="-110">
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">WAGER ($)</div>
-        <input type="number" id="ibs-wager" ${inp('wager')} placeholder="0" min="0" step="1">
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">WIN PROB (%)</div>
-        <input type="number" id="ibs-prob" ${inp('prob')} placeholder="auto" min="1" max="99" step="1">
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">OUTCOME</div>
-        <select id="ibs-outcome" ${sel('outcome')}>
-          <option value="pending">PENDING</option>
-          <option value="win">WIN ✓</option>
-          <option value="loss">LOSS ✗</option>
-          <option value="push">PUSH</option>
-        </select>
-      </div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px;margin-bottom:4px">NOTES (optional)</div>
-      <input type="text" id="ibs-notes" ${inp('notes')} placeholder="Any context, result, score...">
-    </div>
-    <div style="display:flex;gap:10px">
-      <button class="btn btn-n" style="flex:1;padding:11px" onclick="window._ibsSubmit()">SAVE BET</button>
-      <button class="btn btn-o" style="flex:1;padding:11px" onclick="document.getElementById('bet-import-overlay').remove()">CANCEL</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+  const el=document.getElementById('bet-import-overlay');if(el)el.remove();
+  window._ibsState={mode:'single',legs:[{desc:'',outcome:'pending'}]};
+  const ov=document.createElement('div');
+  ov.id='bet-import-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.9);display:flex;align-items:flex-start;justify-content:center;padding:16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch';
+  ov.innerHTML='<div id="ibs-modal" style="background:rgba(4,0,12,.99);border:1px solid rgba(0,240,255,.4);border-radius:4px;padding:0;width:100%;max-width:540px;position:relative;overflow:hidden"></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  window._ibsRender();
 }
+
+window._ibsStatOpts=function(sport){
+  const NBA_WNBA=['PTS','REB','AST','PRA','3PM','STL','BLK','PTS+REB','PTS+AST','REB+AST','MIN','TO','DD','TD'];
+  const MLB=['H','R','HR','RBI','SB','TB','BB','K','ERA','OUTS','HITS_ALLOWED','RUNS_ALLOWED'];
+  const NFL=['RUSH_YDS','REC','RECV_YDS','TD','TKLS','SACKS','INTS','PASS_YDS','PASS_TD','CARRIES','TARGETS'];
+  const SOC=['GOALS','SHOTS_ON_TARGET','SHOTS','ASSISTS','SAVES','TACKLES','PASSES','TOUCHES'];
+  const TEN=['ACES','DOUBLE_FAULTS','SVC_GAMES_WON','BREAK_PTS_SAVED','GAMES_WON','SETS_WON'];
+  const NHL=['GOALS','ASSISTS','POINTS','SHOTS','SAVES','BLOCKS','TOI','PLUS_MINUS'];
+  const m={'NBA':NBA_WNBA,'WNBA':NBA_WNBA,'MLB':MLB,'NFL':NFL,'CFB':NFL,'SOC':SOC,'WC':SOC,'PL':SOC,'LIGA':SOC,'BL':SOC,'MLS':SOC,'CL':SOC,'TEN':TEN,'NHL':NHL,'CBB':['PTS','REB','AST','STL','BLK'],'OTHER':['PTS','YDS','GOALS','SACKS','HITS']};
+  return(m[sport]||m['OTHER']).map(s=>'<option value="'+s+'">'+s.replace(/_/g,' ')+'</option>').join('');
+};
+
+window._ibsRender=function(){
+  const st=window._ibsState;
+  const md=st.mode;
+  const INP='style="width:100%;box-sizing:border-box;background:rgba(6,0,20,.9);border:1px solid rgba(0,240,255,.22);color:var(--t);font-family:var(--mono);font-size:14px;padding:7px 9px;border-radius:2px;outline:none"';
+  const SEL='style="width:100%;box-sizing:border-box;background:rgba(6,0,20,.9);border:1px solid rgba(0,240,255,.22);color:var(--t);font-family:var(--mono);font-size:14px;padding:7px 9px;border-radius:2px;appearance:none"';
+  const LBL='style="font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:1px;margin-bottom:4px"';
+  const G2='style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px"';
+  const G3='style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px"';
+
+  const todayVal=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+
+  const sportOpts='<option value="MLB">MLB</option><option value="NBA">NBA</option><option value="NFL">NFL</option><option value="NHL">NHL</option><option value="WNBA">WNBA</option><option value="CBB">CBB</option><option value="CFB">CFB</option><option value="TEN">TENNIS</option><option value="WC">WORLD CUP</option><option value="PL">PREMIER LEAGUE</option><option value="LIGA">LA LIGA</option><option value="BL">BUNDESLIGA</option><option value="MLS">MLS</option><option value="CL">CHAMPIONS LEAGUE</option><option value="OTHER">OTHER</option>';
+
+  const outcomeOpts='<option value="pending">PENDING</option><option value="win">WIN ✓</option><option value="loss">LOSS ✗</option><option value="push">PUSH</option>';
+
+  const tabBtn=(id,label)=>'<button onclick="window._ibsState.mode=\''+id+'\';window._ibsRender()" style="flex:1;padding:9px 4px;font-family:var(--mono);font-size:12px;letter-spacing:1px;border:none;cursor:pointer;transition:all .15s;'+(md===id?'background:rgba(0,240,255,.18);color:var(--nc);border-bottom:2px solid var(--nc)':'background:rgba(255,255,255,.04);color:var(--t3);border-bottom:2px solid transparent')+'">'+label+'</button>';
+
+  let body='';
+
+  if(md==='single'){
+    body+=
+    '<div '+G2+'>'
+      +'<div><div '+LBL+'>SPORT</div><select id="ibs-sport" '+SEL+' onchange="window._ibsRender()">'+sportOpts+'</select></div>'
+      +'<div><div '+LBL+'>DATE</div><input type="date" id="ibs-date" '+INP+' value="'+todayVal+'"></div>'
+    +'</div>'
+    +'<div '+G2+'>'
+      +'<div><div '+LBL+'>HOME / TEAM 1</div><input type="text" id="ibs-home" '+INP+' placeholder="e.g. Yankees"></div>'
+      +'<div><div '+LBL+'>AWAY / TEAM 2</div><input type="text" id="ibs-away" '+INP+' placeholder="e.g. Red Sox"></div>'
+    +'</div>'
+    +'<div '+G2+'>'
+      +'<div><div '+LBL+'>BET TYPE</div><select id="ibs-type" '+SEL+'><option value="ML">MONEYLINE</option><option value="RL">RUN/PUCK LINE</option><option value="OU">OVER/UNDER</option><option value="SPREAD">SPREAD</option><option value="FUTURE">FUTURE</option></select></div>'
+      +'<div><div '+LBL+'>BET ON</div><input type="text" id="ibs-beton" '+INP+' placeholder="e.g. Yankees ML"></div>'
+    +'</div>'
+    +'<div '+G3+'>'
+      +'<div><div '+LBL+'>LINE</div><input type="text" id="ibs-line" '+INP+' placeholder="-1.5"></div>'
+      +'<div><div '+LBL+'>ODDS (US)</div><input type="text" id="ibs-ml" '+INP+' placeholder="-110"></div>'
+      +'<div><div '+LBL+'>WAGER ($)</div><input type="number" id="ibs-wager" '+INP+' placeholder="0" min="0"></div>'
+    +'</div>'
+    +'<div '+G2+'>'
+      +'<div><div '+LBL+'>WIN PROB (%)</div><input type="number" id="ibs-prob" '+INP+' placeholder="auto" min="1" max="99"></div>'
+      +'<div><div '+LBL+'>OUTCOME</div><select id="ibs-outcome" '+SEL+'>'+outcomeOpts+'</select></div>'
+    +'</div>';
+  }
+
+  else if(md==='parlay'){
+    body+=
+    '<div '+G3+'>'
+      +'<div><div '+LBL+'>DATE</div><input type="date" id="ibs-date" '+INP+' value="'+todayVal+'"></div>'
+      +'<div><div '+LBL+'>SPORT</div><select id="ibs-sport" '+SEL+'>'+sportOpts+'</select></div>'
+      +'<div><div '+LBL+'>PARLAY NAME</div><input type="text" id="ibs-parlay-name" '+INP+' placeholder="Optional label"></div>'
+    +'</div>'
+    +'<div '+G3+'>'
+      +'<div><div '+LBL+'>ODDS (US)</div><input type="text" id="ibs-ml" '+INP+' placeholder="+650"></div>'
+      +'<div><div '+LBL+'>WAGER ($)</div><input type="number" id="ibs-wager" '+INP+' placeholder="0" min="0"></div>'
+      +'<div><div '+LBL+'>OUTCOME</div><select id="ibs-outcome" '+SEL+'>'+outcomeOpts+'</select></div>'
+    +'</div>'
+    +'<div style="margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div '+LBL+' style="margin:0">LEGS ('+st.legs.length+')</div>'
+        +'<button onclick="window._ibsAddLeg()" style="font-family:var(--mono);font-size:11px;padding:3px 10px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.3);color:var(--nc);border-radius:2px;cursor:pointer">+ ADD LEG</button>'
+      +'</div>'
+      +st.legs.map((leg,i)=>{
+        const oc=leg.outcome;
+        const outcomeStyle=(o)=>'padding:3px 7px;font-size:10px;font-family:var(--mono);border-radius:2px;cursor:pointer;border:1px solid;'+(oc===o?('background:rgba(0,240,255,.2);color:var(--nc);border-color:var(--nc)'):('background:transparent;color:var(--t3);border-color:rgba(255,255,255,.15)'));
+        const legOcBtn=(o,label)=>'<button onclick="window._ibsLegOutcome('+i+',\''+o+'\')" style="'+outcomeStyle(o)+'">'+label+'</button>';
+        return '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:7px 8px;margin-bottom:5px">'
+          +'<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">'
+            +'<span style="font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0;width:18px">'+(i+1)+'.</span>'
+            +'<input type="text" value="'+leg.desc.replace(/"/g,'&quot;')+'" oninput="window._ibsLegDesc('+i+',this.value)" '+INP+' style="flex:1;font-size:13px;padding:4px 7px" placeholder="e.g. Yankees ML / Wemby OVER 24.5 PTS">'
+            +'<button onclick="window._ibsRemoveLeg('+i+')" style="flex-shrink:0;background:transparent;border:none;color:rgba(255,80,80,.6);cursor:pointer;font-size:14px;padding:2px 4px">✕</button>'
+          +'</div>'
+          +'<div style="display:flex;gap:4px;flex-wrap:wrap">'
+            +legOcBtn('win','✓ WIN')+legOcBtn('loss','✗ LOSS')+legOcBtn('push','PUSH')+legOcBtn('pending','PENDING')
+          +'</div>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+  }
+
+  else if(md==='prop'){
+    const curSport=st.propSport||'NBA';
+    body+=
+    '<div '+G2+'>'
+      +'<div><div '+LBL+'>PLAYER NAME</div><input type="text" id="ibs-player" '+INP+' placeholder="e.g. Victor Wembanyama" value="'+(st.propPlayer||'')+'"></div>'
+      +'<div><div '+LBL+'>TEAM</div><input type="text" id="ibs-team" '+INP+' placeholder="e.g. SA or San Antonio" value="'+(st.propTeam||'')+'"></div>'
+    +'</div>'
+    +'<div '+G3+'>'
+      +'<div><div '+LBL+'>SPORT</div><select id="ibs-prop-sport" '+SEL+' onchange="window._ibsState.propSport=this.value;window._ibsRender()">'
+        +['NBA','WNBA','MLB','NFL','CFB','NHL','CBB','TEN','SOC','WC','PL','LIGA','BL','MLS','CL','OTHER'].map(s=>'<option value="'+s+'"'+(curSport===s?' selected':'')+'>'+s+'</option>').join('')
+      +'</select></div>'
+      +'<div><div '+LBL+'>DATE</div><input type="date" id="ibs-date" '+INP+' value="'+todayVal+'"></div>'
+      +'<div><div '+LBL+'>GAME (optional)</div><input type="text" id="ibs-game" '+INP+' placeholder="e.g. SA vs NY" value="'+(st.propGame||'')+'"></div>'
+    +'</div>'
+    +'<div '+G3+'>'
+      +'<div><div '+LBL+'>STAT TYPE</div><select id="ibs-stat" '+SEL+'>'+window._ibsStatOpts(curSport)+'</select></div>'
+      +'<div><div '+LBL+'>OVER / UNDER</div><select id="ibs-ou" '+SEL+'><option value="over">OVER ▲</option><option value="under">UNDER ▼</option></select></div>'
+      +'<div><div '+LBL+'>LINE</div><input type="text" id="ibs-line" '+INP+' placeholder="e.g. 24.5"></div>'
+    +'</div>'
+    +'<div '+G3+'>'
+      +'<div><div '+LBL+'>ODDS (US)</div><input type="text" id="ibs-ml" '+INP+' placeholder="-115"></div>'
+      +'<div><div '+LBL+'>WAGER ($)</div><input type="number" id="ibs-wager" '+INP+' placeholder="0" min="0"></div>'
+      +'<div><div '+LBL+'>OUTCOME</div><select id="ibs-outcome" '+SEL+'>'+outcomeOpts+'</select></div>'
+    +'</div>';
+  }
+
+  // Shared notes + raw text
+  body+=
+  '<div style="margin-bottom:10px">'
+    +'<div '+LBL+'>NOTES / RAW TEXT (paste sportsbook slip, result, or anything)</div>'
+    +'<textarea id="ibs-notes" '+INP+' style="width:100%;box-sizing:border-box;height:60px;resize:vertical;font-size:13px;line-height:1.5" placeholder="Paste raw bet slip, result text, or any notes..."></textarea>'
+  +'</div>';
+
+  const m=document.getElementById('ibs-modal');
+  if(!m)return;
+  m.innerHTML=
+    '<div style="padding:16px 16px 0">'
+      +'<div style="font-family:var(--orb);font-size:15px;color:var(--nc);letter-spacing:3px;margin-bottom:12px">// IMPORT BET</div>'
+      +'<div style="display:flex;border-bottom:1px solid rgba(255,255,255,.1);margin:0 -16px 14px;padding:0 16px">'
+        +tabBtn('single','SINGLE')+tabBtn('parlay','PARLAY')+tabBtn('prop','PROP')
+      +'</div>'
+    +'</div>'
+    +'<div style="padding:0 16px 16px">'+body
+      +'<div style="display:flex;gap:8px;margin-top:4px">'
+        +'<button class="btn btn-n" style="flex:2;padding:11px;font-size:13px" onclick="window._ibsSubmit()">SAVE BET</button>'
+        +'<button class="btn btn-o" style="flex:1;padding:11px;font-size:13px" onclick="document.getElementById(\'bet-import-overlay\').remove()">CANCEL</button>'
+      +'</div>'
+    +'</div>';
+
+  // Restore saved values after re-render
+  if(st.savedVals){
+    const sv=st.savedVals;
+    Object.keys(sv).forEach(id=>{const el=document.getElementById(id);if(el)el.value=sv[id];});
+  }
+};
+
+window._ibsAddLeg=function(){
+  window._ibsState.legs.push({desc:'',outcome:'pending'});
+  window._ibsRender();
+};
+window._ibsRemoveLeg=function(i){
+  window._ibsState.legs.splice(i,1);
+  if(!window._ibsState.legs.length)window._ibsState.legs.push({desc:'',outcome:'pending'});
+  window._ibsRender();
+};
+window._ibsLegOutcome=function(i,o){
+  window._ibsState.legs[i].outcome=o;
+  window._ibsRender();
+};
+window._ibsLegDesc=function(i,v){
+  window._ibsState.legs[i].desc=v;
+  // Don't re-render — just update state silently
+};
+
 window._ibsSubmit=function(){
-  const sport=document.getElementById('ibs-sport')?.value||'';
-  const date=document.getElementById('ibs-date')?.value||today();
-  const home=document.getElementById('ibs-home')?.value.trim()||'';
-  const away=document.getElementById('ibs-away')?.value.trim()||'';
-  const betType=document.getElementById('ibs-type')?.value||'ML';
-  const betOn=document.getElementById('ibs-beton')?.value.trim()||'';
-  const line=document.getElementById('ibs-line')?.value.trim()||'';
-  const ml=document.getElementById('ibs-ml')?.value.trim()||'';
-  const wager=parseFloat(document.getElementById('ibs-wager')?.value)||0;
-  const probInput=parseFloat(document.getElementById('ibs-prob')?.value)||0;
-  const outcome=document.getElementById('ibs-outcome')?.value||'pending';
-  const notes=document.getElementById('ibs-notes')?.value.trim()||'';
-  if(!betOn){toast('// ENTER BET ON FIELD');return;}
+  const st=window._ibsState;
+  const md=st.mode;
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const gf=id=>parseFloat(gv(id))||0;
+
+  const date=gv('ibs-date')||(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  const ml=gv('ibs-ml');
   const mlNum=parseFloat(ml)||0;
   const decOdds=mlNum>0?mlNum/100+1:mlNum<0?100/Math.abs(mlNum)+1:1.91;
-  const winProb=probInput>0?probInput/100:(mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238);
-  const fullHome=_teamName(home,sport)||home;
-  const fullAway=_teamName(away,sport)||away;
-  const preds=getP();
+  const wager=gf('ibs-wager');
+  const notes=gv('ibs-notes');
+  const outcome=gv('ibs-outcome')||'pending';
   const now=Date.now();
-  const newBet={
-    id:'imp_'+now,date,sport,hA:fullHome,awA:fullAway,
-    betType,betOn:betOn+(line?(' '+line):''),
-    ml:ml||'—',decOdds,winProb,wager,
-    outcome,notes,
-    lockedAt:now,importedManually:true
-  };
+
+  let newBet=null;
+
+  if(md==='single'){
+    const sport=gv('ibs-sport');
+    const home=gv('ibs-home');const away=gv('ibs-away');
+    const betType=gv('ibs-type')||'ML';
+    const betOn=gv('ibs-beton');const line=gv('ibs-line');
+    const probInput=gf('ibs-prob');
+    if(!betOn){toast('// ENTER BET ON FIELD');return;}
+    const winProb=probInput>0?probInput/100:(mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238);
+    const fH=(typeof _teamName==='function'?_teamName(home,sport):null)||home;
+    const fA=(typeof _teamName==='function'?_teamName(away,sport):null)||away;
+    newBet={id:'imp_'+now,date,sport,hA:fH,awA:fA,betType,
+      betOn:betOn+(line?' '+line:''),ml:ml||'—',decOdds,winProb,wager,outcome,notes,
+      lockedAt:now,importedManually:true};
+  }
+
+  else if(md==='parlay'){
+    const sport=gv('ibs-sport');
+    const pname=gv('ibs-parlay-name');
+    const winProb=mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.25;
+    // Collect leg descs from inputs (in case they changed without triggering state update)
+    document.querySelectorAll('[id^="ibs-leg-desc-"]').forEach((el,i)=>{if(st.legs[i])st.legs[i].desc=el.value;});
+    const legStrs=st.legs.map(l=>l.desc).filter(d=>d.trim());
+    if(!legStrs.length){toast('// ADD AT LEAST 1 LEG');return;}
+    const betOn=(pname||'PARLAY')+': '+legStrs.join(' | ');
+    newBet={id:'imp_par_'+now,date,sport,hA:'PARLAY',awA:'',betType:'PARLAY',
+      betOn,ml:ml||'—',decOdds,winProb,wager,outcome,notes,
+      lockedAt:now,importedManually:true,
+      legs:st.legs.map(l=>({...l}))};
+    const wonLegs=st.legs.filter(l=>l.outcome==='win').length;
+    const totalLegs=st.legs.length;
+    if(totalLegs>0)newBet.notes=(notes?notes+' | ':'')+wonLegs+'/'+totalLegs+' legs won';
+  }
+
+  else if(md==='prop'){
+    const sport=gv('ibs-prop-sport')||st.propSport||'NBA';
+    const player=gv('ibs-player');
+    const team=gv('ibs-team');
+    const stat=gv('ibs-stat');
+    const ou=gv('ibs-ou')||'over';
+    const line=gv('ibs-line');
+    const game=gv('ibs-game');
+    if(!player){toast('// ENTER PLAYER NAME');return;}
+    if(!line){toast('// ENTER STAT LINE');return;}
+    const winProb=mlNum>0?100/(mlNum+100):mlNum<0?Math.abs(mlNum)/(Math.abs(mlNum)+100):.5238;
+    const ouDisp=ou==='over'?'OVER':'UNDER';
+    const betOn=player+' '+ouDisp+' '+line+' '+stat.replace(/_/g,' ');
+    const gameStr=game?game:(team?' ('+team+')':'');
+    newBet={id:'imp_prop_'+now,date,sport,hA:team||player,awA:game||'',
+      betType:'PROP',betOn,ml:ml||'—',decOdds,winProb,wager,outcome,notes,
+      player,team,stat,line:parseFloat(line)||0,over:(ou==='over'),
+      lockedAt:now,importedManually:true};
+  }
+
+  if(!newBet){return;}
   if(outcome!=='pending'){newBet.settledAt=now;}
-  // Sync settled bets into daily log so history and analytics see them
+
+  // Sync settled bets to daily log
   if(outcome!=='pending'){
     try{
       const log=getDailyLog();
       if(!log[date])log[date]={recs:[],locked:[],assessed:false};
-      const upsertId=`imp_${sport}_${fullHome}_${fullAway}_${betOn}`.replace(/\s/g,'_');
-      const existRec=log[date].recs.find(r=>r.id===upsertId);
-      if(!existRec){
-        log[date].recs.push({id:upsertId,ha:fullHome,awa:fullAway||'',lb:betOn+(line?' '+line:''),p:winProb,ev2:0,ml:mlNum||0,tier:winProb>=.67?3:winProb>=.62?2:1,gt:sport,locked:true,skipped:false,outcome});
-      }else{existRec.outcome=outcome;existRec.locked=true;}
+      const uid=('imp_'+newBet.betType+'_'+newBet.hA+'_'+newBet.betOn).replace(/\s/g,'_').slice(0,60);
+      const ex=log[date].recs.find(r=>r.id===uid);
+      const mlV=parseFloat(ml)||0;
+      if(!ex){log[date].recs.push({id:uid,ha:newBet.hA,awa:newBet.awA||'',lb:newBet.betOn,p:newBet.winProb,ev2:0,ml:mlV,tier:newBet.winProb>=.67?3:newBet.winProb>=.62?2:1,gt:newBet.sport||'',locked:true,skipped:false,outcome});}
+      else{ex.outcome=outcome;ex.locked=true;}
       saveDailyLog(log);
     }catch(_e){}
   }
+
+  const preds=getP();
   saveP([...preds,newBet]);
   document.getElementById('bet-import-overlay')?.remove();
   updHdr();
@@ -5544,8 +5675,10 @@ window._ibsSubmit=function(){
   try{renderOverallHistory();}catch(e){}
   try{renderHomeLockedBets();}catch(e){}
   try{renderHomePage();}catch(e){}
-  const outcomeLabel=outcome==='pending'?'PENDING':outcome.toUpperCase();
-  toast(`// BET SAVED — ${sport} ${betOn} [${outcomeLabel}]`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#00f0ff');
+
+  const ocLabel=outcome==='pending'?'PENDING':outcome.toUpperCase();
+  const modeLabel=md==='parlay'?'PARLAY':(md==='prop'?'PROP':'BET');
+  toast('// '+modeLabel+' SAVED ['+ocLabel+']',outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#00f0ff');
 };
 function renderCal(){const el=document.getElementById('cal');if(!el)return;const p=getP().filter(x=>x.outcome!=='pending'&&x.betType==='ML');if(p.length<10){el.innerHTML='<div class="empty" style="padding:12px">NEED 10+ SETTLED ML BETS</div>';return;}const bins=[{lo:.50,hi:.55},{lo:.55,hi:.60},{lo:.60,hi:.65},{lo:.65,hi:.70},{lo:.70,hi:1}];let html='';for(const b of bins){const inB=p.filter(x=>x.winProb>=b.lo&&x.winProb<b.hi);if(inB.length<2)continue;const act=inB.filter(x=>x.outcome==='win').length/inB.length;const pred=(b.lo+b.hi)/2;html+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div class="mono" style="font-size:14px;color:var(--t2);width:52px">${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%</div><div style="flex:1;height:8px;background:rgba(240,0,255,.1);border-radius:1px;overflow:hidden;position:relative"><div style="height:100%;width:${pred*100}%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div><div style="position:absolute;top:0;left:0;height:100%;width:${act*100}%;background:var(--pc);opacity:.7"></div></div><div class="mono" style="font-size:14px;width:30px;text-align:right;color:${Math.abs(act-pred)>.05?'var(--hc)':'var(--nc)'}">${(act*100).toFixed(0)}%</div><div style="font-size:13px;color:var(--t3)">n=${inB.length}</div></div>`;}el.innerHTML=html?`<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:8px">PURPLE=PREDICTED · NEON=ACTUAL</div>`+html:'<div class="empty">NO DATA</div>';}
 function renderLrn(){const el=document.getElementById('lrn');if(!el)return;const sa=selfAssess();const p=getP().filter(x=>x.outcome!=='pending');let html=`<div class="g4" style="margin-bottom:10px">`;['ML','RL','OU','PARLAY'].forEach(bt=>{const bp=p.filter(x=>x.betType===bt);const bw=bp.filter(x=>x.outcome==='win').length;const bA=bp.length?bw/bp.length:null;html+=`<div class="card cp" style="text-align:center;padding:9px"><div class="ct">${bt}</div><div class="mono" style="font-size:21px;font-weight:700;color:${bA===null?'var(--t3)':bA>=.55?'var(--nc)':bA>=.45?'var(--vc)':'var(--hc)'}">${bA===null?'--':(bA*100).toFixed(0)+'%'}</div><div style="font-size:14px;color:var(--t3);font-family:var(--mono)">${bw}W/${bp.length-bw}L</div></div>`;});html+='</div>';for(const w of sa.warns)html+=`<div class="sa-warn">// ${w}</div>`;for(const ins of sa.insights)html+=`<div class="sa-ins">// ${ins}</div>`;el.innerHTML=html;}
