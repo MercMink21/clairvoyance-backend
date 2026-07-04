@@ -16599,13 +16599,15 @@ function _saveCanvas(cv,filename,label){
 }
 function _cfBg(ctx,W,H){
   const cx=W/2,cy=H/2;
-  // ── Base: dark navy matching bg.jpg (#0b0d1e at 1920×1080) ────────────
-  ctx.fillStyle='#0b0d1e';ctx.fillRect(0,0,W,H);
-  // ── Diagonal diamond grid — bg.jpg has ~43px cells at 1920px wide ──────
-  // Scale proportionally: 43 × (W/1920) — gives ~24px at W=1080
-  const DS=Math.max(8,Math.round(W*43/1920));
+  // ── Background matched pixel-for-pixel to StandardLogo.png ─────────────
+  // Measured from StandardLogo.png: base rgb(34,34,51) = #222233 blue-gray,
+  // fine cyan-teal diamond grid rgb(61,150,159), ~17px cell at 1080px wide,
+  // near-flat (no magenta bloom, only a faint vignette for card depth).
+  ctx.fillStyle='#222233';ctx.fillRect(0,0,W,H);
+  // ── Fine cyan-teal diamond diagonal grid ──────────────────────────────
+  const DS=Math.max(8,Math.round(W/64)); // ~17px at W=1080
   ctx.save();
-  ctx.strokeStyle='rgba(70,105,175,.22)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(78,166,176,.5)';ctx.lineWidth=1;
   // +45° lines: from (i,0)→(i+H,H)
   for(let i=-H;i<=W+H;i+=DS){
     ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();
@@ -16615,24 +16617,9 @@ function _cfBg(ctx,W,H){
     ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();
   }
   ctx.restore();
-  // ── Straight H/V cyan grid — hero CSS overlay (48px at 1920px display) ─
-  // Scale: 48 × (W/1920) — gives ~27px at 1080; keep at minimum 40px so
-  // it stays visually distinct from the dense diagonal grid
-  const GS=Math.max(40,Math.round(W*48/1920));
-  ctx.save();
-  ctx.strokeStyle='rgba(0,240,255,.09)';ctx.lineWidth=1;
-  for(let x=0;x<=W;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<=H;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  ctx.restore();
-  // ── Magenta/purple bloom upper-center (hero radial gradient) ───────────
-  const mg=ctx.createRadialGradient(cx,H*.30,0,cx,H*.30,W*.58);
-  mg.addColorStop(0,'rgba(180,0,255,.15)');
-  mg.addColorStop(0.45,'rgba(180,0,255,.07)');
-  mg.addColorStop(1,'rgba(180,0,255,0)');
-  ctx.fillStyle=mg;ctx.fillRect(0,0,W,H);
-  // ── Vignette ───────────────────────────────────────────────────────────
-  const vg=ctx.createRadialGradient(cx,cy,W*.18,cx,cy,W*.70);
-  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.58)');
+  // ── Faint vignette for card depth (StandardLogo bg is near-flat) ───────
+  const vg=ctx.createRadialGradient(cx,cy,W*.30,cx,cy,W*.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.22)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
 }
 function _hudCorners(ctx,W,H){
@@ -17177,7 +17164,7 @@ async function _genCombinedTrackGraphic(){
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
   _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
 
   _saveCanvas(cv,'cv-track-record-'+today().replace(/-/g,'')+'.png','TRACK RECORD');
 }
@@ -17245,7 +17232,7 @@ async function _genSportPerfGraphic(){
   const totalY=startY+sports.length*rowH+rowH/2;
   ctx.save();ctx.strokeStyle='rgba(240,0,255,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,startY+sports.length*rowH);ctx.lineTo(W-80,startY+sports.length*rowH);ctx.stroke();ctx.restore();
   _glowText(ctx,'TOTAL',cX.sport,totalY,'900 20px "Orbitron"','#00f0ff',14,'left');
-  _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 11px "Courier New"','rgba(220,190,255,.35)',2,'left');
+  _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 11px "Orbitron"','rgba(220,190,255,.35)',2,'left');
   if(d.totalP&&d.totalP.n>0){
     _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 20px "Orbitron"','#e6eaff',10,'center');
     const tPct=d.totalP.pct!==null?(d.totalP.pct*100).toFixed(1)+'%':'—';
@@ -17261,7 +17248,7 @@ async function _genSportPerfGraphic(){
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
   _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
 
   _saveCanvas(cv,'cv-sport-perf-'+today().replace(/-/g,'')+'.png','SPORT PERFORMANCE CARD');
 }
@@ -17287,23 +17274,25 @@ async function _genLeaguePerfGraphic(){
 
   // Header
   _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#f000ff',22,'center');
-  _glowText(ctx,'LEAGUE PERFORMANCE',W/2,108,'600 15px "Courier New"','rgba(220,190,255,.5)',5,'center');
-  _glowText(ctx,frameLabel,W/2,128,'400 12px "Courier New"','rgba(220,190,255,.35)',3,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 13px "Orbitron"','#00f0ff',8,'center');
+  const _lpDate=(function(){try{var _d=new Date(today()+'T12:00:00');return _d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(ex){return today();}})();
+  _glowText(ctx,_lpDate,W-80,72,'600 11px "Orbitron"','rgba(0,240,255,.7)',4,'right');
 
   // Divider
-  ctx.save();const hd=ctx.createLinearGradient(80,148,W-80,148);
+  ctx.save();const hd=ctx.createLinearGradient(80,124,W-80,124);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.7)');hd.addColorStop(1,'transparent');
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
-  ctx.beginPath();ctx.moveTo(80,148);ctx.lineTo(W-80,148);ctx.stroke();ctx.restore();
+  ctx.beginPath();ctx.moveTo(80,124);ctx.lineTo(W-80,124);ctx.stroke();ctx.restore();
+  _glowText(ctx,'// LEAGUE PERFORMANCE',80,146,'700 13px "Orbitron"','#f000ff',8,'left');
 
   // Column headers
   const cX={league:80,record:430,pct:660,units:W-60};
   const hdrY=174;
   ctx.globalAlpha=.45;
-  _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'left');
-  _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Courier New"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
   // League rows
@@ -17344,7 +17333,7 @@ async function _genLeaguePerfGraphic(){
   // Total row
   const tY=totalY+rowH/2;
   _glowText(ctx,'TOTAL',cX.league,tY,'900 20px "Orbitron"','#00f0ff',14,'left');
-  _glowText(ctx,frameLabel,cX.league,tY+18,'400 11px "Courier New"','rgba(220,190,255,.35)',3,'left');
+  _glowText(ctx,frameLabel,cX.league,tY+18,'400 11px "Orbitron"','rgba(220,190,255,.35)',3,'left');
   const tRec=totalP.n>0?totalP.w+'W-'+totalP.l+'L':'0W-0L';
   const tPct=totalP.n>0&&totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
   const tUnit=totalP.n>0?(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u':'—';
@@ -17359,7 +17348,7 @@ async function _genLeaguePerfGraphic(){
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
   _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Courier New"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
 
   _saveCanvas(cv,'cv-league-perf-'+today().replace(/-/g,'')+'.png','LEAGUE PERFORMANCE CARD');
 }
