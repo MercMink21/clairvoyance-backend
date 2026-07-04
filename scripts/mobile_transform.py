@@ -12,9 +12,13 @@ dst = sys.argv[2] if len(sys.argv) > 2 else 'docs/app.html'
 html = open(src, encoding='utf-8').read()
 
 # ── 1. Update viewport meta for strict mobile ─────────────────────────────
-old_vp = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+# Regex-match whatever viewport tag exists (spacing/attrs vary between builds)
+# so the replacement never silently fails.
 new_vp = '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">'
-html = html.replace(old_vp, new_vp, 1)
+html, _n = re.subn(r'<meta\s+name="viewport"[^>]*>', new_vp, html, count=1)
+if _n == 0:
+    # No viewport tag found — inject one right after <head>
+    html = re.sub(r'(<head[^>]*>)', r'\1\n' + new_vp, html, count=1)
 
 # ── 2. Inject mobile-only CSS overrides before </style> ──────────────────
 mobile_css = """
@@ -51,9 +55,15 @@ body{font-size:var(--mob-font)!important;-webkit-text-size-adjust:100%;}
 table{font-size:11px!important;}
 th,td{padding:4px 5px!important;}
 input[type=range]{height:32px!important;}
-#hdr-clock{font-size:11px!important;}
+/* Header clock — real element ids are #hdr-clock-mt/#hdr-clock-et (the old
+   #hdr-clock rule never matched). Shrink the 15px times AND the oversized
+   30px "·" separators (14px side padding each) so the MT · date · ET row
+   fits an iPhone instead of overflowing the header. */
+#hdr-clock-mt,#hdr-clock-et,#hdr-status-bar{font-size:10px!important;letter-spacing:.5px!important;}
+.logo>div>span{font-size:15px!important;padding:0 5px!important;}
 @media(max-width:390px){
-  #hdr-clock{display:none!important;}
+  #hdr-clock-mt,#hdr-clock-et,#hdr-status-bar{font-size:9px!important;}
+  .logo>div>span{font-size:12px!important;padding:0 4px!important;}
   .gtm{font-size:13px!important;}
   .logo{font-size:15px!important;}
 }
@@ -62,6 +72,15 @@ input[type=range]{height:32px!important;}
 .mn,#mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{
   padding-bottom:env(safe-area-inset-bottom)!important;
 }
+/* ── Splash screen — scale wordmark/subtitle to fit iPhone width ────────── */
+/* Desktop inline styles use clamp(52px,13vw,110px)+6px tracking which overflows
+   a 320-430px screen. These !important rules beat the (non-important) inline
+   styles and keep CLAIRVOYANCE + subtitle on one line down to iPhone SE. */
+#splash-wordmark{font-size:clamp(28px,9vw,52px)!important;letter-spacing:2px!important;white-space:nowrap!important;}
+#splash-sub{font-size:clamp(8px,2.4vw,14px)!important;letter-spacing:1.5px!important;white-space:nowrap!important;}
+#splash-bar-wrap{max-width:70vw!important;}
+.si{width:100%!important;padding:0 12px!important;box-sizing:border-box!important;text-align:center!important;}
+#splash{padding-top:env(safe-area-inset-top)!important;padding-bottom:env(safe-area-inset-bottom)!important;}
 """
 
 # Inject before first </style>
