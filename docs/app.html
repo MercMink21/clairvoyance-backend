@@ -396,6 +396,7 @@ body{line-height:1.5}
   <button class="sp" onclick="SS('soc')" onmouseenter="showND(this,'soc')" onmouseleave="startHideND()">SOCCER</button>
   <button class="sp" onclick="SS('ten')" onmouseenter="showND(this,'ten')" onmouseleave="startHideND()">TENNIS</button>
   <button class="sp" onclick="SS('sim')" onmouseenter="showND(this,'sim')" onmouseleave="startHideND()">SIMULATOR</button>
+  <button class="sp" onclick="SS('trainer')" onmouseenter="showND(this,'trainer')" onmouseleave="startHideND()">TRAINER</button>
   <button class="sp" onclick="SS('parlay')" onmouseenter="showND(this,'parlay')" onmouseleave="startHideND()">PARLAY</button>
   <button class="sp" onclick="SS('social')" onmouseenter="showND(this,'social')" onmouseleave="startHideND()">SOCIAL</button>
   <button class="sp" onclick="SS('news')" onmouseenter="showND(this,'news')" onmouseleave="startHideND()">NEWS</button>
@@ -1485,7 +1486,253 @@ body{line-height:1.5}
   </div>
 </div>
 
-<div id="sp-tracker" class="spane" style="display:none!important">
+<div 
+<div id="sp-trainer" class="spane">
+  <div class="sa" style="padding:14px">
+    <div class="sh" style="margin-bottom:10px"><span class="p"></span> TRAINING SIMULATOR <span style="font-family:var(--mono);font-size:13px;color:var(--t3);font-weight:400;margin-left:8px">OFFSEASON ENGINE BUILDER</span></div>
+    <!-- Sub-tabs -->
+    <nav class="snav" style="margin-bottom:12px">
+      <button class="snt act" onclick="trainerTab('data')" id="trt-data">DATA</button>
+      <button class="snt" onclick="trainerTab('matchups')" id="trt-matchups">MATCHUPS</button>
+      <button class="snt" onclick="trainerTab('analysis')" id="trt-analysis">ANALYSIS</button>
+      <button class="snt" onclick="trainerTab('props')" id="trt-props">PROPS</button>
+      <button class="snt" onclick="trainerTab('backtest')" id="trt-backtest">BACKTEST</button>
+      <button class="snt" onclick="trainerTab('reasoning')" id="trt-reasoning">REASONING</button>
+    </nav>
+
+    <!-- DATA TAB -->
+    <div id="trt-tab-data">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">TEAM / SEASON DATA IMPORT</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SPORT</div>
+          <select id="trd-sport" class="fi" style="width:100%" onchange="trainerUpdateSportUI()">
+            <option value="NFL">NFL</option>
+            <option value="CFB">CFB</option>
+            <option value="CBB">CBB</option>
+            <option value="NBA">NBA</option>
+            <option value="NHL">NHL</option>
+            <option value="PWHL">PWHL</option>
+            <option value="KHL">KHL</option>
+            <option value="SHL">SHL</option>
+            <option value="LIIGA">LIIGA</option>
+          </select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SEASON</div>
+          <input type="text" id="trd-season" class="fi" style="width:100%" placeholder="e.g. 2024-25" value="2024-25">
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">CONFERENCE / DIVISION</div>
+          <input type="text" id="trd-conf" class="fi" style="width:100%" placeholder="ALL or AFC, SEC, etc.">
+        </div>
+      </div>
+      <!-- Team entry form -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:10px;margin-bottom:10px">
+        <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">ADD TEAM RECORD</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">TEAM</div><input type="text" id="trd-team" class="fi" style="width:100%" placeholder="e.g. Chiefs"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">W</div><input type="number" id="trd-w" class="fi" style="width:100%" placeholder="0" min="0"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">L</div><input type="number" id="trd-l" class="fi" style="width:100%" placeholder="0" min="0"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">PF/G (or GF/G)</div><input type="number" id="trd-pf" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">PA/G (or GA/G)</div><input type="number" id="trd-pa" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">SOS</div><input type="number" id="trd-sos" class="fi" style="width:100%" placeholder="0.00" step="0.01"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">OFF RTG</div><input type="number" id="trd-off" class="fi" style="width:100%" placeholder="100" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">DEF RTG</div><input type="number" id="trd-def" class="fi" style="width:100%" placeholder="100" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">NET RTG</div><input type="number" id="trd-net" class="fi" style="width:100%" placeholder="0.0" step="0.1" readonly></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">HOME W%</div><input type="number" id="trd-hwp" class="fi" style="width:100%" placeholder="0.50" step="0.01" min="0" max="1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">AWAY W%</div><input type="number" id="trd-awp" class="fi" style="width:100%" placeholder="0.50" step="0.01" min="0" max="1"></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-n btn-sm" onclick="trainerAddTeam()">+ ADD TEAM</button>
+          <button class="btn btn-sm" onclick="trainerImportJSON()">IMPORT JSON</button>
+          <button class="btn btn-sm" onclick="trainerImportCSV()">IMPORT CSV</button>
+          <button class="btn btn-o btn-sm" style="margin-left:auto;color:var(--hc);border-color:var(--hc)" onclick="trainerClearSport()">CLEAR SPORT DATA</button>
+        </div>
+      </div>
+      <!-- Team list -->
+      <div id="trd-team-list" style="max-height:320px;overflow-y:auto"></div>
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="trainerExportTeams()">EXPORT TEAMS JSON</button>
+        <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--t3);align-self:center" id="trd-count"></div>
+      </div>
+    </div>
+
+    <!-- MATCHUPS TAB -->
+    <div id="trt-tab-matchups" style="display:none">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">MATCHUP ENTRY</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SPORT</div>
+          <select id="trm-sport" class="fi" style="width:100%" onchange="trainerLoadMatchupTeams()">
+            <option value="NFL">NFL</option><option value="CFB">CFB</option><option value="CBB">CBB</option><option value="NBA">NBA</option><option value="NHL">NHL</option><option value="PWHL">PWHL</option><option value="KHL">KHL</option><option value="SHL">SHL</option><option value="LIIGA">LIIGA</option>
+          </select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">HOME TEAM</div>
+          <select id="trm-home" class="fi" style="width:100%"></select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">AWAY TEAM</div>
+          <select id="trm-away" class="fi" style="width:100%"></select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">VENUE</div>
+          <select id="trm-venue" class="fi" style="width:100%">
+            <option value="home">Home / Away</option>
+            <option value="neutral">Neutral Site</option>
+            <option value="playoff">Playoff</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">BOOK SPREAD (home)</div>
+          <input type="number" id="trm-spread" class="fi" style="width:100%" placeholder="-3.5" step="0.5">
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">BOOK O/U</div>
+          <input type="number" id="trm-ou" class="fi" style="width:100%" placeholder="45.5" step="0.5">
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">HOME ML</div>
+          <input type="number" id="trm-hml" class="fi" style="width:100%" placeholder="-150">
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">AWAY ML</div>
+          <input type="number" id="trm-aml" class="fi" style="width:100%" placeholder="+130">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">DATE</div>
+          <input type="date" id="trm-date" class="fi" style="width:100%">
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SIMS</div>
+          <select id="trm-sims" class="fi" style="width:100%">
+            <option value="10000" selected>10,000</option>
+            <option value="25000">25,000</option>
+            <option value="50000">50,000</option>
+          </select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">NOTES</div>
+          <input type="text" id="trm-notes" class="fi" style="width:100%" placeholder="Divisional, weather, injuries...">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-n" onclick="trainerRunAnalysis()">▶ RUN MC ANALYSIS</button>
+        <button class="btn btn-sm" onclick="trainerAddMatchupToQueue()">+ ADD TO QUEUE</button>
+        <button class="btn btn-sm" onclick="trainerRunQueue()">▶▶ RUN ALL QUEUED</button>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3);align-self:center" id="trm-queue-count"></span>
+      </div>
+      <div id="trm-queue-list" style="max-height:200px;overflow-y:auto"></div>
+    </div>
+
+    <!-- ANALYSIS TAB -->
+    <div id="trt-tab-analysis" style="display:none">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">ANALYSIS RESULTS</div>
+      <div id="tra-results">
+        <div class="empty">RUN A MATCHUP FROM THE MATCHUPS TAB TO SEE RESULTS</div>
+      </div>
+      <div id="tra-history" style="margin-top:14px"></div>
+    </div>
+
+    <!-- PROPS TAB -->
+    <div id="trt-tab-props" style="display:none">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">PLAYER PROPS TRAINER</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SPORT</div>
+          <select id="trp-sport" class="fi" style="width:100%" onchange="trainerUpdatePropStats()">
+            <option value="NFL">NFL</option><option value="CFB">CFB</option><option value="CBB">CBB</option><option value="NBA">NBA</option><option value="NHL">NHL</option>
+          </select>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SEASON</div>
+          <input type="text" id="trp-season" class="fi" style="width:100%" placeholder="2024-25">
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:6px">
+          <button class="btn btn-n btn-sm" onclick="trainerImportRoster()">IMPORT ROSTER JSON</button>
+          <button class="btn btn-sm" onclick="trainerImportPlayerCSV()">IMPORT PLAYER CSV</button>
+        </div>
+      </div>
+      <!-- Manual player entry -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:10px;margin-bottom:10px">
+        <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">ADD PLAYER</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">NAME</div><input type="text" id="trp-name" class="fi" style="width:100%" placeholder="J. Smith"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">TEAM</div><input type="text" id="trp-team" class="fi" style="width:100%" placeholder="Team"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">POS</div><input type="text" id="trp-pos" class="fi" style="width:100%" placeholder="QB"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">GAMES</div><input type="number" id="trp-gp" class="fi" style="width:100%" placeholder="0"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 1 AVG</div><input type="number" id="trp-s1" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 1 TYPE</div><select id="trp-s1t" class="fi" style="width:100%"><option>PTS</option><option>REB</option><option>AST</option><option>PASS_YDS</option><option>RUSH_YDS</option><option>REC</option><option>TD</option><option>GOALS</option><option>ASSISTS</option><option>SAVES</option><option>SHOTS</option><option>HITS</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 2 AVG</div><input type="number" id="trp-s2" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 2 TYPE</div><select id="trp-s2t" class="fi" style="width:100%"><option>REB</option><option>AST</option><option>PTS</option><option>RECV_YDS</option><option>TARGETS</option><option>CARRIES</option><option>PASS_TD</option><option>RUSH_TD</option><option>GOALS</option><option>ASSISTS</option><option>BLOCKS</option></select></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 1 STD DEV</div><input type="number" id="trp-s1sd" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT 2 STD DEV</div><input type="number" id="trp-s2sd" class="fi" style="width:100%" placeholder="0.0" step="0.1"></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-n btn-sm" onclick="trainerAddPlayer()">+ ADD PLAYER</button>
+        </div>
+      </div>
+      <!-- Prop analysis -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:10px;margin-bottom:10px">
+        <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">ANALYZE PROP LINE</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:6px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">PLAYER</div><select id="trp-sel-player" class="fi" style="width:100%"><option value="">-- select --</option></select></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">STAT</div><select id="trp-sel-stat" class="fi" style="width:100%"><option>PTS</option><option>REB</option><option>AST</option><option>PASS_YDS</option><option>RUSH_YDS</option><option>REC</option><option>TD</option><option>GOALS</option><option>ASSISTS</option><option>SAVES</option><option>SHOTS</option></select></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">BOOK LINE</div><input type="number" id="trp-line" class="fi" style="width:100%" placeholder="24.5" step="0.5"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">DEF RANK vs STAT</div><input type="number" id="trp-def-rank" class="fi" style="width:100%" placeholder="15" min="1" max="32"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn btn-n btn-sm" onclick="trainerAnalyzeProp()" style="width:100%">ANALYZE</button></div>
+        </div>
+      </div>
+      <div id="trp-player-list" style="max-height:220px;overflow-y:auto;margin-bottom:8px"></div>
+      <div id="trp-prop-result"></div>
+    </div>
+
+    <!-- BACKTEST TAB -->
+    <div id="trt-tab-backtest" style="display:none">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">BACKTEST — MODEL VS ACTUAL RESULTS</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:10px;margin-bottom:10px">
+        <div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">LOG ACTUAL RESULT FOR A PRIOR ANALYSIS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">ANALYSIS ID / MATCHUP</div><select id="trbt-sel" class="fi" style="width:100%"><option value="">-- select analysis --</option></select></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">HOME SCORE</div><input type="number" id="trbt-hs" class="fi" style="width:100%" placeholder="0"></div>
+          <div><div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">AWAY SCORE</div><input type="number" id="trbt-as" class="fi" style="width:100%" placeholder="0"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn btn-n btn-sm" onclick="trainerLogResult()" style="width:100%">LOG RESULT</button></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <button class="btn btn-sm" onclick="trainerImportResults()">IMPORT RESULTS JSON</button>
+        <button class="btn btn-n btn-sm" onclick="trainerRunBacktest()">▶ RUN FULL BACKTEST</button>
+        <div style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--t3)" id="trbt-count"></div>
+      </div>
+      <div id="trbt-results"></div>
+    </div>
+
+    <!-- REASONING TAB -->
+    <div id="trt-tab-reasoning" style="display:none">
+      <div class="sh" style="font-size:14px;margin-bottom:8px">ERROR ANALYSIS & REASONING</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-n btn-sm" onclick="trainerRunReasoning()">▶ ANALYZE ALL RESULTS</button>
+        <select id="trr-sport-filter" class="fi" style="width:120px">
+          <option value="ALL">ALL SPORTS</option>
+          <option value="NFL">NFL</option><option value="CFB">CFB</option><option value="CBB">CBB</option><option value="NBA">NBA</option><option value="NHL">NHL</option><option value="PWHL">PWHL</option><option value="KHL">KHL</option><option value="SHL">SHL</option><option value="LIIGA">LIIGA</option>
+        </select>
+        <button class="btn btn-sm" onclick="trainerExportInsights()">EXPORT INSIGHTS</button>
+      </div>
+      <div id="trr-results"></div>
+    </div>
+  </div>
+</div>
+
+id="sp-tracker" class="spane" style="display:none!important">
   <nav class="snav">
     <button class="sb2 act" id="tracker-tab-locked" onclick="setTrackerTab('locked')">LOCKED BETS</button>
     <button class="sb2" id="tracker-tab-clv" onclick="setTrackerTab('clv')">CLV TRACKER</button>
@@ -25865,6 +26112,967 @@ function saveParlayToTracker(legs,sport){
   localStorage.setItem('cv_parlays',JSON.stringify(parlays));
   if(typeof toast==='function')toast('// PARLAY SAVED TO TRACKER');
 }
+
+// ═══════════════════════════════════════════════════════════
+// TRAINER SIMULATOR — Offseason Engine Builder
+// ═══════════════════════════════════════════════════════════
+
+const _TRK = 'cv_trainer_v1';
+function _trGet(key, def) { try { return JSON.parse(localStorage.getItem(_TRK + '_' + key) || 'null') || def; } catch(e) { return def; } }
+function _trSet(key, val) { try { localStorage.setItem(_TRK + '_' + key, JSON.stringify(val)); } catch(e) {} }
+
+function trainerTab(t) {
+  ['data','matchups','analysis','props','backtest','reasoning'].forEach(id => {
+    const el = document.getElementById('trt-tab-' + id);
+    const btn = document.getElementById('trt-' + id);
+    if (el) el.style.display = id === t ? '' : 'none';
+    if (btn) btn.classList.toggle('act', id === t);
+  });
+  if (t === 'data') trainerRenderTeamList();
+  if (t === 'matchups') { trainerLoadMatchupTeams(); trainerRenderQueue(); }
+  if (t === 'analysis') trainerRenderAnalysisHistory();
+  if (t === 'props') { trainerRenderPlayerList(); trainerRenderPropPlayerSelect(); }
+  if (t === 'backtest') { trainerRenderBacktestSelect(); trainerRunBacktest(); }
+  if (t === 'reasoning') trainerRunReasoning();
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+function _trGv(id) { return (document.getElementById(id) || {}).value || ''; }
+function _trGf(id) { return parseFloat(_trGv(id)) || 0; }
+
+function _trSportDefaults(sport) {
+  const d = {
+    NFL:   { paceSD: 4.5, scoreSD: 8.5, leaguePPG: 23.0, haAdj: 2.5, leagueTotal: 46.0 },
+    CFB:   { paceSD: 5.0, scoreSD: 10.0, leaguePPG: 28.0, haAdj: 3.5, leagueTotal: 56.0 },
+    CBB:   { paceSD: 4.0, scoreSD: 8.0,  leaguePPG: 71.0, haAdj: 3.5, leagueTotal: 142.0 },
+    NBA:   { paceSD: 3.5, scoreSD: 7.5,  leaguePPG: 114.0, haAdj: 2.5, leagueTotal: 228.0 },
+    NHL:   { paceSD: 0.5, scoreSD: 1.2,  leaguePPG: 3.1,  haAdj: 0.15, leagueTotal: 6.2 },
+    PWHL:  { paceSD: 0.5, scoreSD: 1.1,  leaguePPG: 2.8,  haAdj: 0.1, leagueTotal: 5.6 },
+    KHL:   { paceSD: 0.5, scoreSD: 1.3,  leaguePPG: 3.3,  haAdj: 0.2, leagueTotal: 6.6 },
+    SHL:   { paceSD: 0.4, scoreSD: 1.1,  leaguePPG: 2.9,  haAdj: 0.15, leagueTotal: 5.8 },
+    LIIGA: { paceSD: 0.4, scoreSD: 1.1,  leaguePPG: 3.0,  haAdj: 0.15, leagueTotal: 6.0 },
+  };
+  return d[sport] || d['NFL'];
+}
+
+function _trNorm() {
+  // Box-Muller
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function _trGrade(edge) {
+  if (edge >= 0.12) return { label: 'PREMIUM', col: '#f000ff' };
+  if (edge >= 0.08) return { label: 'OPTIMAL', col: '#00f0ff' };
+  if (edge >= 0.04) return { label: 'LEAN',    col: '#bbff00' };
+  if (edge >= 0.01) return { label: 'MARGINAL',col: '#ff9000' };
+  return { label: 'SKIP', col: 'var(--t3)' };
+}
+
+function _trMLToImplied(ml) {
+  const m = parseFloat(ml) || 0;
+  if (!m) return 0.5;
+  return m > 0 ? 100 / (m + 100) : Math.abs(m) / (Math.abs(m) + 100);
+}
+
+// ── Team Data Management ──────────────────────────────────────
+function trainerUpdateSportUI() { trainerRenderTeamList(); }
+
+function trainerAddTeam() {
+  const sport  = _trGv('trd-sport');
+  const team   = _trGv('trd-team').trim();
+  if (!team) { toast('// ENTER TEAM NAME', '#ff9000'); return; }
+  const season = _trGv('trd-season') || '2024-25';
+  const w      = _trGf('trd-w'); const l = _trGf('trd-l');
+  const pf     = _trGf('trd-pf'); const pa = _trGf('trd-pa');
+  const sos    = _trGf('trd-sos');
+  const offRtg = _trGf('trd-off') || 100;
+  const defRtg = _trGf('trd-def') || 100;
+  const hwp    = _trGf('trd-hwp') || (w + l > 0 ? w / (w + l) : 0.5);
+  const awp    = _trGf('trd-awp') || hwp;
+  const key    = sport + '_teams';
+  const teams  = _trGet(key, []);
+  const ex     = teams.findIndex(t => t.team === team && t.season === season);
+  const rec    = { team, sport, season, w, l, pf, pa, sos, offRtg, defRtg, hwp, awp, addedAt: Date.now() };
+  if (ex >= 0) teams[ex] = rec; else teams.push(rec);
+  _trSet(key, teams);
+  trainerRenderTeamList();
+  toast('// TEAM SAVED: ' + team, '#00f0ff');
+}
+
+function trainerRenderTeamList() {
+  const el = document.getElementById('trd-team-list');
+  const cnt = document.getElementById('trd-count');
+  if (!el) return;
+  const sport = _trGv('trd-sport');
+  const teams = _trGet(sport + '_teams', []);
+  if (cnt) cnt.textContent = teams.length + ' TEAMS LOADED';
+  if (!teams.length) { el.innerHTML = '<div class="empty" style="padding:8px">NO TEAMS — ADD OR IMPORT DATA</div>'; return; }
+  const sd = _trSportDefaults(sport);
+  el.innerHTML = '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 60px;gap:4px;padding:4px 6px;font-family:var(--mono);font-size:10px;color:var(--t3);border-bottom:1px solid rgba(255,255,255,.08);letter-spacing:1px">TEAM<span>W-L</span><span>PF/G</span><span>PA/G</span><span>NET</span><span>OFF</span><span>DEF</span><span>SOS</span><span></span></div>'
+    + teams.map((t, i) => {
+      const wl = t.w + '-' + t.l;
+      const net = (t.pf - t.pa).toFixed(1);
+      const nc = parseFloat(net) >= 0 ? 'var(--nc)' : 'var(--hc)';
+      return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 60px;gap:4px;padding:5px 6px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">'
+        + '<span style="color:var(--t)">' + t.team + '<span style="color:var(--t3);font-size:10px;margin-left:4px">' + t.season + '</span></span>'
+        + '<span style="color:var(--t2)">' + wl + '</span>'
+        + '<span style="color:var(--nc)">' + (t.pf || 0).toFixed(1) + '</span>'
+        + '<span style="color:var(--hc)">' + (t.pa || 0).toFixed(1) + '</span>'
+        + '<span style="color:' + nc + '">' + net + '</span>'
+        + '<span>' + (t.offRtg || 100).toFixed(1) + '</span>'
+        + '<span>' + (t.defRtg || 100).toFixed(1) + '</span>'
+        + '<span style="color:var(--t3)">' + (t.sos || 0).toFixed(2) + '</span>'
+        + '<button class="btn btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc);border-color:var(--hc)" onclick="trainerRemoveTeam(' + i + ')">✕</button>'
+        + '</div>';
+    }).join('');
+}
+
+function trainerRemoveTeam(i) {
+  const sport = _trGv('trd-sport');
+  const key = sport + '_teams';
+  const teams = _trGet(key, []);
+  teams.splice(i, 1);
+  _trSet(key, teams);
+  trainerRenderTeamList();
+}
+
+function trainerClearSport() {
+  const sport = _trGv('trd-sport');
+  if (!confirm('Clear ALL ' + sport + ' team data?')) return;
+  _trSet(sport + '_teams', []);
+  trainerRenderTeamList();
+}
+
+function trainerImportJSON() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json';
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        const sport = _trGv('trd-sport');
+        const season = _trGv('trd-season') || '2024-25';
+        // Accept array of team objects or { teams: [...] }
+        const arr = Array.isArray(d) ? d : (d.teams || []);
+        if (!arr.length) { toast('// NO TEAMS IN FILE', '#ff9000'); return; }
+        const existing = _trGet(sport + '_teams', []);
+        let added = 0;
+        arr.forEach(t => {
+          if (!t.team) return;
+          const rec = { team: t.team, sport: t.sport || sport, season: t.season || season,
+            w: +t.w || 0, l: +t.l || 0, pf: +t.pf || +t.ppg || 0, pa: +t.pa || +t.opp_ppg || 0,
+            sos: +t.sos || 0, offRtg: +t.offRtg || +t.off_rtg || 100, defRtg: +t.defRtg || +t.def_rtg || 100,
+            hwp: +t.hwp || 0, awp: +t.awp || 0, addedAt: Date.now() };
+          const ex = existing.findIndex(x => x.team === rec.team && x.season === rec.season);
+          if (ex >= 0) existing[ex] = rec; else { existing.push(rec); added++; }
+        });
+        _trSet(sport + '_teams', existing);
+        trainerRenderTeamList();
+        toast('// IMPORTED ' + added + ' TEAMS', '#00f0ff');
+      } catch(e) { toast('// PARSE ERROR: ' + e.message, '#ff1a1a'); }
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+}
+
+function trainerImportCSV() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.csv';
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      try {
+        const lines = ev.target.result.split('\n').filter(l => l.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const sport = _trGv('trd-sport');
+        const season = _trGv('trd-season') || '2024-25';
+        const existing = _trGet(sport + '_teams', []);
+        let added = 0;
+        lines.slice(1).forEach(line => {
+          const vals = line.split(',');
+          const row = {};
+          headers.forEach((h, i) => row[h] = (vals[i] || '').trim());
+          if (!row.team) return;
+          const rec = { team: row.team, sport, season, w: +row.w || 0, l: +row.l || 0,
+            pf: +row.pf || +row.ppg || 0, pa: +row.pa || +row.opp_ppg || 0,
+            sos: +row.sos || 0, offRtg: +row.off_rtg || +row.offrtg || 100,
+            defRtg: +row.def_rtg || +row.defrtg || 100, hwp: +row.hwp || 0, awp: +row.awp || 0, addedAt: Date.now() };
+          const ex = existing.findIndex(x => x.team === rec.team && x.season === rec.season);
+          if (ex >= 0) existing[ex] = rec; else { existing.push(rec); added++; }
+        });
+        _trSet(sport + '_teams', existing);
+        trainerRenderTeamList();
+        toast('// IMPORTED ' + added + ' TEAMS FROM CSV', '#00f0ff');
+      } catch(e) { toast('// CSV PARSE ERROR: ' + e.message, '#ff1a1a'); }
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+}
+
+function trainerExportTeams() {
+  const sport = _trGv('trd-sport');
+  const teams = _trGet(sport + '_teams', []);
+  if (!teams.length) { toast('// NO TEAMS TO EXPORT', '#ff9000'); return; }
+  const b = new Blob([JSON.stringify({ sport, teams }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+  a.download = 'trainer_' + sport + '_teams.json'; a.click();
+}
+
+// ── Matchups ─────────────────────────────────────────────────
+let _trQueue = [];
+
+function trainerLoadMatchupTeams() {
+  const sport = _trGv('trm-sport');
+  const teams = _trGet(sport + '_teams', []);
+  ['trm-home','trm-away'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = teams.length
+      ? teams.map(t => '<option value="' + t.team + '">' + t.team + '</option>').join('')
+      : '<option value="">-- import ' + sport + ' teams first --</option>';
+  });
+}
+
+function trainerAddMatchupToQueue() {
+  const sport = _trGv('trm-sport');
+  const home  = _trGv('trm-home');
+  const away  = _trGv('trm-away');
+  if (!home || !away || home === away) { toast('// SELECT TWO DIFFERENT TEAMS', '#ff9000'); return; }
+  _trQueue.push({ sport, home, away, venue: _trGv('trm-venue'),
+    bookSpread: _trGf('trm-spread'), bookOU: _trGf('trm-ou'),
+    homeML: _trGf('trm-hml'), awayML: _trGf('trm-aml'),
+    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 10000,
+    notes: _trGv('trm-notes') });
+  trainerRenderQueue();
+  toast('// ADDED TO QUEUE: ' + home + ' vs ' + away, '#00f0ff');
+}
+
+function trainerRenderQueue() {
+  const el = document.getElementById('trm-queue-list');
+  const cnt = document.getElementById('trm-queue-count');
+  if (cnt) cnt.textContent = _trQueue.length + ' IN QUEUE';
+  if (!el) return;
+  if (!_trQueue.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _trQueue.map((m, i) =>
+    '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:3px;margin-bottom:4px;font-family:var(--mono);font-size:12px">'
+    + '<span style="color:var(--t3);width:40px">[' + m.sport + ']</span>'
+    + '<span style="flex:1">' + m.home + ' vs ' + m.away + '</span>'
+    + '<span style="color:var(--t3)">' + (m.date || '') + '</span>'
+    + '<button class="btn btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc);border-color:var(--hc)" onclick="_trQueue.splice(' + i + ',1);trainerRenderQueue()">✕</button>'
+    + '</div>'
+  ).join('');
+}
+
+function trainerRunQueue() {
+  if (!_trQueue.length) { toast('// QUEUE IS EMPTY', '#ff9000'); return; }
+  _trQueue.forEach(m => trainerRunAnalysisFor(m));
+  _trQueue = [];
+  trainerRenderQueue();
+  trainerTab('analysis');
+  toast('// BATCH ANALYSIS COMPLETE', '#00f0ff');
+}
+
+// ── MC Analysis Engine ────────────────────────────────────────
+function trainerRunAnalysis() {
+  const sport  = _trGv('trm-sport');
+  const home   = _trGv('trm-home');
+  const away   = _trGv('trm-away');
+  if (!home || !away || home === away) { toast('// SELECT TWO DIFFERENT TEAMS', '#ff9000'); return; }
+  const cfg = { sport, home, away, venue: _trGv('trm-venue'),
+    bookSpread: _trGf('trm-spread'), bookOU: _trGf('trm-ou'),
+    homeML: _trGf('trm-hml'), awayML: _trGf('trm-aml'),
+    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 10000,
+    notes: _trGv('trm-notes') };
+  trainerRunAnalysisFor(cfg);
+  trainerTab('analysis');
+}
+
+function trainerRunAnalysisFor(cfg) {
+  const teams = _trGet(cfg.sport + '_teams', []);
+  const hT = teams.find(t => t.team === cfg.home);
+  const aT = teams.find(t => t.team === cfg.away);
+  if (!hT || !aT) {
+    toast('// TEAM DATA MISSING — IMPORT ' + cfg.sport + ' TEAMS FIRST', '#ff9000'); return;
+  }
+  const sd = _trSportDefaults(cfg.sport);
+  const N = cfg.sims || 10000;
+
+  // Team strength ratings
+  const hOff = hT.offRtg || 100; const hDef = hT.defRtg || 100;
+  const aOff = aT.offRtg || 100; const aDef = aT.defRtg || 100;
+  const lgPPG = sd.leaguePPG;
+  // Expected scores (offensive rating vs opponent defensive rating)
+  const hExpBase = lgPPG * (hOff / 100) * (100 / aDef);
+  const aExpBase = lgPPG * (aOff / 100) * (100 / hDef);
+  // HFA
+  const haAdj = cfg.venue === 'neutral' ? 0 : (cfg.venue === 'playoff' ? sd.haAdj * 0.7 : sd.haAdj);
+  const hExp = hExpBase + haAdj;
+  const aExp = aExpBase - haAdj;
+  const scoreSD = sd.scoreSD;
+
+  // Monte Carlo
+  let hWins = 0, aWins = 0, ties = 0;
+  let totalDiffs = [], totalCombined = [];
+  const isIce = ['NHL','PWHL','KHL','SHL','LIIGA'].includes(cfg.sport);
+
+  for (let i = 0; i < N; i++) {
+    let hS = hExp + _trNorm() * scoreSD;
+    let aS = aExp + _trNorm() * scoreSD;
+    if (isIce) { hS = Math.max(0, Math.round(hS)); aS = Math.max(0, Math.round(aS)); }
+    else { hS = Math.max(0, hS); aS = Math.max(0, aS); }
+    const diff = hS - aS;
+    totalDiffs.push(diff);
+    totalCombined.push(hS + aS);
+    if (hS > aS) hWins++;
+    else if (aS > hS) aWins++;
+    else ties++;
+  }
+
+  // Stats
+  const hWinProb = hWins / N;
+  const aWinProb = aWins / N;
+  const tieProb  = ties / N;
+  totalDiffs.sort((a,b) => a-b);
+  totalCombined.sort((a,b) => a-b);
+  const medDiff    = totalDiffs[Math.floor(N/2)];
+  const medTotal   = totalCombined[Math.floor(N/2)];
+  const avgDiff    = totalDiffs.reduce((a,b) => a+b, 0) / N;
+  const avgTotal   = totalCombined.reduce((a,b) => a+b, 0) / N;
+
+  // Spread cover probability
+  const bookSpread = cfg.bookSpread || 0;
+  const hCoversSpread = totalDiffs.filter(d => d > -bookSpread).length / N;
+
+  // O/U probability
+  const bookOU = cfg.bookOU || avgTotal;
+  const goesOver = totalCombined.filter(d => d > bookOU).length / N;
+
+  // Edge calculation
+  const bookHProb = cfg.homeML ? _trMLToImplied(cfg.homeML) : 0.5238;
+  const bookAProb = cfg.awayML ? _trMLToImplied(cfg.awayML) : 0.4762;
+  const hEdge = hWinProb - bookHProb;
+  const aEdge = aWinProb - bookAProb;
+  const spreadEdge = hCoversSpread - 0.5238;
+  const ouEdge = goesOver > 0.5 ? goesOver - 0.5238 : (1 - goesOver) - 0.5238;
+
+  // Best recommendations
+  const recs = [];
+  if (Math.abs(hEdge) >= 0.01) {
+    const side = hEdge > 0 ? cfg.home : cfg.away;
+    const ml   = hEdge > 0 ? cfg.homeML : cfg.awayML;
+    const prob  = hEdge > 0 ? hWinProb : aWinProb;
+    const edge  = Math.abs(hEdge);
+    const g    = _trGrade(edge);
+    recs.push({ type: 'ML', side, ml, prob, edge, grade: g, direction: hEdge > 0 ? 'HOME' : 'AWAY' });
+  }
+  if (Math.abs(spreadEdge) >= 0.01) {
+    const side = spreadEdge > 0 ? cfg.home + ' ' + (bookSpread > 0 ? '+' : '') + bookSpread : cfg.away + ' +' + (-bookSpread);
+    const g    = _trGrade(Math.abs(spreadEdge));
+    recs.push({ type: 'SPREAD', side, prob: spreadEdge > 0 ? hCoversSpread : 1-hCoversSpread, edge: Math.abs(spreadEdge), grade: g, direction: spreadEdge > 0 ? 'HOME COVERS' : 'AWAY COVERS' });
+  }
+  if (Math.abs(ouEdge) >= 0.01) {
+    const dir  = goesOver > 0.5 ? 'OVER' : 'UNDER';
+    const prob  = goesOver > 0.5 ? goesOver : 1 - goesOver;
+    const g    = _trGrade(Math.abs(ouEdge));
+    recs.push({ type: 'O/U', side: dir + ' ' + bookOU, prob, edge: Math.abs(ouEdge), grade: g, direction: dir + ' ' + bookOU });
+  }
+  recs.sort((a,b) => b.edge - a.edge);
+
+  // Store analysis
+  const analysis = {
+    id: 'tr_' + Date.now(), sport: cfg.sport, home: cfg.home, away: cfg.away,
+    venue: cfg.venue, date: cfg.date || new Date().toISOString().slice(0,10),
+    sims: N, hWinProb, aWinProb, tieProb, medDiff, medTotal, avgDiff, avgTotal,
+    hCoversSpread, goesOver, bookSpread, bookOU, homeML: cfg.homeML, awayML: cfg.awayML,
+    hEdge, aEdge, spreadEdge, ouEdge, recs, notes: cfg.notes,
+    hExp: hExp.toFixed(1), aExp: aExp.toFixed(1), runAt: Date.now()
+  };
+
+  const all = _trGet('analyses', []);
+  all.unshift(analysis);
+  if (all.length > 100) all.length = 100;
+  _trSet('analyses', all);
+
+  trainerShowAnalysisResult(analysis);
+  trainerRenderAnalysisHistory();
+}
+
+function trainerShowAnalysisResult(a) {
+  const el = document.getElementById('tra-results');
+  if (!el) return;
+
+  const pC = p => p >= 0.62 ? 'var(--nc)' : p >= 0.52 ? 'var(--vc)' : 'var(--hc)';
+  const edgeBar = (edge, max) => {
+    const pct = Math.min(100, Math.abs(edge) / max * 100);
+    const col = Math.abs(edge) >= 0.08 ? 'var(--nc)' : Math.abs(edge) >= 0.04 ? 'var(--vc)' : 'var(--t3)';
+    return '<div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + col + ';border-radius:2px"></div></div>';
+  };
+
+  el.innerHTML = '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:14px;margin-bottom:12px">'
+    // Header
+    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">'
+    + '<div><div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px">' + a.sport + ' · ' + (a.date || '') + ' · ' + a.sims.toLocaleString() + ' SIMS</div>'
+    + '<div style="font-family:var(--orb);font-size:18px;font-weight:700;margin-top:3px">' + a.home + ' vs ' + a.away + '</div></div>'
+    + '<div class="mono" style="font-size:11px;color:var(--t3)">' + a.id + '</div></div>'
+    // Win probs
+    + '<div style="display:grid;grid-template-columns:1fr 80px 1fr;gap:8px;margin-bottom:12px;text-align:center">'
+    + '<div style="background:rgba(0,240,255,.06);border:1px solid rgba(0,240,255,.2);border-radius:4px;padding:10px">'
+    + '<div class="mono" style="font-size:11px;color:var(--t3)">HOME WIN%</div>'
+    + '<div class="orb" style="font-size:28px;font-weight:700;color:' + pC(a.hWinProb) + '">' + (a.hWinProb * 100).toFixed(1) + '%</div>'
+    + '<div class="mono" style="font-size:12px;color:var(--t3)">' + a.home + '</div>'
+    + '<div class="mono" style="font-size:11px;color:var(--t3);margin-top:3px">exp: ' + a.hExp + '</div></div>'
+    + '<div style="display:flex;align-items:center;justify-content:center"><div class="mono" style="font-size:13px;color:var(--t3)">VS</div></div>'
+    + '<div style="background:rgba(240,0,255,.06);border:1px solid rgba(240,0,255,.2);border-radius:4px;padding:10px">'
+    + '<div class="mono" style="font-size:11px;color:var(--t3)">AWAY WIN%</div>'
+    + '<div class="orb" style="font-size:28px;font-weight:700;color:' + pC(a.aWinProb) + '">' + (a.aWinProb * 100).toFixed(1) + '%</div>'
+    + '<div class="mono" style="font-size:12px;color:var(--t3)">' + a.away + '</div>'
+    + '<div class="mono" style="font-size:11px;color:var(--t3);margin-top:3px">exp: ' + a.aExp + '</div></div></div>'
+    // Key numbers
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">'
+    + _trStatCard('MEDIAN DIFF', (a.medDiff > 0 ? '+' : '') + a.medDiff.toFixed(1), a.medDiff > 0 ? 'var(--nc)' : 'var(--hc)', 'home favored by')
+    + _trStatCard('MEDIAN TOTAL', a.medTotal.toFixed(1), 'var(--vc)', 'projected combined')
+    + _trStatCard('HOME CVR %', (a.hCoversSpread * 100).toFixed(1) + '%', pC(a.hCoversSpread), 'vs ' + (a.bookSpread || '?') + ' spread')
+    + _trStatCard('OVER %', (a.goesOver * 100).toFixed(1) + '%', pC(a.goesOver), 'vs ' + (a.bookOU || '?') + ' total')
+    + '</div>'
+    // Recommendations
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">RECOMMENDATIONS</div>'
+    + (a.recs.length ? a.recs.map(r => {
+      const g = r.grade;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:4px;margin-bottom:6px">'
+        + '<div style="min-width:70px;font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid ' + g.col + ';color:' + g.col + ';border-radius:2px;text-align:center;box-shadow:0 0 6px ' + g.col + '44">' + g.label + '</div>'
+        + '<div style="min-width:60px;font-family:var(--mono);font-size:11px;color:var(--t3)">' + r.type + '</div>'
+        + '<div style="flex:1;font-family:var(--orb);font-size:15px;font-weight:700">' + r.side + '</div>'
+        + '<div style="font-family:var(--mono);font-size:13px;color:' + pC(r.prob) + '">' + (r.prob * 100).toFixed(1) + '%</div>'
+        + '<div style="font-family:var(--mono);font-size:12px;color:var(--t3);min-width:80px;text-align:right">EDGE: ' + (r.edge * 100).toFixed(1) + '%</div></div>';
+    }).join('') : '<div class="empty" style="padding:8px">NO SIGNIFICANT EDGE DETECTED — BOTH LINES ARE FAIRLY PRICED</div>')
+    + (a.notes ? '<div class="mono" style="font-size:11px;color:var(--t3);margin-top:8px">NOTES: ' + a.notes + '</div>' : '')
+    + '</div>';
+}
+
+function _trStatCard(label, val, col, sub) {
+  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:4px;padding:8px;text-align:center">'
+    + '<div class="mono" style="font-size:10px;color:var(--t3);margin-bottom:3px">' + label + '</div>'
+    + '<div style="font-family:var(--orb);font-size:20px;font-weight:700;color:' + col + '">' + val + '</div>'
+    + '<div class="mono" style="font-size:10px;color:var(--t3);margin-top:2px">' + sub + '</div></div>';
+}
+
+function trainerRenderAnalysisHistory() {
+  const el = document.getElementById('tra-history');
+  if (!el) return;
+  const all = _trGet('analyses', []);
+  if (!all.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">ANALYSIS HISTORY (' + all.length + ')</div>'
+    + all.slice(0, 30).map((a, i) => {
+      const bestRec = a.recs && a.recs[0];
+      const g = bestRec ? bestRec.grade : { label: 'NO EDGE', col: 'var(--t3)' };
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:3px;margin-bottom:4px;cursor:pointer" onclick="trainerShowById(' + i + ')">'
+        + '<span class="mono" style="font-size:10px;color:var(--t3);width:40px">' + a.sport + '</span>'
+        + '<span style="flex:1;font-family:var(--orb);font-size:13px">' + a.home + ' vs ' + a.away + '</span>'
+        + '<span class="mono" style="font-size:11px;color:var(--t3)">' + (a.date || '') + '</span>'
+        + (bestRec ? '<span class="mono" style="font-size:10px;padding:1px 5px;border:1px solid ' + g.col + ';color:' + g.col + ';border-radius:2px">' + g.label + '</span>' : '')
+        + (a.result ? '<span class="mono" style="font-size:11px;color:' + (a.result.correct ? 'var(--nc)' : 'var(--hc)') + '">' + (a.result.correct ? '✓' : '✗') + ' ' + a.result.hScore + '-' + a.result.aScore + '</span>' : '<span class="mono" style="font-size:10px;color:var(--t3)">PENDING</span>')
+        + '</div>';
+    }).join('');
+}
+
+function trainerShowById(i) {
+  const all = _trGet('analyses', []);
+  if (all[i]) trainerShowAnalysisResult(all[i]);
+}
+
+// ── Player Props ──────────────────────────────────────────────
+function trainerUpdatePropStats() { trainerRenderPlayerList(); trainerRenderPropPlayerSelect(); }
+
+function trainerAddPlayer() {
+  const sport = _trGv('trp-sport');
+  const name  = _trGv('trp-name').trim();
+  if (!name) { toast('// ENTER PLAYER NAME', '#ff9000'); return; }
+  const rec = { name, sport, team: _trGv('trp-team'), pos: _trGv('trp-pos'),
+    gp: _trGf('trp-gp'), season: _trGv('trp-season') || '2024-25',
+    stats: {
+      [_trGv('trp-s1t') || 'PTS']: { avg: _trGf('trp-s1'), sd: _trGf('trp-s1sd') },
+      [_trGv('trp-s2t') || 'REB']: { avg: _trGf('trp-s2'), sd: _trGf('trp-s2sd') }
+    }, addedAt: Date.now() };
+  const key = sport + '_players';
+  const players = _trGet(key, []);
+  const ex = players.findIndex(p => p.name === name && p.sport === sport);
+  if (ex >= 0) players[ex] = rec; else players.push(rec);
+  _trSet(key, players);
+  trainerRenderPlayerList();
+  trainerRenderPropPlayerSelect();
+  toast('// PLAYER SAVED: ' + name, '#00f0ff');
+}
+
+function trainerRenderPlayerList() {
+  const el = document.getElementById('trp-player-list');
+  if (!el) return;
+  const sport = _trGv('trp-sport');
+  const players = _trGet(sport + '_players', []);
+  if (!players.length) { el.innerHTML = '<div class="empty" style="padding:8px">NO PLAYERS — ADD OR IMPORT</div>'; return; }
+  el.innerHTML = players.map((p, i) => {
+    const statStr = Object.entries(p.stats || {}).map(([k,v]) => k + ': ' + (v.avg || 0).toFixed(1)).join(' · ');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:3px;margin-bottom:3px;font-family:var(--mono);font-size:12px">'
+      + '<span style="color:var(--t);font-weight:700">' + p.name + '</span>'
+      + '<span style="color:var(--t3)">' + p.pos + '</span>'
+      + '<span style="color:var(--ic)">' + p.team + '</span>'
+      + '<span style="color:var(--t3);flex:1">' + statStr + '</span>'
+      + '<span style="color:var(--t3)">' + p.gp + 'G</span>'
+      + '<button class="btn btn-sm" style="font-size:10px;padding:2px 5px;color:var(--hc);border-color:var(--hc)" onclick="trainerRemovePlayer(' + i + ')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function trainerRemovePlayer(i) {
+  const sport = _trGv('trp-sport');
+  const key = sport + '_players';
+  const players = _trGet(key, []);
+  players.splice(i, 1);
+  _trSet(key, players);
+  trainerRenderPlayerList();
+  trainerRenderPropPlayerSelect();
+}
+
+function trainerRenderPropPlayerSelect() {
+  const sel = document.getElementById('trp-sel-player');
+  if (!sel) return;
+  const sport = _trGv('trp-sport');
+  const players = _trGet(sport + '_players', []);
+  sel.innerHTML = '<option value="">-- select player --</option>'
+    + players.map(p => '<option value="' + p.name + '">' + p.name + ' (' + p.pos + ', ' + p.team + ')</option>').join('');
+}
+
+function trainerImportRoster() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json';
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        const sport = _trGv('trp-sport');
+        const season = _trGv('trp-season') || '2024-25';
+        const arr = Array.isArray(d) ? d : (d.players || d.roster || []);
+        if (!arr.length) { toast('// NO PLAYERS IN FILE', '#ff9000'); return; }
+        const key = sport + '_players';
+        const existing = _trGet(key, []);
+        let added = 0;
+        arr.forEach(p => {
+          if (!p.name) return;
+          const stats = {};
+          if (p.pts !== undefined) stats['PTS'] = { avg: +p.pts, sd: +(p.pts_sd || p.pts * 0.3) };
+          if (p.reb !== undefined) stats['REB'] = { avg: +p.reb, sd: +(p.reb_sd || p.reb * 0.35) };
+          if (p.ast !== undefined) stats['AST'] = { avg: +p.ast, sd: +(p.ast_sd || p.ast * 0.35) };
+          if (p.pass_yds !== undefined) stats['PASS_YDS'] = { avg: +p.pass_yds, sd: +(p.pass_yds_sd || p.pass_yds * 0.22) };
+          if (p.rush_yds !== undefined) stats['RUSH_YDS'] = { avg: +p.rush_yds, sd: +(p.rush_yds_sd || p.rush_yds * 0.3) };
+          if (p.goals !== undefined) stats['GOALS'] = { avg: +p.goals, sd: +(p.goals_sd || 0.6) };
+          if (p.saves !== undefined) stats['SAVES'] = { avg: +p.saves, sd: +(p.saves_sd || 3.5) };
+          Object.assign(stats, p.stats || {});
+          const rec = { name: p.name, sport, team: p.team || '', pos: p.pos || p.position || '',
+            gp: +p.gp || +p.games || 0, season, stats, addedAt: Date.now() };
+          const ex = existing.findIndex(x => x.name === rec.name);
+          if (ex >= 0) existing[ex] = rec; else { existing.push(rec); added++; }
+        });
+        _trSet(key, existing);
+        trainerRenderPlayerList();
+        trainerRenderPropPlayerSelect();
+        toast('// IMPORTED ' + added + ' PLAYERS', '#00f0ff');
+      } catch(e) { toast('// PARSE ERROR: ' + e.message, '#ff1a1a'); }
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+}
+
+function trainerImportPlayerCSV() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.csv';
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      try {
+        const lines = ev.target.result.split('\n').filter(l => l.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const sport = _trGv('trp-sport');
+        const season = _trGv('trp-season') || '2024-25';
+        const key = sport + '_players';
+        const existing = _trGet(key, []);
+        let added = 0;
+        lines.slice(1).forEach(line => {
+          const vals = line.split(',');
+          const row = {};
+          headers.forEach((h, i) => row[h] = (vals[i] || '').trim());
+          if (!row.name) return;
+          const stats = {};
+          ['pts','reb','ast','pass_yds','rush_yds','rec','td','goals','assists','saves','shots'].forEach(s => {
+            if (row[s] !== undefined && row[s] !== '') {
+              const key2 = s.toUpperCase();
+              const sd_key = s + '_sd';
+              stats[key2] = { avg: +row[s], sd: +(row[sd_key] || +row[s] * 0.28) };
+            }
+          });
+          const rec = { name: row.name, sport, team: row.team || '', pos: row.pos || row.position || '',
+            gp: +row.gp || +row.games || 0, season, stats, addedAt: Date.now() };
+          const ex = existing.findIndex(x => x.name === rec.name);
+          if (ex >= 0) existing[ex] = rec; else { existing.push(rec); added++; }
+        });
+        _trSet(key, existing);
+        trainerRenderPlayerList();
+        trainerRenderPropPlayerSelect();
+        toast('// IMPORTED ' + added + ' PLAYERS FROM CSV', '#00f0ff');
+      } catch(e) { toast('// CSV PARSE ERROR: ' + e.message, '#ff1a1a'); }
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+}
+
+function trainerAnalyzeProp() {
+  const playerName = _trGv('trp-sel-player');
+  if (!playerName) { toast('// SELECT A PLAYER', '#ff9000'); return; }
+  const sport = _trGv('trp-sport');
+  const players = _trGet(sport + '_players', []);
+  const player = players.find(p => p.name === playerName);
+  if (!player) { toast('// PLAYER NOT FOUND', '#ff9000'); return; }
+  const stat = _trGv('trp-sel-stat');
+  const bookLine = _trGf('trp-line');
+  if (!bookLine) { toast('// ENTER BOOK LINE', '#ff9000'); return; }
+  const defRank = _trGf('trp-def-rank') || 16;
+  const statData = player.stats[stat];
+  if (!statData) { toast('// NO ' + stat + ' DATA FOR ' + playerName, '#ff9000'); return; }
+  // Adjust for opponent defensive ranking (1=best, 32=worst)
+  const rankAdj = 1 + (defRank - 16.5) / 32 * 0.25;
+  const adjAvg = statData.avg * rankAdj;
+  const adjSD  = statData.sd || adjAvg * 0.28;
+  // MC sim
+  const N = 20000;
+  let overCount = 0;
+  const samples = [];
+  for (let i = 0; i < N; i++) {
+    const val = adjAvg + _trNorm() * adjSD;
+    samples.push(val);
+    if (val > bookLine) overCount++;
+  }
+  samples.sort((a,b) => a-b);
+  const overProb = overCount / N;
+  const underProb = 1 - overProb;
+  const median = samples[Math.floor(N/2)];
+  const bookImplied = 0.5238;
+  const overEdge = overProb - bookImplied;
+  const underEdge = underProb - bookImplied;
+  const bestDir = overEdge > underEdge ? 'OVER' : 'UNDER';
+  const bestEdge = Math.max(overEdge, underEdge);
+  const g = _trGrade(bestEdge);
+
+  const el = document.getElementById('trp-prop-result');
+  if (!el) return;
+  el.innerHTML = '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:14px;margin-top:10px">'
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">PROP ANALYSIS — ' + sport + '</div>'
+    + '<div style="font-family:var(--orb);font-size:18px;font-weight:700;margin-bottom:10px">' + playerName + ' · ' + stat + ' ' + bookLine + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">'
+    + _trStatCard('ADJ AVG', adjAvg.toFixed(1), 'var(--vc)', 'vs def rank #' + Math.round(defRank))
+    + _trStatCard('MEDIAN SIM', median.toFixed(1), 'var(--ic)', '20k simulations')
+    + _trStatCard('OVER %', (overProb*100).toFixed(1)+'%', overProb>=0.54?'var(--nc)':overProb>=0.47?'var(--vc)':'var(--hc)', 'over ' + bookLine)
+    + _trStatCard('UNDER %', (underProb*100).toFixed(1)+'%', underProb>=0.54?'var(--nc)':underProb>=0.47?'var(--vc)':'var(--hc)', 'under ' + bookLine)
+    + '</div>'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:4px">'
+    + '<div style="font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid ' + g.col + ';color:' + g.col + ';border-radius:2px;box-shadow:0 0 6px ' + g.col + '44">' + g.label + '</div>'
+    + '<div style="font-family:var(--orb);font-size:16px;font-weight:700">' + bestDir + ' ' + bookLine + ' ' + stat + '</div>'
+    + '<div style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--t3)">EDGE: ' + (bestEdge*100).toFixed(1) + '%</div>'
+    + '</div>'
+    + '<div class="mono" style="font-size:11px;color:var(--t3);margin-top:8px">DEF RANK ADJ: ×' + rankAdj.toFixed(3) + ' | BASE AVG: ' + statData.avg.toFixed(1) + ' | SD: ' + adjSD.toFixed(1) + '</div>'
+    + '</div>';
+}
+
+// ── Backtest ──────────────────────────────────────────────────
+function trainerRenderBacktestSelect() {
+  const sel = document.getElementById('trbt-sel');
+  if (!sel) return;
+  const all = _trGet('analyses', []).filter(a => !a.result);
+  sel.innerHTML = '<option value="">-- select analysis to log result --</option>'
+    + all.map(a => '<option value="' + a.id + '">' + a.sport + ': ' + a.home + ' vs ' + a.away + ' (' + (a.date || '') + ')</option>').join('');
+  const cnt = document.getElementById('trbt-count');
+  if (cnt) {
+    const withResult = _trGet('analyses', []).filter(a => a.result).length;
+    cnt.textContent = withResult + ' RESULTS LOGGED';
+  }
+}
+
+function trainerLogResult() {
+  const id = _trGv('trbt-sel');
+  const hs = _trGf('trbt-hs');
+  const as = _trGf('trbt-as');
+  if (!id) { toast('// SELECT AN ANALYSIS', '#ff9000'); return; }
+  const all = _trGet('analyses', []);
+  const idx = all.findIndex(a => a.id === id);
+  if (idx < 0) { toast('// ANALYSIS NOT FOUND', '#ff9000'); return; }
+  const a = all[idx];
+  const actualDiff = hs - as;
+  const homeWon = hs > as;
+  // Did our recs hit?
+  const recResults = (a.recs || []).map(r => {
+    let hit = false;
+    if (r.type === 'ML') hit = (r.direction === 'HOME' && homeWon) || (r.direction === 'AWAY' && !homeWon);
+    if (r.type === 'SPREAD') {
+      const coverDiff = hs - as + (a.bookSpread || 0);
+      hit = (r.direction.includes('HOME') && coverDiff > 0) || (r.direction.includes('AWAY') && coverDiff < 0);
+    }
+    if (r.type === 'O/U') {
+      const total = hs + as;
+      hit = (r.direction.includes('OVER') && total > (a.bookOU || 0)) || (r.direction.includes('UNDER') && total <= (a.bookOU || 0));
+    }
+    return { ...r, hit };
+  });
+  const correct = recResults.length > 0 ? recResults[0].hit : homeWon === (a.hWinProb > 0.5);
+  all[idx].result = { hScore: hs, aScore: as, homeWon, correct, recResults, loggedAt: Date.now() };
+  _trSet('analyses', all);
+  trainerRenderBacktestSelect();
+  trainerRunBacktest();
+  toast('// RESULT LOGGED: ' + hs + '-' + as, correct ? '#00e644' : '#ff1a1a');
+}
+
+function trainerImportResults() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json';
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        const results = Array.isArray(d) ? d : (d.results || []);
+        const all = _trGet('analyses', []);
+        let matched = 0;
+        results.forEach(r => {
+          const idx = all.findIndex(a => a.id === r.id || (a.home === r.home && a.away === r.away && a.date === r.date));
+          if (idx < 0) return;
+          const a = all[idx];
+          const hs = +r.hScore || +r.home_score || 0;
+          const as = +r.aScore || +r.away_score || 0;
+          const homeWon = hs > as;
+          const correct = homeWon === (a.hWinProb > 0.5);
+          all[idx].result = { hScore: hs, aScore: as, homeWon, correct, loggedAt: Date.now() };
+          matched++;
+        });
+        _trSet('analyses', all);
+        trainerRenderBacktestSelect();
+        trainerRunBacktest();
+        toast('// MATCHED ' + matched + ' RESULTS', '#00f0ff');
+      } catch(e) { toast('// PARSE ERROR: ' + e.message, '#ff1a1a'); }
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+}
+
+function trainerRunBacktest() {
+  const el = document.getElementById('trbt-results');
+  if (!el) return;
+  const all = _trGet('analyses', []).filter(a => a.result);
+  if (!all.length) {
+    el.innerHTML = '<div class="empty">NO RESULTS LOGGED YET — LOG ACTUAL SCORES TO SEE BACKTEST ANALYSIS</div>';
+    return;
+  }
+  // Overall stats
+  const total = all.length;
+  const mlHits = all.filter(a => a.result.homeWon === (a.hWinProb > 0.5)).length;
+  const recHits = all.filter(a => a.result.correct).length;
+  // By sport
+  const bySport = {};
+  all.forEach(a => {
+    if (!bySport[a.sport]) bySport[a.sport] = { total: 0, mlHits: 0, recHits: 0, totalDiffErr: 0, totalOuErr: 0 };
+    const b = bySport[a.sport];
+    b.total++;
+    if (a.result.homeWon === (a.hWinProb > 0.5)) b.mlHits++;
+    if (a.result.correct) b.recHits++;
+    b.totalDiffErr += Math.abs(a.result.hScore - a.result.aScore - a.avgDiff);
+    b.totalOuErr   += Math.abs(a.result.hScore + a.result.aScore - a.avgTotal);
+  });
+  // Calibration by confidence band
+  const bands = [
+    { lo: 0.5, hi: 0.55 }, { lo: 0.55, hi: 0.60 },
+    { lo: 0.60, hi: 0.65 }, { lo: 0.65, hi: 0.70 },
+    { lo: 0.70, hi: 1.0 }
+  ];
+  const calData = bands.map(b => {
+    const inBand = all.filter(a => {
+      const p = Math.max(a.hWinProb, a.aWinProb);
+      return p >= b.lo && p < b.hi;
+    });
+    const hits = inBand.filter(a => a.result.homeWon === (a.hWinProb > 0.5)).length;
+    return { lo: b.lo, hi: b.hi, n: inBand.length, hits, pct: inBand.length ? hits / inBand.length : null };
+  });
+
+  const pC = p => p >= 0.60 ? 'var(--nc)' : p >= 0.50 ? 'var(--vc)' : 'var(--hc)';
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'
+    + _trStatCard('ML ACCURACY', (mlHits/total*100).toFixed(1)+'%', pC(mlHits/total), total + ' games')
+    + _trStatCard('REC HIT RATE', (recHits/total*100).toFixed(1)+'%', pC(recHits/total), 'top recommendation')
+    + _trStatCard('GAMES LOGGED', total, 'var(--ic)', 'with actual results')
+    + '</div>'
+    // By sport
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">BY SPORT</div>'
+    + '<div style="margin-bottom:12px">'
+    + Object.entries(bySport).map(([sport, b]) => {
+      const acc = b.mlHits / b.total;
+      const avgDiffErr = (b.totalDiffErr / b.total).toFixed(1);
+      const avgOuErr   = (b.totalOuErr / b.total).toFixed(1);
+      return '<div style="display:grid;grid-template-columns:80px 1fr 80px 80px 80px 80px;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:3px;margin-bottom:4px;font-family:var(--mono);font-size:12px;align-items:center">'
+        + '<span style="color:var(--ic);font-weight:700">' + sport + '</span>'
+        + '<div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + (acc*100).toFixed(0) + '%;background:' + pC(acc) + ';border-radius:3px"></div></div>'
+        + '<span style="color:' + pC(acc) + '">' + (acc*100).toFixed(1) + '%</span>'
+        + '<span style="color:var(--t3)">' + b.total + 'G</span>'
+        + '<span style="color:var(--vc)">±' + avgDiffErr + ' diff</span>'
+        + '<span style="color:var(--t3)">±' + avgOuErr + ' O/U</span>'
+        + '</div>';
+    }).join('')
+    + '</div>'
+    // Calibration
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">CALIBRATION — PREDICTED vs ACTUAL WIN%</div>'
+    + '<div style="margin-bottom:12px">'
+    + calData.filter(b => b.n > 0).map(b => {
+      const pred = (b.lo + b.hi) / 2;
+      const actual = b.pct || 0;
+      const gap = actual - pred;
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+        + '<div class="mono" style="font-size:11px;color:var(--t2);width:60px">' + (b.lo*100).toFixed(0) + '–' + (b.hi === 1 ? '100' : (b.hi*100).toFixed(0)) + '%</div>'
+        + '<div style="flex:1;height:10px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;position:relative">'
+        + '<div style="position:absolute;left:0;top:0;height:100%;width:' + (pred*100).toFixed(1) + '%;background:rgba(77,121,255,.3);border-right:1px solid var(--ic)"></div>'
+        + '<div style="position:absolute;left:0;top:0;height:100%;width:' + (actual*100).toFixed(1) + '%;background:' + pC(actual) + ';opacity:.6;border-radius:2px"></div></div>'
+        + '<div class="mono" style="font-size:11px;width:36px;text-align:right;color:' + pC(actual) + '">' + (actual*100).toFixed(0) + '%</div>'
+        + '<div class="mono" style="font-size:11px;width:50px;text-align:right;color:' + (Math.abs(gap) > 0.05 ? 'var(--hc)' : 'var(--t3)') + '">' + (gap >= 0 ? '+' : '') + (gap*100).toFixed(1) + '%</div>'
+        + '<div class="mono" style="font-size:10px;color:var(--t3)">n=' + b.n + '</div></div>';
+    }).join('')
+    + '</div>'
+    // Recent results
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">RECENT RESULTS</div>'
+    + all.slice(-10).reverse().map(a => {
+      const g = a.recs && a.recs[0] ? a.recs[0].grade : { label: '—', col: 'var(--t3)' };
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:3px;margin-bottom:3px;font-family:var(--mono);font-size:12px">'
+        + '<span style="color:' + (a.result.correct ? 'var(--nc)' : 'var(--hc)') + ';font-weight:700;width:12px">' + (a.result.correct ? '✓' : '✗') + '</span>'
+        + '<span style="color:var(--t3);width:40px">' + a.sport + '</span>'
+        + '<span style="flex:1">' + a.home + ' vs ' + a.away + '</span>'
+        + '<span style="color:var(--t2)">' + a.result.hScore + '–' + a.result.aScore + '</span>'
+        + '<span style="color:var(--t3)">' + (a.date || '') + '</span>'
+        + '<span style="font-size:10px;padding:1px 4px;border:1px solid ' + g.col + ';color:' + g.col + ';border-radius:2px">' + g.label + '</span>'
+        + '</div>';
+    }).join('');
+}
+
+// ── Reasoning & Error Analysis ────────────────────────────────
+function trainerRunReasoning() {
+  const el = document.getElementById('trr-results');
+  if (!el) return;
+  const sportFilter = _trGv('trr-sport-filter') || 'ALL';
+  let all = _trGet('analyses', []).filter(a => a.result);
+  if (sportFilter !== 'ALL') all = all.filter(a => a.sport === sportFilter);
+  if (!all.length) {
+    el.innerHTML = '<div class="empty">NO COMPLETED ANALYSES WITH RESULTS — LOG ACTUAL SCORES IN BACKTEST TAB</div>';
+    return;
+  }
+
+  const insights = [];
+  const errors   = [];
+
+  // 1. Favorite bias
+  const favCorrect = all.filter(a => {
+    const favHome = a.hWinProb > 0.5;
+    return favHome === a.result.homeWon;
+  }).length;
+  const favAcc = favCorrect / all.length;
+  if (favAcc < 0.52) {
+    errors.push({ type: 'BIAS', sev: 'HIGH', msg: 'FAVORITE BIAS: Model correctly picks favorites at only ' + (favAcc*100).toFixed(1) + '% — below expected. Consider reducing HFA adjustment or checking SOS weighting.' });
+  } else if (favAcc > 0.68) {
+    insights.push({ type: 'STRENGTH', msg: 'STRONG ML ACCURACY: ' + (favAcc*100).toFixed(1) + '% — model is well-calibrated for winner selection.' });
+  }
+
+  // 2. Spread error
+  const spreadErrs = all.filter(a => a.bookSpread && a.result).map(a => {
+    const predDiff = a.avgDiff; const actualDiff = a.result.hScore - a.result.aScore;
+    return Math.abs(predDiff - actualDiff);
+  });
+  if (spreadErrs.length > 3) {
+    const avgErr = spreadErrs.reduce((a,b)=>a+b,0) / spreadErrs.length;
+    if (avgErr > 8) errors.push({ type: 'SPREAD ERROR', sev: 'MEDIUM', msg: 'SPREAD PREDICTION ERROR: Average margin error of ' + avgErr.toFixed(1) + ' points — too high. Check offensive/defensive rating inputs for accuracy.' });
+    else insights.push({ type: 'SPREAD', msg: 'SPREAD ACCURACY: Average margin error of ' + avgErr.toFixed(1) + ' — within acceptable range.' });
+  }
+
+  // 3. O/U error
+  const ouErrs = all.filter(a => a.bookOU && a.result).map(a => {
+    return Math.abs((a.result.hScore + a.result.aScore) - a.avgTotal);
+  });
+  if (ouErrs.length > 3) {
+    const avgOuErr = ouErrs.reduce((a,b)=>a+b,0) / ouErrs.length;
+    if (avgOuErr > 10) errors.push({ type: 'TOTAL ERROR', sev: 'MEDIUM', msg: 'TOTAL PROJECTION ERROR: Average combined score error of ' + avgOuErr.toFixed(1) + '. Pace and scoring defaults may need calibration for this sport/season.' });
+    else insights.push({ type: 'TOTAL', msg: 'TOTAL ACCURACY: Average combined score error of ' + avgOuErr.toFixed(1) + ' — reasonable for Monte Carlo.' });
+  }
+
+  // 4. By sport calibration
+  const sports = [...new Set(all.map(a => a.sport))];
+  sports.forEach(sp => {
+    const spGames = all.filter(a => a.sport === sp);
+    if (spGames.length < 3) return;
+    const spAcc = spGames.filter(a => a.result.homeWon === (a.hWinProb > 0.5)).length / spGames.length;
+    const spAvgConf = spGames.reduce((s,a) => s + Math.max(a.hWinProb, a.aWinProb), 0) / spGames.length;
+    if (spAcc < 0.50) errors.push({ type: sp + ' CALIBRATION', sev: 'HIGH', msg: sp + ': Model accuracy is only ' + (spAcc*100).toFixed(1) + '% on ' + spGames.length + ' games. Average confidence: ' + (spAvgConf*100).toFixed(1) + '%. Recommend importing more historical data and rechecking team ratings.' });
+    if (spAvgConf > 0.72 && spAcc < 0.60) errors.push({ type: sp + ' OVERCONFIDENCE', sev: 'HIGH', msg: sp + ': Model is OVERCONFIDENT — averaging ' + (spAvgConf*100).toFixed(1) + '% confidence but only hitting ' + (spAcc*100).toFixed(1) + '%. Reduce offensive/defensive rating gap between teams.' });
+  });
+
+  // 5. High-grade rec performance
+  const premRecs = all.filter(a => a.recs && a.recs[0] && a.recs[0].grade.label === 'PREMIUM');
+  if (premRecs.length >= 3) {
+    const premHit = premRecs.filter(a => a.result.correct).length;
+    const premAcc = premHit / premRecs.length;
+    if (premAcc < 0.55) errors.push({ type: 'PREMIUM GRADE FAILURE', sev: 'HIGH', msg: 'PREMIUM-graded picks hitting at only ' + (premAcc*100).toFixed(1) + '% (' + premHit + '/' + premRecs.length + '). Edge threshold may be set too low — increase PREMIUM cutoff from 12% to 15%+.' });
+    else insights.push({ type: 'PREMIUM PICKS', msg: 'PREMIUM picks hitting at ' + (premAcc*100).toFixed(1) + '% (' + premHit + '/' + premRecs.length + ') — strong edge detection.' });
+  }
+
+  // 6. Home/Away breakdown
+  const homeWinRate = all.filter(a => a.result.homeWon).length / all.length;
+  if (homeWinRate < 0.48 || homeWinRate > 0.65) {
+    const note = homeWinRate < 0.48
+      ? 'AWAY TEAMS outperforming in dataset — consider reducing HFA multiplier.'
+      : 'HOME TEAMS winning at a high rate — verify home advantage settings match the sport.';
+    errors.push({ type: 'HFA SIGNAL', sev: 'LOW', msg: 'Home win rate in dataset: ' + (homeWinRate*100).toFixed(1) + '%. ' + note });
+  }
+
+  // 7. Engine improvement recommendations
+  const improvements = [];
+  if (all.length < 10) improvements.push('LOG MORE GAMES: Only ' + all.length + ' results — need 15+ per sport for reliable calibration.');
+  if (all.some(a => !a.notes || !a.notes.trim())) improvements.push('ADD NOTES TO MATCHUPS: Weather, injuries, rest days improve model accuracy when reviewed post-game.');
+  improvements.push('IMPORT PREVIOUS SEASON DATA: Use the DATA tab to import full season stats for higher sim accuracy.');
+  improvements.push('CROSS-CHECK SOS: Strength of Schedule inputs are critical — use official sources (ESPN, Sports Reference) for accuracy.');
+  if (sports.some(s => ['NHL','KHL','SHL','LIIGA'].includes(s))) improvements.push('ICE HOCKEY CALIBRATION: Score volatility is high (low-scoring). Consider using Corsi/Fenwick metrics as OFF/DEF rating inputs for better results.');
+
+  const sevCol = { HIGH: '#ff1a1a', MEDIUM: '#ff9000', LOW: '#bbff00' };
+  el.innerHTML = (errors.length ? '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:6px">ERRORS & ISSUES (' + errors.length + ')</div>'
+    + errors.map(e => '<div style="background:rgba(' + (e.sev==='HIGH'?'255,26,26':'255,144,0') + ',.06);border:1px solid rgba(' + (e.sev==='HIGH'?'255,26,26':'255,144,0') + ',.25);border-radius:4px;padding:10px;margin-bottom:6px">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div class="mono" style="font-size:10px;padding:1px 5px;border:1px solid ' + sevCol[e.sev] + ';color:' + sevCol[e.sev] + ';border-radius:2px">' + e.sev + '</div><div class="mono" style="font-size:11px;color:' + sevCol[e.sev] + '">' + e.type + '</div></div>'
+      + '<div style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.5">' + e.msg + '</div></div>'
+    ).join('') : '')
+    + (insights.length ? '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin:10px 0 6px">STRENGTHS</div>'
+    + insights.map(i => '<div style="background:rgba(0,230,68,.05);border:1px solid rgba(0,230,68,.2);border-radius:4px;padding:8px 10px;margin-bottom:4px;font-family:var(--mono);font-size:12px;color:var(--t2)">'
+      + '<span style="color:var(--nc)">✓ </span>' + i.msg + '</div>'
+    ).join('') : '')
+    + '<div class="mono" style="font-size:11px;color:var(--t3);letter-spacing:2px;margin:10px 0 6px">IMPROVEMENT RECOMMENDATIONS</div>'
+    + improvements.map(imp => '<div style="background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:4px;padding:7px 10px;margin-bottom:4px;font-family:var(--mono);font-size:12px;color:var(--t2)">'
+      + '<span style="color:var(--ic)">→ </span>' + imp + '</div>'
+    ).join('')
+    + '<div class="mono" style="font-size:11px;color:var(--t3);margin-top:10px">ANALYSIS BASED ON ' + all.length + ' GAMES' + (sportFilter !== 'ALL' ? ' [' + sportFilter + ']' : '') + ' WITH LOGGED RESULTS</div>';
+}
+
+function trainerExportInsights() {
+  const all = _trGet('analyses', []);
+  const d = { analyses: all, exportedAt: new Date().toISOString(), version: '1.0' };
+  const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+  a.download = 'trainer_insights_' + new Date().toISOString().slice(0,10) + '.json'; a.click();
+  toast('// INSIGHTS EXPORTED', '#00f0ff');
+}
+
 </script>
 
 
