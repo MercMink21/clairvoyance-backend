@@ -8676,8 +8676,8 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
           <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}</div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');setTimeout(renderOverallHistory,400)">✓ WIN</button>
-          <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');setTimeout(renderOverallHistory,400)">✗ LOSS</button>
+          <button class="btn btn-n btn-sm" onclick="recR('${p.id}','win');setTimeout(()=>{renderOverallHistory();try{renderHomeLockedBets();}catch(e){}try{updHdr();}catch(e){}},400)">✓ WIN</button>
+          <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="recR('${p.id}','loss');setTimeout(()=>{renderOverallHistory();try{renderHomeLockedBets();}catch(e){}try{updHdr();}catch(e){}},400)">✗ LOSS</button>
           <button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);font-size:12px;padding:2px 7px" onclick="removePick('${p.id}');setTimeout(renderOverallHistory,400)">✕ REMOVE</button>
         </div>
       </div>`;
@@ -11823,6 +11823,7 @@ function renderHomeLockedBets(){
       const mu=_gameTitle(b.hA,b.awA,b.sport);
       const rawBetOn=b.betOn||'';
       const displayBetOn=rawBetOn;
+      const legHtml=b.betType==='PARLAY'&&Array.isArray(b.legs)&&b.legs.length?'<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.08);padding-top:5px">'+b.legs.map((lg,li)=>{const lc=lg.outcome==='win'?'var(--nc)':lg.outcome==='loss'?'var(--hc)':'var(--t3)';const lbl=lg.outcome==='win'?'✓':lg.outcome==='loss'?'✗':'·';return'<div style="display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;margin-bottom:2px"><span style="color:'+lc+';font-weight:700;width:10px">'+lbl+'</span><span style="color:'+lc+'">'+( lg.desc||('LEG '+(li+1)))+'</span></div>';}).join('')+'</div>':'';
       return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
@@ -11831,10 +11832,10 @@ function renderHomeLockedBets(){
               <span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${mu}</span>
               <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${b.date||''}</span>
             </div>
-            <div style="font-family:var(--orb);font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayBetOn}</div>
+            <div style="font-family:var(--orb);font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayBetOn}</div>${legHtml}
             <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:1px">${b.betType||''}${b.ml?' · '+b.ml:''}</div>
           </div>
-          ${b.outcome==='pending'?`<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap"><button class="btn btn-n btn-sm" style="padding:3px 7px;font-size:13px" onclick="recR('${b.id}','win');setTimeout(renderHomeLockedBets,100)">✓W</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc);padding:3px 7px;font-size:13px" onclick="recR('${b.id}','loss');setTimeout(renderHomeLockedBets,100)">✗L</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);padding:3px 7px;font-size:13px" onclick="removePick('${b.id}')">✕</button></div>`:`<span style="font-family:var(--mono);font-size:13px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px;flex-shrink:0">${st}</span>`}
+          ${b.outcome==='pending'?`<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap"><button class="btn btn-n btn-sm" style="padding:3px 7px;font-size:13px" onclick="recR('${b.id}','win');setTimeout(()=>{renderHomeLockedBets();try{renderOverall();}catch(e){}try{updHdr();}catch(e){}},100)">✓W</button><button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc);padding:3px 7px;font-size:13px" onclick="recR('${b.id}','loss');setTimeout(()=>{renderHomeLockedBets();try{renderOverall();}catch(e){}try{updHdr();}catch(e){}},100)">✗L</button><button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);padding:3px 7px;font-size:13px" onclick="removePick('${b.id}')">✕</button></div>`:`<span style="font-family:var(--mono);font-size:13px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px;flex-shrink:0">${st}</span>`}
         </div>
       </div>`;
     }).join('')}`;
