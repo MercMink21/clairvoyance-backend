@@ -38,8 +38,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 #app{display:flex;flex-direction:column;height:100%;height:-webkit-fill-available;overflow:hidden;opacity:1;transition:opacity .7s}
 #app.ready{opacity:1}
 /* SPLASH */
-@keyframes _cvSplashOut{0%,80%{opacity:1;pointer-events:all}95%{opacity:0}100%{opacity:0;pointer-events:none;display:none}}
-#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0d;animation:_cvSplashOut 6s forwards;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),radial-gradient(ellipse at 0% 0%,rgba(240,0,255,.12) 0%,transparent 50%),radial-gradient(ellipse at 100% 0%,rgba(77,121,255,.09) 0%,transparent 45%),radial-gradient(ellipse at 50% 100%,rgba(0,240,255,.07) 0%,transparent 45%);background-size:22px 22px,22px 22px,22px 22px,22px 22px,100% 100%,100% 100%,100% 100%;will-change:opacity;transition:opacity .9s cubic-bezier(.4,0,.2,1)}
+#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0d;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),radial-gradient(ellipse at 0% 0%,rgba(240,0,255,.12) 0%,transparent 50%),radial-gradient(ellipse at 100% 0%,rgba(77,121,255,.09) 0%,transparent 45%),radial-gradient(ellipse at 50% 100%,rgba(0,240,255,.07) 0%,transparent 45%);background-size:22px 22px,22px 22px,22px 22px,22px 22px,100% 100%,100% 100%,100% 100%;will-change:opacity;transition:opacity .9s cubic-bezier(.4,0,.2,1)}
 #splash::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(240,0,255,.006) 2px,rgba(240,0,255,.006) 3px);pointer-events:none}
 #splash-grid{position:absolute;inset:0;opacity:0;transition:opacity 1s ease}
 @keyframes splashFade{0%{opacity:1}100%{opacity:0}}
@@ -11521,7 +11520,12 @@ function endSplash(){
   if(splashDone)return;splashDone=true;
   const sp=document.getElementById('splash');
   const app=document.getElementById('app');
-  if(sp){sp.style.opacity='0';setTimeout(()=>{sp.style.display='none';},950);}
+  if(sp){
+    sp.style.animation='none'; // cancel any CSS animation so inline style takes effect
+    sp.style.transition='opacity .8s';
+    sp.style.opacity='0';
+    setTimeout(()=>{sp.style.display='none';},950);
+  }
   if(app)app.classList.add('ready');
   try{SS('home');}catch(e){}
 }
@@ -17760,15 +17764,19 @@ function checkInjuryImpactOnBets(){
 // force it away after 10s no matter what
 window.addEventListener('load',()=>{
   setTimeout(()=>{
-    const sp=document.getElementById('splash');
-    if(sp&&sp.style.display!=='none'&&sp.offsetParent!==null){
-      console.warn('[CV] Forcing splash dismiss via load failsafe');
-      sp.style.opacity='0';
-      setTimeout(()=>{sp.style.display='none';},800);
-      try{document.getElementById('app')?.classList.add('ready');}catch(e){}
-      try{document.getElementById('sp-home')?.classList.add('act');}catch(e){}
-      try{renderHomePage();}catch(e){}
-    }
+    try{
+      const sp=document.getElementById('splash');
+      if(sp&&sp.style.display!=='none'&&parseFloat(getComputedStyle(sp).opacity)>0.1){
+        console.warn('[CV] Forcing splash dismiss via load failsafe');
+        if(typeof endSplash==='function'&&!window.splashDone){endSplash();}
+        else{
+          sp.style.animation='none';sp.style.opacity='0';
+          setTimeout(()=>{sp.style.display='none';},800);
+          document.getElementById('app')?.classList.add('ready');
+          document.getElementById('sp-home')?.classList.add('act');
+        }
+      }
+    }catch(e){}
   },10000);
 });
 // Catch uncaught errors and log them to an on-screen debug strip
