@@ -3801,6 +3801,23 @@ function _migrateTenSport(){
   });
   if(changed){saveP(preds);}
 }
+// Migrate MLB games that were mislabeled NHL by the old asymmetric classifier
+// (shared city codes like COL/BOS/TOR leaked into NHL). Conservative: only
+// re-tag when BOTH teams are MLB members AND the matchup is not a valid NHL
+// pairing (at least one team is MLB-exclusive), so genuinely ambiguous games
+// like BOS/TOR are left untouched.
+function _migrateMlbNhlMislabel(){
+  const _NHL=new Set(['ANA','ARI','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']);
+  const _MLB=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
+  const preds=getP();let changed=0;
+  preds.filter(p=>p.sport==='NHL').forEach(p=>{
+    const h=(p.hA||'').toUpperCase(),a=(p.awA||'').toUpperCase();
+    const bothMlb=_MLB.has(h)&&_MLB.has(a);
+    const bothNhl=_NHL.has(h)&&_NHL.has(a);
+    if(bothMlb&&!bothNhl){p.sport='MLB';if(p.league==='NHL'||!p.league)p.league='MLB';changed++;}
+  });
+  if(changed){saveP(preds);try{console.warn('[migrate] re-tagged',changed,'MLB game(s) that were mislabeled NHL');}catch(e){}}
+}
 // Sync localStorage picks FROM backend (called on init)
 async function syncPicksFromBackend(){
   if(!API_ONLINE())return;
@@ -3987,14 +4004,23 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   else if(type==='ATP')sportTag='ATP';
   else if(type==='WTA')sportTag='WTA';
   else if(type==='MLB')sportTag='MLB';
-  // Fallthrough: infer from team abbreviation — WNBA and MLB checked before NHL/NBA to avoid abbreviation collisions
-  else if(_WNBA.has(hA)&&_WNBA.has(awA))sportTag='WNBA';
-  else if(_MLB.has(hA)&&_MLB.has(awA))sportTag='MLB';
-  else if(_NHL.has(hA)||_NHL.has(awA))sportTag='NHL';
-  else if(_WNBA.has(hA)||_WNBA.has(awA))sportTag='WNBA';
-  else if(_NBA.has(hA)||_NBA.has(awA))sportTag='NBA';
-  else if(_MLB.has(hA)||_MLB.has(awA))sportTag='MLB';
-  else sportTag='MLB';
+  // Fallthrough: infer from team abbreviations via match SCORING (not an
+  // asymmetric &&/|| chain, which leaked MLB games sharing a city code with
+  // NHL — e.g. COL/BOS/TOR — into NHL). For each league count how many of the
+  // two teams are members (0/1/2); pick the highest score. Ties resolve by the
+  // priority order below (MLB before NHL/NBA), which biases shared-city games
+  // like BOS/TOR toward the in-season league instead of mislabeling them.
+  // Explicit `type` (handled above) always wins; this only runs as last resort.
+  else{
+    const _sc=s=>(s.has(hA)?1:0)+(s.has(awA)?1:0);
+    const _cand=[['WNBA',_sc(_WNBA)],['MLB',_sc(_MLB)],['NHL',_sc(_NHL)],['NBA',_sc(_NBA)]];
+    let _best=null,_bestScore=0;
+    _cand.forEach(function(c){if(c[1]>_bestScore){_bestScore=c[1];_best=c[0];}});
+    // Refuse to dump unmatched games into a real league — orphan as UNKNOWN so
+    // it never pollutes another sport's history/accuracy/social cards.
+    sportTag=_bestScore>0?_best:'UNKNOWN';
+    if(sportTag==='UNKNOWN'){try{console.warn('[lockPick] unclassified matchup — tagged UNKNOWN:',hA,'vs',awA,'type=',type);}catch(e){}}
+  }
   // ── Derive league tag from sport ────────────────────────────────
   const _leagueMap={MLB:'MLB',NBA:'NBA',WNBA:'WNBA',NFL:'NFL',CFB:'CFB',NHL:'NHL',PWHL:'PWHL',
     KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CH:'CH',SOC:'WORLD_CUP',
@@ -11816,7 +11842,10 @@ function _adjLockU(inputId,team,player,stat,conf,ml){_adjLock(inputId,team,playe
 function _adjLockNHLO(inputId,player,stat,conf,ml){_adjLockNHL(inputId,player,stat,'OVER',conf,ml);}
 function _adjLockNHLU(inputId,player,stat,conf,ml){_adjLockNHL(inputId,player,stat,'UNDER',conf,ml);}
 function lockProp(team,player,line,over,conf,ml){
-  const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'NBA');
+  // Derive sport from the team — do NOT blind-default to NBA (that silently
+  // mislabeled every non-NBA/NHL prop as NBA, corrupting history/accuracy).
+  const sport=(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'UNKNOWN');
+  if(sport==='UNKNOWN'){try{console.warn('[lockProp] unclassified team — tagged UNKNOWN:',team);}catch(e){}}
   const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
   const prop={id:`prop_${Date.now()}`,team,player,line,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
     sport,betType:'PROP',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,winProb:conf||0.60,
@@ -13790,6 +13819,7 @@ function fixWimPickDates(){
   });
   // Also fix sport/league tags (TEN→ATP/WTA) on any remaining legacy bets
   _migrateTenSport();
+  try{_migrateMlbNhlMislabel();}catch(e){}
   if(fixed){saveP(preds);saveDailyLog(log);toast(`// FIXED ${fixed} WIMBLEDON PICK DATE${fixed>1?'S':''} + SPORT TAGS`);try{renderHomeLockedBets();}catch(e){}try{renderOverallHistory();}catch(e){}try{renderHomePage();}catch(e){}}
   else toast('// ALL WIMBLEDON PICK DATES + SPORT TAGS CORRECT');
 }
@@ -17962,6 +17992,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{await Promise.race([idbRecoverDailyLog(),new Promise(r=>setTimeout(r,2000))]);}catch(e){console.error('idbRecoverLog',e);}
   try{await Promise.race([syncPicksFromBackend(),new Promise(r=>setTimeout(r,5000))]);}catch(e){console.error('syncPicks',e);}
   try{_migrateTenSport();}catch(e){console.error('migrateTenSport',e);}
+  try{_migrateMlbNhlMislabel();}catch(e){console.error('migrateMlbNhl',e);}
   try{(()=>{const _pp=getP();const _fc=_pp.filter(p=>!(p.outcome==='pending'&&(p.hA||'').includes('Medvedev')&&String(p.ml||'')=='-350'));if(_fc.length!==_pp.length)saveP(_fc);})();}catch(e){}
   try{loadGames(todayESPN());}catch(e){console.error('loadGames',e);}
   try{renderR();}catch(e){console.error('renderR',e);}
