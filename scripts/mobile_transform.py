@@ -93,8 +93,9 @@ html = html.replace('"name": "Clairvoyance"', '"name": "Clairvoyance Mobile"', 1
 html = html.replace('"short_name": "CVE"', '"short_name": "CVE-M"', 1)
 
 # ── 4. Update title ───────────────────────────────────────────────────────
-html = html.replace('<title>CLAIRVOYANCE ENGINE</title>',
-                    '<title>CLAIRVOYANCE MOBILE</title>', 1)
+# Regex-match whatever the desktop title is (it carries a version suffix) so
+# the swap never silently fails.
+html = re.sub(r'<title>[^<]*</title>', '<title>CLAIRVOYANCE MOBILE</title>', html, count=1)
 
 # ── 5. Update service worker cache name so it doesn't collide ────────────
 html = re.sub(r"cv-engine-v(\d+)", lambda m: f"cve-mobile-v{m.group(1)}", html)
