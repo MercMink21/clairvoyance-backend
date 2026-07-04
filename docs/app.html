@@ -10959,14 +10959,45 @@ function renderHomePage(){
     }
     premiumPicks.sort((a,b)=>b._evVal-a._evVal);
     darkHorsePicks.sort((a,b)=>b._evVal-a._evVal);
-    const allPicks=[...premiumPicks,...darkHorsePicks];
+    let allPicks=[...premiumPicks,...darkHorsePicks];
+    let _tpAllSportsMode=false;
+    // Fallback: no locked bets today — scan all sports/leagues for PREMIUM/OPTIMAL moves
+    if(!allPicks.length){
+      const bbSrc=window.__CV_DATA?.bestBets||[];
+      const bbMapped=bbSrc.map(b=>{
+        if(!b)return null;
+        // prob may be 0-1 (fraction) or 0-100 (percent) depending on source shape
+        let prob=b.prob!=null?b.prob:(b.confidence!=null?b.confidence:55);
+        if(prob>1)prob=prob/100;
+        const mlNumForDec=parseFloat((b.ml||'').toString().replace('+',''))||0;
+        const dec=parseFloat(b.decOdds)||(mlNumForDec>0?(mlNumForDec/100+1):mlNumForDec<0?(100/Math.abs(mlNumForDec)+1):1.91);
+        // ev may already be provided as a percent number (e.g. 5.7 = 5.7%) or computed via ML
+        let evVal=b.ev!=null?b.ev/100:mlEV(prob,dec);
+        const sport=_normSport(b)||b.sport||'MISC';
+        const gameParts=(b.game||'').split(/\s+(?:vs|@|at)\s+/i);
+        // Classify: honor explicit PREMIUM/OPTIMAL grade labels when present,
+        // otherwise fall back to evGrade letter or prob/EV thresholds
+        const g=(b.grade||'').toUpperCase(),eg=(b.evGrade||'').toUpperCase();
+        let bucket=null;
+        if(g==='PREMIUM'||g==='ELITE'||eg==='A+'||eg==='A')bucket='PREMIUM';
+        else if(g==='OPTIMAL'||eg==='B'||(prob>=.67&&evVal>0.03))bucket='PREMIUM';
+        else if(evVal>0.02||prob>=.55)bucket='SLEEPER';
+        if(!bucket)return null;
+        return{hA:gameParts[0]||'',awA:gameParts[1]||'',sport,winProb:prob,decOdds:dec,ml:b.ml||'',
+          betOn:b.pick||b.betOn||'',basis:b.note||b.basis||'',grade:b.grade,date:b.date||todayStr,
+          _evVal:evVal,_bucket:bucket,_muOverride:b.game||''};
+      }).filter(p=>p&&p.betOn);
+      bbMapped.sort((a,b)=>b._evVal-a._evVal);
+      allPicks=bbMapped.slice(0,24);
+      _tpAllSportsMode=allPicks.length>0;
+    }
     if(!allPicks.length){tpEl.innerHTML='';tpEl.style.display='none';}
     else{
       tpEl.style.display='';
       const sc=s=>({MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--pc)',TEN:'var(--mc)',SOC:'var(--nc)',WC:'var(--nc)'}[s]||'var(--t3)');
       const bc=b=>b==='PREMIUM'?'var(--gc)':'var(--hc)';
       const mkTickerCard=(p)=>{
-        const mu=_gameTitle(p.hA,p.awA,p.sport)||`${p.hA||''} vs ${p.awA||''}`;
+        const mu=p._muOverride||_gameTitle(p.hA,p.awA,p.sport)||`${p.hA||''} vs ${p.awA||''}`;
         const conf=p.winProb?(p.winProb*100).toFixed(0)+'%':'';
         const mlStr=p.ml?String(p.ml).replace(/^\+/,'').replace(/^(-?)(\d)/,'$1+$2').replace('+-','-').replace(/^\+/,'+'):'';
         const evPct=p._evVal!=null?(p._evVal*100).toFixed(1)+'%':'';
@@ -11006,9 +11037,11 @@ function renderHomePage(){
       };
       // Duplicate picks for seamless oscillation feel (fill space generously)
       const cards=allPicks.map(mkTickerCard).join('');
-      const premCount=premiumPicks.length,dhCount=darkHorsePicks.length;
+      const premCount=_tpAllSportsMode?allPicks.filter(p=>p._bucket==='PREMIUM').length:premiumPicks.length;
+      const dhCount=_tpAllSportsMode?allPicks.filter(p=>p._bucket==='SLEEPER').length:darkHorsePicks.length;
       const titleHtml=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
         <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--t3)">
+          ${_tpAllSportsMode?`<span style="color:var(--nc)">⟲ ALL-SPORTS SCAN</span><span style="color:rgba(255,255,255,.2)"> · </span>`:''}
           ${premCount?`<span style="color:var(--gc)">◆ ${premCount} PREMIUM</span>`:''}
           ${premCount&&dhCount?`<span style="color:rgba(255,255,255,.2)"> · </span>`:''}
           ${dhCount?`<span style="color:var(--hc)">⚡ ${dhCount} SLEEPER</span>`:''}
