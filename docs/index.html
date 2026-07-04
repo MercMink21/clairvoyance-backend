@@ -38,7 +38,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 #app{display:flex;flex-direction:column;height:100%;height:-webkit-fill-available;overflow:hidden;opacity:1;transition:opacity .7s}
 #app.ready{opacity:1}
 /* SPLASH */
-#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0d;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),radial-gradient(ellipse at 0% 0%,rgba(240,0,255,.12) 0%,transparent 50%),radial-gradient(ellipse at 100% 0%,rgba(77,121,255,.09) 0%,transparent 45%),radial-gradient(ellipse at 50% 100%,rgba(0,240,255,.07) 0%,transparent 45%);background-size:22px 22px,22px 22px,22px 22px,22px 22px,100% 100%,100% 100%,100% 100%;will-change:opacity;transition:opacity .9s cubic-bezier(.4,0,.2,1)}
+@keyframes _cvSplashOut{0%,80%{opacity:1;pointer-events:all}95%{opacity:0}100%{opacity:0;pointer-events:none;display:none}}
+#splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0d;animation:_cvSplashOut 6s forwards;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),radial-gradient(ellipse at 0% 0%,rgba(240,0,255,.12) 0%,transparent 50%),radial-gradient(ellipse at 100% 0%,rgba(77,121,255,.09) 0%,transparent 45%),radial-gradient(ellipse at 50% 100%,rgba(0,240,255,.07) 0%,transparent 45%);background-size:22px 22px,22px 22px,22px 22px,22px 22px,100% 100%,100% 100%,100% 100%;will-change:opacity;transition:opacity .9s cubic-bezier(.4,0,.2,1)}
 #splash::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(240,0,255,.006) 2px,rgba(240,0,255,.006) 3px);pointer-events:none}
 #splash-grid{position:absolute;inset:0;opacity:0;transition:opacity 1s ease}
 @keyframes splashFade{0%{opacity:1}100%{opacity:0}}
@@ -367,6 +368,9 @@ body{line-height:1.5}
     <div id="splash-sub" style="font-family:'Share Tech Mono',monospace;font-size:clamp(14px,3vw,22px);letter-spacing:clamp(3px,1vw,6px);color:rgba(170,192,224,0.55);text-transform:uppercase;opacity:0;transform:translateY(8px);transition:opacity .7s ease,transform .7s ease;margin-top:0">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
     <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:0;overflow:hidden;opacity:0;transition:opacity .5s ease"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 2s cubic-bezier(.4,0,.2,1);border-radius:4px"></div></div>
   </div>
+<div id="splash-skip" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .6s;animation:none" onclick="try{endSplash();}catch(e){document.getElementById('splash').style.display='none';document.getElementById('app')?.classList.add('ready');document.getElementById('sp-home')?.classList.add('act');}">
+  <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:4px;color:rgba(240,0,255,.5);cursor:pointer;padding:8px 16px;border:1px solid rgba(240,0,255,.2);border-radius:2px">TAP TO ENTER</div>
+</div>
 </div>
 
 <div id="app">
@@ -11547,6 +11551,17 @@ function startSplash(){
   },900);
   // Step 5: end after bar finishes (~2.9s total)
   setTimeout(endSplash,2900);
+  // Show skip button after 3s in case anything hangs
+  setTimeout(()=>{const sk=document.getElementById('splash-skip');if(sk)sk.style.opacity='1';},3000);
+  // Hard escape hatch at 7s — CSS animation + force show
+  setTimeout(()=>{
+    try{endSplash();}catch(e){}
+    try{if(!document.getElementById('sp-home')?.classList.contains('act')){
+      document.getElementById('splash').style.display='none';
+      document.getElementById('app')?.classList.add('ready');
+      document.getElementById('sp-home')?.classList.add('act');
+    }}catch(e){}
+  },7000);
 }
 
 // ═══ NHL/NBA LIVE TRACKER ════════════════════════════════════
@@ -17741,6 +17756,29 @@ function checkInjuryImpactOnBets(){
   }
 }
 
+// Global failsafe: if anything throws and prevents splash from dismissing,
+// force it away after 10s no matter what
+window.addEventListener('load',()=>{
+  setTimeout(()=>{
+    const sp=document.getElementById('splash');
+    if(sp&&sp.style.display!=='none'&&sp.offsetParent!==null){
+      console.warn('[CV] Forcing splash dismiss via load failsafe');
+      sp.style.opacity='0';
+      setTimeout(()=>{sp.style.display='none';},800);
+      try{document.getElementById('app')?.classList.add('ready');}catch(e){}
+      try{document.getElementById('sp-home')?.classList.add('act');}catch(e){}
+      try{renderHomePage();}catch(e){}
+    }
+  },10000);
+});
+// Catch uncaught errors and log them to an on-screen debug strip
+window.addEventListener('error',function(ev){
+  console.error('[CV Global Error]',ev.message,ev.filename,ev.lineno);
+  // Never let a JS error prevent splash from exiting
+  setTimeout(()=>{
+    try{if(typeof splashDone==='undefined'||!splashDone){endSplash();}}catch(e){}
+  },100);
+});
 document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   // One-time cleanup: remove Cilic/Medvedev pending bet
   if(!localStorage.getItem('_cv_cilic_cleanup_done')){
@@ -17852,8 +17890,15 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderWCPicks();}catch(e){}
   try{renderWCProps();}catch(e){}
   try{renderWCBracket();}catch(e){}
-  try{endSplash();}catch(e){}
-  try{renderHomePage();}catch(e){}
+  // Final guaranteed initialization — runs after all async operations complete
+  try{endSplash();}catch(e){console.warn('[CV] endSplash error:',e);}
+  try{
+    if(!document.getElementById('sp-home')?.classList.contains('act')){
+      document.getElementById('sp-home')?.classList.add('act');
+    }
+  }catch(e){}
+  try{renderHomePage();}catch(e){console.warn('[CV] renderHomePage error:',e);}
+  try{renderHomeLockedBets();}catch(e){}
 })();});
 
 // ═════════════════════════���═════════════════════���═══════════════════════
