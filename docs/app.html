@@ -13788,10 +13788,43 @@ function _renderWimBracket(tour,activeRound,genderFilter){
 
   function _ww(rnd,k){try{return JSON.parse(localStorage.getItem('wim_wins_'+rnd+'_'+k)||'{}')}catch(e){return{}}}
 
+  // Live score/winner lookup — matches ESPN-style live_data.json tennis feed by last name
+  function _wimLiveLookup(p1,p2){
+    try{
+      const ld=window.__CV_LIVE;
+      const arr=(ld&&ld.tennis)||window._liveTennisMatches;
+      if(!arr||!arr.length||!p1||!p2||p1==='TBD'||p2==='TBD')return null;
+      const p1n=p1.split('.').pop()||p1,p2n=p2.split('.').pop()||p2;
+      const g=arr.find(x=>{const h=(x.home||x.p1||''),a=(x.away||x.p2||'');return(h.includes(p1n)||a.includes(p1n))&&(h.includes(p2n)||a.includes(p2n));});
+      if(!g)return null;
+      const state=g.state||g.status||'';
+      const hs=g.homeScore??g.hs??'',as=g.awayScore??g.as??'';
+      const h=(g.home||g.p1||'');
+      const p1IsHome=h.includes(p1n);
+      const sets=g.sets||g.note||'';
+      const score=(p1IsHome?hs+'-'+as:as+'-'+hs)+(sets?' '+sets:'');
+      let winner=null;
+      if(state==='post'){
+        if(Number(hs)>Number(as))winner=p1IsHome?p1:p2;
+        else if(Number(as)>Number(hs))winner=p1IsHome?p2:p1;
+      }
+      return{state,score,winner};
+    }catch(e){return null;}
+  }
+
   // Build data for one gender
   function _buildGenderData(k){
     const r3d=t.rounds.find(r=>r.id==='r3')?.[k]||[];
     const r3wins=_ww('r3',k);
+    r3d.forEach((m,i)=>{
+      if(!m.winner&&!r3wins[i]&&m.p1&&m.p2){
+        const live=_wimLiveLookup(m.p1,m.p2);
+        if(live&&live.state){
+          if(live.winner){m.winner=live.winner;m.score=live.score;}
+          else if(live.state==='in')m.score=live.score;
+        }
+      }
+    });
     const r3w=r3d.map((m,i)=>m.winner||r3wins[i]||null);
     const r4data=[];
     for(let i=0;i<16;i+=2){
@@ -13802,6 +13835,15 @@ function _renderWimBracket(tour,activeRound,genderFilter){
       r4data.push({p1,s1,p2,s2});
     }
     const r4wins=_ww('r4',k);
+    r4data.forEach((m,i)=>{
+      if(!r4wins[i]&&m.p1&&m.p2){
+        const live=_wimLiveLookup(m.p1,m.p2);
+        if(live&&live.state){
+          if(live.winner){r4wins[i]=live.winner;m.score=live.score;}
+          else if(live.state==='in')m.score=live.score;
+        }
+      }
+    });
     const r4w=r4data.map((m,i)=>r4wins[i]||null);
     const qfdata=[];
     for(let i=0;i<8;i+=2){
@@ -13812,12 +13854,39 @@ function _renderWimBracket(tour,activeRound,genderFilter){
       qfdata.push({p1,s1,p2,s2});
     }
     const qfwins=_ww('qf',k);
+    qfdata.forEach((m,i)=>{
+      if(!qfwins[i]&&m.p1&&m.p2){
+        const live=_wimLiveLookup(m.p1,m.p2);
+        if(live&&live.state){
+          if(live.winner){qfwins[i]=live.winner;m.score=live.score;}
+          else if(live.state==='in')m.score=live.score;
+        }
+      }
+    });
     const qfw=qfdata.map((m,i)=>qfwins[i]||null);
     const sfdata=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''},{p1:qfw[2]||null,s1:'',p2:qfw[3]||null,s2:''}];
     const sfwins=_ww('sf',k);
+    sfdata.forEach((m,i)=>{
+      if(!sfwins[i]&&m.p1&&m.p2){
+        const live=_wimLiveLookup(m.p1,m.p2);
+        if(live&&live.state){
+          if(live.winner){sfwins[i]=live.winner;m.score=live.score;}
+          else if(live.state==='in')m.score=live.score;
+        }
+      }
+    });
     const sfw=sfdata.map((m,i)=>sfwins[i]||null);
     const fdata=[{p1:sfw[0]||null,s1:'',p2:sfw[1]||null,s2:''}];
     const fwins=_ww('f',k);
+    fdata.forEach((m,i)=>{
+      if(!fwins[i]&&m.p1&&m.p2){
+        const live=_wimLiveLookup(m.p1,m.p2);
+        if(live&&live.state){
+          if(live.winner){fwins[i]=live.winner;m.score=live.score;}
+          else if(live.state==='in')m.score=live.score;
+        }
+      }
+    });
     const fw=[fwins[0]||null];
     return {r3d,r3w,r4data,r4w,qfdata,qfw,sfdata,sfw,fdata,fw};
   }
@@ -13845,7 +13914,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
     const needBtns=!done&&p1!=='TBD'&&p2!=='TBD';
     const p1L=(p1).split('.').pop();const p2L=(p2).split('.').pop();
     const seedSpan=(s)=>s?`<span style="color:rgba(0,240,255,.45);font-size:9px;margin-right:2px">${s}</span>`:'';
-    const scoreHtml=done&&score?`<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,100,.65);text-align:center;padding:2px 4px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.2)">${score}</div>`:'';
+    const scoreHtml=score?`<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,100,.65);text-align:center;padding:2px 4px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.2)">${score}</div>`:'';
     return`<div style="background:${bg};border:1px solid ${bdr};border-radius:3px;overflow:hidden">
   <div style="padding:3px 6px;border-bottom:1px solid rgba(255,255,255,.06);font-family:var(--mono);font-size:11px;color:${c1};display:flex;justify-content:space-between;align-items:center;min-height:18px">
     <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">${seedSpan(s1)}${p1}</span>
@@ -21234,11 +21303,32 @@ function renderWCGroups(){
       .catch(function(){clearTimeout(tid);});
   }
 }
+function _wcBracketLiveLookup(code1,code2){
+  var lm=window._wcBracketLiveMap;if(!lm)return null;
+  var k1=(code1+'_'+code2).toUpperCase(),k2=(code2+'_'+code1).toUpperCase();
+  var e=lm[k1];if(e)return{score:e.hs+'-'+e.as,winner:(e.state==='post')?(Number(e.hs)>Number(e.as)?code1:Number(e.as)>Number(e.hs)?code2:null):null,state:e.state,swapped:false};
+  e=lm[k2];if(e)return{score:e.as+'-'+e.hs,winner:(e.state==='post')?(Number(e.hs)>Number(e.as)?code2:Number(e.as)>Number(e.hs)?code1:null):null,state:e.state,swapped:true};
+  return null;
+}
+function _wcBracketFetchLive(){
+  if(window._wcBracketFetching)return;window._wcBracketFetching=true;
+  var ctrl=window.AbortController?new AbortController():null;
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard',ctrl?{signal:ctrl.signal}:{})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      clearTimeout(tid);window._wcBracketFetching=false;
+      var liveMap=_wcParseLiveMap(data);
+      if(Object.keys(liveMap).length){window._wcBracketLiveMap=liveMap;var el=document.getElementById('wc-bracket-list');if(el)renderWCBracket();}
+    })
+    .catch(function(){clearTimeout(tid);window._wcBracketFetching=false;});
+}
 function renderWCBracket(){
   var el=document.getElementById('wc-bracket-list');if(!el)return;
   var FLAGS={GER:'🇩🇪',PAR:'🇵🇾',FRA:'🇫🇷',SWE:'🇸🇪',RSA:'🇿🇦',CAN:'🇨🇦',NED:'🇳🇱',MAR:'🇲🇦',POR:'🇵🇹',CRO:'🇭🇷',ESP:'🇪🇸',AUT:'🇦🇹',USA:'🇺🇸',BIH:'🇧🇦',BEL:'🇧🇪',SEN:'🇸🇳',BRA:'🇧🇷',JPN:'🇯🇵',CIV:'🇨🇮',NOR:'🇳🇴',MEX:'🇲🇽',ECU:'🇪🇨',ENG:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',COD:'🇨🇩',ARG:'🇦🇷',CPV:'🇨🇻',AUS:'🇦🇺',EGY:'🇪🇬',SUI:'🇨🇭',ALG:'🇩🇿',COL:'🇨🇴',GHA:'🇬🇭'};
   function flag(c){return FLAGS[c]||'🏳️';}
   var ov=JSON.parse(localStorage.getItem('wc_bracket_overrides')||'{}');
+  _wcBracketFetchLive();
   var R32=[
     {id:1,h:'GER',a:'PAR',hN:'Germany',aN:'Paraguay',date:'Jun 29',time:'FT',score:'1-1 (3-4p)',winner:'PAR'},
     {id:2,h:'FRA',a:'SWE',hN:'France',aN:'Sweden',date:'Jun 30',time:'FT',score:'3-0',winner:'FRA'},
@@ -21257,7 +21347,16 @@ function renderWCBracket(){
     {id:15,h:'SUI',a:'ALG',hN:'Switzerland',aN:'Algeria',date:'Jul 2',time:'11:00 PM ET',score:null,winner:null},
     {id:16,h:'COL',a:'GHA',hN:'Colombia',aN:'Ghana',date:'Jul 3',time:'9:30 PM ET',score:null,winner:null},
   ];
-  R32.forEach(function(m){if(!m.winner&&ov['r32_'+m.id]){m.winner=ov['r32_'+m.id];m.score='📌';m.time='PICKED';}});
+  R32.forEach(function(m){
+    if(!ov['r32_'+m.id]){
+      var live=_wcBracketLiveLookup(m.h,m.a);
+      if(live&&live.state){
+        if(live.state==='post'&&live.winner){m.winner=live.winner;m.score=live.score;m.time='FT';}
+        else if(live.state==='in'){m.score=live.score;m.time='LIVE';}
+      }
+    }
+    if(!m.winner&&ov['r32_'+m.id]){m.winner=ov['r32_'+m.id];m.score='📌';m.time='PICKED';}
+  });
   // Auto-settle bets
   (function(){
     try{
@@ -21363,6 +21462,13 @@ function renderWCBracket(){
   R16.forEach(function(m,i){
     var t1=teamInfo(m.a),t2=teamInfo(m.b);
     t1.flag=t1.flag||flag(t1.code);t2.flag=t2.flag||flag(t2.code);
+    if(!m.winner&&!ov['r16_'+m.id]&&t1.code&&t2.code){
+      var live=_wcBracketLiveLookup(t1.code,t2.code);
+      if(live&&live.state){
+        if(live.state==='post'&&live.winner){m.winner=live.winner;m.score=live.score;}
+        else if(live.state==='in'){m.score=live.score;}
+      }
+    }
     var isD=!!m.winner,w=m.winner;
     var slotH=TOTAL/8,top=(20+i*slotH+(slotH-BOX_H)/2).toFixed(1);
     var p1fn="wcPickWinner('r16_"+m.id+"','"+t1.code+"')";
@@ -21383,6 +21489,13 @@ function renderWCBracket(){
     var r16A=R16.find(function(x){return x.id===q.feeds[0];}),r16B=R16.find(function(x){return x.id===q.feeds[1];});
     function r16T(r){if(!r)return{code:null,label:'TBD',flag:'❓'};if(r.winner)return{code:r.winner,label:r.winner,flag:flag(r.winner)};return{code:null,label:'W'+r.id,flag:'❓'};}
     var t1=r16T(r16A),t2=r16T(r16B);
+    if(!q.winner&&!ov['qf_'+q.id]&&t1.code&&t2.code){
+      var live=_wcBracketLiveLookup(t1.code,t2.code);
+      if(live&&live.state){
+        if(live.state==='post'&&live.winner){q.winner=live.winner;q.score=live.score;}
+        else if(live.state==='in'){q.score=live.score;}
+      }
+    }
     var isD=!!q.winner,w=q.winner;
     var slotH=TOTAL/4,top=(20+i*slotH+(slotH-BOX_H)/2).toFixed(1);
     var p1fn=t1.code?"wcPickWinner('qf_"+q.id+"','"+t1.code+"')":null;
@@ -21393,7 +21506,8 @@ function renderWCBracket(){
       +'<button onclick="'+p1fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
       +'<button onclick="'+p2fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    qfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+'<div style="font-family:var(--mono);font-size:8px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+q.date+'</div>'+btns+'</div>';
+    var qfInfo=q.score?'<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+q.score+'</div>':'<div style="font-family:var(--mono);font-size:8px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+q.date+'</div>';
+    qfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+qfInfo+btns+'</div>';
   });
 
   // ── Build SF column ──
@@ -21402,6 +21516,13 @@ function renderWCBracket(){
     var qfA=QF.find(function(x){return x.id===s.feeds[0];}),qfB=QF.find(function(x){return x.id===s.feeds[1];});
     function qfT(q){if(!q)return{code:null,label:'TBD',flag:'❓'};if(q.winner)return{code:q.winner,label:q.winner,flag:flag(q.winner)};return{code:null,label:'W'+q.id,flag:'❓'};}
     var t1=qfT(qfA),t2=qfT(qfB);
+    if(!s.winner&&!ov['sf_'+s.id]&&t1.code&&t2.code){
+      var live=_wcBracketLiveLookup(t1.code,t2.code);
+      if(live&&live.state){
+        if(live.state==='post'&&live.winner){s.winner=live.winner;s.score=live.score;}
+        else if(live.state==='in'){s.score=live.score;}
+      }
+    }
     var isD=!!s.winner,w=s.winner;
     var slotH=TOTAL/2,top=(20+i*slotH+(slotH-BOX_H)/2).toFixed(1);
     var p1fn=t1.code?"wcPickWinner('sf_"+s.id+"','"+t1.code+"')":null;
@@ -21412,14 +21533,22 @@ function renderWCBracket(){
       +'<button onclick="'+p1fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
       +'<button onclick="'+p2fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    sfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+'<div style="font-family:var(--mono);font-size:8px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+s.date+'</div>'+btns+'</div>';
+    var sfInfo=s.score?'<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+s.score+'</div>':'<div style="font-family:var(--mono);font-size:8px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+s.date+'</div>';
+    sfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+sfInfo+btns+'</div>';
   });
 
   // ── Build Final column ──
   var sf1W=SF[0]&&SF[0].winner?SF[0].winner:null,sf2W=SF[1]&&SF[1].winner?SF[1].winner:null;
-  var finW=FINAL.winner;
   var ft1={code:sf1W,label:sf1W||'W SF1',flag:sf1W?flag(sf1W):'❓'};
   var ft2={code:sf2W,label:sf2W||'W SF2',flag:sf2W?flag(sf2W):'❓'};
+  if(!FINAL.winner&&!ov['final']&&ft1.code&&ft2.code){
+    var liveFin=_wcBracketLiveLookup(ft1.code,ft2.code);
+    if(liveFin&&liveFin.state){
+      if(liveFin.state==='post'&&liveFin.winner){FINAL.winner=liveFin.winner;FINAL.score=liveFin.score;}
+      else if(liveFin.state==='in'){FINAL.score=liveFin.score;}
+    }
+  }
+  var finW=FINAL.winner;
   var isFinD=!!finW;
   var finP1fn=ft1.code?"wcPickWinner('final','"+ft1.code+"')":null;
   var finP2fn=ft2.code?"wcPickWinner('final','"+ft2.code+"')":null;
@@ -21430,7 +21559,8 @@ function renderWCBracket(){
     +'<button onclick="'+finP1fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(255,200,0,.15);border:1px solid rgba(255,200,0,.5);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft1.label+'▲</button>'
     +'<button onclick="'+finP2fn+'" style="flex:1;font-size:8px;padding:1px 2px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft2.label+'▲</button>'
     +'</div>':'';
-  var finColHtml='<div style="position:absolute;top:'+finTop+'px;left:0;right:0;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.4);border-radius:4px;padding:5px">'+fc1+fc2+'<div style="font-family:var(--mono);font-size:8px;color:rgba(255,200,0,.5);text-align:center;margin-top:1px">🏆 FINAL · Jul 19</div>'+finBtns+'</div>';
+  var finInfo=FINAL.score?'<div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+FINAL.score+'</div>':'';
+  var finColHtml='<div style="position:absolute;top:'+finTop+'px;left:0;right:0;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.4);border-radius:4px;padding:5px">'+fc1+fc2+'<div style="font-family:var(--mono);font-size:8px;color:rgba(255,200,0,.5);text-align:center;margin-top:1px">🏆 FINAL · Jul 19</div>'+finInfo+finBtns+'</div>';
   if(finW){finColHtml+='<div style="position:absolute;top:'+(parseFloat(finTop)+BOX_H+14).toFixed(1)+'px;left:0;right:0;text-align:center"><div style="font-size:26px">'+flag(finW)+'</div><div style="font-family:var(--orb);font-size:13px;color:var(--gc);letter-spacing:2px">'+finW+'</div><div style="font-family:var(--mono);font-size:9px;color:rgba(255,200,0,.5)">CHAMPION</div></div>';}
 
   // ── Assemble bracket ──
