@@ -16836,7 +16836,15 @@ function renderTrackRecord(){
     {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#f000ff', perf:cP(allBets)},
     {key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1, 2026',pC:'#f000ff',perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))},
   ];
-  window._cvPerfPeriods=periods;
+  // ── Single-day date filter ─────────────────────────────────────────────
+  // When a date is picked, all three social cards (track/sport/league) show
+  // ONLY that day's data, in both the preview and the exported PNG.
+  const _filterDate=renderTrackRecord._filterDate||'';
+  const _dayBets=_filterDate?allBets.filter(b=>b.date===_filterDate):null;
+  const exportPeriods=_filterDate
+    ?[{key:'DATE',label:_fmtDay(_filterDate),sub:'SELECTED DATE',pC:'#00f0ff',perf:cP(_dayBets)}]
+    :periods;
+  window._cvPerfPeriods=exportPeriods;
 
   const rC=p=>p===null?'rgba(220,190,255,.4)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
   const uC=u=>u>=0?'#00f0ff':'#ff2090';
@@ -16850,7 +16858,7 @@ function renderTrackRecord(){
     +'linear-gradient(-45deg,rgba(78,166,176,.28) 1px,transparent 1px),'
     +'#222233';
 
-  const periodRows=periods.map(per=>{
+  const periodRows=exportPeriods.map(per=>{
     const p=per.perf;
     const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
     const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
@@ -16883,6 +16891,13 @@ function renderTrackRecord(){
   el.innerHTML=`
   <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// TRACK RECORD CARD — SOCIAL EXPORT</div>
   <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:12px">1080×1350 PNG · 4:5 · Fit for X & Instagram</div>
+
+  <!-- Date filter — pick a day to show only that day's data on all three cards -->
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:8px 10px;border:1px solid rgba(0,240,255,.25);border-radius:3px;background:rgba(0,240,255,.04)">
+    <span style="font-family:var(--mono);font-size:11px;color:#00f0ff;letter-spacing:1px">FILTER BY DATE</span>
+    <input type="date" max="${todayStr}" value="${_filterDate}" onchange="renderTrackRecord._filterDate=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:12px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
+    ${_filterDate?`<button onclick="renderTrackRecord._filterDate='';renderTrackRecord()" style="font-family:var(--mono);font-size:11px;padding:4px 10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;border-radius:2px;cursor:pointer">✕ CLEAR · SHOW ALL</button><span style="font-family:var(--mono);font-size:10px;color:rgba(0,240,255,.7)">Showing ${_fmtDay(_filterDate)}</span>`:`<span style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4)">Leave empty for full multi-period view</span>`}
+  </div>
 
   <!-- Combined square card preview -->
   <div style="aspect-ratio:4/5;background:${cfBg};background-size:100% 100%,30px 30px,30px 30px,30px 30px,30px 30px,100% 100%;background-position:0 0,0 0,0 0,15px 0,15px 0,0 0;border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px 14px;box-sizing:border-box;position:relative;margin-bottom:12px;max-width:480px">
@@ -16951,13 +16966,14 @@ function renderTrackRecord(){
     <div style="flex:1;position:relative">${(()=>{
       const activePeriod=renderTrackRecord._sportPeriod||'ALL TIME';
       const per=periods.find(p=>p.key===activePeriod)||periods[periods.length-1];
-      const periodBets=activePeriod==='TODAY'?allBets.filter(b=>b.date===todayStr):
+      const periodBets=_filterDate?_dayBets:
+        activePeriod==='TODAY'?allBets.filter(b=>b.date===todayStr):
         activePeriod==='YESTERDAY'?allBets.filter(b=>b.date===ydStr):
         activePeriod==='ROLLING 7D'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
         activePeriod==='THIS MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
         activePeriod==='LAST MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
         allBets;
-      const frameLabel=per.sub||per.label;
+      const frameLabel=_filterDate?_fmtDay(_filterDate):(per.sub||per.label);
       const bySport={};
       periodBets.forEach(b=>{const s=_normSport(b)||'OTHER';if(!bySport[s])bySport[s]=[];bySport[s].push(b);});
       const sportList=Object.keys(bySport).sort((a,b)=>bySport[b].length-bySport[a].length);
@@ -17038,14 +17054,15 @@ function renderTrackRecord(){
     ];
     const activePeriod=renderTrackRecord._leaguePeriod||'ALL TIME';
     const per2=periods.find(p=>p.key===activePeriod)||periods[periods.length-1];
-    const periodBets2=activePeriod==='TODAY'?allBets.filter(b=>b.date===todayStr):
+    const periodBets2=_filterDate?_dayBets:
+      activePeriod==='TODAY'?allBets.filter(b=>b.date===todayStr):
       activePeriod==='YESTERDAY'?allBets.filter(b=>b.date===ydStr):
       activePeriod==='ROLLING 7D'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
       activePeriod==='THIS MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
       activePeriod==='LAST MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
       activePeriod==='SINCE LAUNCH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()):
       allBets;
-    const frameLabel2=per2.sub||per2.label;
+    const frameLabel2=_filterDate?_fmtDay(_filterDate):(per2.sub||per2.label);
     const rC2=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
     const uC2=u=>u>=0?'#00f0ff':'#ff2090';
     const totalP2=cP(periodBets2);
