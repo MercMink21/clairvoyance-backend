@@ -13848,6 +13848,11 @@ function _renderWimBracket(tour,activeRound,genderFilter){
   const t=TEN_TOURNAMENTS[0];
   activeRound=activeRound||'bracket';
   genderFilter=genderFilter||'all';
+  // Current tournament round (matches tab handles r3+) — used so MATCHES opens
+  // on where the tournament actually is, not always R3.
+  const _mrOrder=['r3','r4','qf','sf','f'];
+  const _activeId=(t.rounds.find(r=>r.status==='active')||{}).id;
+  const _curRound=_mrOrder.includes(_activeId)?_activeId:'r3';
 
   function _ww(rnd,k){try{return JSON.parse(localStorage.getItem('wim_wins_'+rnd+'_'+k)||'{}')}catch(e){return{}}}
 
@@ -14096,6 +14101,12 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         let wpH='',wpL='',gradeH='',evH='',setsHtml='',gamesHtml='';
         if(p1d&&p2d){
           const wp=tennisMatchWinProbFull(p1d,p2d,'grass',bo5);
+          // Propagated rounds (R4/QF/SF/F) carry no book odds — derive
+          // model-implied moneylines from the win prob so they display + lock
+          // like R3. Clamped to avoid absurd numbers on lopsided matchups.
+          const _toML=p=>{p=Math.max(0.03,Math.min(0.97,p));return p>=0.5?-Math.round(100*p/(1-p)):Math.round(100*(1-p)/p);};
+          if(m.p1ml==null)m.p1ml=_toML(wp);
+          if(m.p2ml==null)m.p2ml=_toML(1-wp);
           const fav=wp>=0.5?m.p1:m.p2;const favP=wp>=0.5?wp:1-wp;
           const favML=wp>=0.5?m.p1ml:m.p2ml;
           const grade=favP>=0.67?'PREMIUM':favP>=0.62?'OPTIMAL':favP>=0.55?'LEAN':'EVEN';
@@ -14176,7 +14187,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
   <button onclick="_renderWimBracket('women','bracket')" style="${toggleStyle(!isMatches&&!isMen)}">WOMENS</button>
   <button onclick="renderWimDraw('${tour}','futures')" style="${toggleStyle(false)}">FUTURES</button>
   <button onclick="_renderWimBracket('${tour}','bracket')" style="${toggleStyle(activeRound==='bracket')}">BRACKET</button>
-  <button onclick="_renderWimBracket('${tour}','matches_r3',genderFilter||'all')" style="${toggleStyle(isMatches)}">MATCHES</button>
+  <button onclick="_renderWimBracket('${tour}','matches_${_curRound}',genderFilter||'all')" style="${toggleStyle(isMatches)}">MATCHES</button>
   <button onclick="window.clearWimRound('r3','${key}')" style="font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;border:1px solid rgba(255,32,144,.3);background:rgba(255,32,144,.04);color:rgba(255,80,150,.6);letter-spacing:1px">↺ RESET</button>
 </div>
 ${contentHtml}`;
