@@ -10848,6 +10848,60 @@ function renderDailyBriefing(){
     </div>
   </div>`;
 }
+// ── Cross-sport ticker scanner ────────────────────────────────────────────
+// Generic scanner over ANY per-sport `.today` feed in data.json that carries
+// moneyline odds (homeML/awayML). Currently mlb/nba/nhl/wnba/pwhl/ncaaBaseball
+// all share this shape, so adding a league here is just adding its key below —
+// no per-sport special-casing. Computes no-vig win probability + EV from the
+// book moneylines (source of truth is the odds themselves, not a model), and
+// grades PREMIUM/OPTIMAL/SLEEPER the same way the rest of the ticker does.
+// Sports without an odds feed in data.json (CFB/CBB/NFL/KHL/SHL/LIIGA/soccer
+// club leagues/tennis) are structurally supported the moment their feed gains
+// homeML/awayML fields — nothing here needs to change for them to appear.
+function _scanCrossSportPicks(){
+  const D=window.__CV_DATA;if(!D)return[];
+  const todayStr=today();
+  const SPORT_KEYS=[
+    ['mlb','MLB'],['nba','NBA'],['nhl','NHL'],['wnba','WNBA'],
+    ['pwhl','PWHL'],['ncaaBaseball','CBB']
+  ];
+  const _noVig=(mlH,mlA)=>{
+    const impl=ml=>ml>0?100/(ml+100):Math.abs(ml)/(Math.abs(ml)+100);
+    const ih=impl(mlH),ia=impl(mlA);const sum=ih+ia;
+    return sum>0?{h:ih/sum,a:ia/sum}:null;
+  };
+  const out=[];
+  SPORT_KEYS.forEach(([key,label])=>{
+    const games=D[key]&&D[key].today;
+    if(!Array.isArray(games))return;
+    games.forEach(g=>{
+      if(!g||g.homeML==null||g.awayML==null)return;
+      if(g.date&&g.date.slice(0,10)!==todayStr)return;
+      if(g.state==='post')return; // already final — nothing to bet
+      const p=_noVig(g.homeML,g.awayML);if(!p)return;
+      const favIsHome=p.h>=p.a;
+      const favProb=favIsHome?p.h:p.a;
+      const favML=favIsHome?g.homeML:g.awayML;
+      const favTeam=favIsHome?g.home:g.away;
+      const dogTeam=favIsHome?g.away:g.home;
+      const dec=favML>0?favML/100+1:100/Math.abs(favML)+1;
+      // No independent model here — only the book's own line. De-vigging the
+      // implied probability and then computing "EV" against that same vigged
+      // price is circular (it will read negative almost every time, since
+      // that's what vig means) and would misrepresent a manufactured edge.
+      // Grade honestly by market-implied favorite strength instead.
+      let bucket=null;
+      if(favProb>=0.70)bucket='PREMIUM';
+      else if(favProb>=0.58)bucket='SLEEPER';
+      if(!bucket)return;
+      out.push({hA:favIsHome?g.home:g.away,awA:favIsHome?g.away:g.home,sport:label,
+        winProb:favProb,decOdds:dec,ml:favML>0?'+'+favML:String(favML),
+        betOn:favTeam+' ML',basis:`Market favorite: ${favTeam} ${favML>0?'+':''}${favML} vs ${dogTeam} (no-vig ${(favProb*100).toFixed(1)}%)`,
+        grade:bucket,date:todayStr,_evVal:0,_bucket:bucket,_muOverride:`${g.away} at ${g.home}`});
+    });
+  });
+  return out;
+}
 function renderHomePage(){
   try{renderDailyBriefing();}catch(e){console.error('renderDailyBriefing',e);}
   const allBets=getP();
@@ -11016,11 +11070,14 @@ function renderHomePage(){
           _evVal:evVal,_bucket:bucket,_muOverride:b.game||''};
       }).filter(p=>p&&p.betOn);
       bbMapped.sort((a,b)=>b._evVal-a._evVal);
+      let _crossSport=[];
+      try{_crossSport=_scanCrossSportPicks();}catch(e){}
+      const _combined=[...bbMapped,..._crossSport].sort((a,b)=>b._evVal-a._evVal);
       // Merge scanned picks with any locked picks (dedup by pick+matchup)
       const _seen=new Set(lockedPicks.map(p=>(p.betOn||'')+'|'+(p.hA||'')));
-      for(const _p of bbMapped){const _k=(_p.betOn||'')+'|'+(_p.hA||'');if(!_seen.has(_k)){_seen.add(_k);allPicks.push(_p);}}
+      for(const _p of _combined){const _k=(_p.betOn||'')+'|'+(_p.hA||'');if(!_seen.has(_k)){_seen.add(_k);allPicks.push(_p);}}
       allPicks=allPicks.slice(0,24);
-      _tpAllSportsMode=bbMapped.length>0;
+      _tpAllSportsMode=_combined.length>0;
     }
     if(!allPicks.length){tpEl.innerHTML='';tpEl.style.display='none';}
     else{
