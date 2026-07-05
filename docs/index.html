@@ -21084,18 +21084,29 @@ function _renderWCMatchCard(m,liveScore){
 function _buildWCMatchesHTML(schedule,liveMap){
   var todayStr=new Date().toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
   var tomorrowStr=new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
-  // Only show today and future matches — hide completed past games
-  schedule=schedule.filter(function(m){return m.date>=todayStr;});
+  // Prefer today+future fixtures; if none remain (schedule fully played out),
+  // fall back to the most recent matchdays so the tab never renders empty.
+  var upcoming=schedule.filter(function(m){return m.date>=todayStr;});
+  var isFallback=false;
+  if(!upcoming.length){
+    var allDates=Object.keys(schedule.reduce(function(o,m){o[m.date]=1;return o;},{})).sort();
+    var recent=allDates.slice(-4);
+    upcoming=schedule.filter(function(m){return recent.indexOf(m.date)>=0;});
+    isFallback=true;
+  }
+  schedule=upcoming;
   var byDate={};
   schedule.forEach(function(m){if(!byDate[m.date])byDate[m.date]=[];byDate[m.date].push(m);});
-  // sort dates: today first, then ascending
+  // sort dates: normal = today first then ascending; fallback = most recent first
   var dates=Object.keys(byDate).sort(function(a,b){
+    if(isFallback)return a<b?1:-1;
     if(a===todayStr)return -1;if(b===todayStr)return 1;return a<b?-1:1;
   });
   var hasKnockout=schedule.some(function(m){return m.group==='R32'||m.group==='R16'||m.group==='QF'||m.group==='SF'||m.group==='F';});
   var stageLabel=hasKnockout?'KNOCKOUT STAGE':'GROUP STAGE';
   var html='<div style="font-family:var(--orb);font-size:12px;letter-spacing:3px;background:linear-gradient(135deg,var(--gc),var(--nc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;padding:0 12px">⚽ FIFA WORLD CUP 2026 · '+stageLabel+'</div>';
   html+='<div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:2px;margin-bottom:12px;padding:0 12px">HOSTS: USA · CANADA · MEXICO · JUNE 11 – JULY 19</div>';
+  if(isFallback)html+='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);padding:0 12px 8px;line-height:1.5">No upcoming group fixtures — showing most recent results. Tap <span style="color:var(--gc)">BRACKET</span> for live knockout rounds.</div>';
   dates.forEach(function(d){
     var isTod=d===todayStr,isTom=d===tomorrowStr;
     var badge=isTod?'<span style="background:var(--hc);color:#000;font-size:10px;padding:2px 5px;border-radius:1px;margin-left:6px">TODAY</span>'
