@@ -21216,10 +21216,15 @@ function renderWCMatches(){
   var el=document.getElementById('wc-matches-list');if(!el)return;
   // Render immediately from static data — no waiting
   el.innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,null);
-  // Background fetch for live scores/odds — update silently if it returns
+  // Background fetch for live scores/odds — update silently if it returns.
+  // ESPN's scoreboard endpoint defaults to "today only" with no params, so
+  // completed group-stage games from earlier in the tournament never got
+  // scores. Pass an explicit dates= range spanning kickoff (Jun 11) through
+  // today so historical results populate too, not just live/today's games.
   var ctrl=window.AbortController?new AbortController():null;
-  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard',ctrl?{signal:ctrl.signal}:{})
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},6000);
+  var _wcStart='20260611',_wcEnd=today().replace(/-/g,'');
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates='+_wcStart+'-'+_wcEnd+'&limit=200',ctrl?{signal:ctrl.signal}:{})
     .then(function(r){return r.json();})
     .then(function(data){
       clearTimeout(tid);
@@ -21516,8 +21521,11 @@ function _wcBracketLiveLookup(code1,code2){
 function _wcBracketFetchLive(){
   if(window._wcBracketFetching)return;window._wcBracketFetching=true;
   var ctrl=window.AbortController?new AbortController():null;
-  var tid=setTimeout(function(){ctrl&&ctrl.abort();},4000);
-  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard',ctrl?{signal:ctrl.signal}:{})
+  var tid=setTimeout(function(){ctrl&&ctrl.abort();},6000);
+  // Same fix as renderWCMatches: explicit dates= range so completed knockout
+  // matches from earlier in the tournament get real scores, not just "today".
+  var _wcStart='20260611',_wcEnd=today().replace(/-/g,'');
+  fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates='+_wcStart+'-'+_wcEnd+'&limit=200',ctrl?{signal:ctrl.signal}:{})
     .then(function(r){return r.json();})
     .then(function(data){
       clearTimeout(tid);window._wcBracketFetching=false;
