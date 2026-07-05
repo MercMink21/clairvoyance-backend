@@ -10985,10 +10985,12 @@ function renderHomePage(){
     }
     premiumPicks.sort((a,b)=>b._evVal-a._evVal);
     darkHorsePicks.sort((a,b)=>b._evVal-a._evVal);
-    let allPicks=[...premiumPicks,...darkHorsePicks];
+    let lockedPicks=[...premiumPicks,...darkHorsePicks];
+    let allPicks=lockedPicks.slice();
     let _tpAllSportsMode=false;
-    // Fallback: no locked bets today — scan all sports/leagues for PREMIUM/OPTIMAL moves
-    if(!allPicks.length){
+    // ALWAYS scan all sports/leagues for PREMIUM/OPTIMAL moves and merge them in,
+    // so the ticker auto-populates without needing any locked picks.
+    {
       const bbSrc=window.__CV_DATA?.bestBets||[];
       const bbMapped=bbSrc.map(b=>{
         if(!b)return null;
@@ -11014,8 +11016,11 @@ function renderHomePage(){
           _evVal:evVal,_bucket:bucket,_muOverride:b.game||''};
       }).filter(p=>p&&p.betOn);
       bbMapped.sort((a,b)=>b._evVal-a._evVal);
-      allPicks=bbMapped.slice(0,24);
-      _tpAllSportsMode=allPicks.length>0;
+      // Merge scanned picks with any locked picks (dedup by pick+matchup)
+      const _seen=new Set(lockedPicks.map(p=>(p.betOn||'')+'|'+(p.hA||'')));
+      for(const _p of bbMapped){const _k=(_p.betOn||'')+'|'+(_p.hA||'');if(!_seen.has(_k)){_seen.add(_k);allPicks.push(_p);}}
+      allPicks=allPicks.slice(0,24);
+      _tpAllSportsMode=bbMapped.length>0;
     }
     if(!allPicks.length){tpEl.innerHTML='';tpEl.style.display='none';}
     else{
