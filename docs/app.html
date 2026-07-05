@@ -3270,7 +3270,7 @@ async function loadGames(dateStr){
     const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;
     const hML=g.hML||p2ml(ens.p),hD=ml2d(hML),hEV=ev(ens.p,hD);
     const awML=g.aML||p2ml(1-ens.p),awD=ml2d(awML),awEV=ev(1-ens.p,awD);
-    const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
+    const ouL=(Math.round(parseFloat(g.ou||(mc?.avgT||8.5))*2)/2).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
     const evT=(+document.getElementById('s-evt')?.value||2)/100;
     [[ens.p,String(hML),hD,hEV,`ML ${g.hA}`,g.hA,g.awA],
      [1-ens.p,String(awML),awD,awEV,`ML ${g.awA}`,g.hA,g.awA],
@@ -3599,7 +3599,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hML=espnGame?.hML||p2ml(hP),aML=espnGame?.aML||p2ml(aP);
   const hD=ml2d(hML),aD=ml2d(aML);
   const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
-  const ouL=espnGame?.ou||(mc?(mc.avgT).toFixed(1):'8.5');
+  const ouL=(Math.round(parseFloat(espnGame?.ou||(mc?mc.avgT:8.5))*2)/2).toFixed(1);
   const ouP=mc?.overP??( mc&&mc.avgT>parseFloat(ouL)?.52:.48);const ouCS=chipC(ouP,ev(ouP,1.91));
   const rlP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38);const rlCS=chipC(rlP,ev(rlP,1.87));
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
@@ -16831,10 +16831,8 @@ function renderTrackRecord(){
     {key:'TODAY',      label:'TODAY',      sub:_fmtDay(todayStr), pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===todayStr))},
     {key:'YESTERDAY',  label:'YESTERDAY',  sub:_fmtDay(ydStr),    pC:'#f000ff', perf:cP(allBets.filter(p=>p.date===ydStr))},
     {key:'ROLLING 7D', label:'ROLLING 7D', sub:'',            pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
-    {key:'THIS MONTH', label:'THIS MONTH', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
-    {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
+    {key:'THIS MONTH', label:'MONTH TO DATE', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
     {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#f000ff', perf:cP(allBets)},
-    {key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1, 2026',pC:'#f000ff',perf:cP(allBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))},
   ];
   // ── Single-day date filter ─────────────────────────────────────────────
   // When a date is picked, all three social cards (track/sport/league) show
