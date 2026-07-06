@@ -3575,14 +3575,19 @@ function _ouAdj(hA,awA,date,baseOverP,ouL,delta){
 // paths (step buttons AND direct typing) always keep the sign current.
 function _syncSprdLabels(id){var el=document.getElementById(id);if(!el)return;var nv=Math.round((parseFloat(el.value)||0)*2)/2;var fl=document.getElementById('fav_'+id);var dl=document.getElementById('dog_'+id);if(fl)fl.textContent=(nv<0?'':'+')+(nv).toFixed(1);if(dl){var dv=-nv;dl.textContent=(dv<0?'':'+')+(dv).toFixed(1);}}
 function _adjV(id,d){var el=document.getElementById(id);if(!el)return;var v=parseFloat(el.value)||0;var nv=Math.round((v+d)*2)/2;el.value=nv.toFixed(1);_syncSprdLabels(id);}
-function _ouLockDir(hA,awA,date,baseOverP,baseL,inputId,dir){
+function _ouLockDir(hA,awA,date,baseOverP,baseL,inputId,dir,sport){
   var inp=document.getElementById(inputId);
   var nl=inp?parseFloat(inp.value):parseFloat(baseL);
   if(isNaN(nl))nl=parseFloat(baseL);
   var delta=nl-parseFloat(baseL);
   var np=Math.min(.78,Math.max(.22,baseOverP-delta*0.07));
   var lockP=dir==='OVER'?np:1-np;
-  lockPick(hA,awA,'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
+  // Without an explicit sport, lockPick falls back to guessing by team-code
+  // membership (MLB/NHL/NBA/WNBA only) — for soccer/World Cup matchups that
+  // misclassifies on any shared code (e.g. Portugal's 'POR' vs the NBA's
+  // Portland Trail Blazers) or tags genuinely unmatched codes (BEL/USA) as
+  // UNKNOWN. Callers for non-guessable sports must pass their sport explicitly.
+  lockPick(hA,awA,sport||'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
 }
 function _ouParlayDir(hA,awA,date,baseOverP,baseL,inputId,dir,sport){
   var inp=document.getElementById(inputId);
@@ -3601,7 +3606,14 @@ function _spreadLockDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir){
   if(isNaN(ns))ns=parseFloat(baseSprd);
   var delta=Math.abs(ns)-Math.abs(parseFloat(baseSprd));
   var sp=dir==='FAV'?Math.max(.15,Math.min(.82,baseP-delta*0.045)):Math.max(.15,Math.min(.82,(1-baseP)+delta*0.045));
-  var label=dir==='FAV'?favN+' '+ns.toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
+  // Favorite is always negative and dog always positive by definition —
+  // force the sign here instead of trusting the input's raw value. Some
+  // callers (e.g. WNBA) seed the input from a home-team-relative signed
+  // spread rather than a hardcoded "-1.5", so when the away team was the
+  // favorite the raw value came through positive and the minus sign
+  // silently disappeared from the locked bet label (e.g. "TEAM 2.5"
+  // instead of "TEAM -2.5").
+  var label=dir==='FAV'?favN+' -'+(Math.abs(ns)).toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
   lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
 }
 function _spreadParlayDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport){
@@ -3610,7 +3622,7 @@ function _spreadParlayDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport
   if(isNaN(ns))ns=parseFloat(baseSprd);
   var delta=Math.abs(ns)-Math.abs(parseFloat(baseSprd));
   var sp=dir==='FAV'?Math.max(.15,Math.min(.82,baseP-delta*0.045)):Math.max(.15,Math.min(.82,(1-baseP)+delta*0.045));
-  var label=dir==='FAV'?favN+' '+ns.toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
+  var label=dir==='FAV'?favN+' -'+(Math.abs(ns)).toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
   var matchup=(sport||'').toUpperCase()+':'+hA+'v'+awA;
   if(typeof cvParlayAddLeg==='function')cvParlayAddLeg(sport||'xp',label,'-115',sp,matchup,'GAME');
   else lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
@@ -21079,7 +21091,7 @@ function _wnbaSprdDir(hab,aab,baseCoverP,baseSprd,inputId,dir,gameKey){
   var delta=Math.abs(ns)-Math.abs(parseFloat(baseSprd));
   var favN=parseFloat(baseSprd)<=0?hab:aab;var dogN=parseFloat(baseSprd)<=0?aab:hab;
   var sp=dir==='FAV'?Math.max(.15,Math.min(.80,baseCoverP-delta*0.045)):Math.max(.15,Math.min(.80,(1-baseCoverP)+delta*0.045));
-  var label=dir==='FAV'?favN+' '+ns.toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
+  var label=dir==='FAV'?favN+' -'+(Math.abs(ns)).toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
   addWNBAGameLeg(hab,aab,'SPREAD',label,sp,'-115',1.87,gameKey);
 }
 function addWNBAGameLeg(hab,aab,type,betOn,prob,ml,dec,gameKey){
@@ -21493,8 +21505,8 @@ function _renderWCMatchCard(m,liveScore){
     +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
     +'<div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV(\''+ouId+'\',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>'+'<input type="number" step="0.5" value="'+ouL+'" id="'+ouId+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center">'+'<button onclick="event.stopPropagation();_adjV(\''+ouId+'\',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div>'
     +'<div style="display:flex;gap:3px">'
-    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\')" style="font-size:13px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
-    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\')" style="font-size:13px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
     +'</div></div>'
     +'</div>'
     // AH Analysis
