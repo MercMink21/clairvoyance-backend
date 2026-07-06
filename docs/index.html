@@ -1495,8 +1495,8 @@ body{line-height:1.5}
         <select id="sim-count" class="fi" style="width:100%">
           <option value="5000">5,000</option>
           <option value="7500">7,500</option>
-          <option value="10000" selected>10,000</option>
-          <option value="25000">25,000</option>
+          <option value="10000">10,000</option>
+          <option value="25000" selected>25,000</option>
         </select>
       </div>
       <!-- Venue mode -->
@@ -1659,8 +1659,8 @@ body{line-height:1.5}
         <div>
           <div class="mono" style="font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SIMS</div>
           <select id="trm-sims" class="fi" style="width:100%">
-            <option value="10000" selected>10,000</option>
-            <option value="25000">25,000</option>
+            <option value="10000">10,000</option>
+            <option value="25000" selected>25,000</option>
             <option value="50000">50,000</option>
           </select>
         </div>
@@ -3084,7 +3084,7 @@ function _mlbTier(p,e,sigmaV){
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 /* Generic prop Monte Carlo — normal distribution */
 function propMC(mu,sigma,line,n){
-  if(!n)n=5000;if(mu<=0)return{overP:0.5,hitRate:50,avgStat:mu};
+  if(!n)n=25000;if(mu<=0)return{overP:0.5,hitRate:50,avgStat:mu};
   if(!sigma||sigma<=0)sigma=Math.max(0.5,mu*0.4);
   var over=0,sumS=0;
   for(var i=0;i<n;i+=2){
@@ -3141,7 +3141,7 @@ function _mcProjBarHTML(mc,ouL,hTeam,aTeam,opts){
   const marginDisp=(margin>=0?'+':'')+margin.toFixed(1);
   const overStr=mc.overP!=null?(mc.overP*100).toFixed(0)+'% O':'';
   const otStr=mc.otP!=null?' · OT '+(mc.otP*100).toFixed(0)+'%':'';
-  const nSims=opts&&opts.n?opts.n:10000;
+  const nSims=opts&&opts.n?opts.n:25000;
   const nStr=nSims>=1000?Math.round(nSims/1000)+'k sims':nSims+' sims';
   const unit=opts&&opts.unit?opts.unit:'';
   return'<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px;padding:5px 9px;background:rgba(0,0,0,.35);border-radius:3px;border:1px solid rgba(255,255,255,.07)">'
@@ -3548,7 +3548,7 @@ function adjLam(oT,dT,pf,home,spA){
   const safeSpA=Math.min(Math.max(spA||1.0,0.60),1.50);
   return Math.max(1.5,rg*(rag/4.5)*(home?1.04:.96)*safePF/safeSpA);
 }
-function mlbMC(hA,awA,n=10000,ouLine=8.5){
+function mlbMC(hA,awA,n=25000,ouLine=8.5){
   const h=TEAMS[hA],aw=TEAMS[awA];if(!h||!aw)return null;
   // Use FIP-aware adjustment when pitcher data is available, fall back to ERA-based
   const hPitAdj=PIT[hA]?pAdjFull(hA):pAdj(PIT[hA]?.era||4.35);
@@ -4699,7 +4699,7 @@ async function renderGoaliesFromBackend(){
 
 
 // ═══ NHL MODEL ════════════════════════════════════════════════
-function nhlMC(hA,awA,n=10000){
+function nhlMC(hA,awA,n=25000){
   const h=NHL[hA],aw=NHL[awA];if(!h||!aw)return null;
   const hfa=.055;
   const hOff=h.gf60*(1+(h.hv.off-aw.hv.def)*.11)*(1+h.hv.fin*.04);
@@ -6549,7 +6549,7 @@ function nbaTeamScore(abbr){
 }
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
-function nbaMC(hA,awA,n=10000,ouLine=220){
+function nbaMC(hA,awA,n=25000,ouLine=220){
   const h=NBA_BBREF[hA],aw=NBA_BBREF[awA];
   const ht=NBA_TEAMS[hA],awt=NBA_TEAMS[awA];
   if(!ht||!awt)return null;
@@ -12995,7 +12995,7 @@ function tennisMatchWinProbFull(p1,p2,surface,bo5=false){
   const elo1=getPlayerElo(p1,surface);const elo2=getPlayerElo(p2,surface);
   const eloP=1/(1+Math.pow(10,(elo2-elo1)/400));
   // Serve/return MC component
-  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,10000);
+  const mcP=tennisMatchWinProb(p1,p2,surface,bo5,25000);
   // Form adjustment
   const formDiff=(p1.formElo-p2.formElo)/400;
   const formP=1/(1+Math.pow(10,-formDiff));
@@ -13037,7 +13037,7 @@ function wimPickReasoning(p1name,p2name,mcP,p1ml,bo5,grade){
 }
 
 // ── MC game-count simulation ───────────────────────────────────
-function tennisSimGames(p1,p2,surface,bo5,N=5000){
+function tennisSimGames(p1,p2,surface,bo5,N=25000){
   // Returns {expected, std} total games using same serve-win logic as the MC model
   const p1h=tennisPgame(tennisServeWinRateAdv(p1,p2,surface));
   const p2h=tennisPgame(tennisServeWinRateAdv(p2,p1,surface));
@@ -14301,7 +14301,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
   const {r3d,r3w,r4data,r4w,qfdata,qfw,sfdata,sfw,fdata,fw}=curData;
 
   // ── Constants ──
-  const SLOT=76,BOX_H=64,TOTAL=16*SLOT,COL_W=168,CONN_W=44;
+  const SLOT=76,BOX_H=64,TOTAL=16*SLOT,COL_W=168,CONN_W=64;
   const LABEL_H=20;
 
   // ── Match box ──
@@ -14458,7 +14458,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
           gradeH=`<span style="color:${grCol}">${grade}</span>`;
           const ev=favML?(favML>0?(favML/100):(100/Math.abs(favML)))*favP-1:0;
           evH=`<span style="color:${ev>0?'var(--nc)':'var(--t3)'}">EV ${ev>0?'+':''}${(ev*100).toFixed(1)}%</span>`;
-          const gSim=tennisSimGames(p1d,p2d,'grass',bo5,10000);
+          const gSim=tennisSimGames(p1d,p2d,'grass',bo5,25000);
           const gLine=tennisGamesLine(gSim,bo5);
           const gCol=gLine.grade==='OPTIMAL'?'var(--nc)':gLine.grade==='LEAN'?'var(--ic)':'var(--t3)';
           gamesHtml=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:4px">GAMES O/U <strong>${gLine.line}</strong> → <strong style="color:${gCol}">${gLine.dir}</strong> <span style="color:var(--t3)">${gLine.conf}% (exp ${gLine.expected})</span></div>`;
@@ -16413,7 +16413,7 @@ function renderFuturesTab(){
 // ═══════════════════════════════════════════════════════════════════════════
 // MONTE CARLO SERIES SIMULATOR
 // ═══════════════════════════════════════════════════════════════════════════
-function simulateSeries(p1WinProb, seriesLen=7, sims=10000){
+function simulateSeries(p1WinProb, seriesLen=7, sims=25000){
   const results={};for(let g=4;g<=seriesLen;g++){results[g]={t1:0,t2:0};}
   for(let s=0;s<sims;s++){
     let w1=0,w2=0,g=0;
@@ -16431,12 +16431,12 @@ function renderMonteCarloUI(){
     {label:'NBA Finals — NYK vs SA',teams:['NYK','SA'],p1:0.575},
   ];
   let html=`<div style="font-family:var(--mono);font-size:16px;color:rgba(220,190,255,.7);margin-bottom:12px;line-height:1.8">
-    Run 10,000 simulated series to see probability distribution of every outcome.<br>
+    Run 25,000 simulated series to see probability distribution of every outcome.<br>
     <span style="color:rgba(220,190,255,.5)">Based on team win probabilities from Clairvoyance engine models.</span>
   </div>`;
   for(const series of defaultSeries){
     const res=simulateSeries(series.p1);
-    const sims=10000;
+    const sims=25000;
     const t1name=series.teams[0],t2name=series.teams[1];
     // Calculate totals
     const t1total=Object.values(res).reduce((a,v)=>a+v.t1,0);
@@ -16499,14 +16499,14 @@ function renderMonteCarloUI(){
       <input id="mc-prob" type="number" min="1" max="99" value="55" style="flex:1;padding:8px;background:rgba(4,0,12,.9);border:1px solid rgba(240,0,255,.2);color:var(--t);font-family:var(--mono);font-size:16px;border-radius:2px">
       <span style="font-family:var(--mono);font-size:16px;color:rgba(220,190,255,.7)">%</span>
     </div>
-    <button onclick="const t1=document.getElementById('mc-t1').value||'TEAM 1',t2=document.getElementById('mc-t2').value||'TEAM 2',prob=Math.min(99,Math.max(1,parseFloat(document.getElementById('mc-prob').value)||55));const r=simulateSeries(prob/100);document.getElementById('mc-result').innerHTML=formatMCResult(t1,t2,prob/100,r);" style="width:100%;padding:10px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:17px;border-radius:2px;cursor:pointer">RUN SIMULATION (10,000 SERIES)</button>
+    <button onclick="const t1=document.getElementById('mc-t1').value||'TEAM 1',t2=document.getElementById('mc-t2').value||'TEAM 2',prob=Math.min(99,Math.max(1,parseFloat(document.getElementById('mc-prob').value)||55));const r=simulateSeries(prob/100);document.getElementById('mc-result').innerHTML=formatMCResult(t1,t2,prob/100,r);" style="width:100%;padding:10px;background:rgba(240,0,255,.12);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:17px;border-radius:2px;cursor:pointer">RUN SIMULATION (25,000 SERIES)</button>
     <div id="mc-result" style="margin-top:10px"></div>
   </div>`;
   el.innerHTML=html;
 }
 
 function formatMCResult(t1,t2,p1,res){
-  const sims=10000;
+  const sims=25000;
   const t1total=Object.values(res).reduce((a,v)=>a+v.t1,0);
   return`<div style="background:rgba(255,204,0,.06);border:1px solid rgba(255,204,0,.25);border-radius:2px;padding:10px">
     <div style="font-family:var(--mono);font-size:17px;color:rgba(255,204,0,.9);margin-bottom:8px">${t1} vs ${t2} — ${(p1*100).toFixed(0)}% model</div>
@@ -18716,7 +18716,7 @@ function _tenMatchCard(m,tourney,roundName){
     try{
       const elo1=getPlayerElo(d1,surface),elo2=getPlayerElo(d2,surface);
       eloComp=1/(1+Math.pow(10,(elo2-elo1)/400));
-      mcComp=tennisMatchWinProb(d1,d2,surface,bo5,10000);
+      mcComp=tennisMatchWinProb(d1,d2,surface,bo5,25000);
       const formDiff=(d1.formElo-d2.formElo)/400;
       formComp=1/(1+Math.pow(10,-formDiff));
       const serveEdge=(d1.serveElo-d2.returnElo)/400;
@@ -18780,7 +18780,7 @@ function _tenMatchCard(m,tourney,roundName){
   // Games O/U simulation
   let gSim=null,gLine=null;
   if(d1&&d2){
-    try{gSim=tennisSimGames(d1,d2,surface,bo5,10000);gLine=tennisGamesLine(gSim,bo5);}catch(e){}
+    try{gSim=tennisSimGames(d1,d2,surface,bo5,25000);gLine=tennisGamesLine(gSim,bo5);}catch(e){}
   }
   const gOverP=gLine?gLine.overP:0.5;
   const gUnderP=gLine?1-gLine.overP:0.5;
@@ -20129,7 +20129,7 @@ function _wnbaKey(abbr){
   return WNBA_ABBR_MAP[a]||a;
 }
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
-function wnbaMC(hA,awA,n=10000){
+function wnbaMC(hA,awA,n=25000){
   var hk=_wnbaKey(hA),ak=_wnbaKey(awA);
   var D=window.__CV_DATA||{};
   var ts=D.wnba&&D.wnba.teamStats||{};
@@ -20716,29 +20716,29 @@ function _generateWNBAPropsLive(games,statsData){
 // Updated: June 13 2026 — based on 2026 season averages + matchup
 var WNBA_PROPS_DATE='20260706';
 var WNBA_PROPS_DATA=[
-  // ── Golden State Valkyries @ Washington Mystics (5:30 PM MT · O/U 156.5) ──
-  {player:'Shakira Austin',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'REB',line:7.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'8.4 rpg · glass control',basis:'Shakira Austin rebounds dominate the paint. Golden State Valkyries interior rotation leaves gaps. Season avg 8.4 reb. Home board advantage.'},
-  {player:'Shakira Austin',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PTS',line:13.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'14.6 ppg · home favored',basis:'Shakira Austin home scorer vs Golden State Valkyries. Home crowd elevates output. Season avg 14.6 pts. Matchup context favors over.'},
-  {player:'Sonia Citron',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PTS',line:13.5,over:true,ml:'-170',conf:63,grade:'LOCK',hitRate:'14.8 ppg · home favored',basis:'Sonia Citron home scorer vs Golden State Valkyries. Home crowd elevates output. Season avg 14.8 pts. Matchup context favors over.'},
-  {player:'Gabby Williams',team:'GSV',opp:'WSH',game:'GSV_WSH',stat:'REB',line:6.5,over:true,ml:'-144',conf:59,grade:'LEAN',hitRate:'7.4 rpg · glass control',basis:'Gabby Williams rebounds dominate the paint. Washington Mystics interior rotation leaves gaps. Season avg 7.4 reb. Road rebounding stays consistent for elite rebounders.'},
-  {player:'Gabby Williams',team:'GSV',opp:'WSH',game:'GSV_WSH',stat:'PRA',line:23.5,over:true,ml:'-144',conf:59,grade:'LEAN',hitRate:'27.4 PRA avg · all-around floor',basis:'Gabby Williams fills every box. Season avg 15.2 pts / 7.4 reb / 4.8 ast. Road usage stays elite — needed to keep team competitive. Washington Mystics matchup supports high PRA floor.'},
-  {player:'Natisha Hiedeman',team:'GSV',opp:'WSH',game:'GSV_WSH',stat:'PTS',line:13.0,over:true,ml:'-138',conf:58,grade:'LEAN',hitRate:'14.8 ppg · road underdog',basis:'Natisha Hiedeman road scorer vs Washington Mystics. Road usage stays high in close matchups. Season avg 14.8 pts. Matchup context favors over.'},
+  // ── Golden State Valkyries @ Washington Mystics (5:30 PM MT · O/U 155.5) ──
+  {player:'Kiki Iriafen',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'REB',line:8.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'9.3 rpg · glass control',basis:'Kiki Iriafen rebounds dominate the paint. Golden State Valkyries interior rotation leaves gaps. Season avg 9.3 reb. Home board advantage.'},
+  {player:'Shakira Austin',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'REB',line:8.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'9.2 rpg · glass control',basis:'Shakira Austin rebounds dominate the paint. Golden State Valkyries interior rotation leaves gaps. Season avg 9.2 reb. Home board advantage.'},
+  {player:'Sonia Citron',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PRA',line:24.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.2 PRA avg · all-around floor',basis:'Sonia Citron fills every box. Season avg 18.6 pts / 4.1 reb / 3.5 ast. Home amplifies every category. Golden State Valkyries matchup supports high PRA floor.'},
+  {player:'Kiki Iriafen',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PRA',line:24.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.5 PRA avg · all-around floor',basis:'Kiki Iriafen fills every box. Season avg 15.5 pts / 9.3 reb / 1.7 ast. Home amplifies every category. Golden State Valkyries matchup supports high PRA floor.'},
+  {player:'Shakira Austin',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PTS',line:12.5,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'13.4 ppg · home favored',basis:'Shakira Austin home scorer vs Golden State Valkyries. Home crowd elevates output. Season avg 13.4 pts. Matchup context favors over.'},
+  {player:'Sonia Citron',team:'WSH',opp:'GSV',game:'GSV_WSH',stat:'PTS',line:17.0,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'18.6 ppg · home favored',basis:'Sonia Citron home scorer vs Golden State Valkyries. Home crowd elevates output. Season avg 18.6 pts. Matchup context favors over.'},
 
   // ── Connecticut Sun @ Minnesota Lynx (6:00 PM MT · O/U 166.5) ──
-  {player:'Napheesa Collier',team:'MIN',opp:'CON',game:'CON_MIN',stat:'REB',line:9.0,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'9.8 rpg · glass control',basis:'Napheesa Collier rebounds dominate the paint. Connecticut Sun interior rotation leaves gaps. Season avg 9.8 reb. Home board advantage.'},
-  {player:'Napheesa Collier',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PRA',line:31.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'34.4 PRA avg · all-around floor',basis:'Napheesa Collier fills every box. Season avg 21.2 pts / 9.8 reb / 3.4 ast. Home amplifies every category. Connecticut Sun matchup supports high PRA floor.'},
-  {player:'Olivia Miles',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PRA',line:28.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'31.2 PRA avg · all-around floor',basis:'Olivia Miles fills every box. Season avg 18.6 pts / 5.2 reb / 7.4 ast. Home amplifies every category. Connecticut Sun matchup supports high PRA floor.'},
-  {player:'Olivia Miles',team:'MIN',opp:'CON',game:'CON_MIN',stat:'AST',line:7.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'7.4 apg · playmaking engine',basis:'Olivia Miles runs the offense at home. Connecticut Sun help rotations create kick-outs. Season avg 7.4 ast. Matchup style favors high-usage playmakers.'},
-  {player:'Bridget Carleton',team:'MIN',opp:'CON',game:'CON_MIN',stat:'REB',line:5.5,over:true,ml:'-194',conf:66,grade:'LOCK',hitRate:'5.8 rpg · glass control',basis:'Bridget Carleton rebounds dominate the paint. Connecticut Sun interior rotation leaves gaps. Season avg 5.8 reb. Home board advantage.'},
-  {player:'Bridget Carleton',team:'MIN',opp:'CON',game:'CON_MIN',stat:'3PM',line:2.0,over:true,ml:'-194',conf:66,grade:'LOCK',hitRate:'2.2 3PM/game · catch-and-shoot',basis:'Bridget Carleton elite three-point threat. Connecticut Sun allows high 3PM rate to opposing guards. Season avg 2.2 3PM. Off-ball movement creates open looks.'},
+  {player:'Olivia Miles',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PRA',line:26.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'29.0 PRA avg · all-around floor',basis:'Olivia Miles fills every box. Season avg 18.5 pts / 4.8 reb / 5.7 ast. Home amplifies every category. Connecticut Sun matchup supports high PRA floor.'},
+  {player:'Natasha Howard',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PRA',line:26.0,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'28.2 PRA avg · all-around floor',basis:'Natasha Howard fills every box. Season avg 17.2 pts / 8.1 reb / 2.9 ast. Home amplifies every category. Connecticut Sun matchup supports high PRA floor.'},
+  {player:'Natasha Howard',team:'MIN',opp:'CON',game:'CON_MIN',stat:'REB',line:7.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'8.1 rpg · glass control',basis:'Natasha Howard rebounds dominate the paint. Connecticut Sun interior rotation leaves gaps. Season avg 8.1 reb. Home board advantage.'},
+  {player:'Olivia Miles',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PTS',line:17.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'18.5 ppg · home favored',basis:'Olivia Miles home scorer vs Connecticut Sun. Home crowd elevates output. Season avg 18.5 pts. Matchup context favors over.'},
+  {player:'Natasha Howard',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PTS',line:15.5,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'17.2 ppg · home favored',basis:'Natasha Howard home scorer vs Connecticut Sun. Home crowd elevates output. Season avg 17.2 pts. Matchup context favors over.'},
+  {player:'Courtney Williams',team:'MIN',opp:'CON',game:'CON_MIN',stat:'PTS',line:14.5,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'15.9 ppg · home favored',basis:'Courtney Williams home scorer vs Connecticut Sun. Home crowd elevates output. Season avg 15.9 pts. Matchup context favors over.'},
 
-  // ── Seattle Storm @ Los Angeles Sparks (8:00 PM MT · O/U 174.5) ──
-  {player:'Cameron Brink',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'REB',line:8.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'9.4 rpg · glass control',basis:'Cameron Brink rebounds dominate the paint. Seattle Storm interior rotation leaves gaps. Season avg 9.4 reb. Home board advantage.'},
-  {player:'Cameron Brink',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PRA',line:26.5,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'29.2 PRA avg · all-around floor',basis:'Cameron Brink fills every box. Season avg 17.6 pts / 9.4 reb / 2.2 ast. Home amplifies every category. Seattle Storm matchup supports high PRA floor.'},
-  {player:'Dearica Hamby',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'REB',line:8.0,over:true,ml:'-245',conf:71,grade:'ELITE',hitRate:'8.8 rpg · glass control',basis:'Dearica Hamby rebounds dominate the paint. Seattle Storm interior rotation leaves gaps. Season avg 8.8 reb. Home board advantage.'},
-  {player:'Kelsey Plum',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PRA',line:24.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.9 PRA avg · all-around floor',basis:'Kelsey Plum fills every box. Season avg 18.9 pts / 3.2 reb / 4.8 ast. Home amplifies every category. Seattle Storm matchup supports high PRA floor.'},
-  {player:'Dearica Hamby',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PRA',line:24.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'26.2 PRA avg · all-around floor',basis:'Dearica Hamby fills every box. Season avg 14.2 pts / 8.8 reb / 3.2 ast. Home amplifies every category. Seattle Storm matchup supports high PRA floor.'},
-  {player:'Kelsey Plum',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'3PM',line:2.0,over:true,ml:'-203',conf:67,grade:'LOCK',hitRate:'2.4 3PM/game · catch-and-shoot',basis:'Kelsey Plum elite three-point threat. Seattle Storm allows high 3PM rate to opposing guards. Season avg 2.4 3PM. Off-ball movement creates open looks.'},
+  // ── Seattle Storm @ Los Angeles Sparks (8:00 PM MT · O/U 173.5) ──
+  {player:'Kelsey Plum',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PRA',line:29.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'32.5 PRA avg · all-around floor',basis:'Kelsey Plum fills every box. Season avg 23.9 pts / 2.2 reb / 6.4 ast. Home amplifies every category. Seattle Storm matchup supports high PRA floor.'},
+  {player:'Kelsey Plum',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PTS',line:22.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'23.9 ppg · home favored',basis:'Kelsey Plum home scorer vs Seattle Storm. Home crowd elevates output. Season avg 23.9 pts. Matchup context favors over.'},
+  {player:'Nneka Ogwumike',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'REB',line:8.0,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'8.5 rpg · glass control',basis:'Nneka Ogwumike rebounds dominate the paint. Seattle Storm interior rotation leaves gaps. Season avg 8.5 reb. Home board advantage.'},
+  {player:'Nneka Ogwumike',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'PRA',line:24.5,over:true,ml:'-233',conf:70,grade:'ELITE',hitRate:'27.0 PRA avg · all-around floor',basis:'Nneka Ogwumike fills every box. Season avg 16.2 pts / 8.5 reb / 2.3 ast. Home amplifies every category. Seattle Storm matchup supports high PRA floor.'},
+  {player:'Dearica Hamby',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'REB',line:7.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'7.9 rpg · glass control',basis:'Dearica Hamby rebounds dominate the paint. Seattle Storm interior rotation leaves gaps. Season avg 7.9 reb. Home board advantage.'},
+  {player:'Kelsey Plum',team:'LAS',opp:'SEA',game:'SEA_LAS',stat:'AST',line:6.0,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'6.4 apg · playmaking engine',basis:'Kelsey Plum runs the offense at home. Seattle Storm help rotations create kick-outs. Season avg 6.4 ast. Matchup style favors high-usage playmakers.'},
 ];
 async function renderWNBAProps(){
   var el=document.getElementById('wnba-props-list');
@@ -21343,7 +21343,7 @@ function _wcMC(hElo,aElo){
   var g=_wcExpGoals(hElo,aElo);
   var hExp=g.hExp,aExp=g.aExp;
   // Fast approximation using 400-iter Poisson sample (synchronous, ~1ms per match)
-  var hW=0,dr=0,aW=0,N=400;
+  var hW=0,dr=0,aW=0,N=25000;
   for(var i=0;i<N;i++){
     var hG=_poissonSample(hExp),aG=_poissonSample(aExp);
     if(hG>aG)hW++;else if(hG<aG)aW++;else dr++;
@@ -22009,16 +22009,16 @@ function renderWCBracket(){
   }
 
   // ── Compact bracket card ──
-  var SLOT=58,BOX_H=50,TOTAL=16*SLOT,COL_W=104,CONN_W=22;
+  var SLOT=80,BOX_H=68,TOTAL=16*SLOT,COL_W=150,CONN_W=50;
   function bCard(code,label,flg,isWinner,isDone,canPick,pickKey,score){
     var bg=isWinner?'rgba(255,200,0,.12)':isDone&&!isWinner?'rgba(0,0,0,.0)':'rgba(255,255,255,.04)';
     var bdr=isWinner?'rgba(255,200,0,.5)':'rgba(255,255,255,.1)';
     var col=isWinner?'#ffd700':isDone&&!isWinner&&code?'rgba(140,110,170,.45)':code?'rgba(220,190,255,.82)':'rgba(120,100,150,.5)';
-    var scoreHtml=score?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.7);margin-top:1px">'+score+'</div>':'';
-    return'<div style="background:'+bg+';border:1px solid '+bdr+';border-radius:3px;padding:3px 5px;margin:1px 0;min-height:20px">'
-      +'<div style="font-family:var(--mono);font-size:13px;color:'+col+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px">'
-      +(isWinner?'<span style="color:#ffd700;font-size:10px">▶</span>':'')+flg+' <span style="font-weight:700">'+label+'</span>'
-      +(isWinner&&score?'  <span style="color:rgba(255,200,0,.65);font-size:11px">'+score+'</span>':'')
+    var scoreHtml=score?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.7);margin-top:1px">'+score+'</div>':'';
+    return'<div style="background:'+bg+';border:1px solid '+bdr+';border-radius:4px;padding:5px 7px;margin:2px 0;min-height:28px">'
+      +'<div style="font-family:var(--mono);font-size:17px;color:'+col+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px">'
+      +(isWinner?'<span style="color:#ffd700;font-size:13px">▶</span>':'')+flg+' <span style="font-weight:700">'+label+'</span>'
+      +(isWinner&&score?'  <span style="color:rgba(255,200,0,.65);font-size:14px">'+score+'</span>':'')
       +'</div>'
       +(!isWinner&&!isDone&&scoreHtml||'')
       +'</div>';
@@ -22029,10 +22029,10 @@ function renderWCBracket(){
     var c1=bCard(t1.code,t1.label,t1.flag||t1.flg||'',w1,isD,!isD&&t1.code&&t2.code,null,w1?score:'');
     var c2=bCard(t2.code,t2.label,t2.flag||t2.flg||'',w2,isD,!isD&&t1.code&&t2.code,null,w2?score:'');
     var btns=(!isD&&t1.code&&t2.code)?'<div style="display:flex;gap:1px;margin-top:2px">'
-      +'<button onclick="'+pickFn1+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
-      +'<button onclick="'+pickFn2+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
+      +'<button onclick="'+pickFn1+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
+      +'<button onclick="'+pickFn2+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    return'<div style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px;margin:1px 0">'+c1+c2+(!isD&&score?'<div style="font-family:var(--mono);font-size:11px;color:rgba(0,200,255,.6);text-align:center">'+score+'</div>':'')+btns+'</div>';
+    return'<div style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:6px;margin:2px 0">'+c1+c2+(!isD&&score?'<div style="font-family:var(--mono);font-size:14px;color:rgba(0,200,255,.6);text-align:center">'+score+'</div>':'')+btns+'</div>';
   }
 
   // ── SVG connectors ──
@@ -22059,10 +22059,10 @@ function renderWCBracket(){
     var c1=bCard(m.h,m.h,flag(m.h),hWon,isD,false,null,'');
     var c2=bCard(m.a,m.a,flag(m.a),aWon,isD,false,null,'');
     var btns=!isD?'<div style="display:flex;gap:1px;margin-top:2px">'
-      +'<button onclick="wcPickWinner('+m.id+',\''+m.h+'\')" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+m.h+'▲</button>'
-      +'<button onclick="wcPickWinner('+m.id+',\''+m.a+'\')" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+m.a+'▲</button>'
+      +'<button onclick="wcPickWinner('+m.id+',\''+m.h+'\')" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+m.h+'▲</button>'
+      +'<button onclick="wcPickWinner('+m.id+',\''+m.a+'\')" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+m.a+'▲</button>'
       +'</div>':'';
-    var scoreRow=isD?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+m.score+'</div>':'<div style="font-family:var(--mono);font-size:10px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+m.time+'·'+m.date+'</div>';
+    var scoreRow=isD?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+m.score+'</div>':'<div style="font-family:var(--mono);font-size:13px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+m.time+'·'+m.date+'</div>';
     r32ColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+scoreRow+btns+'</div>';
   });
 
@@ -22085,10 +22085,10 @@ function renderWCBracket(){
     var c1=bCard(t1.code,t1.label,t1.flag,isD&&w===t1.code,isD,false,null,'');
     var c2=bCard(t2.code,t2.label,t2.flag,isD&&w===t2.code,isD,false,null,'');
     var btns=(!isD&&t1.code&&t2.code)?'<div style="display:flex;gap:1px;margin-top:2px">'
-      +'<button onclick="'+p1fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
-      +'<button onclick="'+p2fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
+      +'<button onclick="'+p1fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
+      +'<button onclick="'+p2fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    var infoRow=isD?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+(m.score||'FT')+'</div>':'<div style="font-family:var(--mono);font-size:10px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+m.time+'·'+m.date+'</div>';
+    var infoRow=isD?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+(m.score||'FT')+'</div>':'<div style="font-family:var(--mono);font-size:13px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+m.time+'·'+m.date+'</div>';
     r16ColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+infoRow+btns+'</div>';
   });
 
@@ -22112,10 +22112,10 @@ function renderWCBracket(){
     var c1=bCard(t1.code,t1.label,t1.flag,isD&&w===t1.code,isD,false,null,'');
     var c2=bCard(t2.code,t2.label,t2.flag,isD&&w===t2.code,isD,false,null,'');
     var btns=(p1fn&&p2fn&&!isD)?'<div style="display:flex;gap:1px;margin-top:2px">'
-      +'<button onclick="'+p1fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
-      +'<button onclick="'+p2fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
+      +'<button onclick="'+p1fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
+      +'<button onclick="'+p2fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    var qfInfo=q.score?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+q.score+'</div>':'<div style="font-family:var(--mono);font-size:10px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+q.date+'</div>';
+    var qfInfo=q.score?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+q.score+'</div>':'<div style="font-family:var(--mono);font-size:13px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+q.date+'</div>';
     qfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+qfInfo+btns+'</div>';
   });
 
@@ -22139,10 +22139,10 @@ function renderWCBracket(){
     var c1=bCard(t1.code,t1.label,t1.flag,isD&&w===t1.code,isD,false,null,'');
     var c2=bCard(t2.code,t2.label,t2.flag,isD&&w===t2.code,isD,false,null,'');
     var btns=(p1fn&&p2fn&&!isD)?'<div style="display:flex;gap:1px;margin-top:2px">'
-      +'<button onclick="'+p1fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
-      +'<button onclick="'+p2fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
+      +'<button onclick="'+p1fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.3);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t1.label+'▲</button>'
+      +'<button onclick="'+p2fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.25);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+t2.label+'▲</button>'
       +'</div>':'';
-    var sfInfo=s.score?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+s.score+'</div>':'<div style="font-family:var(--mono);font-size:10px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+s.date+'</div>';
+    var sfInfo=s.score?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+s.score+'</div>':'<div style="font-family:var(--mono);font-size:13px;color:rgba(150,130,180,.6);text-align:center;margin-top:1px">'+s.date+'</div>';
     sfColHtml+='<div style="position:absolute;top:'+top+'px;left:0;right:0;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:4px">'+c1+c2+sfInfo+btns+'</div>';
   });
 
@@ -22165,12 +22165,12 @@ function renderWCBracket(){
   var fc1=bCard(ft1.code,ft1.label,ft1.flag,isFinD&&finW===ft1.code,isFinD,false,null,'');
   var fc2=bCard(ft2.code,ft2.label,ft2.flag,isFinD&&finW===ft2.code,isFinD,false,null,'');
   var finBtns=(finP1fn&&finP2fn&&!isFinD)?'<div style="display:flex;gap:1px;margin-top:2px">'
-    +'<button onclick="'+finP1fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(255,200,0,.15);border:1px solid rgba(255,200,0,.5);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft1.label+'▲</button>'
-    +'<button onclick="'+finP2fn+'" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft2.label+'▲</button>'
+    +'<button onclick="'+finP1fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(255,200,0,.15);border:1px solid rgba(255,200,0,.5);color:var(--gc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft1.label+'▲</button>'
+    +'<button onclick="'+finP2fn+'" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer;font-family:var(--mono)">'+ft2.label+'▲</button>'
     +'</div>':'';
-  var finInfo=FINAL.score?'<div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+FINAL.score+'</div>':'';
-  var finColHtml='<div style="position:absolute;top:'+finTop+'px;left:0;right:0;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.4);border-radius:4px;padding:5px">'+fc1+fc2+'<div style="font-family:var(--mono);font-size:10px;color:rgba(255,200,0,.5);text-align:center;margin-top:1px">🏆 FINAL · Jul 19</div>'+finInfo+finBtns+'</div>';
-  if(finW){finColHtml+='<div style="position:absolute;top:'+(parseFloat(finTop)+BOX_H+14).toFixed(1)+'px;left:0;right:0;text-align:center"><div style="font-size:32px">'+flag(finW)+'</div><div style="font-family:var(--orb);font-size:16px;color:var(--gc);letter-spacing:2px">'+finW+'</div><div style="font-family:var(--mono);font-size:11px;color:rgba(255,200,0,.5)">CHAMPION</div></div>';}
+  var finInfo=FINAL.score?'<div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.75);text-align:center;margin-top:1px">'+FINAL.score+'</div>':'';
+  var finColHtml='<div style="position:absolute;top:'+finTop+'px;left:0;right:0;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.4);border-radius:4px;padding:5px">'+fc1+fc2+'<div style="font-family:var(--mono);font-size:13px;color:rgba(255,200,0,.5);text-align:center;margin-top:1px">🏆 FINAL · Jul 19</div>'+finInfo+finBtns+'</div>';
+  if(finW){finColHtml+='<div style="position:absolute;top:'+(parseFloat(finTop)+BOX_H+14).toFixed(1)+'px;left:0;right:0;text-align:center"><div style="font-size:32px">'+flag(finW)+'</div><div style="font-family:var(--orb);font-size:16px;color:var(--gc);letter-spacing:2px">'+finW+'</div><div style="font-family:var(--mono);font-size:14px;color:rgba(255,200,0,.5)">CHAMPION</div></div>';}
 
   // ── Assemble bracket ──
   var LABEL=20;
@@ -22192,11 +22192,11 @@ function renderWCBracket(){
   var thirdCard=bCard(tp1.code,tp1.label,tp1.flag,thirdOv&&thirdOv===tp1.code,!!thirdOv,false,null,'');
   var thirdCard2=bCard(tp2.code,tp2.label,tp2.flag,thirdOv&&thirdOv===tp2.code,!!thirdOv,false,null,'');
   var thirdBtns=(tp1.code&&tp2.code&&!thirdOv)?'<div style="display:flex;gap:1px;margin-top:2px">'
-    +'<button onclick="wcPickWinner(\'third\','+"'"+tp1.code+"'"+')" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp1.label+'▲</button>'
-    +'<button onclick="wcPickWinner(\'third\','+"'"+tp2.code+"'"+')" style="flex:1;font-size:10px;padding:1px 2px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp2.label+'▲</button>'
+    +'<button onclick="wcPickWinner(\'third\','+"'"+tp1.code+"'"+')" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp1.label+'▲</button>'
+    +'<button onclick="wcPickWinner(\'third\','+"'"+tp2.code+"'"+')" style="flex:1;font-size:13px;padding:3px 4px;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.5);color:#aaa;border-radius:2px;cursor:pointer;font-family:var(--mono)">'+tp2.label+'▲</button>'
     +'</div>':'';
   var thirdHtml='<div style="margin-top:12px;padding:8px;background:rgba(120,120,120,.08);border:1px solid rgba(120,120,120,.3);border-radius:4px">'
-    +'<div style="font-family:var(--orb);font-size:11px;color:rgba(180,180,180,.6);letter-spacing:2px;text-align:center;margin-bottom:5px">🥉 3RD PLACE · Jul 18</div>'
+    +'<div style="font-family:var(--orb);font-size:14px;color:rgba(180,180,180,.6);letter-spacing:2px;text-align:center;margin-bottom:5px">🥉 3RD PLACE · Jul 18</div>'
     +'<div style="display:flex;gap:4px">'+thirdCard+thirdCard2+'</div>'
     +thirdBtns
     +(thirdOv?'<div style="font-family:var(--mono);font-size:13px;color:#aaa;text-align:center;margin-top:3px">'+flag(thirdOv)+' '+thirdOv+' TAKES BRONZE</div>':'')
@@ -22368,7 +22368,7 @@ function _socXG(name){
 }
 
 function _soccerMC(hxg,axg,n){
-  if(!n)n=10000;
+  if(!n)n=25000;
   var hW=0,draw=0,aW=0,hG=0,aG=0,over25=0,over35=0,btts=0;
   var poissonSample=function(lam){
     var L=Math.exp(-lam),k=0,p=1;
@@ -22463,7 +22463,7 @@ function _renderSocMatchCard(g,leagueKey){
   var hXG=_socXG(g.home),aXG=_socXG(g.away);
   var hxg=hXG?(hXG.hxg||hXG.xg):1.4;
   var axg=aXG?(aXG.axg||aXG.xg):1.1;
-  var mc=_soccerMC(hxg,axg,10000);
+  var mc=_soccerMC(hxg,axg,25000);
   var hT=_socTier(mc.hWin),dT=_socTier(mc.draw),aT=_socTier(mc.aWin);
   var ouL=g.ou||2.5;
   var overP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
@@ -22576,7 +22576,7 @@ async function renderLeagueProps(key){
       var sotMC=propMC(sot,Math.max(1,sot*0.35),sotLine,5000);
       if(sotMC.overP>=0.57){var st=_socTier(sotMC.overP);if(st.g!=='SKIP')props.push({label:t.abbr+' OVER '+sotLine+' SHOTS ON TARGET',sublabel:matchLabel,prob:sotMC.overP,conf:sotMC.hitRate,grade:st.g,color:st.c,basis:t.team+' · '+sot.toFixed(1)+' SoT/G est. ('+t.xg.toFixed(2)+' xG) · MC: '+sotMC.hitRate+'% over '+sotLine});}
     });
-    var mc=_soccerMC(hXG?(hXG.hxg||hXG.xg):1.4,aXG?(aXG.axg||aXG.xg):1.1,8000);
+    var mc=_soccerMC(hXG?(hXG.hxg||hXG.xg):1.4,aXG?(aXG.axg||aXG.xg):1.1,25000);
     var btT=_socTier(mc.btts);
     if(btT.g!=='SKIP')props.push({label:'BOTH TEAMS TO SCORE',sublabel:matchLabel,prob:mc.btts,conf:Math.round(mc.btts*100),grade:btT.g,color:btT.c,basis:g.home+' '+mc.hxg.toFixed(2)+'xG · '+g.away+' '+mc.axg.toFixed(2)+'xG · MC btts: '+(mc.btts*100).toFixed(0)+'%'});
   });
@@ -22980,7 +22980,7 @@ function analyzeDrawQuarter(players,surface){
   const qWinProb=topSeed?(1/(1+Math.pow(10,(avgElo-(topSeed.elo||1500))/400))):0.25;
   return{avgElo:Math.round(avgElo),strongestSeed:topSeed,dangerPlayers,qWinProb};
 }
-function simulateTournament(drawPlayers,surface,nSim=3000){
+function simulateTournament(drawPlayers,surface,nSim=25000){
   if(!drawPlayers||!drawPlayers.length)return{champion:{name:'Unknown',prob:1},sf:[],qf:[]};
   const winProb=(a,b)=>{
     const eA=a.elo||1500;const eB=b.elo||1500;
@@ -23025,7 +23025,7 @@ function renderTennisDrawAnalysis(tournament,tour){
   const players=allPlayers.slice(0,32).map((p,i)=>({...p,seed:i<8?i+1:null,drawRank:i+1}));
   // Simulate with surface-specific ELO
   const winProb=(a,b)=>{const eA=a.elo,eB=b.elo;let p=1/(1+Math.pow(10,(eB-eA)/400));const fatigueAdj=(b.fat-a.fat)*0.012;return Math.min(0.95,Math.max(0.05,p+fatigueAdj));};
-  const nSim=5000;const wins={};players.forEach(p=>{wins[p.name]=0;});
+  const nSim=25000;const wins={};players.forEach(p=>{wins[p.name]=0;});
   for(let i=0;i<nSim;i++){let r=[...players];while(r.length>1){const n=[];for(let j=0;j<r.length;j+=2){const a=r[j],b=r[j+1]||r[j];if(!b||a===b){n.push(a);continue;}n.push(Math.random()<winProb(a,b)?a:b);}r=n;}if(r[0])wins[r[0].name]=(wins[r[0].name]||0)+1;}
   const sorted=Object.entries(wins).sort((a,b)=>b[1]-a[1]);
   const champion=sorted[0];const top8=sorted.slice(0,8).map(([name,w])=>({name,prob:w/nSim,player:players.find(p=>p.name===name)}));
@@ -25265,7 +25265,7 @@ function runSimulator() {
   var sport = (document.getElementById('sim-sport')||{}).value || 'mlb';
   var home  = (document.getElementById('sim-home') ||{}).value;
   var away  = (document.getElementById('sim-away') ||{}).value;
-  var N     = parseInt((document.getElementById('sim-count')||{}).value||'10000');
+  var N     = parseInt((document.getElementById('sim-count')||{}).value||'25000');
   var venue = (document.getElementById('sim-venue')||{}).value||'home';
   var flags = {
     injury:  (document.getElementById('sim-inc-injury') ||{}).checked !== false,
@@ -27148,7 +27148,7 @@ function trainerAddMatchupToQueue() {
   _trQueue.push({ sport, home, away, venue: _trGv('trm-venue'),
     bookSpread: _trGf('trm-spread'), bookOU: _trGf('trm-ou'),
     homeML: _trGf('trm-hml'), awayML: _trGf('trm-aml'),
-    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 10000,
+    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 25000,
     notes: _trGv('trm-notes') });
   trainerRenderQueue();
   toast('// ADDED TO QUEUE: ' + home + ' vs ' + away, '#00f0ff');
@@ -27188,7 +27188,7 @@ function trainerRunAnalysis() {
   const cfg = { sport, home, away, venue: _trGv('trm-venue'),
     bookSpread: _trGf('trm-spread'), bookOU: _trGf('trm-ou'),
     homeML: _trGf('trm-hml'), awayML: _trGf('trm-aml'),
-    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 10000,
+    date: _trGv('trm-date'), sims: parseInt(_trGv('trm-sims')) || 25000,
     notes: _trGv('trm-notes') };
   trainerRunAnalysisFor(cfg);
   trainerTab('analysis');
@@ -27202,7 +27202,7 @@ function trainerRunAnalysisFor(cfg) {
     toast('// TEAM DATA MISSING — IMPORT ' + cfg.sport + ' TEAMS FIRST', '#ff9000'); return;
   }
   const sd = _trSportDefaults(cfg.sport);
-  const N = cfg.sims || 10000;
+  const N = cfg.sims || 25000;
 
   // Team strength ratings
   const hOff = hT.offRtg || 100; const hDef = hT.defRtg || 100;
