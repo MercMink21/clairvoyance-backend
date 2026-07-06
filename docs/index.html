@@ -3818,6 +3818,116 @@ function _migrateMlbNhlMislabel(){
   });
   if(changed){saveP(preds);try{console.warn('[migrate] re-tagged',changed,'MLB game(s) that were mislabeled NHL');}catch(e){}}
 }
+// ── Shared team->sport classifier (single source of truth) ────────────────
+// Same membership-scoring approach used live in lockPick's fallback path —
+// factored out here so the dry-run audit below can never drift from what
+// actually happens when a bet is locked today. Only handles the 4 leagues
+// that classify by team abbreviation (MLB/NHL/NBA/WNBA); NFL/CFB/soccer/
+// tennis are never abbreviation-guessed (see roster audit notes).
+function _classifyTeamsSport(hA,awA){
+  const _NHLc=new Set(['ANA','ARI','UTA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']);
+  const _NBAc=new Set(['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','NYK','OKC','ORL','PHI','PHX','POR','SAC','SA','SAS','TOR','UTA','WAS','WLA']);
+  const _WNBAc=new Set(['ATL','CHI','CON','DAL','IND','LA','LAS','LV','LVA','MIN','NY','NYL','PDX','PHX','SEA','TOR','WSH','WAS','GS','GSV']);
+  const _MLBc=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
+  const h=(hA||'').toUpperCase(),a=(awA||'').toUpperCase();
+  const _sc=s=>(s.has(h)?1:0)+(s.has(a)?1:0);
+  const _cand=[['WNBA',_sc(_WNBAc)],['MLB',_sc(_MLBc)],['NHL',_sc(_NHLc)],['NBA',_sc(_NBAc)]];
+  let best=null,bestScore=0;
+  _cand.forEach(function(c){if(c[1]>bestScore){bestScore=c[1];best=c[0];}});
+  return bestScore>0?best:'UNKNOWN';
+}
+// ── Dry-run classification audit — reports only, writes nothing ───────────
+// IMPORTANT: pure abbreviation scoring is NOT enough to safely re-tag stored
+// bets. Many city codes are genuinely valid members of more than one league
+// (BOS = Red Sox AND Celtics AND Bruins; CLE/MIA/PHI/MIL/ATL = MLB+NBA; etc),
+// so "the classifier's top pick differs from what's stored" produces false
+// positives on bets that were already correctly tagged via explicit `type`
+// at lock time. A first version of this audit did exactly that and would
+// have mislabeled real NBA history as MLB — caught in review, not shipped.
+//
+// Two independent, high-confidence signals instead:
+//   1. IMPOSSIBLE TEAM CODES — the stored sport's own roster contains NEITHER
+//      team at all. Not "ambiguous", not "another sport scored higher" —
+//      literally impossible for that sport (e.g. a stored 'NHL' bet where
+//      neither code is an NHL team). This is the closest analog to the
+//      original 'Detroit Tigers logged as NHL' bug pattern.
+//   2. OFF-SEASON DATE — the sport's own league doesn't play games on that
+//      calendar date at all (e.g. an 'NHL' bet dated July 3, mid-summer).
+//      This is what actually surfaces the reported "NHL 1-0 on 7/3" bug —
+//      team-code overlap can't catch it, since NHL doesn't play in July
+//      regardless of which teams are named.
+// Ambiguous-but-plausible cases (stored sport IS a valid home for both team
+// codes, in-season) are left untouched — never auto-write a guess.
+function _seasonImplausible(sport,dateStr){
+  if(!dateStr)return false;
+  const md=(dateStr||'').slice(5,10); // 'MM-DD'
+  if(!md)return false;
+  const inRange=(from,to)=>from<=to?(md>=from&&md<=to):(md>=from||md<=to); // handles year-wrap windows
+  // Generous windows (biased toward NOT flagging) — only catches clearly
+  // impossible dates, not edge-of-season judgment calls.
+  if(sport==='NHL')return inRange('06-28','09-15');   // Cup Final rarely past ~Jun 24; next season starts Oct
+  if(sport==='NBA')return inRange('06-28','09-15');   // Finals rarely past ~Jun 22; next season starts Oct
+  if(sport==='MLB')return inRange('11-10','02-10');   // World Series ends ~early Nov; spring training mid-Feb
+  if(sport==='WNBA')return inRange('11-01','04-20');  // Finals end ~late Oct; next season starts May
+  return false;
+}
+function auditBetClassification(){
+  const preds=getP();
+  const scopedSports=new Set(['MLB','NHL','NBA','WNBA']);
+  const rosterSets={
+    MLB:new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']),
+    NHL:new Set(['ANA','ARI','UTA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']),
+    NBA:new Set(['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','NYK','OKC','ORL','PHI','PHX','POR','SAC','SA','SAS','TOR','UTA','WAS','WLA']),
+    WNBA:new Set(['ATL','CHI','CON','DAL','IND','LA','LAS','LV','LVA','MIN','NY','NYL','PDX','PHX','SEA','TOR','WSH','WAS','GS','GSV']),
+  };
+  const mismatches=[];
+  let checked=0,skippedAmbiguous=0;
+  preds.forEach(p=>{
+    if(!p.hA||!p.awA)return; // player props / futures — different code path (lockProp), not in scope here
+    if(!scopedSports.has(p.sport))return; // leave other sports (NFL/CFB/soccer/tennis) untouched — not abbreviation-classified
+    checked++;
+    const h=(p.hA||'').toUpperCase(),a=(p.awA||'').toUpperCase();
+    const storedRoster=rosterSets[p.sport];
+    const teamCodesImpossible=storedRoster&&!storedRoster.has(h)&&!storedRoster.has(a);
+    const dateImpossible=_seasonImplausible(p.sport,p.date);
+    if(!teamCodesImpossible&&!dateImpossible)return; // plausible as stored — leave alone
+    const correct=_classifyTeamsSport(p.hA,p.awA);
+    if(correct==='UNKNOWN'||correct===p.sport){skippedAmbiguous++;return;} // no confident alternate — don't guess
+    mismatches.push({id:p.id,date:p.date,hA:p.hA,awA:p.awA,betOn:p.betOn,outcome:p.outcome,
+      storedSport:p.sport,storedLeague:p.league,correctSport:correct,
+      reason:[teamCodesImpossible?'impossible team codes for '+p.sport:null,dateImpossible?p.sport+' off-season on this date':null].filter(Boolean).join(' + ')});
+  });
+  const report={totalPreds:preds.length,teamBetsChecked:checked,skippedAmbiguous,mismatchCount:mismatches.length,mismatches};
+  try{
+    console.log('%c[AUDIT] Bet classification dry-run — '+mismatches.length+' high-confidence mismatch(es) out of '+checked+' team bets checked ('+skippedAmbiguous+' ambiguous cases skipped, not flagged)','font-weight:bold;color:#f000ff');
+    if(mismatches.length)console.table(mismatches);
+    else console.log('No high-confidence mismatches — all stored team bets are plausible as tagged.');
+  }catch(e){}
+  return report;
+}
+// ── Apply fix — only run after reviewing auditBetClassification() output ──
+// Re-tags ONLY the bets the audit flagged (recomputes fresh each call so it
+// always reflects the current classifier), and only sports in scope above.
+// Writes to localStorage. Returns the same-shaped report with an `applied`
+// timestamp so you have a record of what changed and when.
+function applyBetClassificationFix(){
+  const report=auditBetClassification();
+  if(!report.mismatchCount){console.log('[APPLY] Nothing to change.');return report;}
+  const preds=getP();
+  report.mismatches.forEach(m=>{
+    const p=preds.find(x=>x.id===m.id);
+    if(!p)return;
+    p.sport=m.correctSport;
+    p.league=m.correctSport; // league mirrors sport for these 4 leagues (no sub-league split)
+  });
+  saveP(preds);
+  report.applied=new Date().toISOString();
+  try{console.log('%c[APPLY] Re-tagged '+report.mismatchCount+' bet(s).','font-weight:bold;color:#00da88');}catch(e){}
+  try{updHdr();renderOverall();renderOverallHistory();renderHomePage();}catch(e){}
+  return report;
+}
+window.auditBetClassification=auditBetClassification;
+window.applyBetClassificationFix=applyBetClassificationFix;
 // Sync localStorage picks FROM backend (called on init)
 async function syncPicksFromBackend(){
   if(!API_ONLINE())return;
