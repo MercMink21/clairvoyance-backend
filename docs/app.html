@@ -2509,11 +2509,13 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
     localStorage.setItem('preds',JSON.stringify(preds));
   }catch(e){}
 })();
-// ── Seed World Cup Round of 16 bet history (Jul 5 2026 — both settled WINs) ──
+// ── Seed World Cup Round of 16 bet history (Jul 5 2026 — 4 settled WINs: NOR & ENG, ML + SPREAD) ──
 (function seedWCR16Bets(){
   const wc=[
     {id:'wc_r16_nor_brazil_spread',sport:'WC',league:'WC',betType:'SPREAD',betOn:'Norway -0.5',hA:'NOR',awA:'BRA',winProb:.42,ml:'+225',decOdds:3.25,wager:100,outcome:'win',date:'2026-07-05',lockedAt:1751749200000,note:'World Cup R16 WIN. Norway -0.5 vs Brazil — NOR won 2-1.'},
     {id:'wc_r16_eng_mexico_spread',sport:'WC',league:'WC',betType:'SPREAD',betOn:'England -0.5',hA:'ENG',awA:'MEX',winProb:.58,ml:'-135',decOdds:1.74,wager:100,outcome:'win',date:'2026-07-05',lockedAt:1751763600000,note:'World Cup R16 WIN. England -0.5 vs Mexico — ENG won 2-1.'},
+    {id:'wc_r16_nor_brazil_ml',sport:'WC',league:'WC',betType:'ML',betOn:'Norway ML',hA:'NOR',awA:'BRA',winProb:.42,ml:'+225',decOdds:3.25,wager:100,outcome:'win',date:'2026-07-05',lockedAt:1751749200000,note:'World Cup R16 WIN. Norway ML vs Brazil — NOR won 2-1.'},
+    {id:'wc_r16_eng_mexico_ml',sport:'WC',league:'WC',betType:'ML',betOn:'England ML',hA:'ENG',awA:'MEX',winProb:.58,ml:'-135',decOdds:1.74,wager:100,outcome:'win',date:'2026-07-05',lockedAt:1751763600000,note:'World Cup R16 WIN. England ML vs Mexico — ENG won 2-1.'},
   ];
   try{
     const preds=JSON.parse(localStorage.getItem('preds')||'[]');
@@ -14192,12 +14194,17 @@ function _renderWimBracket(tour,activeRound,genderFilter){
 
   function _ww(rnd,k){try{return JSON.parse(localStorage.getItem('wim_wins_'+rnd+'_'+k)||'{}')}catch(e){return{}}}
 
-  // Live score/winner lookup — matches ESPN-style live_data.json tennis feed by last name
+  // Live score/winner lookup — matches ESPN-style live_data.json tennis feed by last name.
+  // Scoped to Wimbledon only (via the feed's `tournament` field) — without this filter,
+  // a same-surname player in a concurrent real-world ATP/WTA event could silently
+  // overwrite a Wimbledon bracket winner via loose substring matching.
   function _wimLiveLookup(p1,p2){
     try{
       const ld=window.__CV_LIVE;
-      const arr=(ld&&ld.tennis)||window._liveTennisMatches;
-      if(!arr||!arr.length||!p1||!p2||p1==='TBD'||p2==='TBD')return null;
+      const rawArr=(ld&&ld.tennis)||window._liveTennisMatches;
+      if(!rawArr||!rawArr.length||!p1||!p2||p1==='TBD'||p2==='TBD')return null;
+      const arr=rawArr.filter(x=>/wimbledon/i.test(x.tournament||x.tour||''));
+      if(!arr.length)return null;
       const p1n=p1.split('.').pop()||p1,p2n=p2.split('.').pop()||p2;
       const g=arr.find(x=>{const h=(x.home||x.p1||''),a=(x.away||x.p2||'');return(h.includes(p1n)||a.includes(p1n))&&(h.includes(p2n)||a.includes(p2n));});
       if(!g)return null;
@@ -14229,7 +14236,12 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const r3w=r3d.map((m,i)=>m.winner||r3wins[i]||null);
+    // _validWin: guards against a stale/corrupted override (e.g. from the
+    // pre-fix cross-tournament live-lookup bug) claiming a winner who isn't
+    // actually one of the two players in that bracket slot — silently
+    // ignore it instead of displaying an impossible advancing player.
+    const _validWin=(w,p1,p2)=>(w&&(w===p1||w===p2))?w:null;
+    const r3w=r3d.map((m,i)=>m.winner||_validWin(r3wins[i],m.p1,m.p2)||null);
     const r4data=[];
     for(let i=0;i<16;i+=2){
       const p1=r3w[i]||null,p2=r3w[i+1]||null;
@@ -14240,7 +14252,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
     }
     const r4wins=_ww('r4',k);
     r4data.forEach((m,i)=>{
-      if(!r4wins[i]&&m.p1&&m.p2){
+      if(!_validWin(r4wins[i],m.p1,m.p2)&&m.p1&&m.p2){
         const live=_wimLiveLookup(m.p1,m.p2);
         if(live&&live.state){
           if(live.winner){r4wins[i]=live.winner;m.score=live.score;}
@@ -14248,7 +14260,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const r4w=r4data.map((m,i)=>r4wins[i]||null);
+    const r4w=r4data.map((m,i)=>_validWin(r4wins[i],m.p1,m.p2));
     const qfdata=[];
     for(let i=0;i<8;i+=2){
       const p1=r4w[i]||null,p2=r4w[i+1]||null;
@@ -14259,7 +14271,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
     }
     const qfwins=_ww('qf',k);
     qfdata.forEach((m,i)=>{
-      if(!qfwins[i]&&m.p1&&m.p2){
+      if(!_validWin(qfwins[i],m.p1,m.p2)&&m.p1&&m.p2){
         const live=_wimLiveLookup(m.p1,m.p2);
         if(live&&live.state){
           if(live.winner){qfwins[i]=live.winner;m.score=live.score;}
@@ -14267,11 +14279,11 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const qfw=qfdata.map((m,i)=>qfwins[i]||null);
+    const qfw=qfdata.map((m,i)=>_validWin(qfwins[i],m.p1,m.p2));
     const sfdata=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''},{p1:qfw[2]||null,s1:'',p2:qfw[3]||null,s2:''}];
     const sfwins=_ww('sf',k);
     sfdata.forEach((m,i)=>{
-      if(!sfwins[i]&&m.p1&&m.p2){
+      if(!_validWin(sfwins[i],m.p1,m.p2)&&m.p1&&m.p2){
         const live=_wimLiveLookup(m.p1,m.p2);
         if(live&&live.state){
           if(live.winner){sfwins[i]=live.winner;m.score=live.score;}
@@ -14279,11 +14291,11 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const sfw=sfdata.map((m,i)=>sfwins[i]||null);
+    const sfw=sfdata.map((m,i)=>_validWin(sfwins[i],m.p1,m.p2));
     const fdata=[{p1:sfw[0]||null,s1:'',p2:sfw[1]||null,s2:''}];
     const fwins=_ww('f',k);
     fdata.forEach((m,i)=>{
-      if(!fwins[i]&&m.p1&&m.p2){
+      if(!_validWin(fwins[i],m.p1,m.p2)&&m.p1&&m.p2){
         const live=_wimLiveLookup(m.p1,m.p2);
         if(live&&live.state){
           if(live.winner){fwins[i]=live.winner;m.score=live.score;}
@@ -14291,7 +14303,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const fw=[fwins[0]||null];
+    const fw=[_validWin(fwins[0],fdata[0]?.p1,fdata[0]?.p2)];
     return {r3d,r3w,r4data,r4w,qfdata,qfw,sfdata,sfw,fdata,fw};
   }
 
@@ -22694,15 +22706,54 @@ function renderTournamentFilter(event){
       }).join('');
     }
   }else if(event==='wimbledon'){
-    el.innerHTML=`<div class="card" style="border-left:3px solid var(--nc)">
-      <div style="font-family:var(--mono);font-size:17px;color:var(--nc);letter-spacing:2px;margin-bottom:6px">🌿 WIMBLEDON 2026</div>
-      <div style="font-family:var(--mono);font-size:17px;color:var(--t2)">June 29 – July 12, 2026 · London, England · Grass</div>
-      <div style="font-family:var(--mono);font-size:16px;color:var(--t3);margin-top:6px">SCHEDULE NOT YET AVAILABLE · Draws released ~June 27</div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-o btn-sm" onclick="renderSlam('wim');T('ten','slams')">VIEW PREVIEW</button>
-        <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('wimbledon','atp')">DRAW ANALYSIS</button>
-      </div>
-    </div>`;
+    // Live/current tournament — show today + the next 7 days of rounds
+    // instead of a static "schedule not available" placeholder (that message
+    // is only correct before the draw is released; Wimbledon's draw and R3-R4
+    // are already underway by this point in the calendar).
+    const t=(typeof TEN_TOURNAMENTS!=='undefined'&&TEN_TOURNAMENTS[0])||null;
+    const _parseRoundEnd=ds=>{const m=/([A-Za-z]+)\s+(\d+)\s*$/.exec(ds||'');if(!m)return null;const d=new Date(`${m[1]} ${m[2]}, 2026 12:00:00`);return isNaN(d)?null:d;};
+    const _parseRoundStart=ds=>{const m=/^([A-Za-z]+)\s+(\d+)/.exec(ds||'');if(!m)return null;const d=new Date(`${m[1]} ${m[2]}, 2026 12:00:00`);return isNaN(d)?null:d;};
+    const winStart=new Date(TODAY+'T12:00:00');
+    const winEnd=new Date(winStart.getTime()+7*86400000);
+    const rounds=(t?.rounds||[]).filter(r=>{
+      const rs=_parseRoundStart(r.dates),re=_parseRoundEnd(r.dates)||rs;
+      return rs&&re&&re>=winStart&&rs<=winEnd;
+    });
+    if(!t||!rounds.length){
+      el.innerHTML=`<div class="card" style="border-left:3px solid var(--nc)">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--nc);letter-spacing:2px;margin-bottom:6px">🌿 WIMBLEDON 2026</div>
+        <div style="font-family:var(--mono);font-size:17px;color:var(--t2)">June 29 – July 12, 2026 · London, England · Grass</div>
+        <div style="font-family:var(--mono);font-size:16px;color:var(--t3);margin-top:6px">NO ROUNDS SCHEDULED IN THE NEXT 7 DAYS</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-o btn-sm" onclick="renderSlam('wim');T('ten','slams')">VIEW PREVIEW</button>
+          <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('wimbledon','atp')">DRAW ANALYSIS</button>
+        </div>
+      </div>`;
+    }else{
+      el.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">🌿 WIMBLEDON 2026 — TODAY + NEXT 7 DAYS</div>`+
+      rounds.map(r=>{
+        const matches=[...(r.atp||[]).map(m=>({...m,tour:'ATP'})),...(r.wta||[]).map(m=>({...m,tour:'WTA'}))];
+        if(!matches.length){
+          return`<div class="card" style="border-left:2px solid var(--nc);margin-bottom:8px">
+            <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:4px">${r.name} · ${r.dates}</div>
+            <div style="font-family:var(--mono);font-size:15px;color:var(--t3)">Matchups pending previous round completion</div>
+          </div>`;
+        }
+        return matches.map(m=>{
+          const done=!!m.winner;
+          const col=done?'var(--t3)':'var(--nc)';
+          return`<div class="card" style="border-left:2px solid ${col};margin-bottom:8px">
+            <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:4px">${m.tour} · ${r.name} · ${r.dates} ${done?'FINAL':''}</div>
+            <div style="font-family:var(--orb);font-size:19px;font-weight:700">${m.p1||''} vs ${m.p2||''}</div>
+            ${done?`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${m.winner} won ${m.score||''}</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <button class="btn btn-p btn-sm" onclick="renderSlam('wim');T('ten','slams')">FULL DRAW</button>
+              <button class="btn btn-o btn-sm" onclick="renderTennisDrawAnalysis('wimbledon','${m.tour.toLowerCase()}')">DRAW ANALYSIS</button>
+            </div>
+          </div>`;
+        }).join('');
+      }).join('');
+    }
   }
 }
 function renderTennisScheduleOdds(filterTour='all'){
