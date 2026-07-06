@@ -5358,7 +5358,17 @@ function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
 function clrP(){PAR=[];renderLegs();const _pr=document.getElementById('p-res');if(_pr)_pr.innerHTML='';const _lc=document.getElementById('lc');if(_lc)_lc.textContent='(0)';}
 function renderLegs(){const el=document.getElementById('p-legs');if(!el)return;const _lc2=document.getElementById('lc');if(_lc2)_lc2.textContent=`(${PAR.length})`;if(!PAR.length){el.innerHTML='<div class="empty" style="padding:8px">NO LEGS</div>';return;}el.innerHTML=PAR.map((l,i)=>`<div class="pleg"><div><div style="font-family:var(--orb);font-size:16px;font-weight:700;color:var(--pc)">${l.name}</div><div class="mono" style="font-size:14px;color:var(--t3)">${l.matchup} · ${(l.prob*100).toFixed(1)}% · ${l.ml}</div></div><button style="background:var(--hc);color:#fff;border:none;border-radius:2px;width:20px;height:20px;cursor:pointer;font-weight:700" onclick="removeLeg(${i})">×</button></div>`).join('');}
 function calcP(){const _pr2=document.getElementById('p-res');if(PAR.length<2){if(_pr2)_pr2.innerHTML='';return;}const w=parseFloat(document.getElementById('p-w')?.value||100)||100;const cP=PAR.reduce((p,l)=>p*l.prob,1);const cD=PAR.reduce((p,l)=>p*l.dec,1);const cML=p2ml(cP),pay=+(w*cD).toFixed(2),e2=ev(cP,cD);const cs=chipC(cP,e2);if(_pr2)_pr2.innerHTML=`<div class="card cp" style="text-align:center;padding:12px"><span class="pill ${cs.pl}">${cs.lb}</span><div class="mono" style="font-size:28px;font-weight:700;color:var(--vc);margin:7px 0">${cML}</div><div class="mono" style="color:var(--nc);font-size:17px">$${w} → $${pay.toLocaleString()}</div><div class="mono" style="font-size:15px;color:var(--t2);margin-top:5px">EV: <span style="color:${e2>=0?'var(--nc)':'var(--hc)'}">${e2>=0?'+':''}${(e2*100).toFixed(2)}%</span> · ${(cP*100).toFixed(3)}% PROB</div><button class="btn btn-p btn-fw" style="margin-top:9px" onclick="lockParlay(${w},${cP.toFixed(4)},'${cML}',${cD.toFixed(3)})">// OPTIMAL PARLAY</button></div>`;}
-function lockParlay(w,p,ml,d,sport){const sp=sport||'MLB';const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:sp,betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:sp+' PARLAY',sport:sp,betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}}
+function lockParlay(w,p,ml,d,sport){
+  // Do NOT blind-default to MLB — the generic parlay builder (calcP()) never
+  // passes a sport, since a parlay can combine legs from any sport, so every
+  // multi-sport parlay was silently mislabeled MLB, corrupting MLB accuracy/
+  // social cards. 'MISC' is the app's existing established catch-all bucket
+  // for genuinely unclassifiable bets (see _normSport) — reused here instead
+  // of inventing a new tag. Sport-specific parlay panes (e.g. NHL) already
+  // pass their real sport explicitly and are unaffected.
+  const sp=sport||'MISC';
+  const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:sp,betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:sp+' PARLAY',sport:sp,betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}
+}
 
 // ═══ LIVE TRACKER ═══════════════════════════════════════════
 function igWP(hs,as,inn,top,prior){const outs=(inn-1)*3+(top?0:1.5);const done=Math.min(outs/27,.95);const diff=hs-as;const sP=diff===0?.5:diff>0?.5+Math.min(.45,diff*.12*(1+done)):.5-Math.min(.45,Math.abs(diff)*.12*(1+done));return Math.min(.97,Math.max(.03,prior*(1-done)+sP*done));}
