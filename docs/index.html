@@ -70,6 +70,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   justify-self:center;white-space:nowrap;animation:logoPulse 4s ease-in-out infinite}
 @keyframes logoPulse{0%,100%{text-shadow:0 0 10px #f000ff,0 0 28px rgba(240,0,255,.75),0 0 60px rgba(240,0,255,.35)}50%{text-shadow:0 0 16px #f000ff,0 0 42px rgba(240,0,255,.9),0 0 90px rgba(240,0,255,.55),0 0 150px rgba(240,0,255,.2)}}
 @keyframes betPopupResultPop{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes cvLetterReveal{0%{transform:translateY(-14px) scale(.4);opacity:0}60%{transform:translateY(2px) scale(1.15);opacity:1}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes cvLockSnap{0%{transform:scale(.7) rotate(-8deg);opacity:0}50%{transform:scale(1.15) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(0deg);opacity:1}}
 .hdr-l{display:flex;align-items:center;gap:8px}
 .hdr-r{display:flex;align-items:center;gap:10px;justify-content:flex-end}
 .hs{text-align:center}.hs-v{font-family:var(--mono);font-size:16px;color:var(--nc)}.hs-l{font-size:7px;letter-spacing:2px;color:var(--t3);text-transform:uppercase}
@@ -6172,18 +6174,26 @@ window.showBetPopup=function(cfg){
     return;
   }
   const inner=document.getElementById('bet-popup-inner');
-  // Settle results (WIN/LOSS/PUSH) get a noticeably bigger, more emphatic
-  // popup than lock/export — wider card, larger title/bet text, and the
-  // result badge below is enlarged further still with a pop-in animation.
+  // Settle results (WIN/LOSS/PUSH) AND lock confirmations both get a much
+  // bigger, more emphatic popup than before — takes up a large share of the
+  // screen instead of a small corner card. Settle additionally gets a
+  // letter-by-letter reveal of WIN/LOSS/PUSH and a longer dwell time.
   const isSettle=!isLock&&!isExport;
+  const bigBox=isSettle||isLock;
   if(inner){
     inner.style.border=`1px solid ${col}`;
-    inner.style.boxShadow=isSettle?`0 0 44px ${col}dd,0 0 90px ${col}55,inset 0 0 30px ${col}12,0 0 110px rgba(0,0,0,.85)`:`0 0 28px ${col}cc,0 0 60px ${col}44,inset 0 0 24px ${col}0a,0 0 80px rgba(0,0,0,.8)`;
-    inner.style.maxWidth=isSettle?'480px':'400px';
+    inner.style.boxShadow=bigBox?`0 0 44px ${col}dd,0 0 90px ${col}55,inset 0 0 30px ${col}12,0 0 110px rgba(0,0,0,.85)`:`0 0 28px ${col}cc,0 0 60px ${col}44,inset 0 0 24px ${col}0a,0 0 80px rgba(0,0,0,.8)`;
+    inner.style.maxWidth=bigBox?'min(92vw, 640px)':'400px';
   }
-  const glow=document.getElementById('bet-popup-glow');if(glow){glow.style.background=`linear-gradient(90deg,transparent,${col},transparent)`;glow.style.boxShadow=isSettle?`0 0 22px ${col}`:`0 0 14px ${col}`;glow.style.height=isSettle?'4px':'3px';}
-  const titleEl=document.getElementById('bet-popup-title');if(titleEl){titleEl.innerHTML=`<span style="margin-right:8px">${icon}</span>${title}`;titleEl.style.color=col;titleEl.style.textShadow=`0 0 12px ${col}`;titleEl.style.fontSize=isSettle?'21px':'17px';}
-  const betEl=document.getElementById('bet-popup-bet');if(betEl){betEl.textContent=cfg.betOn||'';betEl.style.color=isLock?'#fff':col;betEl.style.fontSize=isSettle?'17px':'14px';}
+  const glow=document.getElementById('bet-popup-glow');if(glow){glow.style.background=`linear-gradient(90deg,transparent,${col},transparent)`;glow.style.boxShadow=bigBox?`0 0 22px ${col}`:`0 0 14px ${col}`;glow.style.height=bigBox?'4px':'3px';}
+  const titleEl=document.getElementById('bet-popup-title');if(titleEl){titleEl.innerHTML=`<span style="margin-right:8px">${icon}</span>${title}`;titleEl.style.color=col;titleEl.style.textShadow=`0 0 12px ${col}`;titleEl.style.fontSize=bigBox?'26px':'17px';}
+  const betEl=document.getElementById('bet-popup-bet');if(betEl){betEl.textContent=cfg.betOn||'';betEl.style.color=isLock?'#fff':col;betEl.style.fontSize=bigBox?'20px':'14px';}
+  // Lock confirmation gets its own icon animation (rotating/snapping lock)
+  // instead of the settle pop-in, since there's no WIN/LOSS text to reveal.
+  if(titleEl){
+    titleEl.style.animation='none';void titleEl.offsetWidth;
+    if(isLock)titleEl.style.animation='cvLockSnap .5s cubic-bezier(.34,1.56,.64,1)';
+  }
   const sportCol={MLB:'#00f0ff',NHL:'#4d79ff',NBA:'#f000ff',NFL:'#ff9000',TEN:'#bbff00',TENNIS:'#bbff00',WNBA:'#ff7700'}[cfg.sport]||'rgba(220,190,255,.7)';
   const prob=cfg.prob?(cfg.prob>1?cfg.prob.toFixed(1)+'%':(cfg.prob*100).toFixed(1)+'%'):null;
   const ev=cfg.prob&&cfg.decOdds?((cfg.prob>1?cfg.prob/100:cfg.prob)*cfg.decOdds-1)*100:null;
@@ -6201,25 +6211,35 @@ window.showBetPopup=function(cfg){
     if(!isLock){
       resEl.style.display='block';resEl.style.background=isWin?'rgba(0,230,68,.1)':isLoss?'rgba(255,26,26,.1)':'rgba(255,144,0,.08)';
       resEl.style.border=`2px solid ${col}77`;resEl.style.boxShadow=`inset 0 0 26px ${col}18,0 0 20px ${col}33`;
-      resEl.style.padding='20px 16px';
+      resEl.style.padding='34px 20px';
       const rtEl=document.getElementById('bet-popup-result-text');
       if(rtEl){
-        rtEl.textContent=isWin?'WIN':isLoss?'LOSS':'PUSH';
+        const word=isWin?'WIN':isLoss?'LOSS':'PUSH';
         rtEl.style.color=col;
-        rtEl.style.fontSize='40px';
-        rtEl.style.letterSpacing='7px';
-        rtEl.style.textShadow=`0 0 18px ${col},0 0 36px ${col}88`;
-        // Pop-in emphasis animation — restart by forcing reflow
-        rtEl.style.animation='none';void rtEl.offsetWidth;rtEl.style.animation='betPopupResultPop .45s cubic-bezier(.34,1.56,.64,1)';
+        rtEl.style.fontSize='72px';
+        rtEl.style.letterSpacing='10px';
+        rtEl.style.textShadow=`0 0 24px ${col},0 0 48px ${col}88`;
+        // Letter-by-letter reveal — total time is always exactly 2s no
+        // matter the word length (WIN=3 letters, LOSS/PUSH=4), so each
+        // letter's stagger is 2000ms / letter count. Each letter fades/pops
+        // in individually (W... then I... then N...), then the whole word
+        // holds steady.
+        const stepMs=2000/word.length;
+        rtEl.innerHTML=word.split('').map((ch,i)=>
+          `<span style="display:inline-block;opacity:0;animation:cvLetterReveal .35s cubic-bezier(.34,1.56,.64,1) forwards;animation-delay:${(i*stepMs/1000).toFixed(3)}s">${ch}</span>`
+        ).join('');
       }
-      const rsEl=document.getElementById('bet-popup-result-sub');if(rsEl){rsEl.textContent=cfg.score?`FINAL: ${cfg.score}`:cfg.note||'BET SETTLED';rsEl.style.fontSize='13px';rsEl.style.marginTop='6px';}
+      const rsEl=document.getElementById('bet-popup-result-sub');if(rsEl){rsEl.textContent=cfg.score?`FINAL: ${cfg.score}`:cfg.note||'BET SETTLED';rsEl.style.fontSize='16px';rsEl.style.marginTop='10px';}
     }else{resEl.style.display='none';}
   }
   const fill=document.getElementById('bet-popup-progress-fill');
   if(fill){fill.style.transition='none';fill.style.width='100%';fill.style.background=`${col}55`;}
   el.style.setProperty('display','flex','important');
-  if(fill)setTimeout(()=>{fill.style.transition='width 5s linear';fill.style.width='0%';},40);
-  _bpTimer=setTimeout(()=>window.closeBetPopup(),5000);
+  // Settle results hold for 7s (long enough to read the full letter-reveal
+  // plus the score/details); lock confirmations keep the shorter 5s dwell.
+  const dwellMs=isSettle?7000:5000;
+  if(fill)setTimeout(()=>{fill.style.transition=`width ${dwellMs/1000}s linear`;fill.style.width='0%';},40);
+  _bpTimer=setTimeout(()=>window.closeBetPopup(),dwellMs);
 };
 window.closeBetPopup=function(){
   const el=document.getElementById('bet-popup');if(el){el.style.removeProperty('display');el.style.display='none';}
