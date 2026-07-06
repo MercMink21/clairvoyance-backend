@@ -18872,7 +18872,6 @@ function renderTennisToday(filterTour){
 
   for(const tourney of TEN_TOURNAMENTS){
     const sc=surfCol[tourney.surface]||'var(--t3)';
-    const activeRound=tourney.rounds.find(r=>r.id===tourney.currentRound)||tourney.rounds[0];
 
     // ── Tournament header ──
     html+=`<div style="background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.12);border-radius:3px;padding:10px 12px;margin-bottom:10px">
@@ -18882,49 +18881,42 @@ function renderTennisToday(filterTour){
           <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${tourney.dates} · ${tourney.location} · ${tourney.prize} · <span style="color:${sc}">${tourney.surface.toUpperCase()}</span></div>
         </div>
         <div style="font-family:var(--mono);font-size:14px;color:var(--nc);text-align:right">
-          ACTIVE: <strong>${activeRound.name.toUpperCase()}</strong><br>
-          <span style="color:var(--t3)">${activeRound.dates}</span>
+          ALL UPCOMING ROUNDS
         </div>
       </div>
     </div>`;
 
-    // ── Round selector ──
-    const rAbbr=r=>r.name==='Quarterfinals'?'QF':r.name==='Semifinals'?'SF':r.name==='Final'?'F':r.name.replace('Round ','R');
-    html+=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px">`;
-    for(const r of tourney.rounds){
-      const isCur=r.id===tourney.currentRound;
-      const hasData=r.atp.length||r.wta.length;
-      html+=`<button class="btn btn-sm" onclick="setTourneyRound('${tourney.id}','${r.id}')" style="
-        padding:4px 10px;font-family:var(--mono);font-size:14px;letter-spacing:1px;
-        border:1px solid ${isCur?'var(--nc)':hasData?'rgba(0,200,200,.4)':'rgba(255,255,255,.15)'};
-        color:${isCur?'var(--nc)':hasData?'var(--t2)':'var(--t3)'};
-        background:${isCur?'rgba(0,255,200,.1)':'transparent'};
-        font-weight:${isCur?700:400}
-      ">${rAbbr(r)}</button>`;
-    }
-    html+=`</div>`;
-
-    // ── Matches in current round ──
-    const atpMs=(AF!=='WTA'?activeRound.atp:[]).filter(m=>!m.winner).map(m=>({...m,_tour:'ATP'}));
-    const wtaMs=(AF!=='ATP'?activeRound.wta:[]).filter(m=>!m.winner).map(m=>({...m,_tour:'WTA'}));
+    // Round-selector removed per request — combine every round's upcoming
+    // (no-winner-yet) matches into one list, so the tab always shows the
+    // latest matchups without manual round-picking, and completed matches
+    // disappear on their own as winners get recorded. FINAL is excluded
+    // here by design (same as the Wimbledon-draw MATCHES view) since it
+    // falls outside the active Jul 3-12 window and appears via normal
+    // round progression once reached.
+    const inWindow=r=>['r3','r4','qf','sf'].includes(r.id);
+    const roundsInWindow=tourney.rounds.filter(inWindow);
+    let atpMs=[],wtaMs=[];
+    roundsInWindow.forEach(r=>{
+      if(AF!=='WTA')atpMs.push(...r.atp.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD').map(m=>({...m,_tour:'ATP',_roundName:r.name})));
+      if(AF!=='ATP')wtaMs.push(...r.wta.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD').map(m=>({...m,_tour:'WTA',_roundName:r.name})));
+    });
     const allMs=[...atpMs,...wtaMs];
 
     if(!allMs.length){
-      const prevRound=tourney.rounds[tourney.rounds.findIndex(r=>r.id===tourney.currentRound)-1];
       html+=`<div class="empty" style="border:1px dashed rgba(0,240,255,.2);border-radius:3px;padding:24px;text-align:center">
-        <div style="font-family:var(--mono);font-size:16px;color:var(--nc);margin-bottom:6px">${activeRound.name.toUpperCase()} — MATCHUPS TBD</div>
-        <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${prevRound?'Check back after '+prevRound.name+' results are confirmed.':'Matches will appear here once scheduled.'}</div>
+        <div style="font-family:var(--mono);font-size:16px;color:var(--nc);margin-bottom:6px">NO MATCHUPS SET YET</div>
+        <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">Matches will appear here once scheduled.</div>
       </div>`;
     } else {
       // Section headers for ATP / WTA when showing ALL
       if(AF==='ALL'&&atpMs.length&&wtaMs.length){
         html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">// ATP — ${atpMs.length} MATCHES</div>`;
-        html+=atpMs.map(m=>_tenMatchCard(m,tourney,activeRound.name)).join('');
+        html+=atpMs.map(m=>_tenMatchCard(m,tourney,m._roundName)).join('');
         html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin:12px 0 8px">// WTA — ${wtaMs.length} MATCHES</div>`;
-        html+=wtaMs.map(m=>_tenMatchCard(m,tourney,activeRound.name)).join('');
+        html+=wtaMs.map(m=>_tenMatchCard(m,tourney,m._roundName)).join('');
       } else {
-        html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">// ${allMs.length} MATCHES · ${tourney.name} ${activeRound.name.toUpperCase()}</div>`;
-        html+=allMs.map(m=>_tenMatchCard(m,tourney,activeRound.name)).join('');
+        html+=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:8px">// ${allMs.length} MATCHES · ${tourney.name}</div>`;
+        html+=allMs.map(m=>_tenMatchCard(m,tourney,m._roundName)).join('');
       }
     }
   }
