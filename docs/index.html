@@ -2520,8 +2520,19 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
   ];
   try{
     const preds=JSON.parse(localStorage.getItem('preds')||'[]');
-    wim.forEach(b=>{if(!preds.find(p=>p.id===b.id)){preds.push(b);}});
-    localStorage.setItem('preds',JSON.stringify(preds));
+    let changed=false;
+    wim.forEach(b=>{
+      const existing=preds.find(p=>p.id===b.id);
+      if(!existing){preds.push(b);changed=true;}
+      // Self-heal: an earlier version of this seed used the wrong date
+      // (7/6 instead of the actual 7/5 R4 match date) — force-correct any
+      // copy already sitting in localStorage instead of leaving it stale
+      // forever (seeding only ever inserts, never overwrites, otherwise).
+      else if(existing.date!==b.date||existing.lockedAt!==b.lockedAt){
+        existing.date=b.date;existing.lockedAt=b.lockedAt;changed=true;
+      }
+    });
+    if(changed)localStorage.setItem('preds',JSON.stringify(preds));
   }catch(e){}
 })();
 // ── PERMANENT BET HISTORY SEED ─────────────────────────────────────────────
