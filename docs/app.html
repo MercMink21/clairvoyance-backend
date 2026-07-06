@@ -70,11 +70,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   justify-self:center;white-space:nowrap;animation:logoPulse 4s ease-in-out infinite}
 @keyframes logoPulse{0%,100%{text-shadow:0 0 10px #f000ff,0 0 28px rgba(240,0,255,.75),0 0 60px rgba(240,0,255,.35)}50%{text-shadow:0 0 16px #f000ff,0 0 42px rgba(240,0,255,.9),0 0 90px rgba(240,0,255,.55),0 0 150px rgba(240,0,255,.2)}}
 @keyframes betPopupResultPop{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
-/* Splash scan-sweep — scoped to #splash-scanline only (never #splash itself,
-   see the safety note in the markup comment). Triggered by adding the
-   .cv-sweep class via JS, not by default, so it only plays once per load. */
-#splash-scanline.cv-sweep{animation:cvScanSweep 1.1s cubic-bezier(.4,0,.2,1) forwards}
-@keyframes cvScanSweep{0%{top:0;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:100%;opacity:0}}
 @keyframes cvRingPulse{0%,100%{box-shadow:0 0 14px #f000ff,0 0 30px rgba(240,0,255,.6)}50%{box-shadow:0 0 22px #f000ff,0 0 48px rgba(240,0,255,.85)}}
 /* Letter-by-letter wordmark reveal — pure CSS keyframe (GPU-composited via
    will-change) instead of per-letter JS setTimeouts, so the stagger runs on
@@ -375,13 +370,6 @@ body{line-height:1.5}
 
 <div id="splash">
   <div id="splash-grid"></div>
-  <!-- Scan sweep — a single thin neon-cyan line that sweeps down once early
-       in the sequence (the ~25% cyan accent moment). CSS animation is scoped
-       to THIS element only, never to #splash itself (a JS-controlled-opacity
-       parent + CSS animation together is the documented bug that broke the
-       app in an earlier session — inline JS opacity gets silently overridden
-       by the cascade). -->
-  <div id="splash-scanline" style="position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,#00f0ff,transparent);box-shadow:0 0 16px #00f0ff,0 0 32px rgba(0,240,255,.6);opacity:0;pointer-events:none"></div>
   <!-- Crosshair/reticle — magenta ring + core, pulses in first (the ~75%
        magenta-dominant opening beat) before the wordmark builds. -->
   <div id="splash-ring" style="position:relative;width:64px;height:64px;margin-bottom:28px;opacity:0;transform:scale(.4);transition:opacity .6s ease,transform .6s cubic-bezier(.34,1.56,.64,1);border-radius:50%">
@@ -11890,11 +11878,6 @@ function startSplash(){
     const r=document.getElementById('splash-ring');
     if(r){r.style.opacity='1';r.style.transform='scale(1)';}
   },150);
-  // Stage 3 (500ms): cyan scan-line sweeps down once (~1.1s)
-  setTimeout(()=>{
-    const sl=document.getElementById('splash-scanline');
-    if(sl)sl.classList.add('cv-sweep');
-  },500);
   // Stage 4 (900ms): ring settles into a slow pulse while wordmark preps
   setTimeout(()=>{
     const r=document.getElementById('splash-ring');
