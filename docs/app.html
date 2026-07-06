@@ -14273,36 +14273,43 @@ function _renderWimBracket(tour,activeRound,genderFilter){
 
     function _roundData(k,dat){
       return[
-        {id:'r3',label:'R3',data:dat.r3d,winners:dat.r3w},
-        {id:'r4',label:'R4',data:dat.r4data,winners:dat.r4w},
-        {id:'qf',label:'QF',data:dat.qfdata,winners:dat.qfw},
-        {id:'sf',label:'SF',data:dat.sfdata,winners:dat.sfw},
-        {id:'f', label:'FINAL',data:dat.fdata,winners:dat.fw},
+        {id:'r3',label:'R3',data:dat.r3d,winners:dat.r3w,dates:'Jul 3 – Jul 4'},
+        {id:'r4',label:'R4',data:dat.r4data,winners:dat.r4w,dates:'Jul 6 – Jul 7'},
+        {id:'qf',label:'QF',data:dat.qfdata,winners:dat.qfw,dates:'Jul 8 – Jul 9'},
+        {id:'sf',label:'SF',data:dat.sfdata,winners:dat.sfw,dates:'Jul 11 – Jul 12'},
       ];
     }
 
     const roundsM=_roundData('atp',dataM);
     const roundsW=_roundData('wta',dataW);
 
-    const rndbts=['r3','r4','qf','sf','f'].map(r=>{
-      const lbl=r==='r3'?'R3':r==='r4'?'R4':r==='qf'?'QF':r==='sf'?'SF':'FINAL';
-      return`<button onclick="_renderWimBracket('${tour}','matches_${r}','${gf}')" style="${tbtn(selRound===r)}">${lbl}</button>`;
-    }).join('');
+    // Round-selector removed per request — MATCHES now shows every upcoming
+    // match across R3/R4/QF/SF (Jul 3 – Jul 12) in one combined list, so the
+    // latest round always appears automatically as earlier rounds complete,
+    // with no manual round-picking needed. (FINAL is Jul 13–14, outside this
+    // window, so it's intentionally excluded here — it still appears once
+    // reached via the normal round progression.)
+    const genbts=`<button onclick="_renderWimBracket('${tour}','matches','all')" style="${gbtn(gf==='all')}">ALL</button><button onclick="_renderWimBracket('men','matches','atp')" style="${gbtn(gf==='atp')}">ATP</button><button onclick="_renderWimBracket('women','matches','wta')" style="${gbtn(gf==='wta')}">WTA</button>`;
 
-    const genbts=`<button onclick="_renderWimBracket('${tour}','matches_${selRound}','all')" style="${gbtn(gf==='all')}">ALL</button><button onclick="_renderWimBracket('men','matches_${selRound}','atp')" style="${gbtn(gf==='atp')}">ATP</button><button onclick="_renderWimBracket('women','matches_${selRound}','wta')" style="${gbtn(gf==='wta')}">WTA</button>`;
-
-    let html=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${rndbts}</div>`;
+    let html=`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:1px;margin-bottom:8px">JUL 3 – JUL 12 · ALL UPCOMING ROUNDS</div>`;
     html+=`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">${genbts}</div>`;
 
     function _matchCards(rdArr,k,bo5){
-      const rd=rdArr.find(r=>r.id===selRound)||rdArr[0];
-      const upcoming=rd.data.filter((m,i)=>!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
-      const done=rd.data.filter((m,i)=>rd.winners[i]).length;
-      if(!upcoming.length)return`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.35);padding:16px;text-align:center;border:1px dashed rgba(255,255,255,.08);border-radius:4px;margin-bottom:8px">${done?'All '+rd.label+' matches complete':'No '+rd.label+' matchups set yet'}</div>`;
+      // Combine every round in the window (R3–SF) instead of one selected
+      // round — only matches with no winner yet ("upcoming") are shown, so
+      // completed matches disappear and the next round's matchups appear
+      // automatically the moment they're set (propagated from winners).
+      const allUpcoming=[];
+      rdArr.forEach(rd=>{
+        rd.data.forEach((m,i)=>{
+          if(!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD')allUpcoming.push({m,rd});
+        });
+      });
+      if(!allUpcoming.length)return`<div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.35);padding:16px;text-align:center;border:1px dashed rgba(255,255,255,.08);border-radius:4px;margin-bottom:8px">No matchups set yet for Jul 3 – Jul 12</div>`;
       const DB=k==='atp'?ATP_DB:WTA_DB;
       const tour2=k==='atp'?'ATP':'WTA';
       const sCol=k==='atp'?'var(--nc)':'var(--mc)';
-      return upcoming.map(m=>{
+      return allUpcoming.map(({m,rd})=>{
         const idx=rd.data.indexOf(m);
         const p1L=(m.p1).split('.').pop();const p2L=(m.p2).split('.').pop();
         const p1d=DB[m.p1],p2d=DB[m.p2];
