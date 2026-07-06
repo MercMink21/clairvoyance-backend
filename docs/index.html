@@ -396,9 +396,9 @@ body{line-height:1.5}
     <div style="position:absolute;right:-14px;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#f000ff;box-shadow:0 0 8px #f000ff"></div>
   </div>
   <div class="si">
-    <div id="splash-wordmark" style="font-family:'Orbitron',sans-serif;font-size:clamp(52px,13vw,110px);font-weight:900;letter-spacing:6px;color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 12px #f000ff,0 0 28px rgba(240,0,255,.7);text-align:center;line-height:1"></div>
+    <div id="splash-wordmark" style="font-family:'Orbitron',sans-serif;font-size:clamp(32px,9vw,110px);font-weight:900;letter-spacing:6px;color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 12px #f000ff,0 0 28px rgba(240,0,255,.7);text-align:center;line-height:1;white-space:nowrap"></div>
     <div id="splash-sub" style="font-family:'Orbitron',sans-serif;font-size:clamp(14px,3vw,22px);letter-spacing:clamp(3px,1vw,6px);color:#00f0ff;text-shadow:0 0 10px #00f0ff,0 0 24px rgba(0,240,255,.6);text-transform:uppercase;opacity:0;transform:translateY(8px);transition:opacity .7s ease,transform .7s ease;margin-top:0">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
-    <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:0;overflow:hidden;opacity:0;transition:opacity .5s ease"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 1.4s cubic-bezier(.4,0,.2,1);border-radius:4px"></div></div>
+    <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:0;overflow:hidden;opacity:0;transition:opacity .4s ease"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 1.1s cubic-bezier(.4,0,.2,1);border-radius:4px"></div></div>
   </div>
 <div id="splash-skip" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .6s;animation:none" onclick="try{endSplash();}catch(e){document.getElementById('splash').style.display='none';document.getElementById('app')?.classList.add('ready');document.getElementById('sp-home')?.classList.add('act');}">
   <div style="font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:4px;color:rgba(240,0,255,.5);cursor:pointer;padding:8px 16px;border:1px solid rgba(240,0,255,.2);border-radius:2px">TAP TO ENTER</div>
@@ -11874,11 +11874,14 @@ function endSplash(){
 function startSplash(){
   const sp=document.getElementById('splash');
   if(sp)sp.addEventListener('click',endSplash);
-  // Enhanced ~5s lead-in, roughly 75% neon-magenta / 25% neon-cyan screen
+  // Compressed ~6s lead-in, roughly 75% neon-magenta / 25% neon-cyan screen
   // time (grid+ring+wordmark+bar are magenta-led; the scan-sweep + subtitle
   // are the cyan beats). All stages are JS-driven opacity/transform on
   // individual child elements — never a CSS animation on #splash itself,
-  // per the documented cascade bug from an earlier session.
+  // per the documented cascade bug from an earlier session. Every stage
+  // below (including the bar's fill transition) is timed to fully complete
+  // with room to spare before the 6000ms endSplash call — nothing gets cut
+  // off mid-animation.
   // Stage 1 (50ms): grid fades in
   setTimeout(()=>{
     const g=document.getElementById('splash-grid');if(g)g.style.opacity='1';
@@ -11888,21 +11891,22 @@ function startSplash(){
     const r=document.getElementById('splash-ring');
     if(r){r.style.opacity='1';r.style.transform='scale(1)';}
   },150);
-  // Stage 3 (700ms): cyan scan-line sweeps down once (~1.1s)
+  // Stage 3 (500ms): cyan scan-line sweeps down once (~1.1s)
   setTimeout(()=>{
     const sl=document.getElementById('splash-scanline');
     if(sl)sl.classList.add('cv-sweep');
-  },700);
-  // Stage 4 (1200ms): ring settles into a slow pulse while wordmark preps
+  },500);
+  // Stage 4 (900ms): ring settles into a slow pulse while wordmark preps
   setTimeout(()=>{
     const r=document.getElementById('splash-ring');
     if(r)r.style.animation='cvRingPulse 1.6s ease-in-out infinite';
-  },1200);
-  // Stage 5 (1900ms): wordmark CLAIRVOYANCE builds in one letter at a time
+  },900);
+  // Stage 5 (1300ms): wordmark CLAIRVOYANCE builds in one letter at a time
   // (magenta). Each letter is its own span so it can fade/rise in independently;
   // the parent #splash-wordmark itself is never opacity/transform-animated.
   const WORD='CLAIRVOYANCE';
-  const LETTER_STEP=220;
+  const LETTER_STEP=120;
+  const WORDMARK_START=1300;
   setTimeout(()=>{
     const w=document.getElementById('splash-wordmark');
     if(!w)return;
@@ -11911,28 +11915,28 @@ function startSplash(){
     // compositor drives the whole reveal off the main thread so it stays
     // smooth regardless of what else the page is doing.
     w.innerHTML=WORD.split('').map((ch,i)=>'<span style="animation-delay:'+(i*LETTER_STEP)+'ms">'+ch+'</span>').join('');
-  },1900);
+  },WORDMARK_START);
   // Stage 6: subtitle fades in (cyan) only after the full wordmark has
   // finished spelling itself out
-  const wordmarkDoneAt=1900+WORD.length*LETTER_STEP+250;
+  const wordmarkDoneAt=WORDMARK_START+WORD.length*LETTER_STEP+250;
   setTimeout(()=>{
     const s=document.getElementById('splash-sub');
     if(s){s.style.opacity='1';s.style.transform='translateY(0)';}
   },wordmarkDoneAt);
   // Stage 7: loading bar reveals + fills (magenta->cyan gradient), finishing
-  // right around the 10s mark
-  const barStartAt=wordmarkDoneAt+700;
+  // comfortably before the 6s mark
+  const barStartAt=wordmarkDoneAt+350;
   setTimeout(()=>{
     const bw=document.getElementById('splash-bar-wrap');if(bw)bw.style.opacity='1';
     requestAnimationFrame(()=>{
       const bar=document.getElementById('splash-bar');if(bar)bar.style.width='100%';
     });
   },barStartAt);
-  // Stage 8: end at 10s total
-  setTimeout(endSplash,10000);
-  // Show skip button after 3s in case anything hangs
-  setTimeout(()=>{const sk=document.getElementById('splash-skip');if(sk)sk.style.opacity='1';},3000);
-  // Hard escape hatch at 13s — force show regardless of what else happened
+  // Stage 8: end at 6s total
+  setTimeout(endSplash,6000);
+  // Show skip button after 1.5s in case anything hangs
+  setTimeout(()=>{const sk=document.getElementById('splash-skip');if(sk)sk.style.opacity='1';},1500);
+  // Hard escape hatch at 8s — force show regardless of what else happened
   setTimeout(()=>{
     try{endSplash();}catch(e){}
     try{if(!document.getElementById('sp-home')?.classList.contains('act')){
@@ -11940,7 +11944,7 @@ function startSplash(){
       document.getElementById('app')?.classList.add('ready');
       document.getElementById('sp-home')?.classList.add('act');
     }}catch(e){}
-  },13000);
+  },8000);
 }
 
 // ═══ NHL/NBA LIVE TRACKER ════════════════════════════════════
