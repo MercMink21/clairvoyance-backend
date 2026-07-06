@@ -16389,6 +16389,21 @@ var _PROP_TYPES=new Set(['PROP','PLAYER','PLAYER_PROP','PP']);
 function _isProp(p){return _PROP_TYPES.has((p.betType||'').toUpperCase())||/OVER|UNDER/.test(p.betOn||'')&&/pts|reb|ast|blk|stl|pra|3pm|yds|td|hits|k\b/i.test(p.betOn||'');}
 function _isGameLine(p){return!_isProp(p);}
 
+// Maps a league-level sport tag (as stored on a bet, e.g. MLB/NHL/PWHL/PL)
+// to one of the 6 broad sports for the Sport Performance card — that card
+// aggregates across ALL leagues within a sport (e.g. NBA+WNBA+CBB all count
+// toward BASKETBALL), distinct from the League Performance card which keeps
+// every league separate.
+function _broadSportOf(tag){
+  const t=(tag||'').toUpperCase().trim();
+  if(t==='MLB')return'BASEBALL';
+  if(t==='NBA'||t==='WNBA'||t==='CBB'||t==='NCAAB')return'BASKETBALL';
+  if(t==='NFL'||t==='CFB')return'FOOTBALL';
+  if(t==='NHL'||t==='PWHL'||t==='KHL'||t==='SHL'||t==='LIIGA'||t==='NCAAH')return'HOCKEY';
+  if(t==='SOC'||t==='WC'||t==='WORLD_CUP'||t==='WORLDCUP'||t==='PL'||t==='LIGA'||t==='BL'||t==='MLS'||t==='CH')return'SOCCER';
+  if(t==='ATP'||t==='WTA'||t==='TEN'||t==='TENNIS')return'TENNIS';
+  return null; // unrecognized league — excluded from the sport-level card rather than guessed
+}
 // Sport normalization — infers correct sport from pick metadata
 function _normSport(p){
   // Explicit sport field always wins
@@ -17081,7 +17096,8 @@ function renderTrackRecord(){
     const p=per.perf;
     const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
     const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-    const subColor='rgba(220,190,255,.4)';
+    const isDate=per.key==='TODAY'||per.key==='YESTERDAY';
+    const subColor=isDate?'#00f0ff':'rgba(220,190,255,.4)';
     return`<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)">
       <div>
         <div style="font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1.5px;color:${per.pC};font-weight:700">${per.label}</div>
@@ -17158,7 +17174,7 @@ function renderTrackRecord(){
 
   <!-- ── SPORT / LEAGUE PERFORMANCE CARD ── -->
   <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// SPORT PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:10px">Breakdown by sport/league · 1080×1350 PNG</div>
+  <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:10px">Baseball, basketball, football, hockey, soccer, tennis · 1080×1350 PNG</div>
 
   <!-- Period selector -->
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
@@ -17176,7 +17192,7 @@ function renderTrackRecord(){
     <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
     <!-- Column headers -->
     <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
-      <div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div>
+      <div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
       <div style="text-align:center;font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
       <div style="text-align:center;font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
       <div style="text-align:right;font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
@@ -17193,12 +17209,16 @@ function renderTrackRecord(){
         activePeriod==='LAST MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
         allBets;
       const frameLabel=_filterDate?_fmtDay(_filterDate):(per.sub||per.label);
-      const bySport={};
-      periodBets.forEach(b=>{const s=_normSport(b)||'OTHER';if(!bySport[s])bySport[s]=[];bySport[s].push(b);});
-      const sportList=Object.keys(bySport).sort((a,b)=>bySport[b].length-bySport[a].length);
+      // Group by the 6 BROAD sports (baseball/basketball/football/hockey/soccer/
+      // tennis), not individual leagues — e.g. NBA+WNBA+CBB all roll into
+      // BASKETBALL here. League-level detail lives on the League Performance
+      // card below instead.
+      const SPORT_ORDER=['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER','TENNIS'];
+      const bySport={};SPORT_ORDER.forEach(s=>bySport[s]=[]);
+      periodBets.forEach(b=>{const s=_broadSportOf(_normSport(b));if(s&&bySport[s])bySport[s].push(b);});
+      const sportList=SPORT_ORDER;
       const totalP=cP(periodBets);
       window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel,totalP};
-      if(!sportList.length)return'<div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);padding:8px 0">NO DATA FOR THIS PERIOD</div>';
       const sportRows=sportList.slice(0,6).map(s=>{
         const p=cP(bySport[s]);
         const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
@@ -17245,7 +17265,7 @@ function renderTrackRecord(){
 
   <!-- ── LEAGUE PERFORMANCE CARD ── -->
   <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// LEAGUE PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:10px">All 19 leagues · record, win%, units · 1080×1800 PNG</div>
+  <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units · 1080×1350 PNG</div>
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
     ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
   </div>
@@ -17266,6 +17286,7 @@ function renderTrackRecord(){
       {lbl:'ATP',          codes:['ATP']},
       {lbl:'WTA',          codes:['WTA']},
       {lbl:'World Cup',    codes:['SOC','WC']},
+      {lbl:'Champions League',codes:['CH','CL']},
       {lbl:'Premier League',codes:['PL']},
       {lbl:'La Liga',      codes:['LIGA']},
       {lbl:'Bundesliga',   codes:['BL']},
@@ -17328,7 +17349,7 @@ async function _genCombinedTrackGraphic(){
   const W=1080,H=1350;
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');
-  _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
+  _cfBg(ctx,W,H);
 
   // Header — CLAIRVOYANCE pink Orbitron + teal subtitle + date top-right
   _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#f000ff',22,'center');
@@ -17360,13 +17381,18 @@ async function _genCombinedTrackGraphic(){
 
   const rC=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#e6eaff':'#ff2090';
   const uC=u=>u>=0?'#00da88':'#ff2090';
-  const periodColors={'TODAY':'#00f0ff','YESTERDAY':'#00f0ff','ROLLING 7D':'#bbff00','THIS MONTH':'rgba(0,240,255,.8)','LAST MONTH':'rgba(240,0,255,.9)','ALL TIME':'rgba(255,215,0,.95)'};
 
-  const rowH=160;const startY=hdrY+26;
+  // Rows sized to fill the available space evenly regardless of how many
+  // periods are showing (7 in the full view, 1 in the single-day filtered
+  // view) — a fixed 160px/row previously overflowed into the footer once
+  // LAST MONTH/SINCE LAUNCH were restored, and looked uneven at other counts.
+  const footerH=80;
+  const rowH=Math.min(160,(H-hdrY-26-footerH)/periods.length);
+  const startY=hdrY+26;
   periods.forEach((per,i)=>{
     const p=per.perf;
     const y=startY+i*rowH+rowH/2;
-    const pc=periodColors[per.key]||'#00f0ff';
+    const pc='#f000ff'; // every period label in neon magenta, matching the CLAIRVOYANCE title
     const isDate=per.key==='TODAY'||per.key==='YESTERDAY';
 
     // Period label — pink for period name
@@ -17406,9 +17432,8 @@ async function _genCombinedTrackGraphic(){
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(0,240,255,.35)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-track-record-'+today().replace(/-/g,'')+'.png','TRACK RECORD');
 }
@@ -17421,7 +17446,7 @@ async function _genSportPerfGraphic(){
   const W=1080,H=1350;
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');
-  _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
+  _cfBg(ctx,W,H);
   const rC=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#e6eaff':'#ff2090';
   const uC=u=>u>=0?'#00da88':'#ff2090';
   const cP=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};};
@@ -17443,7 +17468,7 @@ async function _genSportPerfGraphic(){
   const cX={sport:80,record:440,pct:670,units:W-80};
   const hdrY=168;
   ctx.globalAlpha=.45;
-  _glowText(ctx,'LEAGUE',cX.sport,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'SPORT',cX.sport,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'left');
   _glowText(ctx,'RECORD',cX.record,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'WIN%',cX.pct,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'UNITS',cX.units,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'right');
@@ -17491,9 +17516,8 @@ async function _genSportPerfGraphic(){
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-sport-perf-'+today().replace(/-/g,'')+'.png','SPORT PERFORMANCE CARD');
 }
@@ -17513,7 +17537,7 @@ async function _genLeaguePerfGraphic(){
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');
 
-  _cfBg(ctx,W,H);_hudCorners(ctx,W,H);
+  _cfBg(ctx,W,H);
 
   const rC=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
   const uC=u=>u>=0?'#00f0ff':'#ff2090';
@@ -17545,7 +17569,7 @@ async function _genLeaguePerfGraphic(){
 
   // League rows
   const startY=194;
-  const rowH=Math.min(80,(H-360)/21);
+  const rowH=Math.min(80,(H-360)/LDEFS.length);
 
   LDEFS.forEach((lm,i)=>{
     const lb=periodBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
@@ -17594,9 +17618,8 @@ async function _genLeaguePerfGraphic(){
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-68,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-46,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyance.app · '+today(),W/2,H-38,'400 12px "Orbitron"','rgba(240,0,255,.35)',4,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-league-perf-'+today().replace(/-/g,'')+'.png','LEAGUE PERFORMANCE CARD');
 }
@@ -22165,7 +22188,16 @@ async function _fetchLeagueScoreboard(leagueKey){
   var cfg=_LEAGUE_CFG[leagueKey];if(!cfg)return[];
   try{
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},10000);
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard',{signal:ctrl.signal});
+    // ESPN's scoreboard endpoint defaults to "today only" with no params —
+    // same bug found in the World Cup matches tab. Club competitions often
+    // have no fixture on the exact day a user opens the tab, so a bare
+    // "today" query frequently returned zero games even mid-season. Request
+    // a rolling window (3 weeks back through 3 weeks ahead) so recent
+    // results and upcoming fixtures both show, not just an empty tab.
+    var _d0=new Date();_d0.setDate(_d0.getDate()-21);
+    var _d1=new Date();_d1.setDate(_d1.getDate()+21);
+    var _fmtESPN=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard?dates='+_fmtESPN(_d0)+'-'+_fmtESPN(_d1)+'&limit=200',{signal:ctrl.signal});
     var d=await r.json();
     var games=[];
     (d.events||[]).forEach(function(ev){
@@ -22185,6 +22217,7 @@ async function _fetchLeagueScoreboard(leagueKey){
         aML:odds&&odds.awayTeamOdds&&odds.awayTeamOdds.moneyLine,venue:comp.venue&&comp.venue.fullName
       });
     });
+    games.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
     _leagueScoreCache[leagueKey]=games;_leagueScoreCacheTs[leagueKey]=now;return games;
   }catch(e){console.warn('[CV] League scoreboard err:',leagueKey,e);return[];}
 }
@@ -22262,7 +22295,7 @@ async function renderLeagueMatches(key){
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
   var games=await _fetchLeagueScoreboard(key);
   if(!games.length){
-    el.innerHTML='<div style="font-family:var(--orb);font-size:16px;color:var(--t3);text-align:center;padding:30px">NO MATCHES TODAY<br><span style="font-size:12px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
+    el.innerHTML='<div style="font-family:var(--orb);font-size:16px;color:var(--t3);text-align:center;padding:30px">NO MATCHES IN THE PAST/NEXT 3 WEEKS<br><span style="font-size:12px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
     return;
   }
   el.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
