@@ -6232,34 +6232,35 @@ window.showBetPopup=function(cfg){
   const metaEl=document.getElementById('bet-popup-meta');if(metaEl)metaEl.innerHTML=parts.join(' &nbsp;<span style="color:rgba(220,190,255,.25)">·</span>&nbsp; ');
   const resEl=document.getElementById('bet-popup-result');
   if(resEl){
-    if(!isLock){
-      resEl.style.display='block';resEl.style.background=isWin?'rgba(0,230,68,.1)':isLoss?'rgba(255,26,26,.1)':'rgba(255,144,0,.08)';
-      resEl.style.border=`2px solid ${col}77`;resEl.style.boxShadow=`inset 0 0 26px ${col}18,0 0 20px ${col}33`;
-      resEl.style.padding='34px 20px';
-      const rtEl=document.getElementById('bet-popup-result-text');
-      if(rtEl){
-        const word=isWin?'WIN':isLoss?'LOSS':'PUSH';
-        rtEl.style.color=col;
-        rtEl.style.fontSize='72px';
-        rtEl.style.letterSpacing='10px';
-        rtEl.style.textShadow=`0 0 24px ${col},0 0 48px ${col}88`;
-        // Letter-by-letter reveal — total time is always exactly 2s no
-        // matter the word length (WIN=3 letters, LOSS/PUSH=4), so each
-        // letter's stagger is 2000ms / letter count. Each letter fades/pops
-        // in individually (W... then I... then N...), then the whole word
-        // holds steady.
-        const stepMs=2000/word.length;
-        rtEl.innerHTML=word.split('').map((ch,i)=>
-          `<span style="display:inline-block;opacity:0;animation:cvLetterReveal .35s cubic-bezier(.34,1.56,.64,1) forwards;animation-delay:${(i*stepMs/1000).toFixed(3)}s">${ch}</span>`
-        ).join('');
-      }
-      const rsEl=document.getElementById('bet-popup-result-sub');if(rsEl){rsEl.textContent=cfg.score?`FINAL: ${cfg.score}`:cfg.note||'BET SETTLED';rsEl.style.fontSize='16px';rsEl.style.marginTop='10px';}
-    }else{resEl.style.display='none';}
+    resEl.style.display='block';
+    resEl.style.background=isLock?'rgba(240,0,255,.1)':isWin?'rgba(0,230,68,.1)':isLoss?'rgba(255,26,26,.1)':'rgba(255,144,0,.08)';
+    resEl.style.border=`2px solid ${col}77`;resEl.style.boxShadow=`inset 0 0 26px ${col}18,0 0 20px ${col}33`;
+    resEl.style.padding='34px 20px';
+    const rtEl=document.getElementById('bet-popup-result-text');
+    if(rtEl){
+      const word=isLock?'LOCKED':isWin?'WIN':isLoss?'LOSS':'PUSH';
+      rtEl.style.color=col;
+      rtEl.style.fontSize=isLock?'56px':'72px';
+      rtEl.style.letterSpacing='10px';
+      rtEl.style.textShadow=`0 0 24px ${col},0 0 48px ${col}88`;
+      // Letter-by-letter reveal, same mechanism as WIN/LOSS/PUSH. LOCKED
+      // spells out over 3s (vs 2s for the settle words) since it's a longer
+      // word (6 letters) and gets a slower, more deliberate reveal per
+      // request — each letter's stagger is totalMs / letter count either way.
+      const totalMs=isLock?3000:2000;
+      const stepMs=totalMs/word.length;
+      rtEl.innerHTML=word.split('').map((ch,i)=>
+        `<span style="display:inline-block;opacity:0;animation:cvLetterReveal .35s cubic-bezier(.34,1.56,.64,1) forwards;animation-delay:${(i*stepMs/1000).toFixed(3)}s">${ch}</span>`
+      ).join('');
+    }
+    const rsEl=document.getElementById('bet-popup-result-sub');
+    if(rsEl){rsEl.textContent=isLock?(cfg.betOn||'BET LOCKED'):cfg.score?`FINAL: ${cfg.score}`:cfg.note||'BET SETTLED';rsEl.style.fontSize='16px';rsEl.style.marginTop='10px';}
   }
   const fill=document.getElementById('bet-popup-progress-fill');
   if(fill){fill.style.transition='none';fill.style.width='100%';fill.style.background=`${col}55`;}
   el.style.setProperty('display','flex','important');
-  // Settle results hold for 4s; lock confirmations keep the 5s dwell.
+  // Settle results hold for 4s; lock confirmations hold for 5s (long enough
+  // to read the full 3s LOCKED letter-reveal plus the bet details after).
   const dwellMs=isSettle?4000:5000;
   if(fill)setTimeout(()=>{fill.style.transition=`width ${dwellMs/1000}s linear`;fill.style.width='0%';},40);
   _bpTimer=setTimeout(()=>window.closeBetPopup(),dwellMs);
