@@ -3895,6 +3895,47 @@ function _migrateMlbNhlMislabel(){
   });
   if(changed){saveP(preds);try{console.warn('[migrate] re-tagged',changed,'MLB game(s) that were mislabeled NHL');}catch(e){}}
 }
+// ── Fix World Cup bets mistagged NBA/UNKNOWN via the shared _ouLockDir bug ──
+// (fixed at the source, but bets locked before that fix are stuck with the
+// wrong sport forever unless corrected here). Only retags a pred if its
+// exact hA/awA pair matches a real WC26_SCHEDULE fixture (by either team's
+// code) — never just "one of the codes looks like a country", so a genuine
+// NBA game (e.g. an actual Portland Trail Blazers bet) is never touched.
+function _migrateWCMisclassified(){
+  try{
+    const sched=(typeof WC26_SCHEDULE!=='undefined'?WC26_SCHEDULE:[])||[];
+    if(!sched.length)return;
+    const pairKey=(x,y)=>[String(x||'').toUpperCase(),String(y||'').toUpperCase()].sort().join('|');
+    const wcPairs=new Set(sched.map(m=>pairKey(m.hc,m.ac)));
+    const preds=getP();let changed=0;
+    preds.forEach(p=>{
+      if(p.sport==='SOC'||p.sport==='WC')return;
+      if(wcPairs.has(pairKey(p.hA,p.awA))){
+        p.sport='SOC';p.league='WORLD_CUP';changed++;
+      }
+    });
+    if(changed){saveP(preds);try{console.warn('[migrate] re-tagged',changed,'World Cup bet(s) mistagged by a shared team code');}catch(e){}}
+  }catch(e){}
+}
+// ── Fix already-locked SPREAD bets missing the favorite's minus sign ───────
+// _spreadLockDir/_wnbaSprdDir used to build the favorite's label straight
+// from the raw input value, so whenever that came through positive (always
+// true for WNBA when the away team was favored) the locked bet read e.g.
+// "TEAM 2.5" instead of "TEAM -2.5". Fixed at the source; this repairs any
+// bet already sitting in storage from before that fix. Only touches SPREAD
+// bets whose betOn is exactly "<name> <number>" with no sign at all —
+// already-correct "-2.5"/"+2.5" entries are left untouched.
+function _migrateMissingSpreadSign(){
+  try{
+    const preds=getP();let changed=0;
+    preds.forEach(p=>{
+      if(p.betType!=='SPREAD'||!p.betOn)return;
+      const m=/^(.+) (\d+(?:\.\d+)?)$/.exec(p.betOn);
+      if(m){p.betOn=m[1]+' -'+m[2];changed++;}
+    });
+    if(changed){saveP(preds);try{console.warn('[migrate] added missing "-" sign to',changed,'favorite spread bet(s)');}catch(e){}}
+  }catch(e){}
+}
 // ── Shared team->sport classifier (single source of truth) ────────────────
 // Same membership-scoring approach used live in lockPick's fallback path —
 // factored out here so the dry-run audit below can never drift from what
@@ -16775,9 +16816,9 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
   // tier (PREMIUM/OPTIMAL/LEAN/SKIP) instead of a generic magenta/cyan
   // split; GAME in neon cyan (was dim, hard to read).
   const maxRows=Math.min(moves.length,16);
-  const fs=maxRows<=8?{row:6,game:5.5,pick:6,prob:6.5,grade:6,pad:'3px 0'}
-           :maxRows<=12?{row:5.5,game:5,pick:5.5,prob:6,grade:5.5,pad:'2.5px 0'}
-           :{row:5,game:4.5,pick:5,prob:5.5,grade:5,pad:'2px 0'};
+  const fs=maxRows<=8?{row:7,game:6.5,pick:7,prob:7.5,grade:7,pad:'3px 0'}
+           :maxRows<=12?{row:6.5,game:6,pick:6.5,prob:7,grade:6.5,pad:'2.5px 0'}
+           :{row:6,game:5.5,pick:6,prob:6.5,grade:6,pad:'2px 0'};
   const tableRows=moves.slice(0,maxRows).map((m,i)=>{
     const pickClr=_lcGrade(m.grade||'B');
     const evStr=m.ev!=null?(m.ev>=0?'+':'')+m.ev.toFixed(1)+'%':'—';
@@ -16799,34 +16840,34 @@ function _renderLeagueCard(sport,moves,idx,tier,tm){
     +'<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 5px,rgba(0,0,0,.03) 5px,rgba(0,0,0,.03) 6px);pointer-events:none"></div>'
     // Header row: CLAIRVOYANCE + date right
     +'<div style="position:relative;display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1px">'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:900;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px">CLAIRVOYANCE</span>'
-      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:rgba(0,240,255,.7);white-space:nowrap">'+dateDisp+'</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:900;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px">CLAIRVOYANCE</span>'
+      +'<span style="font-family:\'Orbitron\',sans-serif;font-size:8px;color:rgba(0,240,255,.7);white-space:nowrap">'+dateDisp+'</span>'
     +'</div>'
-    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;letter-spacing:.5px;margin-bottom:2px">ADVANCED SPORTS INTELLIGENCE ENGINE</div>'
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:8px;color:#00f0ff;letter-spacing:.5px;margin-bottom:2px">ADVANCED SPORTS INTELLIGENCE ENGINE</div>'
     +'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.5),transparent);margin-bottom:3px"></div>'
-    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:700;color:'+((tm&&tm.color)||'#f000ff')+';letter-spacing:.5px;margin-bottom:3px">// '+((tm&&tm.label)||'BASE')+' INTEL BRIEF — '+dispSport+'</div>'
+    +'<div style="font-family:\'Orbitron\',sans-serif;font-size:8px;font-weight:700;color:'+((tm&&tm.color)||'#f000ff')+';letter-spacing:.5px;margin-bottom:3px">// '+((tm&&tm.label)||'BASE')+' INTEL BRIEF — '+dispSport+'</div>'
     // Table
     +'<table style="width:100%;border-collapse:collapse;flex:1">'
       +'<thead><tr style="border-bottom:1px solid rgba(0,240,255,.2)">'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">LEAGUE</th>'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">GAME</th>'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">PICK</th>'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:right;padding:2px 3px 3px 0">MDL%</th>'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:right;padding:2px 3px 3px 0">EDGE</th>'
-        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:#00f0ff;font-weight:500;text-align:center;padding:2px 0 3px 0">GRD</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">LEAGUE</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">GAME</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:left;padding:2px 3px 3px 0">PICK</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:right;padding:2px 3px 3px 0">MDL%</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:right;padding:2px 3px 3px 0">EDGE</th>'
+        +'<th style="font-family:\'Orbitron\',sans-serif;font-size:7px;color:#00f0ff;font-weight:500;text-align:center;padding:2px 0 3px 0">GRD</th>'
       +'</tr></thead>'
       +'<tbody>'+tableRows+'</tbody>'
     +'</table>'
     +'<div style="margin-top:auto;padding-top:4px">'
       +'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.3),transparent);margin-bottom:3px"></div>'
       +'<div style="text-align:center">'
-        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:8px;font-weight:700;color:#f000ff;white-space:nowrap">𝕏 @clairvoyanceeng · IG @clairvoyanceengine</span>'
+        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:9px;font-weight:700;color:#f000ff;white-space:nowrap">𝕏 @clairvoyanceeng · IG @clairvoyanceengine</span>'
       +'</div>'
       +'<div style="text-align:center">'
-        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:7px;font-weight:700;color:#f000ff;white-space:nowrap">clairvoyanceengine.info</span>'
+        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:8px;font-weight:700;color:#f000ff;white-space:nowrap">clairvoyanceengine.info</span>'
       +'</div>'
       +'<div style="text-align:center">'
-        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:5px;color:rgba(220,190,255,.3)">Model outputs are probabilistic projections, not financial advice</span>'
+        +'<span style="font-family:\'Orbitron\',sans-serif;font-size:6px;color:rgba(220,190,255,.3)">Model outputs are probabilistic projections, not financial advice</span>'
       +'</div>'
     +'</div>'
   +'</div>';
@@ -16849,22 +16890,22 @@ async function exportLeagueCard(idx){
   const dateDisp=_fmtDate(dateStr);
   // ── Header ─────────────────────────────────────────────────────────────────
   // CLAIRVOYANCE — large pink Orbitron, centered
-  _glowText(ctx,'CLAIRVOYANCE',W/2,68,'900 46px "Orbitron"','#f000ff',24,'center');
+  _glowText(ctx,'CLAIRVOYANCE',W/2,68,'900 47px "Orbitron"','#f000ff',24,'center');
   // Subtitle — teal, smaller
-  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,100,'600 13px "Orbitron"','#00f0ff',8,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,100,'600 14px "Orbitron"','#00f0ff',8,'center');
   // Date — top right
-  _glowText(ctx,dateDisp,W-54,68,'600 11px "Orbitron"','rgba(0,240,255,.7)',4,'right');
+  _glowText(ctx,dateDisp,W-54,68,'600 12px "Orbitron"','rgba(0,240,255,.7)',4,'right');
   // Divider under header
   ctx.save();const hd=ctx.createLinearGradient(54,118,W-54,118);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.6)');hd.addColorStop(1,'transparent');
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
   ctx.beginPath();ctx.moveTo(54,118);ctx.lineTo(W-54,118);ctx.stroke();ctx.restore();
   // Tier label below divider
-  _glowText(ctx,'// '+tm.label+' INTEL BRIEF — '+dispSport,54,142,'700 13px "Orbitron"',tm.color||'#f000ff',8,'left');
+  _glowText(ctx,'// '+tm.label+' INTEL BRIEF — '+dispSport,54,142,'700 14px "Orbitron"',tm.color||'#f000ff',8,'left');
   // ── Table header row ── CONF column removed (per request) ──────────────────
   const tHdrY=172;
   const col={league:54,game:170,pick:420,prob:700,edge:820,grade:960};
-  ctx.font='500 11px "Orbitron"';ctx.fillStyle='#00f0ff';
+  ctx.font='500 12px "Orbitron"';ctx.fillStyle='#00f0ff';
   [['LEAGUE',col.league,'left'],['GAME',col.game,'left'],['PICK',col.pick,'left'],
    ['MODEL %',col.prob,'right'],['EDGE',col.edge,'right'],['GRADE',col.grade,'center']
   ].forEach(([lbl,x,align])=>{
@@ -16884,12 +16925,12 @@ async function exportLeagueCard(idx){
     // Row bg alternating
     if(i%2===0){ctx.save();ctx.fillStyle='rgba(255,255,255,.018)';ctx.fillRect(54,startY+i*rH,W-108,rH);ctx.restore();}
     // LEAGUE col — magenta, only label; for space show sport abbrev
-    ctx.textAlign='left';ctx.font='700 11px "Orbitron"';ctx.fillStyle='#f000ff';
+    ctx.textAlign='left';ctx.font='700 12px "Orbitron"';ctx.fillStyle='#f000ff';
     ctx.shadowColor='#f000ff';ctx.shadowBlur=6;
     ctx.fillText((dispSport.length>7?dispSport.slice(0,7):dispSport),col.league,y+4);
     ctx.shadowBlur=0;
     // GAME col — neon magenta, matching CLAIRVOYANCE
-    ctx.font='700 12px "Orbitron"';ctx.fillStyle='#f000ff';
+    ctx.font='700 13px "Orbitron"';ctx.fillStyle='#f000ff';
     ctx.shadowColor='#f000ff';ctx.shadowBlur=4;
     const gameMax=Math.max(14,Math.floor((col.pick-col.game-14)/7));
     const gm=(m.game||'').length>gameMax?(m.game||'').slice(0,gameMax-2)+'…':(m.game||'');
@@ -16897,24 +16938,24 @@ async function exportLeagueCard(idx){
     ctx.shadowBlur=0;
     // PICK col — neon magenta, matching CLAIRVOYANCE (GRADE column below
     // still reflects Premium/Optimal/Lean/Skip via its own color).
-    ctx.font='700 13px "Orbitron"';ctx.fillStyle='#f000ff';
+    ctx.font='700 14px "Orbitron"';ctx.fillStyle='#f000ff';
     ctx.shadowColor='#f000ff';ctx.shadowBlur=6;
     const pickMax=Math.max(16,Math.floor((col.prob-col.pick-50)/8));
     const lbl=(m.label||'').length>pickMax?(m.label||'').slice(0,pickMax-2)+'…':(m.label||'');
     ctx.fillText(lbl,col.pick,y+4);
     ctx.shadowBlur=0;
     // MODEL % col — neon magenta, matching CLAIRVOYANCE
-    ctx.textAlign='right';ctx.font='700 13px "Orbitron"';ctx.fillStyle='#f000ff';
+    ctx.textAlign='right';ctx.font='700 14px "Orbitron"';ctx.fillStyle='#f000ff';
     ctx.shadowColor='#f000ff';ctx.shadowBlur=4;
     ctx.fillText((m.prob||'—')+(m.prob?'%':''),col.prob,y+4);
     ctx.shadowBlur=0;
     // EDGE col — green, right-align
-    ctx.font='700 12px "Orbitron"';
+    ctx.font='700 13px "Orbitron"';
     const evStr=m.ev!=null?(m.ev>=0?'+':'')+m.ev.toFixed(1)+'%':'—';
     ctx.fillStyle=m.ev!=null&&m.ev>0?'#00da88':m.ev!=null&&m.ev<0?'#ff2090':'rgba(220,190,255,.35)';
     ctx.fillText(evStr,col.edge,y+4);
     // GRADE col — grade color, centered
-    ctx.textAlign='center';ctx.font='700 12px "Orbitron"';ctx.fillStyle=gc;
+    ctx.textAlign='center';ctx.font='700 13px "Orbitron"';ctx.fillStyle=gc;
     ctx.shadowColor=gc;ctx.shadowBlur=5;
     ctx.fillText(_titleCase(m.grade),col.grade,y+4);
     ctx.shadowBlur=0;
@@ -16928,9 +16969,9 @@ async function exportLeagueCard(idx){
   ctx.save();const fd=ctx.createLinearGradient(54,fY,W-54,fY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(54,fY);ctx.lineTo(W-54,fY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,fY+26,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,fY+48,'600 11px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'Model outputs are probabilistic projections, not financial advice',W/2,fY+70,'400 9px "Orbitron"','rgba(220,190,255,.3)',2,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,fY+26,'700 14px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,fY+48,'600 12px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'Model outputs are probabilistic projections, not financial advice',W/2,fY+70,'400 10px "Orbitron"','rgba(220,190,255,.3)',2,'center');
   _saveCanvas(cv,'cv-intel-'+sport.toLowerCase()+'-'+dateStr.replace(/-/g,'')+'.png',sport+' INTEL BRIEF');
 }
 
@@ -17261,23 +17302,23 @@ function renderTrackRecord(){
     const subColor='#00f0ff';
     return`<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)">
       <div>
-        <div style="font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:1.5px;color:${per.pC};font-weight:700">${per.label}</div>
-        ${per.sub?`<div style="font-family:var(--mono);font-size:10px;color:${subColor}">${per.sub}</div>`:''}
+        <div style="font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:1.5px;color:${per.pC};font-weight:700">${per.label}</div>
+        ${per.sub?`<div style="font-family:var(--mono);font-size:11px;color:${subColor}">${per.sub}</div>`:''}
       </div>
       ${p.n>0?`
         <div style="text-align:center">
-          <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">${p.w}W-${p.l}L</div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgb(230,235,255)">${p.w}W-${p.l}L</div>
         </div>
         <div style="text-align:center">
-          <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">${pctStr}</div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgb(230,235,255)">${pctStr}</div>
           <div style="height:2px;background:rgba(255,255,255,.08);border-radius:1px;margin-top:2px">
             <div style="width:${Math.round((p.pct||0)*100)}%;height:100%;background:rgba(230,235,255,.5);border-radius:1px"></div>
           </div>
         </div>
         <div style="text-align:right">
-          <div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgb(230,235,255)">${unitStr}</div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:rgb(230,235,255)">${unitStr}</div>
         </div>
-      `:`<div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:rgba(220,190,255,.35)">0W-0L</div></div><div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:rgba(220,190,255,.35)">N/A%</div></div><div style="text-align:right"><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgba(220,190,255,.35)">N/A</div></div>`}
+      `:`<div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgba(220,190,255,.35)">0W-0L</div></div><div style="text-align:center"><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:rgba(220,190,255,.35)">N/A%</div></div><div style="text-align:right"><div style="font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:rgba(220,190,255,.35)">N/A</div></div>`}
     </div>`;
   }).join('');
 
@@ -17285,14 +17326,14 @@ function renderTrackRecord(){
   const allPerf=periods.find(p=>p.key==='ALL TIME').perf;
 
   el.innerHTML=`
-  <div style="font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// TRACK RECORD CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.45);margin-bottom:12px">1080×1350 PNG · 4:5 · Fit for X & Instagram</div>
+  <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// TRACK RECORD CARD — SOCIAL EXPORT</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:12px">1080×1350 PNG · 4:5 · Fit for X & Instagram</div>
 
   <!-- Date filter — pick a day to show only that day's data on all three cards -->
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:8px 10px;border:1px solid rgba(0,240,255,.25);border-radius:3px;background:rgba(0,240,255,.04)">
-    <span style="font-family:var(--mono);font-size:14px;color:#00f0ff;letter-spacing:1px">FILTER BY DATE</span>
-    <input type="date" max="${todayStr}" value="${_filterDate}" onchange="renderTrackRecord._filterDate=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
-    ${_filterDate?`<button onclick="renderTrackRecord._filterDate='';renderTrackRecord()" style="font-family:var(--mono);font-size:14px;padding:4px 10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;border-radius:2px;cursor:pointer">✕ CLEAR · SHOW ALL</button><span style="font-family:var(--mono);font-size:13px;color:rgba(0,240,255,.7)">Showing ${_fmtDay(_filterDate)}</span>`:`<span style="font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.4)">Leave empty for full multi-period view</span>`}
+    <span style="font-family:var(--mono);font-size:15px;color:#00f0ff;letter-spacing:1px">FILTER BY DATE</span>
+    <input type="date" max="${todayStr}" value="${_filterDate}" onchange="renderTrackRecord._filterDate=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:16px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
+    ${_filterDate?`<button onclick="renderTrackRecord._filterDate='';renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;border-radius:2px;cursor:pointer">✕ CLEAR · SHOW ALL</button><span style="font-family:var(--mono);font-size:14px;color:rgba(0,240,255,.7)">Showing ${_fmtDay(_filterDate)}</span>`:`<span style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.4)">Leave empty for full multi-period view</span>`}
   </div>
 
   <!-- Combined square card preview -->
@@ -17300,17 +17341,17 @@ function renderTrackRecord(){
     <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,180,180,.08) 0%,transparent 65%),radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(0,0,0,.55) 100%);pointer-events:none"></div>
     <!-- Header -->
     <div style="position:relative;text-align:center;margin-bottom:8px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:19px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
-      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px;margin-top:1px">TRACK RECORD</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
+      <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.4);letter-spacing:3px;margin-top:1px">TRACK RECORD</div>
     </div>
     <!-- Divider -->
     <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
     <!-- Column headers -->
     <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
-      <div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">PERIOD</div>
-      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
-      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
-      <div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
+      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">PERIOD</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
+      <div style="text-align:right;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
     </div>
     <!-- Period rows -->
     <div style="flex:1;position:relative">${periodRows}</div>
@@ -17319,26 +17360,26 @@ function renderTrackRecord(){
       <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.4),transparent);margin-bottom:6px"></div>
       <div style="display:flex;flex-direction:column;gap:3px;align-items:center">
         <div style="display:flex;gap:12px;justify-content:center;align-items:center">
-          <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">𝕏 @clairvoyanceeng</span>
-          <span style="color:rgba(240,0,255,.3);font-size:10px">·</span>
-          <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">IG @clairvoyanceengine</span>
+          <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">𝕏 @clairvoyanceeng</span>
+          <span style="color:rgba(240,0,255,.3);font-size:11px">·</span>
+          <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">IG @clairvoyanceengine</span>
         </div>
-        <span style="font-family:'Orbitron',sans-serif;font-size:9px;font-weight:600;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px;white-space:nowrap">clairvoyanceengine.info</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:600;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px;white-space:nowrap">clairvoyanceengine.info</span>
       </div>
     </div>
   </div>
 
   <div style="display:flex;gap:8px;margin-bottom:24px">
-    <button onclick="_genCombinedTrackGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">EXPORT TRACK RECORD CARD</button>
+    <button onclick="_genCombinedTrackGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT TRACK RECORD CARD</button>
   </div>
 
   <!-- ── SPORT / LEAGUE PERFORMANCE CARD ── -->
-  <div style="font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// SPORT PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.45);margin-bottom:10px">Baseball, basketball, football, hockey, soccer, tennis · 1080×1350 PNG</div>
+  <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// SPORT PERFORMANCE CARD — SOCIAL EXPORT</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">Baseball, basketball, football, hockey, soccer, tennis · 1080×1350 PNG</div>
 
   <!-- Period selector -->
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:14px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+    ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
   </div>
 
   ${(()=>{
@@ -17354,18 +17395,18 @@ function renderTrackRecord(){
     <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,180,180,.08) 0%,transparent 65%),radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(0,0,0,.55) 100%);pointer-events:none"></div>
     <!-- Header -->
     <div style="position:relative;text-align:center;margin-bottom:8px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:19px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
-      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px;margin-top:1px">SPORT PERFORMANCE</div>
-      <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">${window._cvSportActiveLabel||''}</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff,0 0 28px #880099;letter-spacing:2px">CLAIRVOYANCE</div>
+      <div style="font-family:var(--mono);font-size:12px;color:rgba(220,190,255,.4);letter-spacing:3px;margin-top:1px">SPORT PERFORMANCE</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">${window._cvSportActiveLabel||''}</div>
     </div>
     <!-- Divider -->
     <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
     <!-- Column headers -->
     <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
-      <div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
-      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
-      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
-      <div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
+      <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
+      <div style="text-align:right;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
     </div>
     <!-- Sport rows -->
     <div style="flex:1;position:relative">${(()=>{
@@ -17400,25 +17441,25 @@ function renderTrackRecord(){
         const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
         const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
         return'<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
-          +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;letter-spacing:1.5px;color:#f000ff;font-weight:700;text-shadow:0 0 6px #f000ff88">'+s+'</div>'
-          +'<div style="font-family:var(--mono);font-size:8px;color:#00f0ff;letter-spacing:.5px;margin-top:1px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;line-height:1.35">'+(SPORT_LEAGUES[s]||'')+'</div></div>'
+          +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;letter-spacing:1.5px;color:#f000ff;font-weight:700;text-shadow:0 0 6px #f000ff88">'+s+'</div>'
+          +'<div style="font-family:var(--mono);font-size:9px;color:#00f0ff;letter-spacing:.5px;margin-top:1px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;line-height:1.35">'+(SPORT_LEAGUES[s]||'')+'</div></div>'
           +(p.n>0
-            ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
-             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:rgb(230,235,255)">'+pctStr+'</div></div>'
-             +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">'+unitStr+'</div></div>'
-            :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.3)">NO DATA</div>')
+            ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
+             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">'+pctStr+'</div></div>'
+             +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:rgb(230,235,255)">'+unitStr+'</div></div>'
+            :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.3)">NO DATA</div>')
           +'</div>';
       }).join('');
       const tPct=totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
       const tUnit=(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u';
       const totalRow='<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:6px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
-        +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;letter-spacing:1.5px;color:#00f0ff;font-weight:900;text-shadow:0 0 8px #00f0ff">TOTAL</div>'
-        +'<div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+frameLabel+'</div></div>'
+        +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;letter-spacing:1.5px;color:#00f0ff;font-weight:900;text-shadow:0 0 8px #00f0ff">TOTAL</div>'
+        +'<div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35)">'+frameLabel+'</div></div>'
         +(totalP.n>0
-          ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:#00f0ff">'+totalP.w+'W-'+totalP.l+'L</div></div>'
-           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:#00f0ff">'+tPct+'</div></div>'
-           +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:#00f0ff">'+tUnit+'</div></div>'
-          :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:13px;color:rgba(220,190,255,.3)">NO DATA</div>')
+          ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:#00f0ff">'+totalP.w+'W-'+totalP.l+'L</div></div>'
+           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:#00f0ff">'+tPct+'</div></div>'
+           +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:17px;font-weight:700;color:#00f0ff">'+tUnit+'</div></div>'
+          :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.3)">NO DATA</div>')
         +'</div>';
       return sportRows+totalRow;
     })()}</div>
@@ -17427,24 +17468,24 @@ function renderTrackRecord(){
       <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.4),transparent);margin-bottom:6px"></div>
       <div style="display:flex;flex-direction:column;gap:3px;align-items:center">
         <div style="display:flex;gap:12px;justify-content:center;align-items:center">
-          <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">𝕏 @clairvoyanceeng</span>
-          <span style="color:rgba(240,0,255,.3);font-size:10px">·</span>
-          <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">IG @clairvoyanceengine</span>
+          <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">𝕏 @clairvoyanceeng</span>
+          <span style="color:rgba(240,0,255,.3);font-size:11px">·</span>
+          <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 8px #f000ff;white-space:nowrap">IG @clairvoyanceengine</span>
         </div>
-        <span style="font-family:'Orbitron',sans-serif;font-size:9px;font-weight:600;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px;white-space:nowrap">clairvoyanceengine.info</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:10px;font-weight:600;color:#f000ff;text-shadow:0 0 8px #f000ff;letter-spacing:1px;white-space:nowrap">clairvoyanceengine.info</span>
       </div>
     </div>
   </div>
 
   <div style="display:flex;gap:8px;margin-bottom:16px">
-    <button onclick="_genSportPerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">EXPORT SPORT PERFORMANCE CARD</button>
+    <button onclick="_genSportPerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT SPORT PERFORMANCE CARD</button>
   </div>
 
   <!-- ── LEAGUE PERFORMANCE CARD ── -->
-  <div style="font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// LEAGUE PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units · 1080×1350 PNG</div>
+  <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// LEAGUE PERFORMANCE CARD — SOCIAL EXPORT</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units · 1080×1350 PNG</div>
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:14px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+    ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
   </div>
   <div style="background:rgba(4,0,12,.9);border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;padding:12px 14px;margin-bottom:12px;max-width:480px">${(()=>{
     const LDEFS=[
@@ -17484,9 +17525,9 @@ function renderTrackRecord(){
     const uC2=u=>u>=0?'#00f0ff':'#ff2090';
     const totalP2=cP(periodBets2);
     window._cvLeaguePeriodData={LDEFS,periodBets:periodBets2,activePeriod,frameLabel:frameLabel2,totalP:totalP2};
-    const hdr='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:17px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.4);letter-spacing:3px">LEAGUE PERFORMANCE</div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+frameLabel2+'</div></div>';
+    const hdr='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:18px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px">LEAGUE PERFORMANCE</div><div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+frameLabel2+'</div></div>';
     const divider='<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:6px"></div>';
-    const colHdr='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.3)">UNITS</div></div>';
+    const colHdr='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div></div>';
     const rows=LDEFS.map(lm=>{
       const lb=periodBets2.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
       const p=cP(lb);
@@ -17495,24 +17536,24 @@ function renderTrackRecord(){
       const col=p.n>0?rC2(p.pct):'rgba(220,190,255,.25)';
       const ucol=p.n>0?uC2(p.units):'rgba(220,190,255,.25)';
       return'<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
-        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:700;color:#f000ff;text-shadow:0 0 6px #f000ff88">'+lm.lbl+'</div>'
-        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:rgba(230,235,255,.9)">'+(p.n>0?p.w+'W-'+p.l+'L':'0W-0L')+'</div>'
-        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:'+col+'">'+pctStr+'</div>'
-        +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:'+ucol+'">'+unitStr+'</div>'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 6px #f000ff88">'+lm.lbl+'</div>'
+        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:rgba(230,235,255,.9)">'+(p.n>0?p.w+'W-'+p.l+'L':'0W-0L')+'</div>'
+        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+col+'">'+pctStr+'</div>'
+        +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+ucol+'">'+unitStr+'</div>'
         +'</div>';
     }).join('');
     const tPct2=totalP2.n>0&&totalP2.pct!==null?(totalP2.pct*100).toFixed(1)+'%':'—';
     const tUnit2=totalP2.n>0?(totalP2.units>=0?'+':'')+totalP2.units.toFixed(1)+'u':'—';
     const totalRow2='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
-      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:10px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">TOTAL</div><div style="font-family:var(--mono);font-size:8px;color:rgba(220,190,255,.35)">'+frameLabel2+'</div></div>'
-      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#00f0ff">'+(totalP2.n>0?totalP2.w+'W-'+totalP2.l+'L':'0W-0L')+'</div>'
-      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#00f0ff">'+tPct2+'</div>'
-      +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#00f0ff">'+tUnit2+'</div>'
+      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">TOTAL</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+frameLabel2+'</div></div>'
+      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+(totalP2.n>0?totalP2.w+'W-'+totalP2.l+'L':'0W-0L')+'</div>'
+      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tPct2+'</div>'
+      +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tUnit2+'</div>'
       +'</div>';
     return hdr+divider+colHdr+rows+totalRow2;
   })()}</div>
   <div style="display:flex;gap:8px;margin-bottom:16px">
-    <button onclick="_genLeaguePerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">EXPORT LEAGUE PERFORMANCE CARD</button>
+    <button onclick="_genLeaguePerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT LEAGUE PERFORMANCE CARD</button>
   </div>`;
 }
 
@@ -17529,27 +17570,27 @@ async function _genCombinedTrackGraphic(){
   _cfBg(ctx,W,H);
 
   // Header — CLAIRVOYANCE pink Orbitron + teal subtitle + date top-right
-  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#f000ff',22,'center');
-  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 13px "Orbitron"','#00f0ff',8,'center');
+  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 41px "Orbitron"','#f000ff',22,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 14px "Orbitron"','#00f0ff',8,'center');
   // Date top-right
   const _trDate=(function(){try{var _d=new Date(today()+'T12:00:00');return _d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(ex){return today();}})();
-  _glowText(ctx,_trDate,W-80,72,'600 11px "Orbitron"','rgba(0,240,255,.7)',4,'right');
+  _glowText(ctx,_trDate,W-80,72,'600 12px "Orbitron"','rgba(0,240,255,.7)',4,'right');
 
   // Divider
   ctx.save();const hd=ctx.createLinearGradient(80,122,W-80,122);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.7)');hd.addColorStop(1,'transparent');
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
   ctx.beginPath();ctx.moveTo(80,122);ctx.lineTo(W-80,122);ctx.stroke();ctx.restore();
-  _glowText(ctx,'// TRACK RECORD',80,144,'700 13px "Orbitron"','#f000ff',8,'left');
+  _glowText(ctx,'// TRACK RECORD',80,144,'700 14px "Orbitron"','#f000ff',8,'left');
 
   // Column headers
   const colX={label:80,record:340,pct:520,bar:590,units:W-80};
   const hdrY=168;
   ctx.globalAlpha=.45;
-  _glowText(ctx,'PERIOD',colX.label,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'left');
-  _glowText(ctx,'RECORD',colX.record,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'WIN%',colX.pct,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',colX.units,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'PERIOD',colX.label,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'RECORD',colX.record,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',colX.pct,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',colX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
   // Header underline
@@ -17572,20 +17613,20 @@ async function _genCombinedTrackGraphic(){
     const pc='#f000ff'; // every period label in neon magenta, matching the CLAIRVOYANCE title
 
     // Period label — magenta for period name
-    _glowText(ctx,per.label,colX.label,y-10,'700 17px "Orbitron"',pc,10,'left');
+    _glowText(ctx,per.label,colX.label,y-10,'700 18px "Orbitron"',pc,10,'left');
     if(per.sub){
       // Every period sub-label (dates/period text) is neon cyan — previously
       // only TODAY/YESTERDAY got cyan, MONTH TO DATE/LAST MONTH/SINCE LAUNCH
       // were faded purple.
-      _glowText(ctx,per.sub,colX.label,y+12,'400 11px "Orbitron"','#00f0ff',6,'left');
+      _glowText(ctx,per.sub,colX.label,y+12,'400 12px "Orbitron"','#00f0ff',6,'left');
     }
 
     if(p.n>0){
       // Record — near-white
-      _glowText(ctx,p.w+'W-'+p.l+'L',colX.record,y,'700 19px "Orbitron"','#e6eaff',6,'center');
+      _glowText(ctx,p.w+'W-'+p.l+'L',colX.record,y,'700 20px "Orbitron"','#e6eaff',6,'center');
       // Win%
       const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
-      _glowText(ctx,pctStr,colX.pct,y,'700 19px "Orbitron"',rC(p.pct),10,'center');
+      _glowText(ctx,pctStr,colX.pct,y,'700 20px "Orbitron"',rC(p.pct),10,'center');
       // Win bar — teal fill
       const barW=150,barX=colX.bar,barY=y+14;
       ctx.save();ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(barX,barY-5,barW,5);
@@ -17593,9 +17634,9 @@ async function _genCombinedTrackGraphic(){
       ctx.fillRect(barX,barY-5,Math.round(barW*(p.pct||0)),5);ctx.restore();
       // Units — green positive, pink negative
       const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-      _glowText(ctx,unitStr,colX.units,y,'700 21px "Orbitron"',uC(p.units),12,'right');
+      _glowText(ctx,unitStr,colX.units,y,'700 22px "Orbitron"',uC(p.units),12,'right');
     } else {
-      _glowText(ctx,'NO DATA',colX.record,y,'400 13px "Orbitron"','rgba(220,190,255,.3)',3,'center');
+      _glowText(ctx,'NO DATA',colX.record,y,'400 14px "Orbitron"','rgba(220,190,255,.3)',3,'center');
     }
 
     // Row divider
@@ -17610,8 +17651,8 @@ async function _genCombinedTrackGraphic(){
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(0,240,255,.35)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 14px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 12px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-track-record-'+today().replace(/-/g,'')+'.png','TRACK RECORD');
 }
@@ -17630,29 +17671,29 @@ async function _genSportPerfGraphic(){
   const cP=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};};
 
   // Header — pink Orbitron + teal subtitle + date top-right
-  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#f000ff',22,'center');
-  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 13px "Orbitron"','#00f0ff',8,'center');
+  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 41px "Orbitron"','#f000ff',22,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 14px "Orbitron"','#00f0ff',8,'center');
   const _spDate=(function(){try{var _d=new Date(today()+'T12:00:00');return _d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(ex){return today();}})();
-  _glowText(ctx,_spDate,W-80,72,'600 11px "Orbitron"','rgba(0,240,255,.7)',4,'right');
+  _glowText(ctx,_spDate,W-80,72,'600 12px "Orbitron"','rgba(0,240,255,.7)',4,'right');
   // Active time period this card is showing (TODAY/ALL TIME/etc) — neon
   // magenta, directly under the subtitle, matching the CLAIRVOYANCE title.
-  _glowText(ctx,d.frameLabel,W/2,124,'700 13px "Orbitron"','#f000ff',8,'center');
+  _glowText(ctx,d.frameLabel,W/2,124,'700 14px "Orbitron"','#f000ff',8,'center');
 
   // Divider
   ctx.save();const hd=ctx.createLinearGradient(80,142,W-80,142);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.7)');hd.addColorStop(1,'transparent');
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
   ctx.beginPath();ctx.moveTo(80,142);ctx.lineTo(W-80,142);ctx.stroke();ctx.restore();
-  _glowText(ctx,'// SPORT PERFORMANCE',80,164,'700 13px "Orbitron"','#f000ff',8,'left');
+  _glowText(ctx,'// SPORT PERFORMANCE',80,164,'700 14px "Orbitron"','#f000ff',8,'left');
 
   // Column headers: SPORT | RECORD | WIN% | UNITS
   const cX={sport:80,record:440,pct:670,units:W-80};
   const hdrY=188;
   ctx.globalAlpha=.45;
-  _glowText(ctx,'SPORT',cX.sport,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'left');
-  _glowText(ctx,'RECORD',cX.record,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',cX.units,hdrY,'500 12px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'SPORT',cX.sport,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
   // Header underline
@@ -17676,20 +17717,20 @@ async function _genSportPerfGraphic(){
   sports.forEach((s,i)=>{
     const p=cP(d.bySport[s]);
     const y=startY+i*rowH+rowH/2;
-    _glowText(ctx,s,cX.sport,y-13,'700 20px "Orbitron"','#f000ff',14,'left');
+    _glowText(ctx,s,cX.sport,y-13,'700 21px "Orbitron"','#f000ff',14,'left');
     if(SPORT_LEAGUES[s]){
       const[ln1,ln2]=_splitLeagues(SPORT_LEAGUES[s]);
-      _glowText(ctx,ln1,cX.sport,y+9,'400 10px "Orbitron"','#00f0ff',2,'left');
-      if(ln2)_glowText(ctx,ln2,cX.sport,y+20,'400 10px "Orbitron"','#00f0ff',2,'left');
+      _glowText(ctx,ln1,cX.sport,y+9,'400 11px "Orbitron"','#00f0ff',2,'left');
+      if(ln2)_glowText(ctx,ln2,cX.sport,y+20,'400 11px "Orbitron"','#00f0ff',2,'left');
     }
     if(p.n>0){
-      _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 18px "Orbitron"','#e6eaff',6,'center');
+      _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 19px "Orbitron"','#e6eaff',6,'center');
       const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
-      _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.pct),10,'center');
+      _glowText(ctx,pctStr,cX.pct,y,'700 19px "Orbitron"',rC(p.pct),10,'center');
       const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-      _glowText(ctx,unitStr,cX.units,y,'700 20px "Orbitron"',uC(p.units),12,'right');
+      _glowText(ctx,unitStr,cX.units,y,'700 21px "Orbitron"',uC(p.units),12,'right');
     } else {
-      _glowText(ctx,'NO DATA',cX.record,y,'400 13px "Orbitron"','rgba(220,190,255,.3)',3,'center');
+      _glowText(ctx,'NO DATA',cX.record,y,'400 14px "Orbitron"','rgba(220,190,255,.3)',3,'center');
     }
     ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();
   });
@@ -17697,14 +17738,14 @@ async function _genSportPerfGraphic(){
   // TOTAL row
   const totalY=startY+sports.length*rowH+rowH/2;
   ctx.save();ctx.strokeStyle='rgba(240,0,255,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,startY+sports.length*rowH);ctx.lineTo(W-80,startY+sports.length*rowH);ctx.stroke();ctx.restore();
-  _glowText(ctx,'TOTAL',cX.sport,totalY,'900 20px "Orbitron"','#00f0ff',14,'left');
-  _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 11px "Orbitron"','rgba(220,190,255,.35)',2,'left');
+  _glowText(ctx,'TOTAL',cX.sport,totalY,'900 21px "Orbitron"','#00f0ff',14,'left');
+  _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',2,'left');
   if(d.totalP&&d.totalP.n>0){
-    _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 20px "Orbitron"','#e6eaff',10,'center');
+    _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 21px "Orbitron"','#e6eaff',10,'center');
     const tPct=d.totalP.pct!==null?(d.totalP.pct*100).toFixed(1)+'%':'—';
-    _glowText(ctx,tPct,cX.pct,totalY,'700 20px "Orbitron"',rC(d.totalP.pct),12,'center');
+    _glowText(ctx,tPct,cX.pct,totalY,'700 21px "Orbitron"',rC(d.totalP.pct),12,'center');
     const tUnit=(d.totalP.units>=0?'+':'')+d.totalP.units.toFixed(1)+'u';
-    _glowText(ctx,tUnit,cX.units,totalY,'700 22px "Orbitron"',uC(d.totalP.units),14,'right');
+    _glowText(ctx,tUnit,cX.units,totalY,'700 23px "Orbitron"',uC(d.totalP.units),14,'right');
   }
 
   // Footer
@@ -17712,8 +17753,8 @@ async function _genSportPerfGraphic(){
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 14px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 12px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-sport-perf-'+today().replace(/-/g,'')+'.png','SPORT PERFORMANCE CARD');
 }
@@ -17741,28 +17782,28 @@ async function _genLeaguePerfGraphic(){
   const today=()=>new Date().toISOString().slice(0,10);
 
   // Header
-  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 40px "Orbitron"','#f000ff',22,'center');
-  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 13px "Orbitron"','#00f0ff',8,'center');
+  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 41px "Orbitron"','#f000ff',22,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 14px "Orbitron"','#00f0ff',8,'center');
   const _lpDate=(function(){try{var _d=new Date(today()+'T12:00:00');return _d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();}catch(ex){return today();}})();
-  _glowText(ctx,_lpDate,W-80,72,'600 11px "Orbitron"','rgba(0,240,255,.7)',4,'right');
+  _glowText(ctx,_lpDate,W-80,72,'600 12px "Orbitron"','rgba(0,240,255,.7)',4,'right');
   // Active time period this card is showing — neon magenta, under subtitle.
-  _glowText(ctx,frameLabel,W/2,124,'700 13px "Orbitron"','#f000ff',8,'center');
+  _glowText(ctx,frameLabel,W/2,124,'700 14px "Orbitron"','#f000ff',8,'center');
 
   // Divider
   ctx.save();const hd=ctx.createLinearGradient(80,142,W-80,142);
   hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.7)');hd.addColorStop(1,'transparent');
   ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
   ctx.beginPath();ctx.moveTo(80,142);ctx.lineTo(W-80,142);ctx.stroke();ctx.restore();
-  _glowText(ctx,'// LEAGUE PERFORMANCE',80,164,'700 13px "Orbitron"','#f000ff',8,'left');
+  _glowText(ctx,'// LEAGUE PERFORMANCE',80,164,'700 14px "Orbitron"','#f000ff',8,'left');
 
   // Column headers
   const cX={league:80,record:430,pct:660,units:W-60};
   const hdrY=190;
   ctx.globalAlpha=.45;
-  _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'left');
-  _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'RECORD',cX.record,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
   // League rows
@@ -17779,19 +17820,19 @@ async function _genLeaguePerfGraphic(){
     ctx.beginPath();ctx.moveTo(80,startY+i*rowH);ctx.lineTo(W-80,startY+i*rowH);ctx.stroke();ctx.restore();
 
     // League label
-    _glowText(ctx,lm.lbl,cX.league,y,'700 18px "Orbitron"','#f000ff',14,'left');
+    _glowText(ctx,lm.lbl,cX.league,y,'700 19px "Orbitron"','#f000ff',14,'left');
 
     // Record
     const recStr=p.n>0?p.w+'W-'+p.l+'L':'0W-0L';
-    _glowText(ctx,recStr,cX.record,y,'700 17px "Orbitron"','rgba(230,235,255,.9)',6,'center');
+    _glowText(ctx,recStr,cX.record,y,'700 18px "Orbitron"','rgba(230,235,255,.9)',6,'center');
 
     // Win%
     const pctStr=p.n>0&&p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
-    _glowText(ctx,pctStr,cX.pct,y,'700 17px "Orbitron"',rC(p.n>0?p.pct:null),10,'center');
+    _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.n>0?p.pct:null),10,'center');
 
     // Units
     const unitStr=p.n>0?(p.units>=0?'+':'')+p.units.toFixed(1)+'u':'—';
-    _glowText(ctx,unitStr,cX.units,y,'700 18px "Orbitron"',p.n>0?uC(p.units):'rgba(220,190,255,.25)',12,'right');
+    _glowText(ctx,unitStr,cX.units,y,'700 19px "Orbitron"',p.n>0?uC(p.units):'rgba(220,190,255,.25)',12,'right');
   });
 
   // Total row separator
@@ -17802,22 +17843,22 @@ async function _genLeaguePerfGraphic(){
 
   // Total row
   const tY=totalY+rowH/2;
-  _glowText(ctx,'TOTAL',cX.league,tY,'900 20px "Orbitron"','#00f0ff',14,'left');
-  _glowText(ctx,frameLabel,cX.league,tY+18,'400 11px "Orbitron"','rgba(220,190,255,.35)',3,'left');
+  _glowText(ctx,'TOTAL',cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
+  _glowText(ctx,frameLabel,cX.league,tY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',3,'left');
   const tRec=totalP.n>0?totalP.w+'W-'+totalP.l+'L':'0W-0L';
   const tPct=totalP.n>0&&totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
   const tUnit=totalP.n>0?(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u':'—';
-  _glowText(ctx,tRec,cX.record,tY,'700 20px "Orbitron"','#00f0ff',10,'center');
-  _glowText(ctx,tPct,cX.pct,tY,'700 20px "Orbitron"','#00f0ff',12,'center');
-  _glowText(ctx,tUnit,cX.units,tY,'700 22px "Orbitron"','#00f0ff',14,'right');
+  _glowText(ctx,tRec,cX.record,tY,'700 21px "Orbitron"','#00f0ff',10,'center');
+  _glowText(ctx,tPct,cX.pct,tY,'700 21px "Orbitron"','#00f0ff',12,'center');
+  _glowText(ctx,tUnit,cX.units,tY,'700 23px "Orbitron"','#00f0ff',14,'right');
 
   // Footer
   const footY=totalY+rowH+28;
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
-  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 13px "Orbitron"','#f000ff',10,'center');
-  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 11px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 14px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 12px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-league-perf-'+today().replace(/-/g,'')+'.png','LEAGUE PERFORMANCE CARD');
 }
@@ -18480,6 +18521,8 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{await Promise.race([syncPicksFromBackend(),new Promise(r=>setTimeout(r,5000))]);}catch(e){console.error('syncPicks',e);}
   try{_migrateTenSport();}catch(e){console.error('migrateTenSport',e);}
   try{_migrateMlbNhlMislabel();}catch(e){console.error('migrateMlbNhl',e);}
+  try{_migrateWCMisclassified();}catch(e){console.error('migrateWC',e);}
+  try{_migrateMissingSpreadSign();}catch(e){console.error('migrateSpreadSign',e);}
   // Recurring guard against the erroneous "M. Cilic at D. Medvedev" seed bet
   // resurfacing (via GitHub/backend/IDB sync re-adding it after the one-time
   // cleanup above already ran once and set its flag). Runs every load, after
