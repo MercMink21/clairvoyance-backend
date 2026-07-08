@@ -2460,11 +2460,93 @@ def fetch_fbref_league(key: str) -> dict:
         log(f"FBref {cfg['name']}: {exc}", "WARN")
     return out
 
+ESPN_SOCCER_LEAGUES: dict[str, dict] = {
+    "cl":   {"name": "Champions League", "espn": "UEFA.champions"},
+    "pl":   {"name": "Premier League",   "espn": "eng.1"},
+    "liga": {"name": "La Liga",          "espn": "esp.1"},
+    "bl":   {"name": "Bundesliga",       "espn": "ger.1"},
+    "mls":  {"name": "MLS",              "espn": "usa.1"},
+}
+
+def fetch_espn_soccer_league(key: str) -> dict:
+    """
+    ESPN-sourced fallback for one league's team stats, used when FBref blocks
+    the scrape with a 403 (its Cloudflare bot-check rejects both residential
+    and GitHub Actions-runner IPs — confirmed, not fixable by header/UA
+    tweaks). ESPN's soccer.core API doesn't expose true xG, so 'xg'/'npxg'
+    here are goals-per-game proxies rather than shot-quality models — still
+    useful signal for the Poisson/Monte-Carlo layer, just weaker than real
+    xG. Output uses the exact same field schema as fetch_fbref_league() so
+    nothing downstream (frontend, main()) needs to know which source filled it.
+    """
+    cfg = ESPN_SOCCER_LEAGUES.get(key)
+    if not cfg:
+        return {}
+    log(f"ESPN soccer fallback {cfg['name']}…")
+    out: dict = {"league": cfg["name"], "fetchedAt": TODAY_ISO, "teams": {}}
+    try:
+        standings = fetch_json(f"https://site.api.espn.com/apis/v2/sports/soccer/{cfg['espn']}/standings")
+        if not standings:
+            return out
+        team_ids: dict[str, str] = {}
+        for child in (standings.get("children") or [standings]):
+            for entry in ((child.get("standings") or {}).get("entries") or []):
+                tid = entry.get("team", {}).get("id")
+                tname = entry.get("team", {}).get("displayName")
+                if tid and tname:
+                    team_ids[tid] = tname
+        for tid, tname in team_ids.items():
+            try:
+                time.sleep(0.3)
+                stats = fetch_json(f"https://sports.core.api.espn.com/v2/sports/soccer/leagues/{cfg['espn']}/seasons/2025/types/1/teams/{tid}/statistics")
+                cats = ((stats or {}).get("splits") or {}).get("categories") or []
+                flat: dict = {}
+                for cat in cats:
+                    for s in cat.get("stats", []):
+                        flat[s.get("name")] = s.get("value")
+                mp = flat.get("appearances") or flat.get("starts") or 0
+                # appearances is aggregated across the roster on this endpoint;
+                # derive true team games-played from wins+draws+losses instead
+                gp = (flat.get("wins", 0) or 0) + (flat.get("draws", 0) or 0) + (flat.get("losses", 0) or 0)
+                mp = gp or 1
+                gf = flat.get("totalGoals", 0) or 0
+                ga = flat.get("goalsConceded", 0) or 0
+                out["teams"][tname.lower()] = {
+                    "mp": int(mp),
+                    "poss": flat.get("possessionPct", 0) or 0,
+                    "gf": gf,
+                    "xg": round(gf / mp, 2) if mp else 0,       # proxy, not true xG
+                    "npxg": round(gf / mp, 2) if mp else 0,      # proxy, not true xG
+                    "xag": round((flat.get("goalAssists", 0) or 0) / mp, 2) if mp else 0,
+                    "prg_passes": flat.get("accuratePasses", 0) or 0,
+                    "ga": ga,
+                    "xga": round(ga / mp, 2) if mp else 0,       # proxy, not true xG
+                    "shots_pg": round((flat.get("totalShots", 0) or 0) / mp, 2) if mp else None,
+                    "sot_pg": round((flat.get("shotsOnTarget", 0) or 0) / mp, 2) if mp else None,
+                    "src": "espn",
+                }
+            except Exception as exc:
+                vlog(f"  ESPN soccer team {tname}: {exc}")
+        log(f"  ESPN soccer fallback {cfg['name']}: {len(out['teams'])} teams")
+    except Exception as exc:
+        log(f"ESPN soccer fallback {cfg['name']}: {exc}", "WARN")
+    return out
+
 def fetch_fbref_all() -> dict:
-    """Fetch all 5 tracked leagues from FBref in one pass."""
+    """
+    Fetch all 5 tracked leagues from FBref, falling back to ESPN's core API
+    per-league whenever FBref returns zero teams (currently always, since
+    FBref's Cloudflare bot-check 403s every scrape attempt — see
+    fetch_espn_soccer_league's docstring). Keeping the FBref attempt first
+    means this self-heals with zero code changes the moment FBref's block
+    lifts or a proxy is added.
+    """
     result: dict = {}
     for key in FBREF_LEAGUES:
-        result[key] = fetch_fbref_league(key)
+        league = fetch_fbref_league(key)
+        if not league.get("teams"):
+            league = fetch_espn_soccer_league(key)
+        result[key] = league
         time.sleep(3)  # extra courtesy delay between leagues on top of per-call sleeps
     return result
 
