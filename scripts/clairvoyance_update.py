@@ -2550,6 +2550,147 @@ def fetch_fbref_all() -> dict:
         time.sleep(3)  # extra courtesy delay between leagues on top of per-call sleeps
     return result
 
+MLS_COMPETITION_ID = "MLS-COM-000001"
+MLS_SEASON_ID      = "MLS-SEA-0001KA"   # 2026 MLS regular season
+
+def fetch_mls_team_stats() -> dict:
+    """
+    Full-season MLS club statistics straight from mlssoccer.com's own stats
+    API (stats-api.mlssoccer.com) — unauthenticated, undocumented but public,
+    the same endpoint the site's own club-stats page calls. One request
+    returns all 144 stat fields (general/passing/attacking/defending are all
+    the same payload client-side — the site's stat_type tabs just re-filter
+    the same response) for all 30 clubs, including real xG (not a proxy like
+    the ESPN soccer fallback uses for the other leagues), shot locations,
+    pass completion by distance band, aerials, interceptions, and more —
+    this is the primary MLS data source now; ESPN/FBref remain fallbacks.
+    """
+    log("MLS club stats (mlssoccer.com)…")
+    result: dict = {"fetchedAt": TODAY_ISO, "teams": {}}
+    try:
+        data = fetch_json(
+            f"https://stats-api.mlssoccer.com/statistics/clubs/competitions/{MLS_COMPETITION_ID}/seasons/{MLS_SEASON_ID}",
+            params={"per_page": 50},
+        )
+        for t in (data or {}).get("team_statistics", []):
+            name = t.get("team_name")
+            if not name:
+                continue
+            mp = t.get("matches_played") or 1
+            result["teams"][name.lower()] = {
+                "team_id": t.get("team_id"),
+                "code": t.get("three_letter_code"),
+                "mp": mp,
+                "goals": t.get("goals", 0),
+                "goals_conceded": t.get("goals_conceded", 0),
+                "xG": t.get("xG", 0),
+                "xG_per_game": round((t.get("xG") or 0) / mp, 2),
+                "xG_efficiency": t.get("xG_efficiency"),
+                "shots": t.get("shots_at_goal_sum", 0),
+                "shots_on_target": t.get("shots_on_target", 0),
+                "shots_conversion_rate": t.get("shots_conversion_rate"),
+                "shots_faced": t.get("shots_faced", 0),
+                "goalkeeper_saves": t.get("goalkeeper_saves", 0),
+                "clean_sheets": t.get("clean_sheets", 0),
+                "possession_ratio": t.get("possession_ratio"),
+                "passes_sum": t.get("passes_sum", 0),
+                "passes_conversion_rate": t.get("passes_conversion_rate"),
+                "passes_from_open_play_short_successful_ratio": t.get("passes_from_open_play_short_successful_ratio"),
+                "passes_from_open_play_medium_successful_ratio": t.get("passes_from_open_play_medium_successful_ratio"),
+                "passes_from_open_play_long_successful_ratio": t.get("passes_from_open_play_long_successful_ratio"),
+                "crosses_conversion_rate": t.get("crosses_conversion_rate"),
+                "corner_kicks_sum": t.get("corner_kicks_sum", 0),
+                "free_kicks_sum": t.get("free_kicks_sum", 0),
+                "penalties_sum": t.get("penalties_sum", 0),
+                "penalty_conversion_rate": t.get("penalty_conversion_rate"),
+                "penalties_saved": t.get("penalties_saved", 0),
+                "fouls_sum": t.get("fouls_sum", 0),
+                "fouls_suffered": t.get("fouls_suffered", 0),
+                "cards_yellow": t.get("cards_yellow", 0),
+                "cards_red": t.get("cards_red", 0),
+                "offsides": t.get("offsides", 0),
+                "tackling_games_air_won": t.get("tackling_games_air_won", 0),
+                "tackling_games_air_sum": t.get("tackling_games_air_sum", 0),
+                "interceptions_sum": t.get("interceptions_sum", 0),
+                "defensive_clearances": t.get("defensive_clearances", 0),
+                "counter_attacks": t.get("counter_attacks", 0),
+                "chances": t.get("chances", 0),
+                "sitters": t.get("sitters", 0),
+                "goal_opportunities": t.get("goal_opportunities", 0),
+                "assists": t.get("assists", 0),
+                "distance_covered": t.get("distance_covered"),
+                "src": "mlssoccer",
+            }
+        log(f"  MLS club stats: {len(result['teams'])} teams")
+    except Exception as exc:
+        log(f"MLS club stats: {exc}", "WARN")
+    return result
+
+def fetch_mls_standings() -> list[dict]:
+    """MLS regular-season table (both conferences combined) from mlssoccer.com."""
+    log("MLS standings (mlssoccer.com)…")
+    out: list[dict] = []
+    try:
+        data = fetch_json(f"https://stats-api.mlssoccer.com/competitions/{MLS_COMPETITION_ID}/seasons/{MLS_SEASON_ID}/standings")
+        for table in (data or {}).get("tables", []):
+            for e in table.get("entries", []):
+                out.append({
+                    "position": e.get("position"), "team": e.get("team"), "team_id": e.get("team_id"),
+                    "code": e.get("team_three_letter_code"),
+                    "gp": e.get("games_played"), "w": e.get("wins"), "d": e.get("draws"), "l": e.get("losses"),
+                    "gf": e.get("goals_scored"), "ga": e.get("goals_against"), "gd": e.get("goals_difference"),
+                    "pts": e.get("points"), "ppg": e.get("points_per_game"),
+                })
+        log(f"  MLS standings: {len(out)} teams")
+    except Exception as exc:
+        log(f"MLS standings: {exc}", "WARN")
+    return out
+
+def fetch_mls_schedule(days_forward: int = 20, days_back: int = 3) -> list[dict]:
+    """
+    MLS schedule from mlssoccer.com, mirroring how the site's own Schedule &
+    Scores page paginates — one match_date at a time (the API's range query
+    param is broken/unsupported server-side; single-date is the only mode
+    that returns real data), rolled up into a 7-ish-day-forward window plus
+    a short lookback so recently-completed results stay visible for model
+    calibration. competition_id is pinned to MLS regular season only, so
+    MLS NEXT Pro reserve-team matches (a separate competition on the same
+    API) don't leak into the first-team schedule.
+    """
+    log(f"MLS schedule ({days_back}d back, {days_forward}d forward, mlssoccer.com)…")
+    out: list[dict] = []
+    start = NOW.date() - timedelta(days=days_back)
+    for i in range(days_back + days_forward + 1):
+        d = (start + timedelta(days=i)).isoformat()
+        try:
+            # A plain requests call (not fetch_json) on purpose: a 404 here
+            # just means "no MLS match that day" (e.g. the World Cup break),
+            # not a real failure, so it shouldn't retry or log a WARN for
+            # every quiet day in the window.
+            r = _session.get(
+                f"https://stats-api.mlssoccer.com/matches/seasons/{MLS_SEASON_ID}",
+                params={"match_date": d, "competition_id": MLS_COMPETITION_ID, "per_page": 20},
+                timeout=15,
+            )
+            data = r.json() if r.status_code == 200 else {}
+            for m in (data or {}).get("schedule", []):
+                out.append({
+                    "match_id": m.get("match_id"), "date": d,
+                    "kickoff": m.get("planned_kickoff_time"),
+                    "home": m.get("home_team_name"), "away": m.get("away_team_name"),
+                    "home_id": m.get("home_team_id"), "away_id": m.get("away_team_id"),
+                    "home_code": m.get("home_team_three_letter_code"), "away_code": m.get("away_team_three_letter_code"),
+                    "status": m.get("match_status"), "result": m.get("result"),
+                    "home_goals": m.get("home_team_goals"), "away_goals": m.get("away_team_goals"),
+                    "match_day": m.get("match_day"), "match_type": m.get("match_type"),
+                    "stadium": m.get("stadium_name"), "city": m.get("stadium_city"),
+                })
+            time.sleep(0.25)
+        except Exception as exc:
+            vlog(f"  MLS schedule {d}: {exc}")
+    log(f"  MLS schedule: {len(out)} matches across {days_back+days_forward+1} days")
+    return out
+
 def fetch_ncaa_baseball() -> dict:
     """Fetch NCAA Men's Baseball scoreboard, rankings, standings, 14-day schedule from ESPN."""
     log("NCAA Baseball scoreboard…")
@@ -3811,10 +3952,14 @@ def git_push(summary: str = "") -> bool:
             "docs/social_copy.json",
             "docs/bet_history.csv",
             "docs/soccer_fbref.json",
+            "docs/mls_stats.json",
+            "docs/mls_schedule.json",
             # persistent records
             "data/bet_history.json",
             "data/bet_history.csv",
             "data/soccer_fbref.json",
+            "data/mls_stats.json",
+            "data/mls_schedule.json",
             # local frontend mirror (not pushed to Pages but kept in sync)
             "frontend/data.json",
             "frontend/index.html",
@@ -4017,10 +4162,48 @@ def main() -> None:
     # folded into the giant bundle, since the frontend only needs to fetch
     # this one small file to replace/refresh its static xG fallback table.
     soccer_fbref = fetch_fbref_all() if S in ("soccer","all") else {}
+    # MLS gets its own first-party feed straight from mlssoccer.com's stats
+    # API — real xG per club (not the goals-per-game proxy the ESPN fallback
+    # uses for the other 4 leagues), so it takes priority over whatever
+    # fetch_fbref_all() put in soccer_fbref["mls"] above.
+    mls_stats     = fetch_mls_team_stats() if S in ("soccer","all") else {}
+    mls_standings = fetch_mls_standings()  if S in ("soccer","all") else []
+    mls_schedule  = fetch_mls_schedule()   if S in ("soccer","all") else []
+    if mls_stats.get("teams"):
+        # soccer_fbref["mls"] keeps the slim xg/npxg/xag/poss schema the
+        # frontend's _socXGFromFBref() already reads for every league, so
+        # nothing downstream breaks; the full 30+ field mlssoccer.com payload
+        # goes to its own docs/mls_stats.json for the Monte Carlo layer to
+        # pull richer signal from without the frontend needing to change.
+        normalized = {}
+        for name, t in mls_stats["teams"].items():
+            gp = t.get("mp") or 1
+            # Season TOTALS, not per-game — the frontend's _socXGFromFBref()
+            # divides every field by mp itself (same convention FBref/ESPN
+            # use), so storing already-per-game values here would silently
+            # halve/shrink everything a second time.
+            normalized[name] = {
+                "mp": gp, "poss": (t.get("possession_ratio") or 0) * 100 if (t.get("possession_ratio") or 0) <= 1 else t.get("possession_ratio"),
+                "gf": t.get("goals", 0), "xg": t.get("xG", 0), "npxg": t.get("xG", 0),
+                "xag": t.get("assists", 0),
+                "ga": t.get("goals_conceded", 0), "xga": t.get("goals_conceded", 0),  # no true xGA field from this API; goals-conceded proxy
+                "shots_pg": round((t.get("shots", 0) or 0) / gp, 2),
+                "sot_pg": round((t.get("shots_on_target", 0) or 0) / gp, 2),
+                "src": "mlssoccer",
+            }
+        soccer_fbref["mls"] = {"league": "MLS", "fetchedAt": TODAY_ISO, "teams": normalized}
+        (ROOT / "docs" / "mls_stats.json").write_text(json.dumps(mls_stats, indent=2))
+        (DATA / "mls_stats.json").write_text(json.dumps(mls_stats, indent=2))
+        note("mls_stats.json written (full mlssoccer.com club stats)")
     if soccer_fbref:
         (ROOT / "docs" / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         (DATA / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         note("soccer_fbref.json written")
+    mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule}
+    if mls_standings or mls_schedule:
+        (ROOT / "docs" / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
+        (DATA / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
+        note("mls_schedule.json written")
 
     # Week schedules
     mlb_week_schedule = fetch_week_schedule("baseball/mlb","mlb",10)      if S in ("mlb","all") else []

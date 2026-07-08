@@ -15924,7 +15924,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-07-08 00:35 MT';
+let LAST_AUTO_UPDATE = '2026-07-08 12:37 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -22865,10 +22865,39 @@ function _renderSocMatchCard(g,leagueKey){
     +'</div>';
 }
 
+var _mlsScheduleCache=null,_mlsScheduleCacheTs=0;
+async function _fetchMLSScheduleReal(){
+  // Prefers the real mlssoccer.com schedule (docs/mls_schedule.json, written
+  // by fetch_mls_schedule() in clairvoyance_update.py) over ESPN's generic
+  // scoreboard — real matchweek numbers, official kickoff times, and a
+  // schedule that correctly reflects the World Cup break instead of ESPN's
+  // rolling 3-week window sometimes showing stale/wrong fixtures.
+  var now=Date.now();
+  if(_mlsScheduleCache&&now-_mlsScheduleCacheTs<5*60*1000)return _mlsScheduleCache;
+  try{
+    var r=await fetch('mls_schedule.json?'+now,{cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    var d=await r.json();
+    var games=(d.schedule||[]).map(function(m){
+      var isPost=m.status==='played'||m.status==='completed'||m.status==='finished';
+      return{
+        id:m.match_id,home:m.home,away:m.away,hAbbr:m.home_code,aAbbr:m.away_code,
+        hScore:m.home_goals||0,aScore:m.away_goals||0,
+        status:isPost?'post':(m.status==='live'?'in':'pre'),clock:'',
+        date:m.kickoff||m.date,ou:null,hML:null,aML:null,venue:m.stadium,
+        matchDay:m.match_day
+      };
+    });
+    games.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+    _mlsScheduleCache=games;_mlsScheduleCacheTs=now;return games;
+  }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
+}
+
 async function renderLeagueMatches(key){
   var el=document.getElementById(key+'-matches-list');if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
-  var games=await _fetchLeagueScoreboard(key);
+  var games=key==='mls'?await _fetchMLSScheduleReal():null;
+  if(!games)games=await _fetchLeagueScoreboard(key);
   if(!games.length){
     el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">NO MATCHES IN THE PAST/NEXT 3 WEEKS<br><span style="font-size:15px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
     return;
