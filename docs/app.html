@@ -903,12 +903,52 @@ body{line-height:1.5}
     <button class="nb" onclick="T('cl','props');renderLeagueProps('cl')">PROPS</button>
     <button class="nb" onclick="T('cl','standings');renderLeagueStandings('cl')">STANDINGS</button>
     <button class="nb" onclick="T('cl','bracket')">BRACKET</button>
+    <button class="nb" onclick="T('cl','model');renderSoccerLeagueModel('cl')">MODEL</button>
+    <button class="nb" onclick="T('cl','config');renderSoccerLeagueConfig('cl')">CONFIG</button>
   </nav>
   <div class="sa" id="cl-sa">
     <div id="cl-tab-matches" class="tab act"><div id="cl-matches-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING…</div></div></div>
     <div id="cl-tab-props" class="tab"><div id="cl-props-list" style="padding:4px 0"><div class="empty">OPEN MATCHES TAB FIRST</div></div></div>
     <div id="cl-tab-standings" class="tab"><div id="cl-standings-list" style="padding:12px 0"></div></div>
     <div id="cl-tab-bracket" class="tab"><div style="text-align:center;padding:40px;font-family:var(--mono);font-size:16px;color:var(--t3)">CHAMPIONS LEAGUE BRACKET — AVAILABLE DURING KNOCKOUT STAGE</div></div>
+    <div id="cl-tab-model" class="tab">
+      <div class="sh"><span class="i"></span> CHAMPIONS LEAGUE MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">25K sims. xG differential + possession + home advantage. FBref calibration.</div></div>
+        <div class="card cp"><div class="ct">POISSON GOALS</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Bivariate Poisson scoreline model. Attack/defense strength ratings.</div></div>
+        <div class="card cn"><div class="ct">FORM + xG</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Rolling xG/xGA, shot quality, progressive passes. FBref advanced stats.</div></div>
+      </div>
+      <div class="sh"><span class="i"></span> MODEL FACTORS</div>
+      <div class="g3" style="margin-bottom:12px;gap:8px">
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">xG DIFFERENTIAL</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Expected goals for minus against. Weight: HIGH</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:85%;background:var(--ic);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">POSSESSION %</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball control share, style indicator. Weight: MED</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:60%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card cn" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--nc);margin-bottom:4px">HOME ADVANTAGE</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Venue-adjusted goal expectancy boost. Weight: MED</div><div style="height:3px;background:rgba(0,255,136,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:55%;background:var(--nc);border-radius:1px"></div></div></div>
+        <div class="card cm" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--mc);margin-bottom:4px">SHOT CONVERSION</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Goals per shot on target rate. Weight: MED</div><div style="height:3px;background:rgba(255,170,0,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:50%;background:var(--mc);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">PROGRESSIVE PASSES</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball progression toward goal. Weight: LOW</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">RECENT FORM</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Last-5-match points-per-game trend. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:30%;background:var(--ic);border-radius:1px"></div></div></div>
+      </div>
+      <div id="cl-model-weights"></div>
+    </div>
+    <div id="cl-tab-config" class="tab">
+      <div class="sh"><span class="i"></span> CHAMPIONS LEAGUE ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="cl-mc-v">50%</span></div><input type="range" id="cl-w-mc" min="10" max="70" value="50" oninput="document.getElementById('cl-mc-v').textContent=this.value+'%';applySoccerWeights('cl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">POISSON</span><span class="rrv" id="cl-poi-v">30%</span></div><input type="range" id="cl-w-poi" min="5" max="50" value="30" oninput="document.getElementById('cl-poi-v').textContent=this.value+'%';applySoccerWeights('cl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FORM/xG</span><span class="rrv" id="cl-form-v">20%</span></div><input type="range" id="cl-w-form" min="5" max="50" value="20" oninput="document.getElementById('cl-form-v').textContent=this.value+'%';applySoccerWeights('cl')">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('cl')">APPLY</button>
+      </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="cl-ev-v">2%</span></div><input type="range" id="cl-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('cl-ev-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="cl-minp-v">55%</span></div><input type="range" id="cl-min-p" min="50" max="75" value="55" oninput="document.getElementById('cl-minp-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('cl')">SAVE</button>
+      </div>
+      <div id="cl-model-weights-b"></div>
+    </div>
   </div>
 </div>
 <!-- PREMIER LEAGUE -->
@@ -918,12 +958,52 @@ body{line-height:1.5}
     <button class="nb" onclick="T('pl','props');renderLeagueProps('pl')">PROPS</button>
     <button class="nb" onclick="T('pl','standings');renderLeagueStandings('pl')">STANDINGS</button>
     <button class="nb" onclick="T('pl','bracket')">BRACKET</button>
+    <button class="nb" onclick="T('pl','model');renderSoccerLeagueModel('pl')">MODEL</button>
+    <button class="nb" onclick="T('pl','config');renderSoccerLeagueConfig('pl')">CONFIG</button>
   </nav>
   <div class="sa" id="pl-sa">
     <div id="pl-tab-matches" class="tab act"><div id="pl-matches-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING…</div></div></div>
     <div id="pl-tab-props" class="tab"><div id="pl-props-list" style="padding:4px 0"><div class="empty">OPEN MATCHES TAB FIRST</div></div></div>
     <div id="pl-tab-standings" class="tab"><div id="pl-standings-list" style="padding:12px 0"></div></div>
     <div id="pl-tab-bracket" class="tab"><div style="text-align:center;padding:40px;font-family:var(--mono);font-size:16px;color:var(--t3)">PREMIER LEAGUE BRACKET — AVAILABLE DURING PLAYOFF STAGE</div></div>
+    <div id="pl-tab-model" class="tab">
+      <div class="sh"><span class="i"></span> PREMIER LEAGUE MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">25K sims. xG differential + possession + home advantage. FBref calibration.</div></div>
+        <div class="card cp"><div class="ct">POISSON GOALS</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Bivariate Poisson scoreline model. Attack/defense strength ratings.</div></div>
+        <div class="card cn"><div class="ct">FORM + xG</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Rolling xG/xGA, shot quality, progressive passes. FBref advanced stats.</div></div>
+      </div>
+      <div class="sh"><span class="i"></span> MODEL FACTORS</div>
+      <div class="g3" style="margin-bottom:12px;gap:8px">
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">xG DIFFERENTIAL</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Expected goals for minus against. Weight: HIGH</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:85%;background:var(--ic);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">POSSESSION %</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball control share, style indicator. Weight: MED</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:60%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card cn" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--nc);margin-bottom:4px">HOME ADVANTAGE</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Venue-adjusted goal expectancy boost. Weight: MED</div><div style="height:3px;background:rgba(0,255,136,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:55%;background:var(--nc);border-radius:1px"></div></div></div>
+        <div class="card cm" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--mc);margin-bottom:4px">SHOT CONVERSION</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Goals per shot on target rate. Weight: MED</div><div style="height:3px;background:rgba(255,170,0,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:50%;background:var(--mc);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">PROGRESSIVE PASSES</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball progression toward goal. Weight: LOW</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">RECENT FORM</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Last-5-match points-per-game trend. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:30%;background:var(--ic);border-radius:1px"></div></div></div>
+      </div>
+      <div id="pl-model-weights"></div>
+    </div>
+    <div id="pl-tab-config" class="tab">
+      <div class="sh"><span class="i"></span> PREMIER LEAGUE ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="pl-mc-v">50%</span></div><input type="range" id="pl-w-mc" min="10" max="70" value="50" oninput="document.getElementById('pl-mc-v').textContent=this.value+'%';applySoccerWeights('pl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">POISSON</span><span class="rrv" id="pl-poi-v">30%</span></div><input type="range" id="pl-w-poi" min="5" max="50" value="30" oninput="document.getElementById('pl-poi-v').textContent=this.value+'%';applySoccerWeights('pl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FORM/xG</span><span class="rrv" id="pl-form-v">20%</span></div><input type="range" id="pl-w-form" min="5" max="50" value="20" oninput="document.getElementById('pl-form-v').textContent=this.value+'%';applySoccerWeights('pl')">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('pl')">APPLY</button>
+      </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="pl-ev-v">2%</span></div><input type="range" id="pl-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('pl-ev-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="pl-minp-v">55%</span></div><input type="range" id="pl-min-p" min="50" max="75" value="55" oninput="document.getElementById('pl-minp-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('pl')">SAVE</button>
+      </div>
+      <div id="pl-model-weights-b"></div>
+    </div>
   </div>
 </div>
 <!-- LA LIGA -->
@@ -933,12 +1013,52 @@ body{line-height:1.5}
     <button class="nb" onclick="T('liga','props');renderLeagueProps('liga')">PROPS</button>
     <button class="nb" onclick="T('liga','standings');renderLeagueStandings('liga')">STANDINGS</button>
     <button class="nb" onclick="T('liga','bracket')">BRACKET</button>
+    <button class="nb" onclick="T('liga','model');renderSoccerLeagueModel('liga')">MODEL</button>
+    <button class="nb" onclick="T('liga','config');renderSoccerLeagueConfig('liga')">CONFIG</button>
   </nav>
   <div class="sa" id="liga-sa">
     <div id="liga-tab-matches" class="tab act"><div id="liga-matches-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING…</div></div></div>
     <div id="liga-tab-props" class="tab"><div id="liga-props-list" style="padding:4px 0"><div class="empty">OPEN MATCHES TAB FIRST</div></div></div>
     <div id="liga-tab-standings" class="tab"><div id="liga-standings-list" style="padding:12px 0"></div></div>
     <div id="liga-tab-bracket" class="tab"><div style="text-align:center;padding:40px;font-family:var(--mono);font-size:16px;color:var(--t3)">LA LIGA BRACKET — AVAILABLE DURING PLAYOFF STAGE</div></div>
+    <div id="liga-tab-model" class="tab">
+      <div class="sh"><span class="i"></span> LA LIGA MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">25K sims. xG differential + possession + home advantage. FBref calibration.</div></div>
+        <div class="card cp"><div class="ct">POISSON GOALS</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Bivariate Poisson scoreline model. Attack/defense strength ratings.</div></div>
+        <div class="card cn"><div class="ct">FORM + xG</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Rolling xG/xGA, shot quality, progressive passes. FBref advanced stats.</div></div>
+      </div>
+      <div class="sh"><span class="i"></span> MODEL FACTORS</div>
+      <div class="g3" style="margin-bottom:12px;gap:8px">
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">xG DIFFERENTIAL</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Expected goals for minus against. Weight: HIGH</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:85%;background:var(--ic);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">POSSESSION %</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball control share, style indicator. Weight: MED</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:60%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card cn" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--nc);margin-bottom:4px">HOME ADVANTAGE</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Venue-adjusted goal expectancy boost. Weight: MED</div><div style="height:3px;background:rgba(0,255,136,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:55%;background:var(--nc);border-radius:1px"></div></div></div>
+        <div class="card cm" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--mc);margin-bottom:4px">SHOT CONVERSION</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Goals per shot on target rate. Weight: MED</div><div style="height:3px;background:rgba(255,170,0,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:50%;background:var(--mc);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">PROGRESSIVE PASSES</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball progression toward goal. Weight: LOW</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">RECENT FORM</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Last-5-match points-per-game trend. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:30%;background:var(--ic);border-radius:1px"></div></div></div>
+      </div>
+      <div id="liga-model-weights"></div>
+    </div>
+    <div id="liga-tab-config" class="tab">
+      <div class="sh"><span class="i"></span> LA LIGA ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="liga-mc-v">50%</span></div><input type="range" id="liga-w-mc" min="10" max="70" value="50" oninput="document.getElementById('liga-mc-v').textContent=this.value+'%';applySoccerWeights('liga')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">POISSON</span><span class="rrv" id="liga-poi-v">30%</span></div><input type="range" id="liga-w-poi" min="5" max="50" value="30" oninput="document.getElementById('liga-poi-v').textContent=this.value+'%';applySoccerWeights('liga')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FORM/xG</span><span class="rrv" id="liga-form-v">20%</span></div><input type="range" id="liga-w-form" min="5" max="50" value="20" oninput="document.getElementById('liga-form-v').textContent=this.value+'%';applySoccerWeights('liga')">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('liga')">APPLY</button>
+      </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="liga-ev-v">2%</span></div><input type="range" id="liga-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('liga-ev-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="liga-minp-v">55%</span></div><input type="range" id="liga-min-p" min="50" max="75" value="55" oninput="document.getElementById('liga-minp-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('liga')">SAVE</button>
+      </div>
+      <div id="liga-model-weights-b"></div>
+    </div>
   </div>
 </div>
 <!-- BUNDESLIGA -->
@@ -948,12 +1068,52 @@ body{line-height:1.5}
     <button class="nb" onclick="T('bl','props');renderLeagueProps('bl')">PROPS</button>
     <button class="nb" onclick="T('bl','standings');renderLeagueStandings('bl')">STANDINGS</button>
     <button class="nb" onclick="T('bl','bracket')">BRACKET</button>
+    <button class="nb" onclick="T('bl','model');renderSoccerLeagueModel('bl')">MODEL</button>
+    <button class="nb" onclick="T('bl','config');renderSoccerLeagueConfig('bl')">CONFIG</button>
   </nav>
   <div class="sa" id="bl-sa">
     <div id="bl-tab-matches" class="tab act"><div id="bl-matches-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING…</div></div></div>
     <div id="bl-tab-props" class="tab"><div id="bl-props-list" style="padding:4px 0"><div class="empty">OPEN MATCHES TAB FIRST</div></div></div>
     <div id="bl-tab-standings" class="tab"><div id="bl-standings-list" style="padding:12px 0"></div></div>
     <div id="bl-tab-bracket" class="tab"><div style="text-align:center;padding:40px;font-family:var(--mono);font-size:16px;color:var(--t3)">BUNDESLIGA BRACKET — AVAILABLE DURING PLAYOFF STAGE</div></div>
+    <div id="bl-tab-model" class="tab">
+      <div class="sh"><span class="i"></span> BUNDESLIGA MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">25K sims. xG differential + possession + home advantage. FBref calibration.</div></div>
+        <div class="card cp"><div class="ct">POISSON GOALS</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Bivariate Poisson scoreline model. Attack/defense strength ratings.</div></div>
+        <div class="card cn"><div class="ct">FORM + xG</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Rolling xG/xGA, shot quality, progressive passes. FBref advanced stats.</div></div>
+      </div>
+      <div class="sh"><span class="i"></span> MODEL FACTORS</div>
+      <div class="g3" style="margin-bottom:12px;gap:8px">
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">xG DIFFERENTIAL</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Expected goals for minus against. Weight: HIGH</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:85%;background:var(--ic);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">POSSESSION %</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball control share, style indicator. Weight: MED</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:60%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card cn" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--nc);margin-bottom:4px">HOME ADVANTAGE</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Venue-adjusted goal expectancy boost. Weight: MED</div><div style="height:3px;background:rgba(0,255,136,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:55%;background:var(--nc);border-radius:1px"></div></div></div>
+        <div class="card cm" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--mc);margin-bottom:4px">SHOT CONVERSION</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Goals per shot on target rate. Weight: MED</div><div style="height:3px;background:rgba(255,170,0,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:50%;background:var(--mc);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">PROGRESSIVE PASSES</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball progression toward goal. Weight: LOW</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">RECENT FORM</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Last-5-match points-per-game trend. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:30%;background:var(--ic);border-radius:1px"></div></div></div>
+      </div>
+      <div id="bl-model-weights"></div>
+    </div>
+    <div id="bl-tab-config" class="tab">
+      <div class="sh"><span class="i"></span> BUNDESLIGA ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="bl-mc-v">50%</span></div><input type="range" id="bl-w-mc" min="10" max="70" value="50" oninput="document.getElementById('bl-mc-v').textContent=this.value+'%';applySoccerWeights('bl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">POISSON</span><span class="rrv" id="bl-poi-v">30%</span></div><input type="range" id="bl-w-poi" min="5" max="50" value="30" oninput="document.getElementById('bl-poi-v').textContent=this.value+'%';applySoccerWeights('bl')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FORM/xG</span><span class="rrv" id="bl-form-v">20%</span></div><input type="range" id="bl-w-form" min="5" max="50" value="20" oninput="document.getElementById('bl-form-v').textContent=this.value+'%';applySoccerWeights('bl')">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('bl')">APPLY</button>
+      </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="bl-ev-v">2%</span></div><input type="range" id="bl-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('bl-ev-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="bl-minp-v">55%</span></div><input type="range" id="bl-min-p" min="50" max="75" value="55" oninput="document.getElementById('bl-minp-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('bl')">SAVE</button>
+      </div>
+      <div id="bl-model-weights-b"></div>
+    </div>
   </div>
 </div>
 <!-- MLS -->
@@ -963,12 +1123,52 @@ body{line-height:1.5}
     <button class="nb" onclick="T('mls','props');renderLeagueProps('mls')">PROPS</button>
     <button class="nb" onclick="T('mls','standings');renderLeagueStandings('mls')">STANDINGS</button>
     <button class="nb" onclick="T('mls','bracket')">BRACKET</button>
+    <button class="nb" onclick="T('mls','model');renderSoccerLeagueModel('mls')">MODEL</button>
+    <button class="nb" onclick="T('mls','config');renderSoccerLeagueConfig('mls')">CONFIG</button>
   </nav>
   <div class="sa" id="mls-sa">
     <div id="mls-tab-matches" class="tab act"><div id="mls-matches-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING…</div></div></div>
     <div id="mls-tab-props" class="tab"><div id="mls-props-list" style="padding:4px 0"><div class="empty">OPEN MATCHES TAB FIRST</div></div></div>
     <div id="mls-tab-standings" class="tab"><div id="mls-standings-list" style="padding:12px 0"></div></div>
     <div id="mls-tab-bracket" class="tab"><div style="text-align:center;padding:40px;font-family:var(--mono);font-size:16px;color:var(--t3)">MLS CUP BRACKET — AVAILABLE DURING PLAYOFFS</div></div>
+    <div id="mls-tab-model" class="tab">
+      <div class="sh"><span class="i"></span> MLS MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">25K sims. xG differential + possession + home advantage. FBref calibration.</div></div>
+        <div class="card cp"><div class="ct">POISSON GOALS</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Bivariate Poisson scoreline model. Attack/defense strength ratings.</div></div>
+        <div class="card cn"><div class="ct">FORM + xG</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Rolling xG/xGA, shot quality, progressive passes. FBref advanced stats.</div></div>
+      </div>
+      <div class="sh"><span class="i"></span> MODEL FACTORS</div>
+      <div class="g3" style="margin-bottom:12px;gap:8px">
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">xG DIFFERENTIAL</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Expected goals for minus against. Weight: HIGH</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:85%;background:var(--ic);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">POSSESSION %</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball control share, style indicator. Weight: MED</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:60%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card cn" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--nc);margin-bottom:4px">HOME ADVANTAGE</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Venue-adjusted goal expectancy boost. Weight: MED</div><div style="height:3px;background:rgba(0,255,136,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:55%;background:var(--nc);border-radius:1px"></div></div></div>
+        <div class="card cm" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--mc);margin-bottom:4px">SHOT CONVERSION</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Goals per shot on target rate. Weight: MED</div><div style="height:3px;background:rgba(255,170,0,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:50%;background:var(--mc);border-radius:1px"></div></div></div>
+        <div class="card cp" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--pc);margin-bottom:4px">PROGRESSIVE PASSES</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Ball progression toward goal. Weight: LOW</div><div style="height:3px;background:rgba(240,0,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:35%;background:var(--pc);border-radius:1px"></div></div></div>
+        <div class="card ci" style="padding:10px"><div style="font-family:var(--mono);font-size:17px;letter-spacing:1px;color:var(--ic);margin-bottom:4px">RECENT FORM</div><div style="font-family:var(--mono);font-size:16px;color:var(--t2)">Last-5-match points-per-game trend. Weight: LOW</div><div style="height:3px;background:rgba(0,200,255,.15);border-radius:1px;margin-top:6px"><div style="height:100%;width:30%;background:var(--ic);border-radius:1px"></div></div></div>
+      </div>
+      <div id="mls-model-weights"></div>
+    </div>
+    <div id="mls-tab-config" class="tab">
+      <div class="sh"><span class="i"></span> MLS ENGINE CONFIG</div>
+      <div class="sg">
+        <div class="sgt">// MODEL WEIGHTS</div>
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="mls-mc-v">50%</span></div><input type="range" id="mls-w-mc" min="10" max="70" value="50" oninput="document.getElementById('mls-mc-v').textContent=this.value+'%';applySoccerWeights('mls')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">POISSON</span><span class="rrv" id="mls-poi-v">30%</span></div><input type="range" id="mls-w-poi" min="5" max="50" value="30" oninput="document.getElementById('mls-poi-v').textContent=this.value+'%';applySoccerWeights('mls')">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">FORM/xG</span><span class="rrv" id="mls-form-v">20%</span></div><input type="range" id="mls-w-form" min="5" max="50" value="20" oninput="document.getElementById('mls-form-v').textContent=this.value+'%';applySoccerWeights('mls')">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('mls')">APPLY</button>
+      </div>
+      <div class="sg">
+        <div class="sgt">// PICK THRESHOLDS</div>
+        <div class="rr"><span class="rrl">MIN EV %</span><span class="rrv" id="mls-ev-v">2%</span></div><input type="range" id="mls-ev-thresh" min="0" max="10" value="2" step="0.5" oninput="document.getElementById('mls-ev-v').textContent=this.value+'%'">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">MIN WIN PROB</span><span class="rrv" id="mls-minp-v">55%</span></div><input type="range" id="mls-min-p" min="50" max="75" value="55" oninput="document.getElementById('mls-minp-v').textContent=this.value+'%'">
+        <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="applySoccerWeights('mls')">SAVE</button>
+      </div>
+      <div id="mls-model-weights-b"></div>
+    </div>
   </div>
 </div>
 </div>
@@ -5851,6 +6051,33 @@ function applyNHLWeightsModel(){
   toast('// NHL WEIGHTS APPLIED');
 }
 function applyNBAWeights(){const mc=+document.getElementById('nba-w-mc')?.value||50;const bay=+document.getElementById('nba-w-bay')?.value||20;const elo=+document.getElementById('nba-w-elo')?.value||30;const s=mc+bay+elo||100;NBA_ENS={mc:mc/s,bay:bay/s,elo:elo/s};S.s('nba_ens',NBA_ENS);try{renderNBAPicks();}catch(e){}toast('// NBA WEIGHTS LIVE — PICKS RECALCULATED');}
+
+// ═══ SOCCER LEAGUE MODEL/CONFIG (shared across cl/pl/liga/bl/mls) ══════════
+window.SOCCER_ENS=window.SOCCER_ENS||{};
+function renderSoccerLeagueModel(league){
+  // Static architecture/factor cards are already in the HTML — this just
+  // refreshes the weights readout below them from any saved config.
+  var ens=SOCCER_ENS[league]||S.g('soc_ens_'+league)||{mc:.5,poi:.3,form:.2};
+  var el=document.getElementById(league+'-model-weights');
+  if(el)el.innerHTML=`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:8px">ACTIVE WEIGHTS — MC:${Math.round(ens.mc*100)}% · POISSON:${Math.round(ens.poi*100)}% · FORM:${Math.round(ens.form*100)}%</div>`;
+}
+function renderSoccerLeagueConfig(league){
+  var ens=SOCCER_ENS[league]||S.g('soc_ens_'+league)||{mc:.5,poi:.3,form:.2};
+  var mcEl=document.getElementById(league+'-w-mc'),poiEl=document.getElementById(league+'-w-poi'),formEl=document.getElementById(league+'-w-form');
+  if(mcEl){mcEl.value=Math.round(ens.mc*100);document.getElementById(league+'-mc-v').textContent=mcEl.value+'%';}
+  if(poiEl){poiEl.value=Math.round(ens.poi*100);document.getElementById(league+'-poi-v').textContent=poiEl.value+'%';}
+  if(formEl){formEl.value=Math.round(ens.form*100);document.getElementById(league+'-form-v').textContent=formEl.value+'%';}
+}
+function applySoccerWeights(league){
+  const mc=+document.getElementById(league+'-w-mc')?.value||50;
+  const poi=+document.getElementById(league+'-w-poi')?.value||30;
+  const form=+document.getElementById(league+'-w-form')?.value||20;
+  const s=mc+poi+form||100;
+  SOCCER_ENS[league]={mc:mc/s,poi:poi/s,form:form/s};
+  S.s('soc_ens_'+league,SOCCER_ENS[league]);
+  try{renderLeagueProps(league);}catch(e){}
+  toast(`// ${league.toUpperCase()} WEIGHTS LIVE — PICKS RECALCULATED`);
+}
 function applyWNBAWeights(){
   const mc=parseFloat(document.getElementById('wnba-w-mc')?.value||50)/100;
   const bay=parseFloat(document.getElementById('wnba-w-bay')?.value||20)/100;
@@ -15730,6 +15957,17 @@ async function loadRemoteData(force=false){
       (d.nba?.today||[]).length,'MLB:',(d.mlb?.today||[]).length,
       'NHL:',(d.nhl?.today||[]).length);
   }catch(e){console.warn('[CV] data.json offline:',e.message);}
+  loadSoccerFBref();
+}
+
+window.__CV_FBREF = null;
+async function loadSoccerFBref(){
+  try{
+    const r=await fetch(`soccer_fbref.json?${Date.now()}`,{cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    window.__CV_FBREF=await r.json();
+    console.log('[CV] FBref soccer data loaded:',Object.keys(window.__CV_FBREF||{}).length,'leagues');
+  }catch(e){console.warn('[CV] soccer_fbref.json offline (using static xG fallback):',e.message);}
 }
 
 function mergeSeededBets(seeded){
@@ -22437,8 +22675,35 @@ var _SOC_XG={
   'san diego fc':{xg:1.25,xga:1.50,hxg:1.45,hxga:1.35,axg:1.05,axga:1.65,gf:1.2,ga:1.5,mp:34}
 };
 
-function _socXG(name){
+function _socXGFromFBref(name,leagueKey){
+  // Prefer real, freshly-scraped FBref data (window.__CV_FBREF, written by
+  // fetch_fbref_all() in clairvoyance_update.py) over the static _SOC_XG
+  // fallback table below. Falls through to null if FBref data isn't loaded
+  // yet or doesn't have this team, letting _socXG() fall back to the static table.
+  var fb=window.__CV_FBREF;
+  if(!fb||!name)return null;
+  var k=name.toLowerCase().trim();
+  var leagues=leagueKey?[leagueKey]:Object.keys(fb);
+  for(var li=0;li<leagues.length;li++){
+    var teams=fb[leagues[li]]&&fb[leagues[li]].teams;
+    if(!teams)continue;
+    var tkeys=Object.keys(teams);
+    for(var i=0;i<tkeys.length;i++){
+      var tk=tkeys[i].toLowerCase();
+      if(tk===k||tk.indexOf(k)>=0||k.indexOf(tk)>=0){
+        var t=teams[tkeys[i]];
+        var mp=t.mp||34;
+        return {xg:t.xg/mp,xga:t.xga/mp,hxg:t.xg/mp*1.15,hxga:t.xga/mp*0.9,axg:t.xg/mp*0.85,axga:t.xga/mp*1.1,gf:t.gf/mp,ga:t.ga/mp,mp:mp,src:'fbref'};
+      }
+    }
+  }
+  return null;
+}
+
+function _socXG(name,leagueKey){
   if(!name)return null;
+  var live=_socXGFromFBref(name,leagueKey);
+  if(live)return live;
   var k=name.toLowerCase().trim();
   if(_SOC_XG[k])return _SOC_XG[k];
   var keys=Object.keys(_SOC_XG);

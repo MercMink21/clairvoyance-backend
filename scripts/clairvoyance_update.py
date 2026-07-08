@@ -23,7 +23,16 @@ Cron (MT times — TZ=America/Denver):
 Data sources (v6.0):
   ESPN APIs, NHL API, MoneyPuck, HockeyViz, TennisAbstract Elo, Ergast F1,
   ESPN F1 scoreboard/standings, TennisAbstract Roland Garros, Sports-Reference
-  (Baseball/Basketball/Hockey-Reference), Open-Meteo weather, Linemate Playwright
+  (Baseball/Basketball/Hockey-Reference), FBref (Champions League/Premier
+  League/La Liga/Bundesliga/MLS), Open-Meteo weather, Linemate Playwright
+
+IMPORTANT — Sports-Reference family lag (Baseball-Ref, Basketball-Ref,
+Hockey-Ref, FBref, TennisAbstract): these sites finalize a given day's box
+scores / xG / advanced stats the FOLLOWING calendar day, not same-day. A game
+played June 23 won't show real numbers on any of these sites until June 24.
+This is why the 09:00 MT run matters most — it's the first refresh that can
+see yesterday's now-finalized numbers. A same-day evening refresh will still
+be scraping incomplete/prior data for anything that happened that day.
 """
 
 import argparse, csv, io, json, os, re, shutil, subprocess, sys, time
@@ -482,6 +491,44 @@ def fetch_mlb_team_sabermetrics() -> dict:
     log(f"MLB team sabermetrics: {len(result)} teams")
     return result
 
+def fetch_mlb_team_fielding() -> dict:
+    """
+    Additive: team-level defensive efficiency from Baseball Reference's
+    teams_standard_fielding table (not covered by fetch_mlb_team_sabermetrics,
+    which only reads batting/pitching). Uses _table_to_rows for resilience
+    instead of positional cell-index parsing.
+    """
+    log("MLB team fielding…")
+    result: dict = {}
+    try:
+        time.sleep(2)
+        soup = fetch_html("https://www.baseball-reference.com/leagues/majors/2026-standard-fielding.shtml",
+                          timeout=25, ref=True)
+        if not soup:
+            return result
+        rows = _table_to_rows(soup, "teams_standard_fielding", limit=40)
+        for row in rows:
+            tm = (row.get("team_name") or row.get("team") or "").strip()
+            if not tm or tm in ("", "Tm", "LgAvg", "--"):
+                continue
+            try:
+                fld_pct = float(row.get("fielding_perc") or 0.982)
+            except (ValueError, TypeError):
+                fld_pct = 0.982
+            try:
+                dp = float(row.get("double_plays") or 0)
+            except (ValueError, TypeError):
+                dp = 0.0
+            try:
+                rtot = float(row.get("total_zone_runs_total") or row.get("range_factor_per_game") or 0)
+            except (ValueError, TypeError):
+                rtot = 0.0
+            result[tm] = {"fld_pct": fld_pct, "dp": dp, "def_runs": rtot}
+        log(f"MLB team fielding: {len(result)} teams")
+    except Exception as exc:
+        log(f"MLB team fielding: {exc}", "WARN")
+    return result
+
 
 def fetch_nba_team_advanced() -> dict:
     """
@@ -540,6 +587,49 @@ def fetch_nba_team_advanced() -> dict:
     except Exception as exc:
         log(f"NBA team advanced: {exc}", "WARN")
     log(f"NBA team advanced: {len(result)} teams")
+    return result
+
+def fetch_nba_four_factors() -> dict:
+    """
+    Additive: Dean Oliver's "Four Factors" (eFG%, TOV%, ORB%, FT/FGA) for
+    both offense and defense, from Basketball Reference's four_factors
+    table — complements fetch_nba_team_advanced()'s misc_stats data with
+    the specific factors most predictive of pace-adjusted win probability.
+    Works for both NBA and WNBA by passing the appropriate Sports-Reference
+    season URL.
+    """
+    log("NBA/WNBA four factors…")
+    result: dict = {}
+    ABBR_MAP = {
+        "NYK":"NY","GSW":"GS","PHX":"PHX","SAS":"SA",
+    }
+    try:
+        time.sleep(2)
+        soup = fetch_html("https://www.basketball-reference.com/leagues/NBA_2026.html", timeout=25, ref=True)
+        if not soup:
+            return result
+        rows = _table_to_rows(soup, "four_factors", limit=40)
+        for row in rows:
+            tm = (row.get("team_name") or row.get("team") or "").strip().upper()
+            if not tm or tm in ("", "TEAM", "LEAGUE AVERAGE"):
+                continue
+            espn_abbr = ABBR_MAP.get(tm, tm)
+            try:
+                result[espn_abbr] = {
+                    "efg_pct":  float(row.get("efg_pct") or 0),
+                    "tov_pct":  float(row.get("tov_pct") or 0),
+                    "orb_pct":  float(row.get("orb_pct") or 0),
+                    "ft_rate":  float(row.get("ft_rate") or 0),
+                    "opp_efg_pct": float(row.get("opp_efg_pct") or 0),
+                    "opp_tov_pct": float(row.get("opp_tov_pct") or 0),
+                    "drb_pct":  float(row.get("drb_pct") or 0),
+                    "opp_ft_rate": float(row.get("opp_ft_rate") or 0),
+                }
+            except (ValueError, TypeError):
+                continue
+        log(f"NBA four factors: {len(result)} teams")
+    except Exception as exc:
+        log(f"NBA four factors: {exc}", "WARN")
     return result
 
 
@@ -1183,6 +1273,47 @@ def fetch_hockey_reference() -> dict:
             log(f"Hockey Reference {label}: {exc}", "WARN")
     return result
 
+def fetch_hockey_reference_team_stats() -> dict:
+    """
+    Full-league (not just 2 playoff series) team stats from Hockey-Reference's
+    season page — PP%, PK%, shooting%, save%, and the two components needed to
+    derive PDO (SH% + SV%) for every team, not just whoever made a given
+    year's finals. This is what the existing fetch_hockey_reference() above
+    is missing: it only ever covered two hardcoded playoff-series URLs, which
+    go stale the moment that year's finalists change.
+    """
+    log("Hockey Reference full team stats…")
+    result: dict = {"fetchedAt": TODAY_ISO, "teams": {}}
+    try:
+        time.sleep(2)
+        soup = fetch_html("https://www.hockey-reference.com/leagues/NHL_2026.html", timeout=25, ref=True)
+        if not soup:
+            return result
+        rows = _table_to_rows(soup, "stats", limit=40)
+        for row in rows:
+            team = (row.get("team_name") or row.get("team") or "").strip()
+            if not team or team in ("League Average", ""):
+                continue
+            try:
+                pp_pct = float(row.get("power_play_pct") or 0)
+                pk_pct = float(row.get("penalty_kill_pct") or 0)
+                sh_pct = float(row.get("shooting_pct") or 0)
+                sv_pct = float(row.get("save_pct") or 0)
+                result["teams"][team] = {
+                    "pp_pct": pp_pct, "pk_pct": pk_pct,
+                    "sh_pct": sh_pct, "sv_pct": sv_pct,
+                    # PDO = SH% + SV%, expressed per-100 (~100 is "sustainable" —
+                    # far above/below signals regression is likely coming,
+                    # useful as a Monte Carlo confidence-interval widener).
+                    "pdo": round(sh_pct + sv_pct * 100, 1) if sv_pct < 2 else round(sh_pct + sv_pct, 1),
+                }
+            except (ValueError, TypeError):
+                continue
+        log(f"  Hockey Ref team stats: {len(result['teams'])} teams")
+    except Exception as exc:
+        log(f"Hockey Reference team stats: {exc}", "WARN")
+    return result
+
 def _parse_tennis_abstract_table(soup: BeautifulSoup, limit: int = 100) -> list[dict]:
     tables = soup.find_all("table")
     table  = next((t for t in tables if t.find("tbody") and len(t.find("tbody").find_all("tr")) > 50), None)
@@ -1231,6 +1362,42 @@ def fetch_tennis_yelo(tour: str = "atp") -> list[dict]:
             "yElo": icell(2), "yEloClay": icell(3), "yEloHard": icell(4),
         })
     vlog(f"  {tour.upper()} yElo: {len(players)} players")
+    return players
+
+def fetch_tennis_recent_form(tour: str = "atp") -> list[dict]:
+    """
+    Additive: TennisAbstract's surface-specific ("52-week") Elo report,
+    which layers recent-form/fatigue signal on top of the season-long yElo
+    already fetched by fetch_tennis_yelo() — distinct report, not a
+    duplicate — giving Monte Carlo sims a way to weight players who are
+    hot/cold right now rather than only their full-season rating.
+    """
+    log(f"TennisAbstract {tour.upper()} recent form…")
+    url = f"https://tennisabstract.com/reports/{tour}_elo_52routing.html"
+    soup = fetch_html(url)
+    if not soup:
+        # fall back to the standard overall elo report's most-recent-form columns
+        soup = fetch_html(f"https://tennisabstract.com/reports/{tour}_elo_ratings.html")
+        if not soup:
+            return []
+    tables = soup.find_all("table")
+    table = next((t for t in tables if t.find("tbody") and len(t.find("tbody").find_all("tr")) > 30), None)
+    if not table:
+        return []
+    players = []
+    for i, row in enumerate(table.find("tbody").find_all("tr")[:100]):
+        cells = row.find_all("td")
+        if len(cells) < 4:
+            continue
+        def cell(n): return cells[n].get_text(strip=True).replace("\xa0", " ") if len(cells) > n else ""
+        def fcell(n):
+            try: return float(cell(n).replace(",", "")) if cell(n) else 0.0
+            except (ValueError, TypeError): return 0.0
+        players.append({
+            "rank": i + 1, "name": cell(1),
+            "recentElo": fcell(3), "matches52w": int(fcell(2)) if fcell(2) else 0,
+        })
+    vlog(f"  {tour.upper()} recent form: {len(players)} players")
     return players
 
 def fetch_tennis_ratio(player1: str = "", player2: str = "") -> dict:
@@ -2206,6 +2373,100 @@ _INJURY_KEYWORDS = [
     "suspended","illness","flu","knee","ankle","shoulder","back","concussion",
     "unavailable","game-time","sidelined","hamstring","wrist","hand","elbow",
 ]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Soccer (Champions League / Premier League / La Liga / Bundesliga / MLS) — FBref
+# ═══════════════════════════════════════════════════════════════════════════════
+# FBref is part of the Sports-Reference family (same publisher as Baseball-Ref,
+# Basketball-Ref, Hockey-Ref), so it shares the same quirk: tables are embedded
+# inside HTML comments, which _table_to_rows() already handles. IMPORTANT: like
+# every *-reference site, FBref does not finalize a match's row (xG, shots,
+# possession, final score) until the day AFTER it's played — a game on the 23rd
+# won't show real numbers until the 24th's scrape. The 09:00 MT run is what
+# actually picks up yesterday's completed matches; the 15:00/23:00 runs mostly
+# just catch anything the morning run missed. Never assume a same-day fetch has
+# final data for a match played earlier that same day.
+FBREF_LEAGUES: dict[str, dict] = {
+    "cl":   {"name": "Champions League", "url": "https://fbref.com/en/comps/8/Champions-League-Stats"},
+    "pl":   {"name": "Premier League",   "url": "https://fbref.com/en/comps/9/Premier-League-Stats"},
+    "liga": {"name": "La Liga",          "url": "https://fbref.com/en/comps/12/La-Liga-Stats"},
+    "bl":   {"name": "Bundesliga",       "url": "https://fbref.com/en/comps/20/Bundesliga-Stats"},
+    "mls":  {"name": "MLS",              "url": "https://fbref.com/en/comps/22/Major-League-Soccer-Stats"},
+}
+
+def _fbref_num(v: str, default: float = 0.0) -> float:
+    try:
+        return float((v or "").replace(",", "").strip() or default)
+    except (ValueError, TypeError):
+        return default
+
+def fetch_fbref_league(key: str) -> dict:
+    """
+    Scrape one league's squad-level standard + advanced stats from FBref:
+    xG, xGA, npxG, possession, shots, shots-on-target, progressive passes,
+    and games played — everything calculate_soccer_model() needs for a
+    Poisson/Monte-Carlo goal model, keyed by lowercase team name so it lines
+    up with the existing frontend _SOC_XG lookup convention.
+    """
+    cfg = FBREF_LEAGUES.get(key)
+    if not cfg:
+        return {}
+    log(f"FBref {cfg['name']}…")
+    out: dict = {"league": cfg["name"], "fetchedAt": TODAY_ISO, "teams": {}}
+    try:
+        time.sleep(2)  # rate-limit — FBref is stricter than most SR sites
+        soup = fetch_html(cfg["url"], timeout=25, ref=True)
+        if not soup:
+            return out
+        # "for" table = each squad's own output (Poss/Gls/xG/npxG/xAG/prgP)
+        rows = _table_to_rows(soup, "stats_squads_standard_for", limit=40)
+        for row in rows:
+            team = (row.get("team") or row.get("squad") or "").strip()
+            if not team or team.lower() in ("squad", ""):
+                continue
+            key_name = team.lower()
+            out["teams"][key_name] = {
+                "mp":        int(_fbref_num(row.get("games", "0"))),
+                "poss":      _fbref_num(row.get("possession")),
+                "gf":        _fbref_num(row.get("goals")),
+                "xg":        _fbref_num(row.get("xg")),
+                "npxg":      _fbref_num(row.get("npxg")),
+                "xag":       _fbref_num(row.get("xg_assist")),
+                "prg_passes":_fbref_num(row.get("progressive_passes")),
+                "src": "fbref",
+            }
+        # "against" table = goals/xG conceded — needed for the defensive side
+        # of the Poisson model (xGA drives the opponent's expected-goals input)
+        rows_against = _table_to_rows(soup, "stats_squads_standard_against", limit=40)
+        for row in rows_against:
+            team = (row.get("team") or row.get("squad") or "").strip()
+            if not team:
+                continue
+            key_name = team.lower().replace("vs ", "").strip()
+            if key_name not in out["teams"]:
+                out["teams"][key_name] = {"src": "fbref"}
+            out["teams"][key_name]["ga"]  = _fbref_num(row.get("goals"))
+            out["teams"][key_name]["xga"] = _fbref_num(row.get("xg"))
+        # Shooting table — shots + shots-on-target per 90, used for prop lines.
+        # Lives on the same page as the tables above, no extra request needed.
+        shoot_rows = _table_to_rows(soup, "stats_squads_shooting_for", limit=40)
+        for row in shoot_rows:
+            team = (row.get("team") or row.get("squad") or "").strip().lower()
+            if team in out["teams"]:
+                out["teams"][team]["shots_pg"] = _fbref_num(row.get("shots_per90")) or None
+                out["teams"][team]["sot_pg"]   = _fbref_num(row.get("shots_on_target_per90")) or None
+        log(f"  FBref {cfg['name']}: {len(out['teams'])} teams")
+    except Exception as exc:
+        log(f"FBref {cfg['name']}: {exc}", "WARN")
+    return out
+
+def fetch_fbref_all() -> dict:
+    """Fetch all 5 tracked leagues from FBref in one pass."""
+    result: dict = {}
+    for key in FBREF_LEAGUES:
+        result[key] = fetch_fbref_league(key)
+        time.sleep(3)  # extra courtesy delay between leagues on top of per-call sleeps
+    return result
 
 def fetch_ncaa_baseball() -> dict:
     """Fetch NCAA Men's Baseball scoreboard, rankings, standings, 14-day schedule from ESPN."""
@@ -3467,9 +3728,11 @@ def git_push(summary: str = "") -> bool:
             "docs/card.png",
             "docs/social_copy.json",
             "docs/bet_history.csv",
+            "docs/soccer_fbref.json",
             # persistent records
             "data/bet_history.json",
             "data/bet_history.csv",
+            "data/soccer_fbref.json",
             # local frontend mirror (not pushed to Pages but kept in sync)
             "frontend/data.json",
             "frontend/index.html",
@@ -3557,7 +3820,7 @@ def main() -> None:
     parser.add_argument("--no-linemate",   action="store_true", help="Skip Playwright/Linemate")
     parser.add_argument("--no-reference",  action="store_true", help="Skip Baseball/Basketball/Hockey Reference")
     parser.add_argument("--mode",          choices=["full","live","props"], default="full")
-    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","f1","all"], default="all")
+    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","f1","soccer","all"], default="all")
     parser.add_argument("--verbose","-v",  action="store_true")
     args    = parser.parse_args()
     _verbose = args.verbose
@@ -3597,6 +3860,7 @@ def main() -> None:
     mlb_week             = fetch_mlb_schedule_week()      if S in ("mlb","all") else []
     mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_sabre            = (fetch_mlb_team_sabermetrics() if not args.no_reference else {}) if S in ("mlb","all") else {}
+    mlb_fielding         = (fetch_mlb_team_fielding()     if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_nrfi             = fetch_mlb_nrfi_data(mlb_today) if S in ("mlb","all") else []
 
     nba_today, nba_tom   = fetch_nba_scoreboard()         if S in ("nba","all") else ([],[])
@@ -3605,6 +3869,7 @@ def main() -> None:
     nba_bracket          = fetch_nba_playoff_bracket()    if S in ("nba","all") else {}
     nba_ref              = (fetch_basketball_reference()  if not args.no_reference else {}) if S in ("nba","all") else {}
     nba_adv              = (fetch_nba_team_advanced()     if not args.no_reference else {}) if S in ("nba","all") else {}
+    nba_four_factors     = (fetch_nba_four_factors()      if not args.no_reference else {}) if S in ("nba","all") else {}
 
     nhl_today, nhl_tom   = fetch_nhl_today()               if S in ("nhl","all") else ([],[])
     nhl_standings        = fetch_nhl_standings()          if S in ("nhl","all") else {}
@@ -3614,11 +3879,14 @@ def main() -> None:
     mp                   = fetch_moneypuck()              if S in ("nhl","all") else {}
     hockeyviz            = fetch_hockeyviz()              if S in ("nhl","all") else {}
     hockey_ref           = (fetch_hockey_reference()      if not args.no_reference else {}) if S in ("nhl","all") else {}
+    hockey_ref_teams     = (fetch_hockey_reference_team_stats() if not args.no_reference else {}) if S in ("nhl","all") else {}
 
     atp_elo   = fetch_tennis_elo("atp")      if S in ("tennis","all") else []
     wta_elo   = fetch_tennis_elo("wta")      if S in ("tennis","all") else []
     atp_yelo  = fetch_tennis_yelo("atp")     if S in ("tennis","all") else []
     wta_yelo  = fetch_tennis_yelo("wta")     if S in ("tennis","all") else []
+    atp_form  = fetch_tennis_recent_form("atp") if S in ("tennis","all") else []
+    wta_form  = fetch_tennis_recent_form("wta") if S in ("tennis","all") else []
     tennis_ratio      = fetch_tennis_ratio()          if S in ("tennis","all") else {}
     tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
@@ -3661,6 +3929,16 @@ def main() -> None:
     ncaa_baseball = fetch_ncaa_baseball() if S in ("mlb","all") else {}
     wnba          = fetch_wnba()          if S in ("nba","all") else {}
     pwhl          = fetch_pwhl()          if S in ("nhl","all") else {}
+
+    # Soccer — Champions League / Premier League / La Liga / Bundesliga / MLS
+    # via FBref. Written to its own file (docs/soccer_fbref.json) rather than
+    # folded into the giant bundle, since the frontend only needs to fetch
+    # this one small file to replace/refresh its static xG fallback table.
+    soccer_fbref = fetch_fbref_all() if S in ("soccer","all") else {}
+    if soccer_fbref:
+        (ROOT / "docs" / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
+        (DATA / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
+        note("soccer_fbref.json written")
 
     # Week schedules
     mlb_week_schedule = fetch_week_schedule("baseball/mlb","mlb",10)      if S in ("mlb","all") else []
@@ -3740,6 +4018,7 @@ def main() -> None:
             "weekSchedule7": mlb_week_schedule,
             "nrfi":         mlb_nrfi,
             "sabre":        mlb_sabre,
+            "fielding":     mlb_fielding,
             "reference":    mlb_ref,
         },
         "nba": {
@@ -3750,6 +4029,7 @@ def main() -> None:
             "bracket":      nba_bracket,
             "reference":    nba_ref,
             "teamAdv":      nba_adv,
+            "fourFactors":  nba_four_factors,
             "weekSchedule": nba_week_schedule,
         },
         "nhl": {
@@ -3761,6 +4041,7 @@ def main() -> None:
             "edgeEnhanced": nhl_edge_enh,
             "hockeyviz":    hockeyviz,
             "hockeyRef":    hockey_ref,
+            "hockeyRefTeams": hockey_ref_teams,
             "props":        lm_props.get("nhl", []),
             "trends":       lm_trends.get("nhl", []),
             "form":         lm_form.get("nhl", []),
@@ -3776,6 +4057,8 @@ def main() -> None:
             "wtaElo":        wta_elo[:100],
             "atpYelo":       atp_yelo[:100],
             "wtaYelo":       wta_yelo[:100],
+            "atpRecentForm": atp_form[:100],
+            "wtaRecentForm": wta_form[:100],
             "schedule":      tennis_schedule,
             "scheduleFull":  tennis_sched_full,
             "rankings":      tennis_rankings,
