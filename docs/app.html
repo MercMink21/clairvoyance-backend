@@ -13543,7 +13543,7 @@ const TEN_TOURNAMENTS=[{
         {p1:'A.de Minaur',p2:'F.Cobolli',winner:'F.Cobolli',score:'5-7, 6-7(4), 3-6'},
         {p1:'G.Dimitrov',p2:'A.Fery',winner:'A.Fery',score:'5-7, 6-3, 4-6, 6-4, 6-7(10)'},
         {p1:'T.Fritz',p2:'A.Bublik',winner:'T.Fritz',score:'7-6(1), 6-4, 6-4'},
-        {p1:'J.Lehecka',p2:'A.Zverev',score:'4-5, 5-7, 3-3 SUSPENDED',note:'Suspended overnight — resumes to decide QF4 opponent for T.Fritz.'},
+        {p1:'J.Lehecka',p2:'A.Zverev',winner:'A.Zverev',score:'4-6, 5-7, 6-3, 6-4',note:'Resumed after overnight suspension — Zverev completed the comeback to reach QF4 vs Fritz.'},
       ],
       wta:[
         {p1:'A.Sabalenka',p2:'N.Osaka',winner:'N.Osaka',score:'2-6, 6-7(2)'},
@@ -13556,22 +13556,22 @@ const TEN_TOURNAMENTS=[{
         {p1:'M.Bouzkova',p2:'E.Mertens',winner:'E.Mertens',score:'4-6, 4-6'},
       ]
     },
-    {id:'qf',name:'Quarterfinals',dates:'Jul 8 – Jul 9',status:'upcoming',
+    {id:'qf',name:'Quarterfinals',dates:'Jul 8 – Jul 9',status:'active',
       atp:[
-        {p1:'J.Sinner',p2:'J.Struff'},
-        {p1:'F.Auger-Aliassime',p2:'N.Djokovic'},
+        {p1:'J.Sinner',p2:'J.Struff',winner:'J.Sinner',score:'FT'},
+        {p1:'F.Auger-Aliassime',p2:'N.Djokovic',winner:'N.Djokovic',score:'FT'},
         {p1:'F.Cobolli',p2:'A.Fery'},
-        {p1:'T.Fritz',p2:'TBD'},
+        {p1:'T.Fritz',p2:'A.Zverev'},
       ],
       wta:[
-        {p1:'N.Osaka',p2:'K.Muchova'},
-        {p1:'J.Pegula',p2:'C.Gauff'},
+        {p1:'N.Osaka',p2:'K.Muchova',winner:'K.Muchova',score:'FT'},
+        {p1:'J.Pegula',p2:'C.Gauff',winner:'C.Gauff',score:'FT'},
         {p1:'M.Kostyuk',p2:'J.Paolini'},
         {p1:'L.Noskova',p2:'E.Mertens'},
       ]
     },
-    {id:'sf',name:'Semifinals',dates:'Jul 11 – Jul 12',status:'upcoming',atp:[],wta:[]},
-    {id:'f', name:'Final',        dates:'Jul 13 – Jul 14',status:'upcoming',atp:[],wta:[]},
+    {id:'sf',name:'Semifinals',dates:'Jul 9 – Jul 10',status:'upcoming',atp:[],wta:[]},
+    {id:'f', name:'Final',        dates:'Jul 11 – Jul 12',status:'upcoming',atp:[],wta:[]},
   ]
 }];
 // ── Legacy today arrays (used by picks engine) ─────────────────
@@ -14319,17 +14319,21 @@ function _renderWimBracket(tour,activeRound,genderFilter){
       }
     });
     const r4w=r4data.map((m,i)=>m.winner||_validWin(r4wins[i],m.p1,m.p2));
+    // Real QF results (hardcoded on the "qf" round, same pattern as r4Real above).
+    const qfReal=t.rounds.find(r=>r.id==='qf')?.[k]||[];
+    const _findRealQF=(p1,p2)=>qfReal.find(rm=>(rm.p1===p1&&rm.p2===p2)||(rm.p1===p2&&rm.p2===p1));
     const qfdata=[];
     for(let i=0;i<8;i+=2){
       const p1=r4w[i]||null,p2=r4w[i+1]||null;
       const m1=r4data[i]||{},m2=r4data[i+1]||{};
       const s1=p1&&m1.p1?(p1===m1.p1?m1.s1:m1.s2)||'':'';
       const s2=p2&&m2.p1?(p2===m2.p1?m2.s1:m2.s2)||'':'';
-      qfdata.push({p1,s1,p2,s2});
+      const real=p1&&p2?_findRealQF(p1,p2):null;
+      qfdata.push({p1,s1,p2,s2,winner:real?.winner||null,score:real?.score||null});
     }
     const qfwins=_ww('qf',k);
     qfdata.forEach((m,i)=>{
-      if(!_validWin(qfwins[i],m.p1,m.p2)&&m.p1&&m.p2){
+      if(!m.winner&&!_validWin(qfwins[i],m.p1,m.p2)&&m.p1&&m.p2){
         const live=_wimLiveLookup(m.p1,m.p2);
         if(live&&live.state){
           if(live.winner){qfwins[i]=live.winner;m.score=live.score;}
@@ -14337,7 +14341,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         }
       }
     });
-    const qfw=qfdata.map((m,i)=>_validWin(qfwins[i],m.p1,m.p2));
+    const qfw=qfdata.map((m,i)=>m.winner||_validWin(qfwins[i],m.p1,m.p2));
     const sfdata=[{p1:qfw[0]||null,s1:'',p2:qfw[1]||null,s2:''},{p1:qfw[2]||null,s1:'',p2:qfw[3]||null,s2:''}];
     const sfwins=_ww('sf',k);
     sfdata.forEach((m,i)=>{
@@ -14474,7 +14478,7 @@ function _renderWimBracket(tour,activeRound,genderFilter){
         {id:'r3',label:'R3',data:dat.r3d,winners:dat.r3w,dates:'Jul 3 – Jul 4'},
         {id:'r4',label:'R4',data:dat.r4data,winners:dat.r4w,dates:'Jul 6 – Jul 7'},
         {id:'qf',label:'QF',data:dat.qfdata,winners:dat.qfw,dates:'Jul 8 – Jul 9'},
-        {id:'sf',label:'SF',data:dat.sfdata,winners:dat.sfw,dates:'Jul 11 – Jul 12'},
+        {id:'sf',label:'SF',data:dat.sfdata,winners:dat.sfw,dates:'Jul 9 – Jul 10'},
       ];
     }
 
@@ -21332,7 +21336,9 @@ var WC26_SCHEDULE=[
   // schedule until their R16 feeder matches (POR/ESP, USA/BEL, and the
   // ARG/AUS + SUI/COL winners) are known, so nothing here is guessed.
   {date:'2026-07-09',time:'12:00 PM MT',home:'France',hc:'FRA',hf:'',he:2065,away:'Morocco',ac:'MAR',af:'',ae:1920,group:'QF',venue:'Quarterfinal · TBD',ou:2.5},
-  {date:'2026-07-10',time:'12:00 PM MT',home:'England',hc:'ENG',hf:'',he:2040,away:'Norway',ac:'NOR',af:'',ae:1875,group:'QF',venue:'Quarterfinal · TBD',ou:2.5}
+  {date:'2026-07-10',time:'12:00 PM MT',home:'Spain',hc:'ESP',hf:'',he:2025,away:'Belgium',ac:'BEL',af:'',ae:1895,group:'QF',venue:'Quarterfinal · TBD',ou:2.5},
+  {date:'2026-07-11',time:'10:00 AM MT',home:'England',hc:'ENG',hf:'',he:1955,away:'Norway',ac:'NOR',af:'',ae:1948,group:'QF',venue:'Quarterfinal · TBD',ou:2.5},
+  {date:'2026-07-11',time:'2:00 PM MT',home:'Argentina',hc:'ARG',hf:'',he:2090,away:'Switzerland',ac:'SUI',af:'',ae:2016,group:'QF',venue:'Quarterfinal · TBD',ou:2.5}
 ];
 var WC26_PROPS=[
   // ARG vs Algeria (Group J — Jun 16)
@@ -22054,18 +22060,18 @@ function renderWCBracket(){
   var R16=[
     {id:'M89',date:'Jul 4',time:'FT',a:1,b:2,winner:ov['r16_M89']||'FRA',score:ov['r16_M89_score']||'2-0'},
     {id:'M90',date:'Jul 4',time:'FT',a:3,b:4,winner:ov['r16_M90']||'MAR',score:ov['r16_M90_score']||'1-0'},
-    {id:'M91',date:'Jul 6',time:'1:00 PM ET',a:5,b:6,winner:ov['r16_M91']||null,score:ov['r16_M91_score']||null},
-    {id:'M92',date:'Jul 6',time:'5:00 PM ET',a:7,b:8,winner:ov['r16_M92']||null,score:ov['r16_M92_score']||null},
+    {id:'M91',date:'Jul 6',time:'FT',a:5,b:6,winner:ov['r16_M91']||'ESP',score:ov['r16_M91_score']||'1-0'},
+    {id:'M92',date:'Jul 6',time:'FT',a:7,b:8,winner:ov['r16_M92']||'BEL',score:ov['r16_M92_score']||'1-4'},
     {id:'M93',date:'Jul 5',time:'FT',a:11,b:12,winner:ov['r16_M93']||'ENG',score:ov['r16_M93_score']||'2-1'},
     {id:'M94',date:'Jul 5',time:'FT',a:9,b:10,winner:ov['r16_M94']||'NOR',score:ov['r16_M94_score']||'2-1'},
-    {id:'M95',date:'Jul 7',time:'FT',a:13,b:14,winner:ov['r16_M95']||'EGY',score:ov['r16_M95_score']||'1-1 (2-4p)'},
-    {id:'M96',date:'Jul 7',time:'4:00 PM ET',a:15,b:16,winner:ov['r16_M96']||null,score:ov['r16_M96_score']||null},
+    {id:'M95',date:'Jul 7',time:'FT',a:13,b:14,winner:ov['r16_M95']||'ARG',score:ov['r16_M95_score']||'3-2'},
+    {id:'M96',date:'Jul 7',time:'FT',a:15,b:16,winner:ov['r16_M96']||'SUI',score:ov['r16_M96_score']||'0-0 (4-3p)'},
   ];
   var QF=[
     {id:'QF1',date:'Jul 9',feeds:['M89','M90'],winner:ov['qf_QF1']||null},
-    {id:'QF2',date:'Jul 9',feeds:['M91','M92'],winner:ov['qf_QF2']||null},
-    {id:'QF3',date:'Jul 10',feeds:['M93','M94'],winner:ov['qf_QF3']||null},
-    {id:'QF4',date:'Jul 10',feeds:['M95','M96'],winner:ov['qf_QF4']||null},
+    {id:'QF2',date:'Jul 10',feeds:['M91','M92'],winner:ov['qf_QF2']||null},
+    {id:'QF3',date:'Jul 11',feeds:['M93','M94'],winner:ov['qf_QF3']||null},
+    {id:'QF4',date:'Jul 11',feeds:['M95','M96'],winner:ov['qf_QF4']||null},
   ];
   var SF=[
     {id:'SF1',date:'Jul 14',feeds:['QF1','QF2'],winner:ov['sf_SF1']||null},
