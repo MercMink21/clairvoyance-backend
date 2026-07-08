@@ -22829,47 +22829,120 @@ async function _fetchLeagueStandings(leagueKey){
   }catch(e){console.warn('[CV] Standings err:',leagueKey,e);return[];}
 }
 
+function _socGC(p){var e=ev(p,1.909);var t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'LEAN'};return{c:'chip-h',pl:'ph',lb:'SKIP'};}
 function _renderSocMatchCard(g,leagueKey){
-  var hXG=_socXG(g.home),aXG=_socXG(g.away);
+  // Same "gc" card system MLB (mlbCard) and World Cup (_renderWCMatchCard)
+  // use — 3-way ML chip row, adjustable O/U line, O/U analysis grid, tiered
+  // engine-reasoning footer, +PAR button — powered by the xG-based
+  // _soccerMC() Monte Carlo engine (25k sims) instead of WC's ELO model,
+  // since league matches source real xG from FBref/ESPN/mlssoccer.com.
+  var hXG=_socXG(g.home,leagueKey),aXG=_socXG(g.away,leagueKey);
   var hxg=hXG?(hXG.hxg||hXG.xg):1.4;
   var axg=aXG?(aXG.axg||aXG.xg):1.1;
   var mc=_soccerMC(hxg,axg,25000);
-  var hT=_socTier(mc.hWin),dT=_socTier(mc.draw),aT=_socTier(mc.aWin);
+  var hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
+  var hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
+  var hCS=_socGC(hP),dCS=_socGC(dP),aCS=_socGC(aP);
   var ouL=g.ou||2.5;
-  var overP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
-  var ovT=_socTier(overP);
-  var isLive=g.status==='in';
-  var statusStr=isLive?'<span style="color:var(--hc);font-weight:700">LIVE '+g.clock+'</span>':
-    (g.status==='post'?'<span style="color:var(--t3)">FT '+g.hScore+' – '+g.aScore+'</span>':
-    '<span style="color:var(--t3)">'+new Date(g.date).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</span>');
-  var hMLStr=g.hML?(g.hML>0?'+':'')+g.hML:'';
-  var aMLStr=g.aML?(g.aML>0?'+':'')+g.aML:'';
-  return'<div class="card" style="margin-bottom:12px">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-    +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:1px">'+(_LEAGUE_CFG[leagueKey]&&_LEAGUE_CFG[leagueKey].name||leagueKey.toUpperCase())+'</div>'
-    +statusStr+'</div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-    +'<div style="text-align:center;flex:1"><div style="font-family:var(--orb);font-size:23px;font-weight:700">'+g.hAbbr+'</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">'+g.home+'</div>'+(hMLStr?'<div style="font-family:var(--mono);font-size:15px;color:var(--nc)">'+hMLStr+'</div>':'')+'</div>'
-    +'<div style="text-align:center;padding:0 12px"><div style="font-family:var(--orb);font-size:17px;color:var(--t3)">vs</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">O/U '+ouL+'</div></div>'
-    +'<div style="text-align:center;flex:1"><div style="font-family:var(--orb);font-size:23px;font-weight:700">'+g.aAbbr+'</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">'+g.away+'</div>'+(aMLStr?'<div style="font-family:var(--mono);font-size:15px;color:var(--nc)">'+aMLStr+'</div>':'')+'</div>'
+  var ouId='ouinp_lg_'+leagueKey+'_'+(g.hAbbr||g.home)+'_'+(g.aAbbr||g.away);
+  var ouP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
+  var unP=1-ouP;
+  var ouTier=tier(ouP,ev(ouP,1.909)),unTier=tier(unP,ev(unP,1.909));
+  var gCol=function(t){return t===3?'var(--gc)':t===2?'var(--nc)':t===1?'var(--ic)':'var(--t3)';};
+  var ouCol=gCol(ouTier),unCol=gCol(unTier);
+  var ouLabel=ouTier===3?'PREMIUM':ouTier===2?'OPTIMAL':ouTier===1?'LEAN':'SKIP';
+  var unLabel=unTier===3?'PREMIUM':unTier===2?'OPTIMAL':unTier===1?'LEAN':'SKIP';
+  var _mkts=_evalMkts([
+    {label:g.home+' Win',prob:hP,evVal:ev(hP,ml2d(hML)),side:'home'},
+    {label:'Draw',prob:dP,evVal:ev(dP,ml2d(dML)),side:'draw'},
+    {label:g.away+' Win',prob:aP,evVal:ev(aP,ml2d(aML)),side:'away'},
+    {label:'OVER '+ouL,prob:ouP,evVal:ev(ouP,1.909),side:'over'},
+    {label:'UNDER '+ouL,prob:unP,evVal:ev(unP,1.909),side:'under'},
+  ]);
+  var topT=_mkts.tierN,topLabel=_mkts.lbl,topCol=_mkts.col;
+  var _bm=_mkts.best,_bp=Math.round(_bm.prob*100),_be=(_bm.evVal*100).toFixed(1);
+  var _implied=1/ml2d(_bm.side==='home'?hML:_bm.side==='draw'?dML:_bm.side==='away'?aML:1.909);
+  var _edgePP=(_bm.prob-_implied)*100;
+  var _kellyPct=(_kelly(_bm.prob,_bm.side==='home'?ml2d(hML):_bm.side==='draw'?ml2d(dML):_bm.side==='away'?ml2d(aML):1.909)*100).toFixed(1);
+  var leagueName=(_LEAGUE_CFG[leagueKey]&&_LEAGUE_CFG[leagueKey].name)||leagueKey.toUpperCase();
+  var explanation=topT===0?
+    'No qualifying edge. xG basis: '+g.home+' '+hxg.toFixed(2)+' / '+g.away+' '+axg.toFixed(2)+'. 3-way: Home '+(hP*100).toFixed(0)+'% / Draw '+(dP*100).toFixed(0)+'% / Away '+(aP*100).toFixed(0)+'%. O/U '+ouL+': over '+(ouP*100).toFixed(0)+'%. Skip.':
+    'Best market: <strong>'+_bm.label+'</strong> · '+topLabel+' · '+_bp+'% · EV +'+_be+'% · edge +'+_edgePP.toFixed(1)+'pp. '+
+    'xG basis: '+g.home+' '+hxg.toFixed(2)+' xG/G vs '+g.away+' '+axg.toFixed(2)+' xG/G. '+
+    '3-way: Home '+(hP*100).toFixed(0)+'% / Draw '+(dP*100).toFixed(0)+'% / Away '+(aP*100).toFixed(0)+'%. '+
+    'MC proj: '+mc.avgH.toFixed(2)+' – '+mc.avgA.toFixed(2)+' ('+mc.avgT.toFixed(2)+' total vs '+ouL+' line, BTTS '+(mc.btts*100).toFixed(0)+'%). '+
+    (_bm.side==='home'?g.home+' xG edge unpriced by market.':
+    _bm.side==='draw'?'Balanced xG gap supports draw value.':
+    _bm.side==='away'?g.away+' road xG edge underpriced.':
+    _bm.side==='over'?'Combined xG '+mc.avgT.toFixed(2)+' supports goals above the line.':
+    'Combined xG '+mc.avgT.toFixed(2)+' supports a tighter, lower-scoring line.')+
+    ' Kelly '+_kellyPct+'%. '+topLabel+' · '+_mkts.size+'-unit play'+_mkts.secStr+'.';
+  var isLive=g.status==='in',isFinal=g.status==='post';
+  var scoreHtml='';
+  if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:27px;font-weight:900;color:#ffdd00">'+(g.hScore||0)+'</span><span style="font-family:var(--mono);font-size:15px;color:#ffdd00;background:rgba(255,221,0,.12);padding:2px 7px;border-radius:2px;border:1px solid rgba(255,221,0,.4);animation:pulse 1.5s infinite">● LIVE '+(g.clock||'')+'</span><span style="font-family:var(--orb);font-size:27px;font-weight:900;color:#ffdd00">'+(g.aScore||0)+'</span></div>';}
+  else if(isFinal){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:26px;font-weight:900;color:var(--nc)">'+(g.hScore||0)+'</span><span style="font-family:var(--mono);font-size:14px;color:var(--t3);padding:2px 6px;border:1px solid rgba(255,255,255,.12);border-radius:2px">FT</span><span style="font-family:var(--orb);font-size:26px;font-weight:900;color:var(--nc)">'+(g.aScore||0)+'</span></div>';}
+  var statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
+  var statusTxt=isFinal?'FINAL':isLive?'LIVE':new Date(g.date).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away,dateStr=g.date||today();
+  return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
+    +'<div class="gch"><div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+    +'<span class="gtm" style="color:'+(aP>=hP&&aP>=dP?'var(--gc)':'var(--t2)')+'">'+g.away+'</span>'
+    +'<span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>'
+    +'<span class="gtm" style="color:'+(hP>=aP&&hP>=dP?'var(--gc)':'var(--t2)')+'">'+g.home+'</span>'
     +'</div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:5px 9px;background:rgba(0,0,0,.35);border-radius:3px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">'
-    +'<span style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MC PROJ (10k sims)</span>'
-    +'<span style="font-family:var(--mono);font-size:16px;color:var(--nc);font-weight:700">'+mc.avgH.toFixed(2)+' – '+mc.avgA.toFixed(2)+'</span>'
-    +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Total <span style="color:var(--vc);font-weight:700">'+mc.avgT.toFixed(2)+'</span> vs <span style="color:var(--t2)">'+ouL+'</span></span>'
-    +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3)">BTTS <span style="color:var(--ic)">'+(mc.btts*100).toFixed(0)+'%</span></span>'
+    +'<div class="gsp">'+leagueName+(g.venue?' · '+g.venue:'')+(g.matchDay?' · MATCHWEEK '+g.matchDay:'')+'</div>'
     +'</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:8px">'
-    +'<div style="flex:1;text-align:center;padding:6px 4px;border:1px solid '+hT.c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">HOME WIN</div><div style="font-family:var(--orb);font-size:19px;font-weight:700;color:'+hT.c+'">'+(mc.hWin*100).toFixed(0)+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+hT.c+'">'+hT.g+'</div></div>'
-    +'<div style="flex:1;text-align:center;padding:6px 4px;border:1px solid '+dT.c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">DRAW</div><div style="font-family:var(--orb);font-size:19px;font-weight:700;color:'+dT.c+'">'+(mc.draw*100).toFixed(0)+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+dT.c+'">'+dT.g+'</div></div>'
-    +'<div style="flex:1;text-align:center;padding:6px 4px;border:1px solid '+aT.c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">AWAY WIN</div><div style="font-family:var(--orb);font-size:19px;font-weight:700;color:'+aT.c+'">'+(mc.aWin*100).toFixed(0)+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+aT.c+'">'+aT.g+'</div></div>'
+    +'<div style="text-align:right"><div class="np mono" style="font-size:19px">'+statusDot+statusTxt+'</div></div>'
     +'</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:8px">'
-    +'<div style="flex:1;text-align:center;padding:5px 4px;border:1px solid '+ovT.c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">OVER '+ouL+'</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:'+ovT.c+'">'+(overP*100).toFixed(0)+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+ovT.c+'">'+ovT.g+'</div></div>'
-    +'<div style="flex:1;text-align:center;padding:5px 4px;border:1px solid '+_socTier(1-overP).c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">UNDER '+ouL+'</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:'+_socTier(1-overP).c+'">'+(((1-overP)*100).toFixed(0))+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+_socTier(1-overP).c+'">'+_socTier(1-overP).g+'</div></div>'
-    +'<div style="flex:1;text-align:center;padding:5px 4px;border:1px solid '+_socTier(mc.btts).c+';border-radius:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">BTTS</div><div style="font-family:var(--orb);font-size:18px;font-weight:700;color:'+_socTier(mc.btts).c+'">'+(mc.btts*100).toFixed(0)+'%</div><div style="font-family:var(--mono);font-size:13px;color:'+_socTier(mc.btts).c+'">'+_socTier(mc.btts).g+'</div></div>'
+    +scoreHtml
+    +'<div class="brow">'
+    +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\''+g.home+'\','+hP.toFixed(3)+',\''+hML+'\','+ml2d(hML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="cht">'+hc+'</div><div class="cho">'+hML+'</div><div class="chp">'+Math.round(hP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
+    +'<div class="'+dCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\'DRAW\','+dP.toFixed(3)+',\''+dML+'\','+ml2d(dML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="cht">DRAW</div><div class="cho">'+dML+'</div><div class="chp">'+Math.round(dP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+dCS.pl+'">'+dCS.lb+'</span></div></div>'
+    +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\''+g.away+'\','+aP.toFixed(3)+',\''+aML+'\','+ml2d(aML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="cht">'+ac+'</div><div class="cho">'+aML+'</div><div class="chp">'+Math.round(aP*100)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
+    +'<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
+    +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
+    +'<div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV(\''+ouId+'\',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>'+'<input type="number" step="0.5" value="'+ouL+'" id="'+ouId+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center">'+'<button onclick="event.stopPropagation();_adjV(\''+ouId+'\',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div>'
+    +'<div style="display:flex;gap:3px">'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
+    +'</div></div>'
     +'</div>'
-    +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);padding:4px 0">xG basis: '+g.home+' '+hxg.toFixed(2)+' xG/G · '+g.away+' '+axg.toFixed(2)+' xGA/G · SRC: FBref 2025-26</div>'
+    +'<div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">'
+    +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">OVER / UNDER ANALYSIS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +'<div style="background:rgba(0,240,255,.05);border:1px solid '+ouCol+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+ouCol+'">OVER '+ouL+'</span>'
+    +'<span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+ouCol+';color:'+ouCol+';border-radius:2px">'+ouLabel+'</span>'
+    +'</div>'
+    +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+(ouTier>=2?'MC projects '+mc.avgT.toFixed(2)+' goals — '+(mc.avgT-ouL>=0?'+':'')+(mc.avgT-ouL).toFixed(2)+' above '+ouL+' line (25k sims). '+g.home+' xG '+hxg.toFixed(2)+' / '+g.away+' xG '+axg.toFixed(2)+'. Over '+Math.round(ouP*100)+'%.':'MC projects '+mc.avgT.toFixed(2)+' goals vs '+ouL+' line. Over at '+Math.round(ouP*100)+'% — below threshold.')+'</div></div>'
+    +'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:7px 9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+    +'<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+unCol+'">UNDER '+ouL+'</span>'
+    +'<span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span>'
+    +'</div>'
+    +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+(unTier>=2?'MC projects '+mc.avgT.toFixed(2)+' goals — '+(ouL-mc.avgT).toFixed(2)+' below '+ouL+' line (25k sims). Under '+Math.round(unP*100)+'%.':'MC projects '+mc.avgT.toFixed(2)+' total vs '+ouL+' line. Under at '+Math.round(unP*100)+'% — below threshold.')+'</div></div>'
+    +'</div></div>'
+    +'<div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">'
+    +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+    +'<span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid '+topCol+';color:'+topCol+';border-radius:2px">'+topLabel+'</span>'
+    +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ENGINE REASONING</span>'
+    +'</div>'
+    +_mcProjBarHTML(mc,ouL,g.home,g.away,{dec:2})
+    +'<div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">'+explanation+'</div>'
+    +'<div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: '+_mkts.mkts.map(function(m){return m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN];}).join(' · ')+'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">'
+    +'<span class="mono" style="font-size:16px;color:var(--t3)">xG: '+g.home+' '+hxg.toFixed(2)+' · '+g.away+' '+axg.toFixed(2)+' · H:'+Math.round(hP*100)+'% D:'+Math.round(dP*100)+'% A:'+Math.round(aP*100)+'%</span>'
+    +'<button class="btn btn-o" style="padding:2px 6px;font-size:15px;margin-left:auto" onclick="addLeg2(\''+hc+'\',\''+ac+'\',\''+dateStr+'\')">+PAR</button>'
+    +'</div>'
     +'</div>';
 }
 
