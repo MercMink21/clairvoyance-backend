@@ -18804,14 +18804,15 @@ async function renderNewsSport(sport){
 // ── INJURY IMPACT ENGINE ─────────────────────────────────────────────────────
 // Builds player→team lookup from NBA_PLAYERS, NHL key arrays, PIT (today's SPs)
 //
-// AUDIT NOTE (injury integration depth, item 8):
-//   - MLB: only starting pitchers are in the roster map (window.PIT), even
-//     though baseW()'s MLB branch below defines weights for C/SS/CF/3B/etc
-//     position players too — those weights are currently dead code, since
-//     no position-player roster/rating dataset exists to match an injured
-//     hitter's name against. A star position player going down today moves
-//     the MLB model $0 — only rotation injuries do. Fixing this needs a
-//     real MLB batting-order/roster dataset, which doesn't exist yet.
+// AUDIT NOTE (injury integration depth, item 8 — MLB batter gap CLOSED):
+//   - MLB: previously only starting pitchers were in the roster map
+//     (window.PIT), so baseW()'s C/SS/CF/3B/etc position-player weights
+//     were dead code. Fixed — window.__CV_DATA.mlb.batters (all 30 teams'
+//     rosters via fetch_mlb_batter_rosters() in clairvoyance_update.py,
+//     ESPN's team-roster endpoint) is now merged in below. No separate
+//     "rating" system was needed: MLB's baseW() branch already keys off
+//     the injury record's own `pos` field, so the roster only needed to
+//     supply name→team, which the ESPN roster endpoint gives directly.
 //   - WNBA/soccer (5 leagues)/tennis/F1/CFB/NFL: no roster+rating dataset
 //     exists at all, so computeInjuryImpact() is never called for them —
 //     injuries for these sports (WNBA now fetched backend-side as of this
@@ -18830,6 +18831,17 @@ function buildInjuryRoster(){
     if(td.g2)r[td.g2.toLowerCase()]={team:abbr,sport:'nhl',rating:'G2'};
   }
   for(const[abbr,pd] of Object.entries(window.PIT||{})){if(pd.name)r[pd.name.toLowerCase()]={team:abbr,sport:'mlb',rating:'SP'};}
+  // MLB position players — closes the gap documented above: previously only
+  // today's 2 starting pitchers (window.PIT) were ever in this roster, so a
+  // position-player injury could never match a team and baseW()'s
+  // C/SS/CF/3B/etc weights were dead code. window.__CV_DATA.mlb.batters is
+  // fetched server-side via fetch_mlb_batter_rosters() (ESPN team rosters,
+  // all 30 teams). MLB's baseW() branch keys off the injury record's own
+  // `pos` field, not entry.rating, so team is the only thing needed here.
+  const mlbBatters=window.__CV_DATA?.mlb?.batters||{};
+  for(const[name,pd] of Object.entries(mlbBatters)){
+    if(name&&pd?.team&&!r[name])r[name]={team:pd.team,sport:'mlb',pos:pd.pos,rating:'BATTER'};
+  }
   window._injRoster=r;return r;
 }
 

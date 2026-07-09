@@ -582,6 +582,50 @@ def fetch_mlb_team_fielding() -> dict:
         log(f"MLB team fielding: {exc}", "WARN")
     return result
 
+def fetch_mlb_batter_rosters() -> dict:
+    """
+    Closes the injury-integration gap documented in app.html above
+    computeInjuryImpact(): the frontend's MLB injury penalty only ever
+    matched starting pitchers (window.PIT), because no batter roster
+    existed anywhere — baseW()'s position weights for C/SS/CF/3B/etc were
+    dead code. This doesn't need a separate "rating" system the way NBA
+    does; baseW() already weights purely by POSITION (C/SS/CF/3B highest,
+    corner spots lower), and ESPN's team roster endpoint returns exactly
+    that — name, team, position — for every player on all 30 teams in one
+    request per team, no per-player stat calls needed.
+
+    Returns {"lastname firstname": {"team": "SD", "pos": "SS"}, ...} keyed
+    the same way the frontend's window.PIT/window.NBA_PLAYERS rosters are,
+    for direct use building window._injRoster in buildInjuryRoster().
+    """
+    log("MLB batter rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams?limit=40")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/{team_id}/roster")
+                for grp in (roster or {}).get("athletes", []):
+                    for p in grp.get("items", []):
+                        pos = (p.get("position") or {}).get("abbreviation", "")
+                        if pos in ("SP", "RP"):  # pitchers already covered by window.PIT (today's starters)
+                            continue
+                        name = p.get("fullName", "")
+                        if name:
+                            result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"MLB roster {abbr}: {exc}", "WARN")
+        log(f"  MLB batter rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"MLB batter rosters: {exc}", "WARN")
+    return result
+
 
 def fetch_nba_team_advanced() -> dict:
     """
@@ -4282,7 +4326,10 @@ def main() -> None:
     mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_sabre            = (fetch_mlb_team_sabermetrics() if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_fielding         = (fetch_mlb_team_fielding()     if not args.no_reference else {}) if S in ("mlb","all") else {}
+    mlb_batters          = fetch_mlb_batter_rosters()     if S in ("mlb","all") else {}
     mlb_nrfi             = fetch_mlb_nrfi_data(mlb_today) if S in ("mlb","all") else []
+    if S in ("mlb","all"):
+        _check_source_health("MLB batter rosters (ESPN)", len(mlb_batters))
 
     nba_today, nba_tom   = fetch_nba_scoreboard()         if S in ("nba","all") else ([],[])
     nba_standings        = fetch_nba_standings()          if S in ("nba","all") else {}
@@ -4500,6 +4547,7 @@ def main() -> None:
             "sabre":        mlb_sabre,
             "fielding":     mlb_fielding,
             "reference":    mlb_ref,
+            "batters":      mlb_batters,
         },
         "nba": {
             "today":        nba_today,
