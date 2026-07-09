@@ -18977,6 +18977,16 @@ function buildInjuryRoster(){
   for(const p of wnbaPlayers){
     if(p?.name&&p?.team)r[p.name.toLowerCase()]={team:p.team,sport:'wnba',rating:p.rating||'FAIR'};
   }
+  // Soccer — MLS only. Of the 5 tracked leagues, MLS is the only one
+  // actually in-season (CL/PL/La Liga/Bundesliga confirmed empty on
+  // injuries — offseason), so roster coverage is scoped there for now;
+  // fetch_mls_rosters() in clairvoyance_update.py, same ESPN team-roster
+  // pattern as MLB batters. window.__CV_MLS is populated by
+  // _fetchMLSScheduleReal() when the MLS matches tab loads.
+  const mlsRosters=window.__CV_MLS?.rosters||{};
+  for(const[name,pd] of Object.entries(mlsRosters)){
+    if(name&&pd?.team&&!r[name])r[name]={team:pd.team,sport:'mls',pos:pd.pos,rating:'PLAYER'};
+  }
   window._injRoster=r;return r;
 }
 
@@ -18994,6 +19004,7 @@ function computeInjuryImpact(teamAbbr,sport){
     if(sp==='wnba')return{PREMIUM:.075,OPTIMAL:.048,GOOD:.026}[rating]||.012; // slightly higher than NBA — shallower WNBA benches concentrate more impact in fewer stars
     if(sp==='mlb'){const p=(pos||'').toUpperCase();if(p.includes('SP'))return .065;if(['C','SS','CF','3B'].includes(p))return .030;if(['LF','RF','2B','1B','DH'].includes(p))return .020;return .010;}
     if(sp==='nhl'){const p=(pos||'').toUpperCase();if(rating==='G')return .080;if(rating==='PREMIUM')return .045;if(['C','LW','RW'].includes(p))return .030;if(p==='D')return .020;return .010;}
+    if(sp==='mls'){const p=(pos||'').toUpperCase();if(p.includes('G'))return .055;if(p.includes('F'))return .035;if(p.includes('M'))return .028;if(p.includes('D'))return .018;return .015;} // GK highest (11 outfield vs 1 keeper — no rotation), then attack > midfield > defense
     return .015;};
   let total=0;const affected=[];
   for(const inj of injs){
@@ -23242,6 +23253,17 @@ function _renderSocMatchCard(g,leagueKey){
   var hXG=_socXG(g.home,leagueKey),aXG=_socXG(g.away,leagueKey);
   var hxg=hXG?(hXG.hxg||hXG.xg):1.4;
   var axg=aXG?(aXG.axg||aXG.xg):1.1;
+  // Injury adjustment — real roster data only exists for MLS today (see
+  // buildInjuryRoster()'s soccer section), so this safely no-ops (0
+  // penalty) for the other 4 leagues rather than needing a leagueKey check
+  // here. Soccer's model is xG/Poisson-based rather than a direct
+  // probability ensemble, so the penalty scales each side's own expected
+  // goals down proportionally instead of shifting a blended win-prob.
+  try{
+    var hInj=computeInjuryImpact(g.hAbbr||g.home,leagueKey);
+    var aInj=computeInjuryImpact(g.aAbbr||g.away,leagueKey);
+    hxg=hxg*(1-hInj.penalty);axg=axg*(1-aInj.penalty);
+  }catch(e){}
   var mc=_soccerMC(hxg,axg,25000);
   var hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
   var hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
@@ -23368,6 +23390,7 @@ async function _fetchMLSScheduleReal(){
     var r=await fetch('mls_schedule.json?'+now,{cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
+    window.__CV_MLS=d; // full payload (rosters/weather too) — used by buildInjuryRoster()
     var games=(d.schedule||[]).map(function(m){
       var isPost=m.status==='played'||m.status==='completed'||m.status==='finished';
       return{

@@ -2801,6 +2801,44 @@ def fetch_mls_standings() -> list[dict]:
         log(f"MLS standings: {exc}", "WARN")
     return out
 
+def fetch_mls_rosters() -> dict:
+    """
+    Soccer injury-integration, scoped to MLS only: of the 5 tracked leagues,
+    MLS is the only one actually in-season right now (CL/PL/La Liga/
+    Bundesliga are all confirmed empty on injuries — offseason — so building
+    150-team roster coverage across all 5 for zero real signal isn't worth
+    it yet; revisit once those leagues resume in August). Same pattern as
+    fetch_mlb_batter_rosters(): ESPN's team-roster endpoint gives name/team/
+    position for all 30 MLS clubs in one request per team — no separate
+    stat-based rating needed, computeInjuryImpact()'s soccer branch will key
+    off position (GK highest impact, then DEF/MID/FWD) same as MLB keys off
+    the injury record's own position field.
+    """
+    log("MLS rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json("https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams?limit=40")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/{team_id}/roster")
+                for p in (roster or {}).get("athletes", []):
+                    name = p.get("fullName", "")
+                    pos = (p.get("position") or {}).get("abbreviation", "") or (p.get("position") or {}).get("name", "")
+                    if name:
+                        result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"MLS roster {abbr}: {exc}", "WARN")
+        log(f"  MLS rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"MLS rosters: {exc}", "WARN")
+    return result
+
 def fetch_mls_schedule(days_forward: int = 20, days_back: int = 3) -> list[dict]:
     """
     MLS schedule from mlssoccer.com, mirroring how the site's own Schedule &
@@ -4428,11 +4466,13 @@ def main() -> None:
     mls_stats     = fetch_mls_team_stats() if S in ("soccer","all") else {}
     mls_standings = fetch_mls_standings()  if S in ("soccer","all") else []
     mls_schedule  = fetch_mls_schedule()   if S in ("soccer","all") else []
+    mls_rosters   = fetch_mls_rosters()    if S in ("soccer","all") else {}
     if S in ("soccer","all"):
         # MLS always has 30 clubs in-season — unlike a daily schedule, this
         # should never legitimately be 0, so it's safe to alert on.
         _check_source_health("MLS club stats (mlssoccer.com)", len(mls_stats.get("teams", {})))
         _check_source_health("MLS standings (mlssoccer.com)", len(mls_standings))
+        _check_source_health("MLS rosters (ESPN)", len(mls_rosters))
 
     # Weather for MLS home clubs — same rationale as MLB: open-air stadiums,
     # wind/rain measurably suppress O/U goal totals. Keyed by lowercase club
@@ -4477,7 +4517,7 @@ def main() -> None:
         (ROOT / "docs" / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         (DATA / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         note("soccer_fbref.json written")
-    mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule, "weather": soccer_weather}
+    mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule, "weather": soccer_weather, "rosters": mls_rosters}
     if mls_standings or mls_schedule:
         (ROOT / "docs" / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
         (DATA / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
