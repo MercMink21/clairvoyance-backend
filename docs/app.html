@@ -5395,29 +5395,46 @@ async function fetchESPNNHL(dateStr){
     return d.events||[];
   }catch(e){return null;}
 }
-async function renderNHLGames(day){
-  const el=document.getElementById('nhl-games');if(!el)return;
-  const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
-  el.innerHTML='<div class="loading"><span class="spi"></span></div>';
-  // Try backend API first
-  if(API_ONLINE()){
-    try{
-      const data=await fetch(API_BASE+'/nhl/schedule?date='+today()).then(r=>r.json());
-      const games=Array.isArray(data)?data:data.games||[];
-      if(games.length){
-        el.innerHTML=games.map(g=>`<div class="card ci" style="margin-bottom:8px;padding:11px">
-          <div style="font-family:var(--orb);font-size:25px;font-weight:700;letter-spacing:2px;color:var(--ic);margin-bottom:4px">${g.home_team||g.home} vs ${g.away_team||g.away}</div>
-          <div style="font-family:var(--mono);font-size:18px;color:var(--t2)">${g.status||'SCHEDULED'} · ${g.game_time||''}</div>
-          ${g.home_score!=null?`<div style="font-family:var(--orb);font-size:27px;font-weight:900;color:var(--nc);margin-top:4px">${g.home_score} – ${g.away_score}</div>`:''}
-        </div>`).join('');
-        return;
-      }
-    }catch(e){}
-  }
-  // Try ESPN NHL scoreboard
-  const events=await fetchESPNNHL(dateStr);
-  if(events?.length){
-    el.innerHTML=events.map(espnEv=>{
+// ═══ NHL 7-DAY MATCHES WINDOW + DATE FILTER (dormant — see NBA's identical
+// note above; NHL is also in its real 2026 offseason, reactivates October) ═
+var _nhlWeekCache=null,_nhlWeekCacheTs=0;
+async function _fetchNHLWeekGames(){
+  var d0=new Date(),d1=new Date();d1.setDate(d1.getDate()+6);
+  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  try{
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates='+fmt(d0)+'-'+fmt(d1)+'&limit=300',{mode:'cors',cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    var d=await r.json();
+    return d.events||[];
+  }catch(e){console.warn('[CV] NHL week fetch:',e.message);return[];}
+}
+async function renderNHLWeek(filterDate){
+  var el=document.getElementById('nhl-week-list');if(!el)return;
+  el.innerHTML='<div class="loading"><span class="spi"></span> LOADING 7-DAY WINDOW…</div>';
+  var now=Date.now();
+  if(!_nhlWeekCache||now-_nhlWeekCacheTs>5*60*1000){_nhlWeekCache=await _fetchNHLWeekGames();_nhlWeekCacheTs=now;}
+  var events=_nhlWeekCache||[];
+  var byDate={};
+  events.forEach(function(ev){
+    var d=new Date(ev.date);
+    var localIso=isNaN(d)?(ev.date||'').slice(0,10):d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    if(!localIso)return;if(!byDate[localIso])byDate[localIso]=[];byDate[localIso].push(ev);
+  });
+  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var dates=Object.keys(byDate).sort();
+  if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
+  var todayIso=today();
+  var html=_weekFilterBar('NHL',filterDate,days);
+  if(!dates.length)html+='<div class="empty">NO GAMES ON THIS DATE</div>';
+  dates.forEach(function(d){
+    var isTod=d===todayIso;
+    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
+    byDate[d].forEach(function(ev){html+=_nhlGameCard(ev);});
+  });
+  el.innerHTML=html;
+}
+
+function _nhlGameCard(espnEv){
       const c=espnEv.competitions?.[0];if(!c)return'';
       const hE=c.competitors?.find(t=>t.homeAway==='home'),aE=c.competitors?.find(t=>t.homeAway==='away');
       const hn=hE?.team?.abbreviation||'HOM',an=aE?.team?.abbreviation||'AWY';
@@ -5502,7 +5519,31 @@ async function renderNHLGames(day){
     ${pre?`<button class="btn btn-o" style="padding:2px 6px;font-size:15px;margin-left:auto" onclick="T('nhl','parlay');toast('// SELECT BET FOR ${an} at ${hn}')">+PAR</button>`:''}
   </div>
 </div>`;
-    }).join('');
+}
+
+async function renderNHLGames(day){
+  const el=document.getElementById('nhl-games');if(!el)return;
+  const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
+  el.innerHTML='<div class="loading"><span class="spi"></span></div>';
+  // Try backend API first
+  if(API_ONLINE()){
+    try{
+      const data=await fetch(API_BASE+'/nhl/schedule?date='+today()).then(r=>r.json());
+      const games=Array.isArray(data)?data:data.games||[];
+      if(games.length){
+        el.innerHTML=games.map(g=>`<div class="card ci" style="margin-bottom:8px;padding:11px">
+          <div style="font-family:var(--orb);font-size:25px;font-weight:700;letter-spacing:2px;color:var(--ic);margin-bottom:4px">${g.home_team||g.home} vs ${g.away_team||g.away}</div>
+          <div style="font-family:var(--mono);font-size:18px;color:var(--t2)">${g.status||'SCHEDULED'} · ${g.game_time||''}</div>
+          ${g.home_score!=null?`<div style="font-family:var(--orb);font-size:27px;font-weight:900;color:var(--nc);margin-top:4px">${g.home_score} – ${g.away_score}</div>`:''}
+        </div>`).join('');
+        return;
+      }
+    }catch(e){}
+  }
+  // Try ESPN NHL scoreboard
+  const events=await fetchESPNNHL(dateStr);
+  if(events?.length){
+    el.innerHTML=events.map(_nhlGameCard).join('');
     try{renderNHLSeriesAndProps();}catch(e){}
     return;
   }
