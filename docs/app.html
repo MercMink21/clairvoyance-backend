@@ -5183,7 +5183,25 @@ function nhlEns(hA,awA){
   const gE=(h.gsax-aw.gsax)/100;
   const hvM=((h.hv.off-aw.hv.def)+(h.hv.fin-aw.hv.fin)*.5)*.04;
   const sm=((h.sw||0)-(aw.sw||0))*.015;
-  const mpBoost=h.mp&&aw.mp?(h.mp.xgf_pct-aw.mp.xgf_pct)*.004:0;
+  // Prefer the real, live-fetched MoneyPuck team data (MONEYPUCK.teams,
+  // populated by patchMoneyPuck() from docs/data.json's mp field — the
+  // actual fetch_moneypuck() backend call) over h.mp/aw.mp, which only
+  // ever came from the static 4-team MP_DATA table (MTL/VGK/COL/CAR,
+  // frozen from a past playoff matchup) — meaning 28 of 32 teams never
+  // got a MoneyPuck signal at all, and the 4 that did were stale. MoneyPuck's
+  // CSV situation convention is "5on5" for standard 5v5 play; xgfPct is
+  // their team-strength field name (not xgf_pct, which only ever existed
+  // in the static fallback table).
+  const mpH=(MONEYPUCK.teams&&MONEYPUCK.teams[hA]&&MONEYPUCK.teams[hA]['5on5'])||h.mp;
+  const mpA=(MONEYPUCK.teams&&MONEYPUCK.teams[awA]&&MONEYPUCK.teams[awA]['5on5'])||aw.mp;
+  // Normalize to a 0-100 scale regardless of source: MoneyPuck's raw CSV
+  // xGoalsPercentage is fractional (0-1), while the static MP_DATA fallback
+  // table used 0-100 — mixing live data for one side with the static
+  // fallback for the other (a real possibility if only one team has live
+  // MoneyPuck coverage) would otherwise silently compute a nonsense diff.
+  const _mpNorm=v=>v==null?null:(v<=1?v*100:v);
+  const mpHv=_mpNorm(mpH?.xgfPct??mpH?.xgf_pct),mpAv=_mpNorm(mpA?.xgfPct??mpA?.xgf_pct);
+  const mpBoost=(mpHv!=null&&mpAv!=null)?(mpHv-mpAv)*.004:0;
   const edgeBoost=(h.edge?.avg_spd||20.5)-(aw.edge?.avg_spd||20.5);
   const blended=mc.hwP*.45+xgf*.26+(mc.hwP+gE)*.19+sm*0.625+hvM*0.625+mpBoost+edgeBoost*.005+.04;
   let p=sportCalibrate(Math.min(.92,Math.max(.08,blended)),'NHL');
