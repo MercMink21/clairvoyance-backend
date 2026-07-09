@@ -364,6 +364,27 @@ def fetch_espn_injuries(sport_path: str, sport_key: str) -> list[dict]:
     vlog(f"  {sport_key} injuries: {len(items)}")
     return items
 
+def fetch_espn_transactions(sport_path: str, sport_key: str, limit: int = 25) -> list[dict]:
+    """Fetch ESPN transaction log for a league (e.g. 'baseball/mlb') — trades,
+    signings, IL moves, call-ups. Single-page (ESPN paginates at 25/page by
+    default); recent-transactions volume is what matters for freshness, not
+    full history."""
+    log(f"ESPN transactions {sport_key}…")
+    url  = f"https://site.api.espn.com/apis/site/v2/sports/{sport_path}/transactions"
+    data = fetch_json(url)
+    items: list[dict] = []
+    for t in (data or {}).get("transactions") or []:
+        team = t.get("team") or {}
+        items.append({
+            "date":        (t.get("date") or "")[:10],
+            "description": t.get("description", ""),
+            "team":        team.get("abbreviation", ""),
+            "teamName":    team.get("displayName", ""),
+            "sport":       sport_key,
+        })
+    vlog(f"  {sport_key} transactions: {len(items)}")
+    return items[:limit]
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MLB
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3183,19 +3204,36 @@ def fetch_week_schedule(sport_path: str, sport_key: str, limit_per_day: int = 8)
     return schedule
 
 
+# Shared across news/injuries/transactions — every league ESPN exposes a
+# site.api.espn.com/apis/site/v2/sports/{path} feed for, that this engine
+# tracks somewhere (game data, standings, or a model). "ncaab" keeps its
+# existing (slightly misleading — it's NCAA *Baseball*, not basketball)
+# key name for backward compat with the frontend; "cbb" is the real NCAA
+# men's basketball addition.
+ESPN_LEAGUE_PATHS: dict[str, str] = {
+    "mlb":      "baseball/mlb",
+    "nhl":      "hockey/nhl",
+    "nba":      "basketball/nba",
+    "wnba":     "basketball/wnba",
+    "ncaab":    "baseball/college-baseball",   # NCAA Baseball (existing key/convention)
+    "cbb":      "basketball/mens-college-basketball",
+    "nfl":      "football/nfl",
+    "cfb":      "football/college-football",
+    "tennis":   "tennis/atp",
+    "wta":      "tennis/wta",
+    "f1":       "racing/f1",
+    "mls":      "soccer/usa.1",
+    "cl":       "soccer/UEFA.champions",
+    "pl":       "soccer/eng.1",
+    "liga":     "soccer/esp.1",
+    "bl":       "soccer/ger.1",
+}
+
 def fetch_sports_news() -> dict:
-    """Fetch latest news articles for all sports from ESPN."""
+    """Fetch latest news articles for all sports/leagues from ESPN."""
     news: dict = {}
-    sport_map = {
-        "mlb":    "baseball/mlb",
-        "nhl":    "hockey/nhl",
-        "nba":    "basketball/nba",
-        "wnba":   "basketball/wnba",
-        "ncaab":  "baseball/college-baseball",
-        "tennis": "tennis/atp",
-        "f1":     "racing/f1",
-        "football": "football/nfl",
-    }
+    sport_map = dict(ESPN_LEAGUE_PATHS)
+    sport_map["football"] = sport_map.pop("nfl")  # keep the pre-existing "football" key the frontend already reads
     for sport_key, espn_path in sport_map.items():
         try:
             url = f"https://site.api.espn.com/apis/site/v2/sports/{espn_path}/news"
@@ -3235,12 +3273,31 @@ def fetch_injuries_all() -> dict:
     in app.html for the concrete gap.
     """
     log("ESPN injury reports…")
-    return {
-        "mlb":  fetch_espn_injuries("baseball/mlb",    "mlb"),
-        "nba":  fetch_espn_injuries("basketball/nba",  "nba"),
-        "nhl":  fetch_espn_injuries("hockey/nhl",       "nhl"),
-        "wnba": fetch_espn_injuries("basketball/wnba", "wnba"),
-    }
+    # Every team-based league — tennis (ATP/WTA) and F1 are excluded since
+    # ESPN's /injuries endpoint schema is team-roster-shaped and doesn't
+    # apply to individual-athlete sports (a tour withdrawal isn't a "team
+    # injury report").
+    result: dict = {}
+    for key, path in ESPN_LEAGUE_PATHS.items():
+        if key in ("tennis", "wta", "f1"):
+            continue
+        result[key] = fetch_espn_injuries(path, key)
+    return result
+
+def fetch_transactions_all() -> dict:
+    """
+    Transactions for every team-based league (same exclusions as
+    fetch_injuries_all — no meaningful "transaction log" for individual-
+    athlete tennis/F1). New feed, previously not tracked at all anywhere
+    in the pipeline.
+    """
+    log("ESPN transaction logs…")
+    result: dict = {}
+    for key, path in ESPN_LEAGUE_PATHS.items():
+        if key in ("tennis", "wta", "f1"):
+            continue
+        result[key] = fetch_espn_transactions(path, key)
+    return result
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Best Bets Calculator  (EV + Confidence scoring)
@@ -4366,9 +4423,11 @@ def main() -> None:
     nba_week_schedule = fetch_week_schedule("basketball/nba","nba",8)      if S in ("nba","all") else []
     nhl_week_schedule = fetch_week_schedule("hockey/nhl","nhl",8)          if S in ("nhl","all") else []
 
-    # News + injuries
-    sports_news = fetch_sports_news()
-    injuries    = fetch_injuries_all()
+    # News + injuries + transactions — all now cover every tracked league,
+    # not just the original MLB/NBA/NHL(/WNBA) subset.
+    sports_news  = fetch_sports_news()
+    injuries     = fetch_injuries_all()
+    transactions = fetch_transactions_all()
 
     # Best bets + auto-settle
     # Best odds per sport (Odds API if key set, ESPN fallback)
@@ -4515,6 +4574,7 @@ def main() -> None:
         "seededBets":    SEEDED_BETS,
         "news":          sports_news,
         "injuries":      injuries,
+        "transactions":  transactions,
     }
 
     (DATA / "bundle.json").write_text(json.dumps(bundle, indent=2))
