@@ -4030,6 +4030,18 @@ function mlbEns(hA,awA,espnGame){
   const injH=computeInjuryImpact(hA,'mlb');
   const injA=computeInjuryImpact(awA,'mlb');
   p=Math.min(.92,Math.max(.08,p-injH.penalty+injA.penalty));
+  // Statcast quality-of-contact nudge (xwOBA differential) — a small,
+  // capped supplementary signal on top of the primary MC/Bayesian/ELO
+  // ensemble, not a replacement for it. fetch_mlb_statcast_team() in
+  // clairvoyance_update.py aggregates real Baseball Savant data (xwOBA,
+  // barrel%, hard-hit%, xSLG) to team level; a typical "big gap" xwOBA
+  // differential is around .050-.060, scaled here to a max ~3pp swing so
+  // one supplementary metric can't outweigh the ensemble itself.
+  const scH=window.__CV_DATA?.mlb?.statcast?.[hA],scA=window.__CV_DATA?.mlb?.statcast?.[awA];
+  if(scH&&scA){
+    const scNudge=Math.max(-.03,Math.min(.03,(scH.xwoba-scA.xwoba)*0.5));
+    p=Math.min(.92,Math.max(.08,p+scNudge));
+  }
   return{p,mc:mc.hwP,bay,elo:eloP,mc2:mc,injH,injA};
 }
 function applyMLB(data,type){

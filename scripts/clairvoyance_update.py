@@ -626,6 +626,64 @@ def fetch_mlb_batter_rosters() -> dict:
         log(f"MLB batter rosters: {exc}", "WARN")
     return result
 
+def fetch_mlb_statcast_team(batter_rosters: dict) -> dict:
+    """
+    Real Statcast quality-of-contact metrics — xwOBA, barrel rate, hard-hit%,
+    xSLG — a tier beyond the traditional sabermetrics already fetched
+    (fetch_mlb_team_sabermetrics: OPS+/ISO/FIP/ERA-, all Baseball-Reference).
+    Baseball Savant's leaderboard only exports at the individual-player
+    level (no team-aggregate endpoint), so this aggregates qualified
+    batters up to team level itself, using the ESPN roster name->team
+    lookup already built by fetch_mlb_batter_rosters() rather than a second
+    roster fetch. Savant names are "Last, First"; ESPN's are "First Last" —
+    reformatted to match the same lowercase key convention.
+    """
+    log("MLB Statcast quality-of-contact (Baseball Savant)…")
+    result: dict = {}
+    try:
+        r = _session.get(
+            "https://baseballsavant.mlb.com/leaderboard/custom",
+            params={"year": date.today().year, "type": "batter", "min": "1", "chart": "false", "csv": "true",
+                    "selections": "xwoba,barrel_batted_rate,hard_hit_percent,xslg,xba"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        rows = list(csv.DictReader(io.StringIO(r.text.lstrip("﻿"))))
+        buckets: dict[str, dict] = {}
+        for row in rows:
+            raw_name = row.get("last_name, first_name", "")
+            if "," not in raw_name:
+                continue
+            last, first = [s.strip() for s in raw_name.split(",", 1)]
+            key = f"{first} {last}".lower()
+            entry = batter_rosters.get(key)
+            if not entry:
+                continue
+            team = entry["team"]
+            b = buckets.setdefault(team, {"n": 0, "xwoba": 0.0, "barrel": 0.0, "hardhit": 0.0, "xslg": 0.0})
+            try:
+                b["n"] += 1
+                b["xwoba"]   += float(row.get("xwoba") or 0)
+                b["barrel"]  += float(row.get("barrel_batted_rate") or 0)
+                b["hardhit"] += float(row.get("hard_hit_percent") or 0)
+                b["xslg"]    += float(row.get("xslg") or 0)
+            except (ValueError, TypeError):
+                b["n"] -= 1
+        for team, b in buckets.items():
+            if b["n"] == 0:
+                continue
+            result[team] = {
+                "xwoba":   round(b["xwoba"] / b["n"], 3),
+                "barrel_pct": round(b["barrel"] / b["n"], 1),
+                "hardhit_pct": round(b["hardhit"] / b["n"], 1),
+                "xslg":    round(b["xslg"] / b["n"], 3),
+                "n_batters": b["n"],
+            }
+        log(f"  MLB Statcast: {len(result)} teams from {len(rows)} qualified batters")
+    except Exception as exc:
+        log(f"MLB Statcast: {exc}", "WARN")
+    return result
+
 
 def fetch_nba_team_advanced() -> dict:
     """
@@ -4383,9 +4441,11 @@ def main() -> None:
     mlb_sabre            = (fetch_mlb_team_sabermetrics() if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_fielding         = (fetch_mlb_team_fielding()     if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_batters          = fetch_mlb_batter_rosters()     if S in ("mlb","all") else {}
+    mlb_statcast         = fetch_mlb_statcast_team(mlb_batters) if S in ("mlb","all") else {}
     mlb_nrfi             = fetch_mlb_nrfi_data(mlb_today) if S in ("mlb","all") else []
     if S in ("mlb","all"):
         _check_source_health("MLB batter rosters (ESPN)", len(mlb_batters))
+        _check_source_health("MLB Statcast (Baseball Savant)", len(mlb_statcast))
 
     nba_today, nba_tom   = fetch_nba_scoreboard()         if S in ("nba","all") else ([],[])
     nba_standings        = fetch_nba_standings()          if S in ("nba","all") else {}
@@ -4606,6 +4666,7 @@ def main() -> None:
             "fielding":     mlb_fielding,
             "reference":    mlb_ref,
             "batters":      mlb_batters,
+            "statcast":     mlb_statcast,
         },
         "nba": {
             "today":        nba_today,
