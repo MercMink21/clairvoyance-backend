@@ -1316,6 +1316,8 @@ body{line-height:1.5}
           <span style="color:var(--hc)">// SKIP</span><span style="color:var(--t3)">&lt;55%</span>
         </div>
         <div id="wnba-games-list"><div class="loading"><span class="spi"></span> LOADING&hellip;</div></div>
+        <div class="sh" style="margin-top:16px"><span class="i"></span> 7-DAY SCHEDULE</div>
+        <div id="wnba-week-list"><div class="loading"><span class="spi"></span> LOADING&hellip;</div></div>
       </div>
 
       <div id="wnba-tab-props" class="tab">
@@ -12049,7 +12051,7 @@ function setSub(sport,sub){
   // Auto-jump to TODAY tab when switching to a live sub-league
   if(sport==='hk'&&sub==='nhl'){try{T('nhl','games');renderNHLTonight();renderNHLGames();}catch(e){}}
   if(sport==='nba'&&sub==='nba'){try{T('nba','games');}catch(e){}}
-  if(sport==='nba'&&sub==='wnba'){try{T('wnba','games');if(typeof renderWNBAGames==='function')renderWNBAGames();}catch(e){}}
+  if(sport==='nba'&&sub==='wnba'){try{T('wnba','games');if(typeof renderWNBAGames==='function')renderWNBAGames();if(typeof renderWNBAWeek==='function')renderWNBAWeek(null);}catch(e){}}
   if(sport==='nba'&&sub==='cbb'){try{T('cbb','games');}catch(e){}}
   // Soccer league tabs (cl/pl/liga/bl/mls) start with a static "LOADING…"
   // placeholder baked into the HTML and only ever get replaced with real
@@ -12148,7 +12150,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
 }if(tabId==='model'){renderModelWeights('nba','nba-model-weights');}if(tabId==='config'){}}if(tabId==='games'){try{if(typeof renderNBAGames==='function')renderNBAGames();}catch(e){}}
   if(sport==='wnba'){
     try{
-      if(tabId==='games')renderWNBAGames();
+      if(tabId==='games'){renderWNBAGames();renderWNBAWeek(null);}
       else if(tabId==='props')renderWNBAProps();
       else if(tabId==='parlay'){
         var now2=Date.now();
@@ -20655,6 +20657,72 @@ function _wnbaGrade(p){
 }
 function _wnbaML(p){var ml=p>=.5?-Math.round(p/(1-p)*100):Math.round((1-p)/p*100);return ml>0?'+'+ml:ml;}
 function _wnbaDec(ml){return ml<0?1+100/Math.abs(ml):1+ml/100;}
+
+// ═══ WNBA 7-DAY MATCHES WINDOW + DATE FILTER ═══════════════════════════════
+// WNBA's D.wnba.schedule (backend-populated, clairvoyance_update.py's
+// fetch_wnba() already builds a 7-day-forward loop) is real but lighter than
+// D.wnba.today (no per-game deep engine reasoning) — so this uses a simpler
+// "gc" card, same pattern as the soccer league cards, rather than trying to
+// extract WNBA's much larger today-only analytical card. Today's rich
+// picks-engine card (renderWNBAGames) is untouched; this is a parallel
+// display layer, same relationship MLB's renderMLBWeek() has to loadGames().
+function _wnbaWeekCard(g){
+  var hab=_wnbaKey(g.home)||g.home||'HOME';
+  var aab=_wnbaKey(g.away)||g.away||'AWAY';
+  var ens;
+  try{ens=wnbaEns(hab,aab,g.homeML?{homeML:g.homeML,awayML:g.awayML}:null);}catch(e){ens={hP:0.5,aP:0.5};}
+  var hP=isNaN(ens.hP)?0.5:ens.hP,aP=isNaN(ens.aP)?0.5:ens.aP;
+  var hML=g.homeML||parseInt(_wnbaML(hP)),aML=g.awayML||parseInt(_wnbaML(aP));
+  var hCS=_socGC(hP),aCS=_socGC(aP);
+  var isLive=g.state==='in',isFinal=g.state==='post';
+  var statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
+  var gDate=g.date?new Date(g.date.length===8?g.date.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'):g.date):null;
+  var dateStr=(gDate&&!isNaN(gDate))?gDate.toLocaleDateString([],{month:'short',day:'numeric',timeZone:'UTC'}):'';
+  var statusTxt=(isFinal?'FINAL':isLive?'LIVE':'SCHEDULED')+(dateStr?' · '+dateStr:'');
+  return '<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">'
+    +'<div class="gch"><div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+    +'<span class="gtm" style="color:'+(aP>=hP?'var(--pc)':'var(--t2)')+'">'+aab+'</span>'
+    +'<span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>'
+    +'<span class="gtm" style="color:'+(hP>=aP?'var(--pc)':'var(--t2)')+'">'+hab+'</span>'
+    +'</div><div class="gsp">WNBA'+(g.homeName?' · '+g.awayName+' @ '+g.homeName:'')+'</div></div>'
+    +'<div style="text-align:right"><div class="np mono" style="font-size:19px">'+statusDot+statusTxt+'</div></div>'
+    +'</div>'
+    +'<div class="brow">'
+    +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\''+hab+'\','+hP.toFixed(3)+',\''+hML+'\','+_wnbaDec(hML).toFixed(3)+',\''+today()+'\')">'
+    +'<div class="cht">ML '+hab+'</div><div class="cho">'+_mlFmt(hML)+'</div><div class="chp">'+(hP*100).toFixed(1)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
+    +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\''+aab+'\','+aP.toFixed(3)+',\''+aML+'\','+_wnbaDec(aML).toFixed(3)+',\''+today()+'\')">'
+    +'<div class="cht">ML '+aab+'</div><div class="cho">'+_mlFmt(aML)+'</div><div class="chp">'+(aP*100).toFixed(1)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
+    +'</div></div>';
+}
+var _wnbaWeekActiveDate=null;
+function renderWNBAWeek(filterDate){
+  if(filterDate!==undefined)_wnbaWeekActiveDate=filterDate;
+  var el=document.getElementById('wnba-week-list');if(!el)return;
+  var D=window.__CV_DATA||{};
+  var sched=(D.wnba&&D.wnba.schedule)||[];
+  if(!sched.length){el.innerHTML='<div class="empty">NO WNBA SCHEDULE DATA — SYNC TO REFRESH</div>';return;}
+  var byDate={};
+  sched.forEach(function(g){
+    var iso=g.date&&g.date.length===8?g.date.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'):g.date;
+    if(!iso)return;if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);
+  });
+  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var dates=Object.keys(byDate).sort();
+  var activeDate=_wnbaWeekActiveDate;
+  if(activeDate)dates=dates.filter(function(d){return d===activeDate;});
+  var todayIso=today();
+  var html=_weekFilterBar('WNBA',activeDate,days);
+  if(!dates.length)html+='<div class="empty">NO GAMES ON THIS DATE</div>';
+  dates.forEach(function(d){
+    var isTod=d===todayIso;
+    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
+    byDate[d].forEach(function(g){if(g.home&&g.away)html+=_wnbaWeekCard(g);});
+  });
+  el.innerHTML=html;
+}
 
 async function renderWNBAGames(force){
   if(_wnbaRendering&&!force)return;
