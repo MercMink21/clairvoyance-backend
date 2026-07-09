@@ -3019,6 +3019,24 @@ def fetch_wnba_player_stats() -> list:
     except Exception as e:
         log(f"WNBA advanced: {e}", "WARN")
 
+    # Rating tier — closes the WNBA injury-integration gap the same way MLB's
+    # batter rosters did: computeInjuryImpact() needs a PREMIUM/OPTIMAL/GOOD
+    # tier per player to weight an injury's win-probability impact, and
+    # unlike NBA_PLAYERS (hand-curated, static) this is computed directly
+    # from the real per-game/advanced stats already scraped above. WNBA
+    # scoring/usage run lower than NBA, so thresholds are scaled down rather
+    # than reusing NBA's cutoffs verbatim.
+    for p in players.values():
+        ppg, usg, per = p.get("pts", 0), p.get("usg_pct", 0), p.get("per", 0)
+        if ppg >= 18 and usg >= 26:
+            p["rating"] = "PREMIUM"
+        elif ppg >= 13 or per >= 16:
+            p["rating"] = "OPTIMAL"
+        elif ppg >= 7:
+            p["rating"] = "GOOD"
+        else:
+            p["rating"] = "FAIR"
+
     result = list(players.values())
     log(f"WNBA players total: {len(result)}")
     return result

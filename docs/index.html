@@ -18968,6 +18968,15 @@ function buildInjuryRoster(){
   for(const[name,pd] of Object.entries(mlbBatters)){
     if(name&&pd?.team&&!r[name])r[name]={team:pd.team,sport:'mlb',pos:pd.pos,rating:'BATTER'};
   }
+  // WNBA — real per-game/advanced stats from BBRef (fetch_wnba_player_stats()
+  // in clairvoyance_update.py), with a PREMIUM/OPTIMAL/GOOD/FAIR rating tier
+  // computed server-side from ppg/usage/PER (WNBA-scaled, not NBA's cutoffs
+  // reused verbatim). Unlike NBA_PLAYERS this isn't hand-curated — it's
+  // derived from the actual season stats every refresh.
+  const wnbaPlayers=window.__CV_DATA?.wnba?.players||[];
+  for(const p of wnbaPlayers){
+    if(p?.name&&p?.team)r[p.name.toLowerCase()]={team:p.team,sport:'wnba',rating:p.rating||'FAIR'};
+  }
   window._injRoster=r;return r;
 }
 
@@ -18982,6 +18991,7 @@ function computeInjuryImpact(teamAbbr,sport){
     if(sl.includes('doubtful'))return 0.75;if(sl.includes('questionable'))return 0.30;return 0;};
   const baseW=(pos,sp,rating)=>{
     if(sp==='nba')return{PREMIUM:.070,OPTIMAL:.045,GOOD:.025}[rating]||.012;
+    if(sp==='wnba')return{PREMIUM:.075,OPTIMAL:.048,GOOD:.026}[rating]||.012; // slightly higher than NBA — shallower WNBA benches concentrate more impact in fewer stars
     if(sp==='mlb'){const p=(pos||'').toUpperCase();if(p.includes('SP'))return .065;if(['C','SS','CF','3B'].includes(p))return .030;if(['LF','RF','2B','1B','DH'].includes(p))return .020;return .010;}
     if(sp==='nhl'){const p=(pos||'').toUpperCase();if(rating==='G')return .080;if(rating==='PREMIUM')return .045;if(['C','LW','RW'].includes(p))return .030;if(p==='D')return .020;return .010;}
     return .015;};
@@ -20862,8 +20872,11 @@ function wnbaEns(hA,awA,espnOdds){
     var hImp=hml<0?Math.abs(hml)/(Math.abs(hml)+100):100/(hml+100);
     ens=ens*0.70+hImp*0.30;
   }
+  var injH=computeInjuryImpact(hk,'wnba');
+  var injA=computeInjuryImpact(ak,'wnba');
+  ens=Math.min(.92,Math.max(.08,ens-injH.penalty+injA.penalty));
   return{hP:Math.min(.88,Math.max(.12,ens)),aP:1-Math.min(.88,Math.max(.12,ens)),
-         mcP:mc.hP,bayP:hBay,eloP:eloP,hNet:mc.hNet,aNet:mc.aNet};
+         mcP:mc.hP,bayP:hBay,eloP:eloP,hNet:mc.hNet,aNet:mc.aNet,injH:injH,injA:injA};
 }
 function applyWNBAWeights(){
   WNBA_ENS={
