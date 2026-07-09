@@ -22882,7 +22882,13 @@ function _renderSocMatchCard(g,leagueKey){
   if(isLive){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:27px;font-weight:900;color:#ffdd00">'+(g.hScore||0)+'</span><span style="font-family:var(--mono);font-size:15px;color:#ffdd00;background:rgba(255,221,0,.12);padding:2px 7px;border-radius:2px;border:1px solid rgba(255,221,0,.4);animation:pulse 1.5s infinite">● LIVE '+(g.clock||'')+'</span><span style="font-family:var(--orb);font-size:27px;font-weight:900;color:#ffdd00">'+(g.aScore||0)+'</span></div>';}
   else if(isFinal){scoreHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-family:var(--orb);font-size:26px;font-weight:900;color:var(--nc)">'+(g.hScore||0)+'</span><span style="font-family:var(--mono);font-size:14px;color:var(--t3);padding:2px 6px;border:1px solid rgba(255,255,255,.12);border-radius:2px">FT</span><span style="font-family:var(--orb);font-size:26px;font-weight:900;color:var(--nc)">'+(g.aScore||0)+'</span></div>';}
   var statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
-  var statusTxt=isFinal?'FINAL':isLive?'LIVE':new Date(g.date).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  // Always show the calendar date (not just kickoff time) so games are
+  // identifiable at a glance across a multi-day/multi-week schedule window —
+  // matters most for MLS, which shows 2-3 matchweeks of fixtures at once.
+  var gDate=new Date(g.date);
+  var dateStr2=isNaN(gDate)?'':gDate.toLocaleDateString([],{month:'short',day:'numeric'});
+  var timeStr=isNaN(gDate)?'':gDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  var statusTxt=(isFinal?'FINAL':isLive?'LIVE':timeStr)+(dateStr2?' · '+dateStr2:'');
   var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away,dateStr=g.date||today();
   return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
     +'<div class="gch"><div>'
@@ -22891,7 +22897,7 @@ function _renderSocMatchCard(g,leagueKey){
     +'<span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>'
     +'<span class="gtm" style="color:'+(hP>=aP&&hP>=dP?'var(--gc)':'var(--t2)')+'">'+g.home+'</span>'
     +'</div>'
-    +'<div class="gsp">'+leagueName+(g.venue?' · '+g.venue:'')+(g.matchDay?' · MATCHWEEK '+g.matchDay:'')+'</div>'
+    +'<div class="gsp">'+leagueName+(dateStr2?' · '+dateStr2:'')+(g.venue?' · '+g.venue:'')+(g.matchDay?' · MATCHWEEK '+g.matchDay:'')+'</div>'
     +'</div>'
     +'<div style="text-align:right"><div class="np mono" style="font-size:19px">'+statusDot+statusTxt+'</div></div>'
     +'</div>'
