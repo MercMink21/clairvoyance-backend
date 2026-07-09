@@ -469,8 +469,8 @@ body{line-height:1.5}
     <div id="mlb-tab-picks" style="display:none"><div id="pd"></div><div id="mlb-injury-news"></div><div id="mlb-engine-picks"></div><div id="picks-l"></div></div>
     <div id="mlb-tab-games" class="tab act">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="sh" style="margin:0"><span class="p"></span> TODAY'S GAMES <span id="mlb-games-date" style="font-family:var(--mono);font-size:18px;color:var(--t3);font-weight:400;margin-left:8px"></span></div>
-        <button class="btn btn-p btn-sm" onclick="loadGames()">↻ ESPN</button>
+        <div class="sh" style="margin:0"><span class="p"></span> 7-DAY MATCHES <span id="mlb-games-date" style="font-family:var(--mono);font-size:18px;color:var(--t3);font-weight:400;margin-left:8px"></span></div>
+        <button class="btn btn-p btn-sm" onclick="loadGames().then(()=>renderMLBWeek(null))">↻ ESPN</button>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:8px;font-family:var(--mono);font-size:16px">
         <span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span>
@@ -3264,6 +3264,7 @@ const MP_DATA={
 };
 // ═══ HELPERS ════════════════════════════════════════════════
 function p2ml(p){return p>=.5?-Math.round(100*p/(1-p)):'+'+Math.round(100*(1-p)/p)}
+function _mlFmt(v){const s=String(v);return(s.charAt(0)==='+'||s.charAt(0)==='-')?s:(v>0?'+':'')+s;}
 function ml2d(ml){const m=parseFloat(ml);return m>0?m/100+1:100/Math.abs(m)+1}
 function ev(p,d){return+(p*d-1).toFixed(4)}
 function tier(p,e,mktType){
@@ -3469,11 +3470,17 @@ function parseESPNGame(ev){
     }
   }
   const hScore=parseInt(home.score)||null;const aScore=parseInt(away.score)||null;
+  // Bug fix: this used to hardcode date:today() for every game regardless
+  // of which actual date the ESPN event fell on — harmless when only ever
+  // fetching a single day, but it silently broke any day-grouping once a
+  // multi-day window (7-day MATCHES view) started reading g.date. Use the
+  // event's own Denver-local calendar date instead.
+  const _evDate=gameDate.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
   return{
     id:ev.id,hA:hAbbr,awA:aAbbr,gt,status:status?.state,
     statusName:status?.name,hScore,aScore,
     hPit,aPit,hPitERA:parseFloat(hPitERA)||4.5,aPitERA:parseFloat(aPitERA)||4.5,
-    hML,aML,ou,date:today()
+    hML,aML,ou,date:_evDate
   };
 }
 async function _normalizeBackendGame(g) {
@@ -3554,6 +3561,62 @@ async function loadGames(dateStr){
   }
   const pd=document.getElementById('pd');if(pd&&isToday)pd.textContent=`// ${today()}`;
   if(isToday)autoSettleFromESPN(games);
+}
+
+// ═══ MLB 7-DAY MATCHES WINDOW + DATE FILTER ════════════════════════════════
+// loadGames() above stays untouched (it drives the picks engine, parlay
+// rows, opening-line tracking, auto-settle — all today-only side effects
+// that must keep working exactly as before). This is purely a display
+// layer: fetches a 7-day ESPN scoreboard range and re-renders #games-l as
+// a day-grouped, date-filterable list using the existing mlbCard() template,
+// so every game keeps its full pick-locking/EV/chip functionality — it just
+// shows a week at a time instead of only today.
+var _mlbWeekCache=null,_mlbWeekCacheTs=0;
+async function _fetchMLBWeekGames(){
+  var d0=new Date(),d1=new Date();d1.setDate(d1.getDate()+6);
+  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  try{
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates='+fmt(d0)+'-'+fmt(d1)+'&limit=300',{mode:'cors',cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    var d=await r.json();
+    return (d.events||[]).map(parseESPNGame).filter(Boolean);
+  }catch(e){console.warn('[CV] MLB week fetch:',e.message);return[];}
+}
+function _weekFilterBar(sport,activeDate,days){
+  var html='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+  html+='<button class="btn '+(!activeDate?'btn-p':'btn-o')+' btn-sm" onclick="render'+sport+'Week(null)">ALL 7 DAYS</button>';
+  days.forEach(function(d){
+    var iso=d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    var lbl=d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
+    html+='<button class="btn '+(activeDate===iso?'btn-p':'btn-o')+' btn-sm" onclick="render'+sport+'Week(\''+iso+'\')">'+lbl+'</button>';
+  });
+  html+='</div>';
+  return html;
+}
+async function renderMLBWeek(filterDate){
+  var el=document.getElementById('games-l');if(!el)return;
+  el.innerHTML='<div class="loading"><span class="spi"></span> LOADING 7-DAY WINDOW…</div>';
+  var now=Date.now();
+  if(!_mlbWeekCache||now-_mlbWeekCacheTs>5*60*1000){_mlbWeekCache=await _fetchMLBWeekGames();_mlbWeekCacheTs=now;}
+  var games=_mlbWeekCache||[];
+  games.forEach(function(g){try{_augmentWithLiveOdds(g,'MLB');}catch(e){}});
+  var byDate={};
+  games.forEach(function(g){var iso=(g.date||'').slice(0,10);if(!iso)return;if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);});
+  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var dates=Object.keys(byDate).sort();
+  if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
+  var todayIso=today();
+  var html=_weekFilterBar('MLB',filterDate,days);
+  if(!dates.length)html+='<div class="empty">NO GAMES ON THIS DATE</div>';
+  dates.forEach(function(d){
+    var isTod=d===todayIso;
+    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
+    byDate[d].forEach(function(g){
+      if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])return;
+      html+=mlbCard(g.hA,g.awA,g.gt,g.date,g);
+    });
+  });
+  el.innerHTML=html;
 }
 async function loadTmrw(){
   const el=document.getElementById('tmrw-l');
@@ -3890,7 +3953,13 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
   const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||4.5;const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||4.5;
   const statusDot=espnGame?.status==='in'?'<span class="status-live"></span>':espnGame?.status==='post'?'<span class="status-final"></span>':'<span class="status-pre"></span>';
-  const statusTxt=espnGame?.status==='post'?`FINAL: ${espnGame.hScore??'?'}-${espnGame.aScore??'?'}`:espnGame?.status==='in'?'LIVE':gt;
+  const _gDate=date?new Date(date):null;
+  // date is a bare YYYY-MM-DD calendar date (no time), which JS parses as
+  // UTC midnight — displaying it in the browser's local zone (behind UTC in
+  // the Americas) rolls it back a day. Format in UTC to keep the calendar
+  // date exactly as intended.
+  const _gDateStr=(_gDate&&!isNaN(_gDate))?_gDate.toLocaleDateString([],{month:'short',day:'numeric',timeZone:'UTC'}):'';
+  const statusTxt=espnGame?.status==='post'?`FINAL: ${espnGame.hScore??'?'}-${espnGame.aScore??'?'}`+(_gDateStr?` · ${_gDateStr}`:''):espnGame?.status==='in'?'LIVE'+(_gDateStr?` · ${_gDateStr}`:''):`${gt}`+(_gDateStr?` · ${_gDateStr}`:'');
   // Evaluate ALL six markets and find the best one
   const favTeam=hP>=.5?hA:awA;const dogTeam=hP>=.5?awA:hA;
   const favProb=Math.max(hP,aP);const dogProb=1-favProb;
@@ -4020,8 +4089,8 @@ function mlbCard(hA,awA,gt,date,espnGame){
     ${weatherBadge(_WX_CACHE[hA],hA)}
     </div>
     <div class="brow">
-      <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${hA}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${hA}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
-      <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${awA}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${awA}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${hA}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${hA}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hA}','${awA}','ML','${awA}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${date||today()}')"><div class="cht">ML ${awA}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
       <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">RUN LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('sprd_mlb_${hA}_${awA}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="-1.5" id="sprd_mlb_${hA}_${awA}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)"><button onclick="event.stopPropagation();_adjV('sprd_mlb_${hA}_${awA}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:2px;width:100%"><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?hA:awA}','${hP>=.5?awA:hA}','${hA}','${awA}','${date||today()}',${rlP.toFixed(3)},'-1.5','sprd_mlb_${hA}_${awA}','FAV')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${hP>=.5?hA:awA}</div><div id="fav_sprd_mlb_${hA}_${awA}" style="font-size:11px;opacity:.85">-1.5</div></button><button onclick="event.stopPropagation();_spreadLockDir('${hP>=.5?hA:awA}','${hP>=.5?awA:hA}','${hA}','${awA}','${date||today()}',${rlP.toFixed(3)},'-1.5','sprd_mlb_${hA}_${awA}','DOG')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${hP>=.5?awA:hA}</div><div id="dog_sprd_mlb_${hA}_${awA}" style="font-size:11px;opacity:.85">+1.5</div></button></div></div>
       <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_mlb_${hA}_${awA}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL}" id="ouinp_mlb_${hA}_${awA}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_mlb_${hA}_${awA}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
@@ -7127,8 +7196,8 @@ async function renderNBAGames(day){
     <div style="text-align:right"><div class="np mono" style="font-size:19px">${statusDot}${statusTxt}</div></div>
   </div>
   ${pre?`<div class="brow">
-    <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
-    <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${an}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${today()}')"><div class="cht">ML ${an}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+    <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+    <div class="${aCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${an}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)},'${today()}')"><div class="cht">ML ${an}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
     <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('sprd_nba_${hn}_${an}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${espnSprdNum}" id="sprd_nba_${hn}_${an}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)"><button onclick="event.stopPropagation();_adjV('sprd_nba_${hn}_${an}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:2px;width:100%"><button onclick="event.stopPropagation();_spreadLockDir('${hP>=aP?hn:an}','${hP>=aP?an:hn}','${hn}','${an}','${today()}',${sprdP.toFixed(3)},'${espnSprdNum}','sprd_nba_${hn}_${an}','FAV')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${hP>=aP?hn:an}</div><div id="fav_sprd_nba_${hn}_${an}" style="font-size:11px;opacity:.85">-1.5</div></button><button onclick="event.stopPropagation();_spreadLockDir('${hP>=aP?hn:an}','${hP>=aP?an:hn}','${hn}','${an}','${today()}',${sprdP.toFixed(3)},'${espnSprdNum}','sprd_nba_${hn}_${an}','DOG')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${hP>=aP?an:hn}</div><div id="dog_sprd_nba_${hn}_${an}" style="font-size:11px;opacity:.85">+1.5</div></button></div></div>
     ${ouL?`<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_nba_${hn}_${an}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL}" id="ouinp_nba_${hn}_${an}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_nba_${hn}_${an}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_ouLockDir('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}','ouinp_nba_${hn}_${an}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_ouLockDir('${hn}','${an}','${today()}',${ouP.toFixed(3)},'${ouL}','ouinp_nba_${hn}_${an}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>`:''}
   </div>`:''}
@@ -12000,7 +12069,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba'||sport==='wnba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='games'){try{if(!ESPN_GAMES.length)loadGames();}catch(e){}}if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');if(tabId==='parlay')try{cvParlayInit('mlb');}catch(e){}}
+  if(sport==='mlb'){if(tabId==='games'){try{(ESPN_GAMES.length?Promise.resolve():loadGames()).then(()=>renderMLBWeek(null));}catch(e){}}if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');if(tabId==='parlay')try{cvParlayInit('mlb');}catch(e){}}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games'){renderNHLTonight();renderNHLGames();};if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props'){renderProps();renderNHLSCFProps();setTimeout(()=>renderNHLPropsLive(window._nhlPropFilter||'all'),50);}if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){
   startNHLLive();renderNHLLiveBets();
   const liveEl=document.getElementById('nhl-live-scores-main');
