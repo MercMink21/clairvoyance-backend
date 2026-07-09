@@ -7066,16 +7066,7 @@ function renderNBALockedBets(){
     </div>`;
   }).join('');
 }
-async function renderNBAGames(day){
-  const el=document.getElementById('nba-games');if(!el)return;
-  const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
-  el.innerHTML='<div class="loading"><span class="spi"></span> FETCHING ESPN…</div>';
-  try{
-    const url=`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${dateStr}&seasontype=3`;
-    const r=await fetch(url,{mode:'cors',cache:'no-cache'});const d=await r.json();
-    const events=d.events||[];
-    if(!events.length){el.innerHTML='<div class="empty">NO NBA GAMES TODAY</div>';return;}
-    el.innerHTML=events.map(espnEv=>{
+function _nbaGameCard(espnEv){
       const c=espnEv.competitions?.[0];if(!c)return'';
       const h=c.competitors?.find(t=>t.homeAway==='home'),a=c.competitors?.find(t=>t.homeAway==='away');
       const hn=h?.team?.abbreviation||'HOM',an=a?.team?.abbreviation||'AWY';
@@ -7216,7 +7207,18 @@ async function renderNBAGames(day){
     ${pre?parlayBtn:''}
   </div>
 </div>`;
-    }).join('');
+}
+
+async function renderNBAGames(day){
+  const el=document.getElementById('nba-games');if(!el)return;
+  const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
+  el.innerHTML='<div class="loading"><span class="spi"></span> FETCHING ESPN…</div>';
+  try{
+    const url=`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${dateStr}&seasontype=3`;
+    const r=await fetch(url,{mode:'cors',cache:'no-cache'});const d=await r.json();
+    const events=d.events||[];
+    if(!events.length){el.innerHTML='<div class="empty">NO NBA GAMES TODAY</div>';return;}
+    el.innerHTML=events.map(_nbaGameCard).join('');
   }catch(e){el.innerHTML='<div class="empty">ESPN UNAVAILABLE — CHECK CONNECTION</div>';}
 }
 function renderNBAStats(){
