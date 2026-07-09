@@ -37,15 +37,67 @@ jobs:
       - name: Run Clairvoyance update v7.0
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TZ: America/Denver
         run: |
           python scripts/clairvoyance_update.py --no-linemate
         timeout-minutes: 15
 
       - name: Commit and push data
+        id: push
         run: |
           git config user.name  "Clairvoyance Bot"
           git config user.email "bot@clairvoyance"
           git add docs/data.json docs/live_data.json docs/social_copy.json docs/soccer_fbref.json docs/mls_stats.json docs/mls_schedule.json data/ || true
-          git diff --cached --quiet || git commit -m "auto-refresh: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push || echo "Nothing to push"
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "auto-refresh: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            if git push; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "push_failed=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Alert on push failure
+        if: steps.push.outputs.push_failed == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          # No-ops harmlessly if DISCORD_WEBHOOK_URL isn't set (empty URL → curl fails, caught by || true)
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\":\"🔴 **Clairvoyance — Push Failed**\\nScheduled refresh's git push to main failed on GitHub Actions. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
+          fi
+
+      # Post-deploy verification: same safety net as the local git_push() path
+      # (verify_deployment() in clairvoyance_update.py) — GitHub Pages needs a
+      # short moment to rebuild after the push above, then the live data.json
+      # is polled to confirm it actually loads and has real content, not just
+      # that the commit succeeded.
+      - name: Verify deployment
+        if: steps.push.outputs.changed == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          ok=false
+          for i in 1 2 3; do
+            sleep 25
+            if curl -sf "https://mercmink21.github.io/clairvoyance-backend/data.json?_v=$(date +%s)" -o /tmp/live_data.json; then
+              if python3 -c "import json,sys; d=json.load(open('/tmp/live_data.json')); games=len(d.get('mlb',{}).get('today',[]))+len(d.get('nba',{}).get('today',[]))+len(d.get('nhl',{}).get('today',[])); bets=len(d.get('bestBets',[])); sys.exit(0 if d.get('generated') and (games>0 or bets>0) else 1)"; then
+                ok=true
+                break
+              fi
+            fi
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::warning::Live data.json failed post-deploy verification"
+            if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+              curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{\"content\":\"🔴 **Clairvoyance — Deploy Verification Failed**\\nLive data.json didn't verify after push (3 attempts, 25s apart). Site may be serving stale/broken data. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
+            fi
+          fi

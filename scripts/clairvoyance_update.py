@@ -171,6 +171,38 @@ def _notify(title: str, msg: str) -> None:
     except Exception:
         pass  # non-macOS or osascript unavailable — silent fail
 
+def _alert(title: str, msg: str, level: str = "info") -> None:
+    """
+    Unified alert path: always does the local macOS notification (existing
+    behavior, silently no-ops off macOS — including on GitHub Actions
+    runners), and ALSO posts to a Discord webhook if DISCORD_WEBHOOK_URL is
+    set in .env — the piece that was missing entirely before. Without a
+    webhook configured this degrades to exactly the old behavior (silent on
+    CI), so nothing breaks if you don't set it up; set DISCORD_WEBHOOK_URL
+    to start getting same-day pings on scrape failures instead of only
+    finding out when you happen to check the site.
+    """
+    _notify(title, msg)
+    webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook:
+        return
+    emoji = {"error": "🔴", "warn": "🟡", "info": "🟢"}.get(level, "🟢")
+    try:
+        requests.post(webhook, json={"content": f"{emoji} **Clairvoyance — {title}**\n{msg}"}, timeout=8)
+    except Exception as exc:
+        log(f"Discord webhook failed: {exc}", "WARN")
+
+def _check_source_health(label: str, count: int, prior_count: int | None = None) -> None:
+    """
+    Fires an alert when a data source comes back empty. Without prior-run
+    history this can't distinguish "genuinely 0 games today" (real, common —
+    e.g. an off-day) from "the scraper broke" for schedule-shaped sources, so
+    it's used selectively — only for sources that should essentially never
+    be legitimately empty (team/season-stats endpoints, not daily schedules).
+    """
+    if count == 0:
+        _alert("Source Empty", f"{label} returned 0 results — scraper may be broken or blocked.", "warn")
+
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 _session = requests.Session()
 _session.headers.update(HEADERS)
@@ -2206,6 +2238,64 @@ def fetch_weather(home_team: str) -> dict | None:
         "city":      city, "indoor": False,
     }
 
+# MLS club home-city coordinates (lat, lon, city) — same Open-Meteo pattern
+# fetch_weather() already uses for MLB, extended to soccer since wind/rain
+# meaningfully suppress O/U totals in open-air stadiums, same as baseball.
+_MLS_COORDS: dict[str, tuple[float, float, str]] = {
+    "atlanta united":(33.7554,-84.4008,"Atlanta GA"), "austin fc":(30.2747,-97.7211,"Austin TX"),
+    "charlotte fc":(35.2258,-80.8528,"Charlotte NC"), "chicago fire fc":(41.8623,-87.6167,"Chicago IL"),
+    "fc cincinnati":(39.1102,-84.5203,"Cincinnati OH"), "colorado rapids":(39.8035,-104.8927,"Commerce City CO"),
+    "columbus crew":(39.9689,-83.0173,"Columbus OH"), "d.c. united":(38.8678,-77.0113,"Washington DC"),
+    "fc dallas":(33.1538,-96.8355,"Frisco TX"), "houston dynamo fc":(29.7521,-95.3527,"Houston TX"),
+    "inter miami cf":(26.1584,-80.1397,"Fort Lauderdale FL"), "los angeles football club":(34.0132,-118.2856,"Los Angeles CA"),
+    "lafc":(34.0132,-118.2856,"Los Angeles CA"), "la galaxy":(33.8644,-118.2611,"Carson CA"),
+    "minnesota united fc":(44.9535,-93.1614,"St. Paul MN"), "cf montréal":(45.5089,-73.5533,"Montréal QC"),
+    "cf montreal":(45.5089,-73.5533,"Montréal QC"), "nashville sc":(36.1329,-86.7734,"Nashville TN"),
+    "new england revolution":(42.0909,-71.2643,"Foxborough MA"), "new york city football club":(40.8296,-73.9262,"Bronx NY"),
+    "nycfc":(40.8296,-73.9262,"Bronx NY"), "new york red bulls":(40.7351,-74.1503,"Harrison NJ"),
+    "red bull new york":(40.7351,-74.1503,"Harrison NJ"), "orlando city sc":(28.5416,-81.3893,"Orlando FL"),
+    "philadelphia union":(39.8328,-75.3782,"Chester PA"), "portland timbers":(45.5215,-122.6919,"Portland OR"),
+    "real salt lake":(40.5829,-111.8933,"Sandy UT"), "san diego fc":(32.7157,-117.1611,"San Diego CA"),
+    "san jose earthquakes":(37.3520,-121.9250,"San Jose CA"), "seattle sounders fc":(47.5952,-122.3316,"Seattle WA"),
+    "sporting kansas city":(38.8225,-94.8203,"Kansas City KS"), "st. louis city sc":(38.6413,-90.2529,"St. Louis MO"),
+    "toronto fc":(43.6332,-79.4186,"Toronto ON"), "vancouver whitecaps fc":(49.2765,-123.1028,"Vancouver BC"),
+}
+_MLS_DOME = {"atlanta united", "minnesota united fc"}  # retractable/covered roofs
+
+def fetch_soccer_weather(team_name: str) -> dict | None:
+    """Weather for a soccer club's home city — matched loosely by name since
+    team names vary in casing/punctuation across sources (FBref/ESPN/mlssoccer.com)."""
+    if not team_name:
+        return None
+    key = team_name.strip().lower()
+    if key in _MLS_DOME:
+        return {"condition": "Dome/Retractable", "temp": None, "wind": None, "indoor": True}
+    coords = _MLS_COORDS.get(key)
+    if not coords:
+        for k, v in _MLS_COORDS.items():
+            if k in key or key in k:
+                coords = v; break
+    if not coords:
+        return None
+    lat, lon, city = coords
+    data = fetch_json(
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation_probability"
+        f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto",
+        timeout=10
+    )
+    if not data: return None
+    c = data.get("current") or {}
+    return {
+        "condition": _wmo_desc(int(c.get("weather_code", 0))),
+        "temp":      round(float(c.get("temperature_2m", 0))),
+        "wind":      round(float(c.get("wind_speed_10m", 0))),
+        "windDir":   round(float(c.get("wind_direction_10m", 0))),
+        "precipProb": c.get("precipitation_probability"),
+        "city":      city, "indoor": False,
+    }
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Linemate props / trends / cheatsheets  (Playwright)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3975,7 +4065,42 @@ def git_push(summary: str = "") -> bool:
         note("git push → main ✓")
         return True
     except Exception as exc:
-        log(f"git push failed: {exc}", "WARN"); return False
+        log(f"git push failed: {exc}", "WARN")
+        _alert("Push Failed", f"git push → main failed: {exc}", "error")
+        return False
+
+def verify_deployment(retries: int = 3, delay_sec: int = 20) -> bool:
+    """
+    Post-deploy safety net: after a successful push, GitHub Pages takes a
+    little while to rebuild, so poll the LIVE data.json a few times and
+    confirm it (a) actually loads, (b) parses as JSON, and (c) has
+    non-trivial content — catches the class of failure validate.py can't:
+    a commit that was locally valid but somehow deployed broken/empty (CDN
+    issue, a genuinely empty bestBets from a bad scrape that slipped past
+    other checks, etc). Alerts on failure rather than auto-reverting —
+    reverting automatically risks compounding a bad situation if the
+    failure is transient (Pages still rebuilding, a flaky CDN edge) rather
+    than a real bad deploy.
+    """
+    url = "https://mercmink21.github.io/clairvoyance-backend/data.json"
+    for attempt in range(retries):
+        try:
+            time.sleep(delay_sec)
+            r = requests.get(f"{url}?_v={int(time.time())}", timeout=15)
+            r.raise_for_status()
+            d = r.json()
+            games_total = len(d.get("mlb", {}).get("today", [])) + len(d.get("nba", {}).get("today", [])) + len(d.get("nhl", {}).get("today", []))
+            has_content = bool(d.get("generated")) and (games_total > 0 or len(d.get("bestBets", [])) > 0)
+            if has_content:
+                note(f"deployment verified ✓ ({games_total} games today, {len(d.get('bestBets', []))} best bets)")
+                return True
+            log(f"verify_deployment: live data.json parses but looks empty (attempt {attempt+1}/{retries})", "WARN")
+        except Exception as exc:
+            log(f"verify_deployment attempt {attempt+1}/{retries} failed: {exc}", "WARN")
+    _alert("Deploy Verification Failed",
+           f"Live data.json at {url} failed to verify after {retries} attempts post-push — "
+           "site may be serving stale or broken data. Check manually.", "error")
+    return False
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Live Window  (17:00–23:00 MT continuous refresh)
@@ -4169,6 +4294,25 @@ def main() -> None:
     mls_stats     = fetch_mls_team_stats() if S in ("soccer","all") else {}
     mls_standings = fetch_mls_standings()  if S in ("soccer","all") else []
     mls_schedule  = fetch_mls_schedule()   if S in ("soccer","all") else []
+    if S in ("soccer","all"):
+        # MLS always has 30 clubs in-season — unlike a daily schedule, this
+        # should never legitimately be 0, so it's safe to alert on.
+        _check_source_health("MLS club stats (mlssoccer.com)", len(mls_stats.get("teams", {})))
+        _check_source_health("MLS standings (mlssoccer.com)", len(mls_standings))
+
+    # Weather for MLS home clubs — same rationale as MLB: open-air stadiums,
+    # wind/rain measurably suppress O/U goal totals. Keyed by lowercase club
+    # name (matching mls_schedule.json's "home" field) rather than abbreviation.
+    soccer_weather: dict = {}
+    if S in ("soccer","all"):
+        log("Fetching MLS weather…")
+        for m in mls_schedule:
+            home = (m.get("home") or "").strip()
+            key = home.lower()
+            if key and key not in soccer_weather:
+                w = fetch_soccer_weather(home)
+                if w: soccer_weather[key] = w
+                time.sleep(0.3)
     if mls_stats.get("teams"):
         # soccer_fbref["mls"] keeps the slim xg/npxg/xag/poss schema the
         # frontend's _socXGFromFBref() already reads for every league, so
@@ -4199,7 +4343,7 @@ def main() -> None:
         (ROOT / "docs" / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         (DATA / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         note("soccer_fbref.json written")
-    mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule}
+    mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule, "weather": soccer_weather}
     if mls_standings or mls_schedule:
         (ROOT / "docs" / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
         (DATA / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))
@@ -4403,6 +4547,7 @@ def main() -> None:
             n_bets = len(best_bets)
             top_grade = best_bets[0].get("evGrade","—") if best_bets else "—"
             _notify("Refresh Complete", f"Push done · {n_bets} picks · top grade {top_grade} · {TS_DISPLAY}")
+            verify_deployment()
     else:
         _notify("Refresh Complete", f"Data updated (no push) · {len(best_bets)} picks · {TS_DISPLAY}")
 
