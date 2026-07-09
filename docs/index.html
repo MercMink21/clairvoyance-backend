@@ -18713,6 +18713,24 @@ async function renderNewsSport(sport){
 
 // ── INJURY IMPACT ENGINE ─────────────────────────────────────────────────────
 // Builds player→team lookup from NBA_PLAYERS, NHL key arrays, PIT (today's SPs)
+//
+// AUDIT NOTE (injury integration depth, item 8):
+//   - MLB: only starting pitchers are in the roster map (window.PIT), even
+//     though baseW()'s MLB branch below defines weights for C/SS/CF/3B/etc
+//     position players too — those weights are currently dead code, since
+//     no position-player roster/rating dataset exists to match an injured
+//     hitter's name against. A star position player going down today moves
+//     the MLB model $0 — only rotation injuries do. Fixing this needs a
+//     real MLB batting-order/roster dataset, which doesn't exist yet.
+//   - WNBA/soccer (5 leagues)/tennis/F1/CFB/NFL: no roster+rating dataset
+//     exists at all, so computeInjuryImpact() is never called for them —
+//     injuries for these sports (WNBA now fetched backend-side as of this
+//     audit — see fetch_injuries_all() in clairvoyance_update.py) have
+//     nowhere to plug into a win-probability adjustment yet.
+//   - Where it *is* wired (MLB/NBA/NHL), it's real: position-weighted,
+//     severity-scaled (out/doubtful/questionable), capped at 12pp, and
+//     directly nudges win probability in mlbEns/nbaEns/nhlEns — not just a
+//     cosmetic badge.
 function buildInjuryRoster(){
   const r={};
   for(const p of(window.NBA_PLAYERS||[])){r[p.n.toLowerCase()]={team:p.t,sport:'nba',rating:p.rating||'FAIR'};}

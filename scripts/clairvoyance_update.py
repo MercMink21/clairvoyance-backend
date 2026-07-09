@@ -3222,12 +3222,24 @@ def fetch_sports_news() -> dict:
     return news
 
 def fetch_injuries_all() -> dict:
-    """Dedicated injury fetcher for all sports."""
+    """
+    Dedicated injury fetcher for all sports. fetch_espn_injuries() is
+    generic (any ESPN sport_path works), so adding WNBA here is just a data
+    pull — it does NOT mean WNBA injuries feed into win-probability yet. The
+    frontend's computeInjuryImpact() needs a name→team→position→rating
+    roster map to apply a penalty (built from window.NBA_PLAYERS for NBA,
+    window.NHL for NHL, window.PIT — starting pitchers only — for MLB), and
+    no such roster dataset exists for WNBA, soccer, tennis, F1, or CFB/NFL.
+    This list is available for the frontend to display/use once that roster
+    data exists; see the injury-integration audit note near computeInjuryImpact
+    in app.html for the concrete gap.
+    """
     log("ESPN injury reports…")
     return {
         "mlb":  fetch_espn_injuries("baseball/mlb",    "mlb"),
         "nba":  fetch_espn_injuries("basketball/nba",  "nba"),
-        "nhl":  fetch_espn_injuries("hockey/nhl",      "nhl"),
+        "nhl":  fetch_espn_injuries("hockey/nhl",       "nhl"),
+        "wnba": fetch_espn_injuries("basketball/wnba", "wnba"),
     }
 
 # ═══════════════════════════════════════════════════════════════════════════════
