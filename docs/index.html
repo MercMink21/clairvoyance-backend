@@ -3584,13 +3584,30 @@ async function _fetchMLBWeekGames(){
     return (d.events||[]).map(parseESPNGame).filter(Boolean);
   }catch(e){console.warn('[CV] MLB week fetch:',e.message);return[];}
 }
-function _weekFilterBar(sport,activeDate,days){
+// Filter-bar day buttons should reflect when games actually are, not
+// blindly "today + next 6 calendar days" — a schedule gap (e.g. MLS
+// during a World Cup break) makes every fixed-calendar-day button show
+// "NO MATCHES ON THIS DATE" while the real games sit just past the
+// window. Prefer the real dates found in byDate; only fall back to
+// calendar days if there's no data to look at yet (loading/empty state).
+function _filterDays(byDate){
+  var found=Object.keys(byDate||{}).sort();
+  if(found.length)return found.slice(0,7).map(function(iso){return new Date(iso+'T00:00:00');});
+  var fallback=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);fallback.push(d);}
+  return fallback;
+}
+function _weekFilterBar(sport,activeDate,days,callExpr){
+  // callExpr lets callers whose render function isn't named "render{sport}Week"
+  // (e.g. renderLeagueMatches('pl', DATE) for the soccer leagues, which is
+  // shared across 4 leagues rather than one function per league) supply
+  // their own call expression with a {DATE} placeholder.
+  var mk=callExpr?function(dateArg){return callExpr.replace('{DATE}',dateArg);}:function(dateArg){return 'render'+sport+'Week('+dateArg+')';};
   var html='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
-  html+='<button class="btn '+(!activeDate?'btn-p':'btn-o')+' btn-sm" onclick="render'+sport+'Week(null)">ALL 7 DAYS</button>';
+  html+='<button class="btn '+(!activeDate?'btn-p':'btn-o')+' btn-sm" onclick="'+mk('null')+'">ALL 7 DAYS</button>';
   days.forEach(function(d){
     var iso=d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
     var lbl=d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
-    html+='<button class="btn '+(activeDate===iso?'btn-p':'btn-o')+' btn-sm" onclick="render'+sport+'Week(\''+iso+'\')">'+lbl+'</button>';
+    html+='<button class="btn '+(activeDate===iso?'btn-p':'btn-o')+' btn-sm" onclick="'+mk("'"+iso+"'")+'">'+lbl+'</button>';
   });
   html+='</div>';
   return html;
@@ -3604,7 +3621,7 @@ async function renderMLBWeek(filterDate){
   games.forEach(function(g){try{_augmentWithLiveOdds(g,'MLB');}catch(e){}});
   var byDate={};
   games.forEach(function(g){var iso=(g.date||'').slice(0,10);if(!iso)return;if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);});
-  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var days=_filterDays(byDate);
   var dates=Object.keys(byDate).sort();
   if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
   var todayIso=today();
@@ -5420,7 +5437,7 @@ async function renderNHLWeek(filterDate){
     var localIso=isNaN(d)?(ev.date||'').slice(0,10):d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
     if(!localIso)return;if(!byDate[localIso])byDate[localIso]=[];byDate[localIso].push(ev);
   });
-  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var days=_filterDays(byDate);
   var dates=Object.keys(byDate).sort();
   if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
   var todayIso=today();
@@ -7283,7 +7300,7 @@ async function renderNBAWeek(filterDate){
     var localIso=isNaN(d)?iso:d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
     if(!byDate[localIso])byDate[localIso]=[];byDate[localIso].push(ev);
   });
-  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var days=_filterDays(byDate);
   var dates=Object.keys(byDate).sort();
   if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
   var todayIso=today();
@@ -20807,7 +20824,7 @@ function renderWNBAWeek(filterDate){
     var iso=g.date&&g.date.length===8?g.date.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'):g.date;
     if(!iso)return;if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);
   });
-  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var days=_filterDays(byDate);
   var dates=Object.keys(byDate).sort();
   var activeDate=_wnbaWeekActiveDate;
   if(activeDate)dates=dates.filter(function(d){return d===activeDate;});
@@ -23244,7 +23261,10 @@ async function _fetchMLSScheduleReal(){
   }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
 }
 
-async function renderLeagueMatches(key){
+var _leagueWeekActiveDate={};
+async function renderLeagueMatches(key,filterDate){
+  if(filterDate!==undefined)_leagueWeekActiveDate[key]=filterDate;
+  var activeDate=_leagueWeekActiveDate[key]||null;
   var el=document.getElementById(key+'-matches-list');if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
   var games=key==='mls'?await _fetchMLSScheduleReal():null;
@@ -23253,9 +23273,30 @@ async function renderLeagueMatches(key){
     el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">NO MATCHES IN THE PAST/NEXT 3 WEEKS<br><span style="font-size:15px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
     return;
   }
-  el.innerHTML='<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
-    +games.map(function(g){return _renderSocMatchCard(g,key);}).join('');
   window['_'+key+'Games']=games;
+  // Day-grouped + date-filterable, same UX as MLB/WNBA's 7-day windows —
+  // shared across all non-MLS leagues here since renderLeagueMatches()
+  // already handles cl/pl/liga/bl generically (MLS uses its own real
+  // mlssoccer.com schedule but goes through this same render path).
+  var byDate={};
+  games.forEach(function(g){
+    var iso=(g.date||'').slice(0,10);if(!iso)return;
+    if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);
+  });
+  var days=_filterDays(byDate);
+  var dates=Object.keys(byDate).sort();
+  if(activeDate)dates=dates.filter(function(d){return d===activeDate;});
+  var todayIso=today();
+  var callExpr="renderLeagueMatches('"+key+"',{DATE})";
+  var html='<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES (7-DAY WINDOW) · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
+    +_weekFilterBar(key,activeDate,days,callExpr);
+  if(!dates.length)html+='<div class="empty">NO MATCHES ON THIS DATE</div>';
+  dates.forEach(function(d){
+    var isTod=d===todayIso;
+    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
+    byDate[d].forEach(function(g){html+=_renderSocMatchCard(g,key);});
+  });
+  el.innerHTML=html;
 }
 window.renderLeagueMatches=renderLeagueMatches;
 
