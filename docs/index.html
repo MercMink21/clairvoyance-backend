@@ -7211,6 +7211,51 @@ function _nbaGameCard(espnEv){
 </div>`;
 }
 
+// ═══ NBA 7-DAY MATCHES WINDOW + DATE FILTER ═══════════════════════════════
+// Same pattern as MLB's renderMLBWeek(): fetch a 7-day ESPN scoreboard
+// range, group by day, reuse the existing per-game card (_nbaGameCard,
+// extracted above). NBA is in the real offseason as of this build (next
+// game October 2026) so this will correctly render "no games" until then —
+// dormant infrastructure, not untested guesswork, since it reuses the exact
+// same fetch/render technique already proven live against MLB.
+var _nbaWeekCache=null,_nbaWeekCacheTs=0;
+async function _fetchNBAWeekGames(){
+  var d0=new Date(),d1=new Date();d1.setDate(d1.getDate()+6);
+  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  try{
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+fmt(d0)+'-'+fmt(d1)+'&limit=300',{mode:'cors',cache:'no-cache'});
+    if(!r.ok)throw new Error(r.status);
+    var d=await r.json();
+    return d.events||[];
+  }catch(e){console.warn('[CV] NBA week fetch:',e.message);return[];}
+}
+async function renderNBAWeek(filterDate){
+  var el=document.getElementById('nba-week-list');if(!el)return;
+  el.innerHTML='<div class="loading"><span class="spi"></span> LOADING 7-DAY WINDOW…</div>';
+  var now=Date.now();
+  if(!_nbaWeekCache||now-_nbaWeekCacheTs>5*60*1000){_nbaWeekCache=await _fetchNBAWeekGames();_nbaWeekCacheTs=now;}
+  var events=_nbaWeekCache||[];
+  var byDate={};
+  events.forEach(function(ev){
+    var iso=(ev.date||'').slice(0,10);if(!iso)return;
+    var d=new Date(ev.date);
+    var localIso=isNaN(d)?iso:d.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    if(!byDate[localIso])byDate[localIso]=[];byDate[localIso].push(ev);
+  });
+  var days=[];var d0=new Date();for(var i=0;i<7;i++){var d=new Date();d.setDate(d0.getDate()+i);days.push(d);}
+  var dates=Object.keys(byDate).sort();
+  if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
+  var todayIso=today();
+  var html=_weekFilterBar('NBA',filterDate,days);
+  if(!dates.length)html+='<div class="empty">NO GAMES ON THIS DATE</div>';
+  dates.forEach(function(d){
+    var isTod=d===todayIso;
+    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
+    byDate[d].forEach(function(ev){html+=_nbaGameCard(ev);});
+  });
+  el.innerHTML=html;
+}
+
 async function renderNBAGames(day){
   const el=document.getElementById('nba-games');if(!el)return;
   const dateStr=day==='tomorrow'?getTomorrowET():todayESPN();
