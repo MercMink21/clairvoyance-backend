@@ -7082,19 +7082,35 @@ function nbaTeamScore(abbr){
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
 function nbaMC(hA,awA,n=25000,ouLine=220){
+  // AUDIT FIX: NBA_TEAMS/NBA_BBREF are both hardcoded to the same 4 teams
+  // from a single past Finals matchup (OKC/SA/NY/CLE) — for any of the
+  // other 26 teams, this used to hard-return null (a flat 50/50 coinflip
+  // in nbaEns, silently, for the vast majority of possible matchups), and
+  // even when it didn't bail early, the "fallback" formula ht.ppg/ht.ppg*115
+  // always evaluated to a constant 115 regardless of the team's real ppg
+  // (x/x is always 1) — dead, broken code. window.__CV_DATA.nba.teamAdv is
+  // fetched live by fetch_nba_team_advanced() in clairvoyance_update.py for
+  // all 30 teams but was never consumed anywhere in the frontend until now.
+  const liveAdv=window.__CV_DATA?.nba?.teamAdv||{};
   const h=NBA_BBREF[hA],aw=NBA_BBREF[awA];
+  const hLive=liveAdv[hA],aLive=liveAdv[awA];
   const ht=NBA_TEAMS[hA],awt=NBA_TEAMS[awA];
-  if(!ht||!awt)return null;
-  // Use BBRef offensive/defensive ratings to derive expected scores
-  const hOrtg=h?h.p100.ortg:ht.ppg/ht.ppg*115;const hDrtg=h?h.p100.drtg:ht.opp/ht.ppg*115;
-  const aOrtg=aw?aw.p100.ortg:awt.ppg/awt.ppg*113;const aDrtg=aw?aw.p100.drtg:awt.opp/awt.ppg*113;
-  const pace=((h?h.p100.pace:99)+(aw?aw.p100.pace:99))/2;
+  if(!ht&&!awt&&!hLive&&!aLive)return null; // truly no data for either team from any source
+  // League-average constants (honest neutral fallback) instead of the old
+  // broken x/x formula — used only when neither live data nor the static
+  // 4-team table has this specific team.
+  const LG_ORTG=114.5,LG_DRTG=114.5,LG_PACE=99.0,LG_TS=.570;
+  const hOrtg=hLive?.ortg??(h?h.p100.ortg:LG_ORTG);
+  const hDrtg=hLive?.drtg??(h?h.p100.drtg:LG_DRTG);
+  const aOrtg=aLive?.ortg??(aw?aw.p100.ortg:LG_ORTG);
+  const aDrtg=aLive?.drtg??(aw?aw.p100.drtg:LG_DRTG);
+  const pace=((hLive?.pace??(h?h.p100.pace:LG_PACE))+(aLive?.pace??(aw?aw.p100.pace:LG_PACE)))/2;
   // Projected scores per game
   const lgAvg=113.5;
   const hProj=((hOrtg/lgAvg)*(aDrtg/lgAvg))*lgAvg*(pace/98.8)*(1.025); // home court
   const aProj=((aOrtg/lgAvg)*(hDrtg/lgAvg))*lgAvg*(pace/98.8);
   // TS%/eFG% based SD (better teams have tighter variance)
-  const hTS=h?h.p100.ts_pct:.590;const aTS=aw?aw.p100.ts_pct:.580;
+  const hTS=hLive?.ts_pct??(h?h.p100.ts_pct:LG_TS);const aTS=aLive?.ts_pct??(aw?aw.p100.ts_pct:LG_TS);
   const hSD=Math.max(8,18-(hTS-.56)*40);const aSD=Math.max(8,18-(aTS-.56)*40);
   let hw=0,aw2=0,hT=0,aT=0,ts=0,ov=0;
   for(let i=0;i<n;i++){
@@ -7112,8 +7128,14 @@ function nbaMC(hA,awA,n=25000,ouLine=220){
   return{hwP:hw/n,avgH:+(hT/n).toFixed(1),avgA:+(aT/n).toFixed(1),avgT:+((hT+aT)/n).toFixed(1),spread:+((hT-aT)/n).toFixed(1),overP:ov/n,underP:1-ov/n};
 }
 function nbaGetBayes(abbr){
-  const t=NBA_TEAMS[abbr];if(!t)return{m:.5};
-  let al=t.pw+1,bl=t.pl+1;
+  // Same audit fix as nbaMC(): NBA_TEAMS only has the 4 hardcoded teams, so
+  // this used to silently return a flat 50/50 prior for the other 26.
+  // window.__CV_DATA.nba.standings (fetch_nba_standings(), all 30 teams'
+  // real w/l records) was already being fetched and just never consumed here.
+  const t=NBA_TEAMS[abbr];
+  const liveStand=window.__CV_DATA?.nba?.standings?.[abbr];
+  if(!t&&!liveStand)return{m:.5};
+  let al=(t?t.pw:parseInt(liveStand?.w)||0)+1,bl=(t?t.pl:parseInt(liveStand?.l)||0)+1;
   for(const p of getP()){if(p.outcome==='pending'||p.sport!=='NBA')continue;const iH=p.hA===abbr,iA=p.awA===abbr;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}
   return{m:al/(al+bl)};
 }
