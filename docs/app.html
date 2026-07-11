@@ -1664,8 +1664,16 @@ body{line-height:1.5}
           <option value="nba">NBA</option>
           <option value="nhl">NHL</option>
           <option value="wnba">WNBA</option>
+          <option value="nfl">NFL</option>
+          <option value="cfb">COLLEGE FOOTBALL</option>
+          <option value="cbb">COLLEGE BASKETBALL</option>
           <option value="tennis">TENNIS</option>
           <option value="wc">WORLD CUP</option>
+          <option value="mls">MLS</option>
+          <option value="cl">CHAMPIONS LEAGUE</option>
+          <option value="pl">PREMIER LEAGUE</option>
+          <option value="liga">LA LIGA</option>
+          <option value="bl">BUNDESLIGA</option>
         </select>
       </div>
       <!-- Home / P1 -->
@@ -16278,7 +16286,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-07-09 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-07-11 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -26239,20 +26247,73 @@ var SIM_FB = {
   nhl:['ANA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH'],
   wnba:['ATL','CHI','CON','DAL','GS','IND','LA','LV','MIN','NY','PHX','SEA','TOR','WSH'],
   tennis:['Alcaraz','Andreeva','Djokovic','Fritz','Gauff','Hurkacz','Keys','Medvedev','Rune','Rybakina','Sabalenka','Sinner','Swiatek','Zverev'],
-  wc:['Algeria','Argentina','Australia','Austria','Belgium','Bosnia-Herzegovina','Brazil','Canada','Cape Verde','Colombia','Congo DR','Croatia','Czechia','Curaçao','Ecuador','Egypt','England','France','Germany','Ghana','Haiti','Iran','Iraq','Ivory Coast','Japan','Jordan','Mexico','Morocco','Netherlands','New Zealand','Norway','Panama','Paraguay','Portugal','Qatar','Saudi Arabia','Scotland','Senegal','South Africa','South Korea','Spain','Sweden','Switzerland','Tunisia','Türkiye','United States','Uruguay','Uzbekistan']
+  wc:['Algeria','Argentina','Australia','Austria','Belgium','Bosnia-Herzegovina','Brazil','Canada','Cape Verde','Colombia','Congo DR','Croatia','Czechia','Curaçao','Ecuador','Egypt','England','France','Germany','Ghana','Haiti','Iran','Iraq','Ivory Coast','Japan','Jordan','Mexico','Morocco','Netherlands','New Zealand','Norway','Panama','Paraguay','Portugal','Qatar','Saudi Arabia','Scotland','Senegal','South Africa','South Korea','Spain','Sweden','Switzerland','Tunisia','Türkiye','United States','Uruguay','Uzbekistan'],
+  // Fallback lists for sports whose team names come from a live ESPN fetch
+  // (_simFetchTeams) — only used if that request fails.
+  nfl:['Arizona Cardinals','Atlanta Falcons','Baltimore Ravens','Buffalo Bills','Carolina Panthers','Chicago Bears','Cincinnati Bengals','Cleveland Browns','Dallas Cowboys','Denver Broncos','Detroit Lions','Green Bay Packers','Houston Texans','Indianapolis Colts','Jacksonville Jaguars','Kansas City Chiefs','Las Vegas Raiders','Los Angeles Chargers','Los Angeles Rams','Miami Dolphins','Minnesota Vikings','New England Patriots','New Orleans Saints','New York Giants','New York Jets','Philadelphia Eagles','Pittsburgh Steelers','San Francisco 49ers','Seattle Seahawks','Tampa Bay Buccaneers','Tennessee Titans','Washington Commanders'],
+  cfb:['Alabama Crimson Tide','Georgia Bulldogs','Ohio State Buckeyes','Michigan Wolverines','Texas Longhorns','Oklahoma Sooners','Clemson Tigers','Notre Dame Fighting Irish','Penn State Nittany Lions','Oregon Ducks','LSU Tigers','Florida State Seminoles','USC Trojans','Tennessee Volunteers','Ole Miss Rebels','Utah Utes'],
+  cbb:['Duke Blue Devils','Kansas Jayhawks','Kentucky Wildcats','North Carolina Tar Heels','UCLA Bruins','Gonzaga Bulldogs','Houston Cougars','Purdue Boilermakers','Arizona Wildcats','UConn Huskies','Tennessee Volunteers','Baylor Bears'],
+  mls:['Atlanta United FC','Austin FC','Charlotte FC','Chicago Fire FC','FC Cincinnati','Colorado Rapids','Columbus Crew','D.C. United','FC Dallas','Houston Dynamo FC','Inter Miami CF','LA Galaxy','Los Angeles FC','Minnesota United FC','CF Montréal','Nashville SC','New England Revolution','New York City FC','New York Red Bulls','Orlando City SC','Philadelphia Union','Portland Timbers','Real Salt Lake','San Diego FC','San Jose Earthquakes','Seattle Sounders FC','Sporting Kansas City','St. Louis City SC','Toronto FC','Vancouver Whitecaps FC'],
+  cl:['Real Madrid','Manchester City','Bayern Munich','Paris Saint-Germain','Liverpool','Arsenal','Barcelona','Inter Milan','Atletico Madrid','Borussia Dortmund','Bayer Leverkusen','Juventus'],
+  pl:['Arsenal','Aston Villa','Bournemouth','Brentford','Brighton','Chelsea','Crystal Palace','Everton','Fulham','Ipswich Town','Leicester City','Liverpool','Manchester City','Manchester United','Newcastle United','Nottingham Forest','Southampton','Tottenham Hotspur','West Ham United','Wolverhampton Wanderers'],
+  liga:['Real Madrid','Barcelona','Atletico Madrid','Athletic Bilbao','Real Sociedad','Real Betis','Villarreal','Valencia','Sevilla','Girona','Osasuna','Celta Vigo'],
+  bl:['Bayern Munich','Bayer Leverkusen','Borussia Dortmund','RB Leipzig','Eintracht Frankfurt','VfB Stuttgart','Borussia Monchengladbach','Wolfsburg','Freiburg','Union Berlin']
 };
 
 /* ── simUpdateTeams ──────────────────────────────────────────────── */
+// ESPN team-list endpoints for the sports/leagues that don't have any
+// existing live roster/standings dataset the simulator can read from
+// synchronously (NFL/CFB/CBB never had one at all; the 5 soccer leagues'
+// team lists were only ever reliably available after visiting that
+// league's own tab first). One real ESPN request per sport, cached after
+// first load — covers "all teams in the league" honestly instead of a
+// hand-maintained list that goes stale.
+var SIM_ESPN_TEAM_PATHS={
+  nfl:'football/nfl', cfb:'football/college-football', cbb:'basketball/mens-college-basketball',
+  mls:'soccer/usa.1', cl:'soccer/UEFA.champions', pl:'soccer/eng.1', liga:'soccer/esp.1', bl:'soccer/ger.1'
+};
+var _simTeamCache={};
+async function _simFetchTeams(sport){
+  if(_simTeamCache[sport])return _simTeamCache[sport];
+  var path=SIM_ESPN_TEAM_PATHS[sport];if(!path)return[];
+  try{
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+path+'/teams?limit=60',{mode:'cors',cache:'no-cache'});
+    var d=await r.json();
+    var teams=(((d.sports||[])[0]||{}).leagues||[])[0];
+    var list=((teams&&teams.teams)||[]).map(function(t){return (t.team&&t.team.displayName)||'';}).filter(Boolean);
+    _simTeamCache[sport]=list;
+    return list;
+  }catch(e){console.warn('[CV] Sim team list fetch failed for',sport,e.message);return[];}
+}
 function simUpdateTeams() {
   var sel  = document.getElementById('sim-sport');
   var hSel = document.getElementById('sim-home');
   var aSel = document.getElementById('sim-away');
   if (!sel || !hSel || !aSel) return;
   var sport = sel.value || 'mlb';
+  if(SIM_ESPN_TEAM_PATHS[sport]){
+    hSel.innerHTML='<option>Loading…</option>';aSel.innerHTML='<option>Loading…</option>';
+    _simFetchTeams(sport).then(function(teams){
+      if((document.getElementById('sim-sport')||{}).value!==sport)return; // sport changed again before this resolved
+      if(!teams.length)teams=SIM_FB[sport]||SIM_FB.mlb;
+      teams=teams.slice().sort();
+      var opts=teams.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('');
+      hSel.innerHTML=opts;aSel.innerHTML=opts;
+      if(teams.length>1)aSel.selectedIndex=1;
+    });
+    return;
+  }
   var teams = [];
   try {
     if (sport === 'mlb')    teams = Object.keys(typeof MLB !== 'undefined' ? MLB : {});
-    else if (sport === 'nba')   teams = Object.keys(typeof NBA_TEAMS !== 'undefined' ? NBA_TEAMS : {});
+    else if (sport === 'nba') {
+      // NBA_TEAMS is hardcoded to 4 teams from a past Finals matchup (see
+      // the nbaMC()/nbaGetBayes() audit fix) — window.__CV_DATA.nba.standings
+      // has all 30 real teams, same pattern WNBA already used correctly below.
+      var Dn = window.__CV_DATA || {};
+      teams = Object.keys((Dn.nba && Dn.nba.standings) ? Dn.nba.standings : {});
+      if (teams.length < 2) teams = Object.keys(typeof NBA_TEAMS !== 'undefined' ? NBA_TEAMS : {});
+    }
     else if (sport === 'nhl') {
       var _n = typeof NHL !== 'undefined' ? NHL : {};
       teams = Object.keys(_n).filter(function(k){ return !(_n[k] && (_n[k].series||'').indexOf('ELIMINATED') >= 0); });
@@ -26356,6 +26417,20 @@ function _simRun(sport,home,away,N,flags){
     if(sport==='tennis'&&typeof tennisMatchWinProbFull==='function'){
       var db=(typeof ATP_DB!=='undefined'&&ATP_DB[home])?ATP_DB:(typeof WTA_DB!=='undefined'?WTA_DB:{});
       var d1=db[home],d2=db[away]; if(d1&&d2)baseHP=tennisMatchWinProbFull(d1,d2,'hard',false);}
+    if(['mls','cl','pl','liga','bl'].indexOf(sport)>=0&&typeof _socXG==='function'&&typeof _soccerMC==='function'){
+      // Reuses the same real xG data (FBref/ESPN/mlssoccer.com) and Poisson
+      // MC engine the actual league match cards use — _socXG(name,league)
+      // already falls back gracefully to the static table for teams
+      // without live coverage, same as the real cards.
+      var hXG=_socXG(home,sport),aXG=_socXG(away,sport);
+      var hxg=hXG?(hXG.hxg||hXG.xg):1.4,axg=aXG?(aXG.axg||aXG.xg):1.1;
+      var socMC=_soccerMC(hxg,axg,2000);
+      baseHP=Math.min(.88,Math.max(.12,socMC.hWin/(socMC.hWin+socMC.aWin||1)));
+    }
+    // NFL/CFB/CBB have no team-rating dataset (see _genericGameCard's
+    // audit note) — rather than fake precision with a made-up formula,
+    // this stays an honest neutral 50/50 baseline until a real model
+    // exists for these 3 sports.
   }catch(e){}
   var adjHP=baseHP;
   if(flags.home)adjHP=Math.min(.88,adjHP*1.035);
@@ -26366,7 +26441,12 @@ function _simRun(sport,home,away,N,flags){
   adjHP=Math.min(.88,Math.max(.12,adjHP));
   var SP={mlb:{muH:4.5,muA:4.2,sdH:1.8,sdA:1.7,ou:8.5},nba:{muH:111,muA:108,sdH:10,sdA:10,ou:220},
     nhl:{muH:3.0,muA:2.7,sdH:1.2,sdA:1.1,ou:5.5},wnba:{muH:82,muA:80,sdH:8,sdA:8,ou:162},
-    tennis:{muH:2.1,muA:1.8,sdH:.8,sdA:.7,ou:3.8},wc:{muH:1.7,muA:1.4,sdH:.9,sdA:.85,ou:2.5}};
+    tennis:{muH:2.1,muA:1.8,sdH:.8,sdA:.7,ou:3.8},wc:{muH:1.7,muA:1.4,sdH:.9,sdA:.85,ou:2.5},
+    nfl:{muH:23,muA:20,sdH:9.5,sdA:9.5,ou:44},cfb:{muH:29,muA:24,sdH:11,sdA:11,ou:55},
+    cbb:{muH:74,muA:70,sdH:9,sdA:9,ou:144},
+    mls:{muH:1.5,muA:1.2,sdH:.85,sdA:.8,ou:2.5},cl:{muH:1.6,muA:1.3,sdH:.9,sdA:.85,ou:2.5},
+    pl:{muH:1.6,muA:1.3,sdH:.9,sdA:.85,ou:2.5},liga:{muH:1.5,muA:1.2,sdH:.85,sdA:.8,ou:2.5},
+    bl:{muH:1.7,muA:1.4,sdH:.9,sdA:.85,ou:2.75}};
   var sp=SP[sport]||SP.mlb;
   var hWins=0,aWins=0,hSc=[],aSc=[],tots=[],marg=[];
   for(var i=0;i<N;i++){
@@ -26375,7 +26455,8 @@ function _simRun(sport,home,away,N,flags){
     var z2=Math.sqrt(-2*Math.log(u1))*Math.sin(2*Math.PI*u2);
     var hAdj=adjHP>.5?(adjHP-.5)*sp.muH*.3:0,aAdj=adjHP<.5?(.5-adjHP)*sp.muA*.3:0;
     var hs=Math.max(0,sp.muH+hAdj+z1*sp.sdH),as2=Math.max(0,sp.muA+aAdj+z2*sp.sdA);
-    if(sport==='mlb'||sport==='nhl'){hs=Math.round(hs);as2=Math.round(as2);}
+    var _intScoreSports=['mlb','nhl','nfl','cfb','cbb','mls','cl','pl','liga','bl','wc'];
+    if(_intScoreSports.indexOf(sport)>=0){hs=Math.round(hs);as2=Math.round(as2);}
     else{hs=Math.round(hs*10)/10;as2=Math.round(as2*10)/10;}
     hSc.push(hs);aSc.push(as2);tots.push(hs+as2);marg.push(hs-as2);
     if(hs>as2)hWins++;else if(as2>hs)aWins++;
@@ -26431,7 +26512,7 @@ function _simRender(el,sport,home,away,N,r){
       +'<div style="flex:1;min-width:110px;text-align:center;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.2);border-radius:2px;padding:10px 6px">'
         +'<div style="font-family:var(--orb);font-size:27px;font-weight:900;color:var(--pc)">'+(r.hP*100).toFixed(1)+'%</div>'
         +'<div style="font-family:var(--mono);font-size:15px;color:var(--t2);margin-top:2px">'+home+' WIN</div>'
-        +'<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">'+(hML>0?'+':'')+hML+' &middot; EV '+(hEV*100).toFixed(1)+'%</div>'
+        +'<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">'+_mlFmt(hML)+' &middot; EV '+(hEV*100).toFixed(1)+'%</div>'
       +'</div>'
       +'<div style="flex:0 0 80px;text-align:center;padding:10px 4px">'
         +'<div style="font-family:var(--orb);font-size:17px;color:var(--t3)">vs</div>'
@@ -26442,7 +26523,7 @@ function _simRender(el,sport,home,away,N,r){
       +'<div style="flex:1;min-width:110px;text-align:center;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.2);border-radius:2px;padding:10px 6px">'
         +'<div style="font-family:var(--orb);font-size:27px;font-weight:900;color:var(--nc)">'+(r.aP*100).toFixed(1)+'%</div>'
         +'<div style="font-family:var(--mono);font-size:15px;color:var(--t2);margin-top:2px">'+away+' WIN</div>'
-        +'<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">'+(aML>0?'+':'')+aML+' &middot; EV '+(aEV*100).toFixed(1)+'%</div>'
+        +'<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">'+_mlFmt(aML)+' &middot; EV '+(aEV*100).toFixed(1)+'%</div>'
       +'</div>'
     +'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">'
