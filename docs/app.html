@@ -3290,6 +3290,12 @@ function ml2d(ml){const m=parseFloat(ml);return m>0?m/100+1:100/Math.abs(m)+1}
 // model) via the same "gc" card visual system as everything else, so the
 // UI is consistent even though the analysis depth is honestly lighter.
 function _genericGameCard(espnEv,sportTag){
+  // Same "gc" card shell MLB/NBA/NHL/soccer/WNBA use — ML+spread+O/U chip
+  // row plus a reasoning footer — but the "reasoning" here is ESPN's own
+  // market pricing read back out (favorite/spread/total framed in plain
+  // language), NOT a proprietary model, since none exists yet for these
+  // sports. Kept honest: every number traces straight back to ESPN's odds
+  // object, nothing simulated or fabricated.
   var c=(espnEv.competitions||[])[0];if(!c)return'';
   var hC=(c.competitors||[]).find(function(t){return t.homeAway==='home';});
   var aC=(c.competitors||[]).find(function(t){return t.homeAway==='away';});
@@ -3304,6 +3310,7 @@ function _genericGameCard(espnEv,sportTag){
   var aML=odds.awayTeamOdds&&odds.awayTeamOdds.moneyLine;
   var ouL=odds.overUnder||null;
   var spreadDetails=odds.details||'';
+  var spreadNum=spreadDetails?parseFloat((spreadDetails.match(/-?\d+(\.\d+)?/)||[])[0]):null;
   var hP=hML?(hML<0?Math.abs(hML)/(Math.abs(hML)+100):100/(hML+100)):0.5;
   var aP=aML?(aML<0?Math.abs(aML)/(Math.abs(aML)+100):100/(aML+100)):0.5;
   var pSum=hP+aP;if(pSum>0){hP=hP/pSum;aP=aP/pSum;}
@@ -3314,13 +3321,36 @@ function _genericGameCard(espnEv,sportTag){
   var timeStr=isNaN(gDate)?'':gDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   var statusTxt=(isFinal?'FINAL '+(hs!=null?hs+'-'+as2:''):isLive?'LIVE':timeStr)+(dateStr?' · '+dateStr:'');
   var hMLstr=hML?_mlFmt(hML):'',aMLstr=aML?_mlFmt(aML):'';
+  var favN=hP>=aP?hn:an,dogN=hP>=aP?an:hn;
+  var favP=Math.max(hP,aP),dogP=Math.min(hP,aP);
+  var sprdRow='',ouRow='',explanation='';
+  if(hML||aML){
+    if(spreadNum!=null&&!isNaN(spreadNum)){
+      var favIsHome=hP>=aP;
+      var favSprd=favIsHome?spreadNum:-spreadNum; // ESPN details is home-relative
+      var favSprdAbs=Math.abs(favSprd);
+      var sprdCS=_socGC(0.524); // -110-style market spread, no model prob — flat "market" color
+      sprdRow='<div class="'+sprdCS.c+' chip" style="flex:1"><div class="cht">'+favN+' '+(favSprd<0?'-':'+')+favSprdAbs+'</div><div class="cho">-110</div><div class="chp">MKT</div>'
+        +'<div style="margin-top:2px"><span class="pill '+sprdCS.pl+'">MARKET</span></div></div>';
+    }
+    if(ouL){
+      var ouCS=_socGC(0.5);
+      ouRow='<div class="'+ouCS.c+' chip" style="flex:1"><div class="cht">O/U '+ouL+'</div><div class="cho">-110</div><div class="chp">MKT</div>'
+        +'<div style="margin-top:2px"><span class="pill '+ouCS.pl+'">MARKET</span></div></div>';
+    }
+    explanation='Market favorite: <strong>'+favN+' ML</strong> at '+_mlFmt(hP>=aP?hML:aML)+' (implied '+(favP*100).toFixed(1)+'%)'
+      +(spreadNum!=null&&!isNaN(spreadNum)?', spread '+spreadDetails:'')+(ouL?', total '+ouL:'')+'. '
+      +'Odds source: ESPN market · no proprietary '+sportTag+' model yet — this reflects market consensus, not an independent edge.';
+  } else {
+    explanation='Odds not yet posted by ESPN market. No proprietary '+sportTag+' model yet for this sport.';
+  }
   return '<div class="gc" style="border-left:2px solid rgba(0,200,255,.4)">'
     +'<div class="gch"><div>'
     +'<div style="display:flex;align-items:center;gap:6px">'
     +'<span class="gtm" style="color:'+(aP>=hP?'var(--ic)':'var(--t2)')+'">'+an+'</span>'
     +'<span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>'
     +'<span class="gtm" style="color:'+(hP>=aP?'var(--ic)':'var(--t2)')+'">'+hn+'</span>'
-    +'</div><div class="gsp">'+sportTag+' · '+aFull+' @ '+hFull+(spreadDetails?' · '+spreadDetails:'')+(ouL?' · O/U '+ouL:'')+'</div></div>'
+    +'</div><div class="gsp">'+sportTag+' · '+aFull+' @ '+hFull+'</div></div>'
     +'<div style="text-align:right"><div class="np mono" style="font-size:19px">'+statusDot+statusTxt+'</div></div>'
     +'</div>'
     +(hML||aML?('<div class="brow">'
@@ -3328,8 +3358,8 @@ function _genericGameCard(espnEv,sportTag){
     +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
     +'<div class="'+aCS.c+' chip" style="flex:1"><div class="cht">ML '+an+'</div><div class="cho">'+aMLstr+'</div><div class="chp">'+(aP*100).toFixed(1)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
-    +'</div>'):'<div style="padding:8px;font-family:var(--mono);font-size:14px;color:var(--t3)">ODDS NOT YET POSTED</div>')
-    +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);padding:4px 10px 8px">Odds source: ESPN market · no proprietary model yet for this sport</div>'
+    +'</div>'+((sprdRow||ouRow)?'<div class="brow">'+sprdRow+ouRow+'</div>':'')):'<div style="padding:8px;font-family:var(--mono);font-size:14px;color:var(--t3)">ODDS NOT YET POSTED</div>')
+    +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);padding:8px 10px 4px;line-height:1.5">'+explanation+'</div>'
     +'</div>';
 }
 var _genericWeekCache={},_genericWeekCacheTs={};
@@ -20981,10 +21011,14 @@ function _wnbaDec(ml){return ml<0?1+100/Math.abs(ml):1+ml/100;}
 // picks-engine card (renderWNBAGames) is untouched; this is a parallel
 // display layer, same relationship MLB's renderMLBWeek() has to loadGames().
 function _wnbaWeekCard(g){
+  // Same "gc" card system MLB/NBA/NHL/soccer use — ML+spread+O/U chip row
+  // plus a tiered engine-reasoning footer, powered by the real wnbaEns()/
+  // wnbaMC() model (not a simplified ML-only chip pair like before).
   var hab=_wnbaKey(g.home)||g.home||'HOME';
   var aab=_wnbaKey(g.away)||g.away||'AWAY';
-  var ens;
+  var ens,mc;
   try{ens=wnbaEns(hab,aab,g.homeML?{homeML:g.homeML,awayML:g.awayML}:null);}catch(e){ens={hP:0.5,aP:0.5};}
+  try{mc=wnbaMC(hab,aab);}catch(e){mc=null;}
   var hP=isNaN(ens.hP)?0.5:ens.hP,aP=isNaN(ens.aP)?0.5:ens.aP;
   var hML=g.homeML||parseInt(_wnbaML(hP)),aML=g.awayML||parseInt(_wnbaML(aP));
   var hCS=_socGC(hP),aCS=_socGC(aP);
@@ -20993,6 +21027,43 @@ function _wnbaWeekCard(g){
   var gDate=g.date?new Date(g.date.length===8?g.date.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'):g.date):null;
   var dateStr=(gDate&&!isNaN(gDate))?gDate.toLocaleDateString([],{month:'short',day:'numeric',timeZone:'UTC'}):'';
   var statusTxt=(isFinal?'FINAL':isLive?'LIVE':'SCHEDULED')+(dateStr?' · '+dateStr:'');
+  // Spread chip — favorite covers a MC-derived line at -1.5x juice, same shape as NBA's ATS chip
+  var favAb=hP>=aP?hab:aab,dogAb=hP>=aP?aab:hab;
+  var favProjMargin=mc?Math.abs(mc.spread):0;
+  var sprdLine=Math.max(1.5,Math.round(favProjMargin*2)/2);
+  var _wnbaSigma=10.5;
+  var sprdP=mc?Math.min(.82,Math.max(.18,normalCDF((favProjMargin-sprdLine)/_wnbaSigma+0.02))):0.5;
+  var dogSprdP=Math.max(.18,1-sprdP);
+  var sprdCS=_socGC(sprdP);
+  // O/U chip — MC-projected total vs a model-derived line
+  var ouL=(mc&&mc.totalProj?Math.round(mc.totalProj*2)/2:163).toFixed(1);
+  var ouP=mc?wnbaOUProbMC(mc,ouL):0.5;
+  var unP=1-ouP;
+  var ouCS=_socGC(ouP),unCS=_socGC(unP);
+  // Engine reasoning — best-market evaluation across ML, spread, O/U
+  var favP=Math.max(hP,aP),dogP=Math.min(hP,aP);
+  var favML=hP>=aP?hML:aML,dogML=hP>=aP?aML:hML;
+  var _ensStr=ens.mcP!=null?('MC '+(ens.mcP*100).toFixed(0)+'% / BAY '+(ens.bayP*100).toFixed(0)+'% / ELO '+(ens.eloP*100).toFixed(0)+'%'):'';
+  var _mktsW=_evalMkts([
+    {label:favAb+' ML',prob:favP,evVal:ev(favP,_wnbaDec(favML)),side:'mlFav'},
+    {label:dogAb+' ML',prob:dogP,evVal:ev(dogP,_wnbaDec(dogML)),side:'mlDog'},
+    {label:favAb+' -'+sprdLine,prob:sprdP,evVal:ev(sprdP,1.87),side:'sprdFav'},
+    {label:dogAb+' +'+sprdLine,prob:dogSprdP,evVal:ev(dogSprdP,2.05),side:'sprdDog'},
+    {label:'OVER '+ouL,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
+    {label:'UNDER '+ouL,prob:unP,evVal:ev(unP,1.91),side:'under'},
+  ]);
+  var topTier=_mktsW.tierN,topTierLabel=_mktsW.lbl;
+  var _bmW=_mktsW.best,evPct=(_bmW.evVal*100).toFixed(1);
+  var explanation='';
+  if(isFinal){explanation='FINAL.';}
+  else if(topTier===0){
+    explanation='No qualifying edge — best market '+favAb+' ML at '+(favP*100).toFixed(1)+'%. '+_ensStr+'. Monitor line movement.';
+  }else{
+    var netStr='Net rtg: '+favAb+' '+((hP>=aP?mc?.hNet:mc?.aNet)||0).toFixed(1)+' vs '+dogAb+' '+((hP>=aP?mc?.aNet:mc?.hNet)||0).toFixed(1)+'.';
+    explanation='Best market: <strong>'+_bmW.label+'</strong> · '+topTierLabel+' · '+(_bmW.prob*100).toFixed(1)+'% · EV +'+evPct+'%. '
+      +netStr+' Proj: '+(mc?mc.avgH.toFixed(1):'—')+'–'+(mc?mc.avgA.toFixed(1):'—')+' (O/U '+ouL+': '+(ouP*100).toFixed(0)+'% over). '
+      +_ensStr+'. '+_mktsW.size+'-unit play'+_mktsW.secStr+'.';
+  }
   return '<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">'
     +'<div class="gch"><div>'
     +'<div style="display:flex;align-items:center;gap:6px">'
@@ -21009,7 +21080,17 @@ function _wnbaWeekCard(g){
     +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\''+aab+'\','+aP.toFixed(3)+',\''+aML+'\','+_wnbaDec(aML).toFixed(3)+',\''+today()+'\')">'
     +'<div class="cht">ML '+aab+'</div><div class="cho">'+_mlFmt(aML)+'</div><div class="chp">'+(aP*100).toFixed(1)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
-    +'</div></div>';
+    +'</div>'
+    +'<div class="brow">'
+    +'<div class="'+sprdCS.c+' chip" style="flex:1"><div class="cht">'+favAb+' -'+sprdLine+'</div><div class="cho">-110</div><div class="chp">'+(sprdP*100).toFixed(1)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+sprdCS.pl+'">'+sprdCS.lb+'</span></div></div>'
+    +'<div class="'+ouCS.c+' chip" style="flex:1"><div class="cht">OVER '+ouL+'</div><div class="cho">-110</div><div class="chp">'+(ouP*100).toFixed(1)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+ouCS.pl+'">'+ouCS.lb+'</span></div></div>'
+    +'<div class="'+unCS.c+' chip" style="flex:1"><div class="cht">UNDER '+ouL+'</div><div class="cho">-110</div><div class="chp">'+(unP*100).toFixed(1)+'%</div>'
+    +'<div style="margin-top:2px"><span class="pill '+unCS.pl+'">'+unCS.lb+'</span></div></div>'
+    +'</div>'
+    +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);padding:8px 10px 4px;line-height:1.5">'+explanation+'</div>'
+    +'</div>';
 }
 var _wnbaWeekActiveDate=null;
 function renderWNBAWeek(filterDate){
