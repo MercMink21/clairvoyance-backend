@@ -9210,6 +9210,47 @@ function renderOverall(){
     </div>
   </div>`;
 
+  // ── Stale Pending Audit ────────────────────────────────────────────────
+  // Pending bets whose game date is >24h in the past should have settled by
+  // now (auto-settle / CLV-close normally catch these) — anything still
+  // pending past that window is a blind spot worth a manual look. Runs
+  // automatically every renderOverall() call, which itself runs at app boot
+  // (not just when this tab is opened), so this stays current passively.
+  const _staleCutoff=now-24*3600*1000;
+  const stalePending=pending.filter(p=>{
+    const lockTs=p.lockedAt||(p.date?new Date(p.date+'T12:00:00').getTime():0);
+    return lockTs&&lockTs<_staleCutoff;
+  }).sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
+  if(stalePending.length){
+    h+=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--hc);margin:12px 0 6px">⚠ STALE PENDING — NEEDS REVIEW (${stalePending.length})</div>
+    <div class="card" style="margin-bottom:14px;padding:10px;border-left:3px solid var(--hc)">
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;line-height:1.6">These bets are still marked PENDING but their game date is more than 24 hours old — the auto-settle sweep didn't find a matching final score. Check manually and settle via ALL BETS.</div>
+      ${stalePending.slice(0,15).map(p=>{
+        const ageH=Math.round((now-(p.lockedAt||0))/3600000);
+        return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);gap:8px;flex-wrap:wrap">
+          <span style="font-family:var(--mono);font-size:15px;color:var(--t2)">${(p.betOn||'—').replace(/</g,'&lt;')}</span>
+          <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${p.sport||''} · ${p.date||''} · ${ageH}h old</span>
+        </div>`;
+      }).join('')}
+      ${stalePending.length>15?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:6px">+ ${stalePending.length-15} more</div>`:''}
+    </div>`;
+  }
+
+  // ── Rolling Accuracy Audit — top-tier grade alert ───────────────────────
+  // If PREMIUM/ELITE-graded picks (the highest-confidence tier) are hitting
+  // below 60% over the last 14 settled, that's a real calibration warning
+  // worth surfacing proactively rather than only visible by manually
+  // eyeballing the calibration bands below.
+  const eliteSettled=settled.filter(p=>(p.grade||'').toUpperCase()==='PREMIUM'||(p.winProb||0)>=0.67).slice(-14);
+  const eliteW=eliteSettled.filter(p=>p.outcome==='win').length;
+  const eliteAcc=eliteSettled.length?eliteW/eliteSettled.length:null;
+  if(eliteSettled.length>=8&&eliteAcc!==null&&eliteAcc<0.60){
+    h+=`<div class="card" style="margin-bottom:14px;padding:12px;border-left:3px solid var(--hc);background:rgba(255,32,144,.05)">
+      <div style="font-family:var(--orb);font-size:17px;font-weight:900;color:var(--hc);margin-bottom:4px">⚠ MODEL ALERT — PREMIUM TIER UNDERPERFORMING</div>
+      <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:1.6">PREMIUM-graded picks are hitting ${(eliteAcc*100).toFixed(1)}% over the last ${eliteSettled.length} settled (${eliteW}W-${eliteSettled.length-eliteW}L) — below the 60% floor expected for this tier. Calibration below is actively correcting; consider tightening the PREMIUM threshold until this recovers.</div>
+    </div>`;
+  }
+
   // Engine Consistency
   h+=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--mc);margin:12px 0 6px">ENGINE CONSISTENCY</div>
   <div class="card" style="margin-bottom:14px;padding:10px">

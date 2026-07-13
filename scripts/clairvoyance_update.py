@@ -2522,6 +2522,31 @@ def fetch_linemate_props(sport: str) -> list[dict]:
     log(f"  Linemate {sport.upper()}: {len(props)} cards")
     return props
 
+def validate_props_against_schedule(props: list[dict], todays_games: list[dict]) -> list[dict]:
+    """Drop any prop whose parsed team abbreviation doesn't belong to a team
+    actually playing today per the real ESPN schedule for that sport — guards
+    against Linemate's regex-based team-tag extraction (fetch_linemate_props'
+    team_match) silently mis-assigning a prop to the wrong matchup, which is
+    exactly the bug that produced wrong-matchup prop cards this session.
+    If we have no schedule to validate against yet, don't drop anything —
+    an empty schedule means "unknown", not "invalid"."""
+    valid_teams = set()
+    for g in todays_games or []:
+        if g.get("home"): valid_teams.add(str(g["home"]).upper())
+        if g.get("away"): valid_teams.add(str(g["away"]).upper())
+    if not valid_teams:
+        return props
+    kept, dropped = [], 0
+    for p in props:
+        team = str(p.get("team") or "").upper()
+        if not team or team in valid_teams:
+            kept.append(p)
+        else:
+            dropped += 1
+    if dropped:
+        log(f"  Prop-matchup validation: dropped {dropped}/{len(props)} props (team not in today's schedule)")
+    return kept
+
 def fetch_linemate_trends(sport: str) -> list[dict]:
     log(f"Linemate trends {sport.upper()}…")
     raw = _linemate_playwright(
@@ -3420,15 +3445,16 @@ def fetch_sports_news() -> dict:
 def fetch_injuries_all() -> dict:
     """
     Dedicated injury fetcher for all sports. fetch_espn_injuries() is
-    generic (any ESPN sport_path works), so adding WNBA here is just a data
-    pull — it does NOT mean WNBA injuries feed into win-probability yet. The
-    frontend's computeInjuryImpact() needs a name→team→position→rating
-    roster map to apply a penalty (built from window.NBA_PLAYERS for NBA,
-    window.NHL for NHL, window.PIT — starting pitchers only — for MLB), and
-    no such roster dataset exists for WNBA, soccer, tennis, F1, or CFB/NFL.
-    This list is available for the frontend to display/use once that roster
-    data exists; see the injury-integration audit note near computeInjuryImpact
-    in app.html for the concrete gap.
+    generic (any ESPN sport_path works). As of the injury-integration work
+    done in app.html's buildInjuryRoster(), MLB (batters + starting
+    pitchers), NBA, WNBA, NHL, and MLS all have real roster maps so these
+    injury reports actually apply a win-probability penalty via
+    computeInjuryImpact() — not just fetched-and-displayed. Champions
+    League/Premier League/La Liga/Bundesliga, tennis, F1, and CFB/NFL/CBB
+    still have no roster coverage (soccer's non-MLS leagues were
+    confirmed offseason/empty; the others simply don't have a roster
+    dataset built yet) — this list is fetched for those too but has
+    nothing to match against.
     """
     log("ESPN injury reports…")
     # Every team-based league — tennis (ATP/WTA) and F1 are excluded since
@@ -4502,16 +4528,21 @@ def main() -> None:
     lm_props:  dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
     lm_trends: dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
     lm_form:   dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
+    _lm_schedule = {"nba": nba_today, "mlb": mlb_today, "nhl": nhl_today, "wnba": []}
     if not args.no_linemate:
         for sport in ["nba","mlb","nhl","wnba"]:
             if S in (sport,"all") or (sport=="wnba" and S=="nba"):
                 lm_props[sport]  = fetch_linemate_props(sport);     time.sleep(1)
                 lm_trends[sport] = fetch_linemate_trends(sport);    time.sleep(1)
                 lm_form[sport]   = fetch_linemate_cheatsheet(sport); time.sleep(1)
+                if sport != "wnba":  # WNBA's today-schedule isn't fetched yet — validated below
+                    lm_props[sport] = validate_props_against_schedule(lm_props[sport], _lm_schedule[sport])
 
     # NCAA Baseball + WNBA + PWHL
     ncaa_baseball = fetch_ncaa_baseball() if S in ("mlb","all") else {}
     wnba          = fetch_wnba()          if S in ("nba","all") else {}
+    if lm_props.get("wnba"):
+        lm_props["wnba"] = validate_props_against_schedule(lm_props["wnba"], wnba.get("today", []))
     pwhl          = fetch_pwhl()          if S in ("nhl","all") else {}
 
     # Soccer — Champions League / Premier League / La Liga / Bundesliga / MLS
