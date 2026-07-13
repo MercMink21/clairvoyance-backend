@@ -9244,10 +9244,10 @@ function renderOverall(){
   const eliteSettled=settled.filter(p=>(p.grade||'').toUpperCase()==='PREMIUM'||(p.winProb||0)>=0.67).slice(-14);
   const eliteW=eliteSettled.filter(p=>p.outcome==='win').length;
   const eliteAcc=eliteSettled.length?eliteW/eliteSettled.length:null;
-  if(eliteSettled.length>=8&&eliteAcc!==null&&eliteAcc<0.60){
+  if(eliteSettled.length>=8&&eliteAcc!==null&&eliteAcc<0.70){
     h+=`<div class="card" style="margin-bottom:14px;padding:12px;border-left:3px solid var(--hc);background:rgba(255,32,144,.05)">
       <div style="font-family:var(--orb);font-size:17px;font-weight:900;color:var(--hc);margin-bottom:4px">⚠ MODEL ALERT — PREMIUM TIER UNDERPERFORMING</div>
-      <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:1.6">PREMIUM-graded picks are hitting ${(eliteAcc*100).toFixed(1)}% over the last ${eliteSettled.length} settled (${eliteW}W-${eliteSettled.length-eliteW}L) — below the 60% floor expected for this tier. Calibration below is actively correcting; consider tightening the PREMIUM threshold until this recovers.</div>
+      <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:1.6">PREMIUM-graded picks are hitting ${(eliteAcc*100).toFixed(1)}% over the last ${eliteSettled.length} settled (${eliteW}W-${eliteSettled.length-eliteW}L) — below the 70% floor expected for this tier. Calibration below is actively correcting; consider tightening the PREMIUM threshold until this recovers.</div>
     </div>`;
   }
 
@@ -19182,15 +19182,26 @@ function buildInjuryRoster(){
   for(const p of wnbaPlayers){
     if(p?.name&&p?.team)r[p.name.toLowerCase()]={team:p.team,sport:'wnba',rating:p.rating||'FAIR'};
   }
-  // Soccer — MLS only. Of the 5 tracked leagues, MLS is the only one
-  // actually in-season (CL/PL/La Liga/Bundesliga confirmed empty on
-  // injuries — offseason), so roster coverage is scoped there for now;
-  // fetch_mls_rosters() in clairvoyance_update.py, same ESPN team-roster
-  // pattern as MLB batters. window.__CV_MLS is populated by
-  // _fetchMLSScheduleReal() when the MLS matches tab loads.
+  // Soccer — MLS via window.__CV_MLS (populated by _fetchMLSScheduleReal()
+  // when the MLS matches tab loads), same ESPN team-roster pattern as MLB
+  // batters (fetch_mls_rosters() in clairvoyance_update.py).
   const mlsRosters=window.__CV_MLS?.rosters||{};
   for(const[name,pd] of Object.entries(mlsRosters)){
     if(name&&pd?.team&&!r[name])r[name]={team:pd.team,sport:'mls',pos:pd.pos,rating:'PLAYER'};
+  }
+  // Champions League/Premier League/La Liga/Bundesliga — same ESPN
+  // team-roster pattern, generic fetch_espn_soccer_rosters() in
+  // clairvoyance_update.py, stored per-league in soccer_fbref.json
+  // (window.__CV_FBREF, loaded by loadSoccerFBref()) alongside each
+  // league's existing xG "teams" data. Closes the gap the MLS-only
+  // comment used to document — these 4 leagues already have a real
+  // xG/Poisson win-probability model (_soccerMC), they just lacked
+  // roster data for computeInjuryImpact() to key off.
+  for(const lg of['cl','pl','liga','bl']){
+    const lgRosters=window.__CV_FBREF?.[lg]?.rosters||{};
+    for(const[name,pd] of Object.entries(lgRosters)){
+      if(name&&pd?.team&&!r[name])r[name]={team:pd.team,sport:lg,pos:pd.pos,rating:'PLAYER'};
+    }
   }
   window._injRoster=r;return r;
 }
@@ -19209,7 +19220,7 @@ function computeInjuryImpact(teamAbbr,sport){
     if(sp==='wnba')return{PREMIUM:.075,OPTIMAL:.048,GOOD:.026}[rating]||.012; // slightly higher than NBA — shallower WNBA benches concentrate more impact in fewer stars
     if(sp==='mlb'){const p=(pos||'').toUpperCase();if(p.includes('SP'))return .065;if(['C','SS','CF','3B'].includes(p))return .030;if(['LF','RF','2B','1B','DH'].includes(p))return .020;return .010;}
     if(sp==='nhl'){const p=(pos||'').toUpperCase();if(rating==='G')return .080;if(rating==='PREMIUM')return .045;if(['C','LW','RW'].includes(p))return .030;if(p==='D')return .020;return .010;}
-    if(sp==='mls'){const p=(pos||'').toUpperCase();if(p.includes('G'))return .055;if(p.includes('F'))return .035;if(p.includes('M'))return .028;if(p.includes('D'))return .018;return .015;} // GK highest (11 outfield vs 1 keeper — no rotation), then attack > midfield > defense
+    if(sp==='mls'||sp==='cl'||sp==='pl'||sp==='liga'||sp==='bl'){const p=(pos||'').toUpperCase();if(p.includes('G'))return .055;if(p.includes('F'))return .035;if(p.includes('M'))return .028;if(p.includes('D'))return .018;return .015;} // GK highest (11 outfield vs 1 keeper — no rotation), then attack > midfield > defense; same weights across all 5 soccer leagues, only roster-coverage source differs
     return .015;};
   let total=0;const affected=[];
   for(const inj of injs){

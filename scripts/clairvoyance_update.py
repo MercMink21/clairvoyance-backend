@@ -2922,6 +2922,41 @@ def fetch_mls_rosters() -> dict:
         log(f"MLS rosters: {exc}", "WARN")
     return result
 
+def fetch_espn_soccer_rosters(espn_path: str, league_name: str) -> dict:
+    """
+    Generic version of fetch_mls_rosters() for the other 4 tracked soccer
+    leagues (Champions League/Premier League/La Liga/Bundesliga) — same
+    ESPN team-list -> per-team-roster pattern, just parameterized on the
+    league's ESPN path instead of hardcoded to usa.1. These leagues already
+    have a real win-probability model (_soccerMC's xG/Poisson engine in
+    app.html, same one MLS uses) — the only gap was roster data for
+    computeInjuryImpact() to key off, which this closes.
+    """
+    log(f"{league_name} rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{espn_path}/teams?limit=40")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{espn_path}/teams/{team_id}/roster")
+                for p in (roster or {}).get("athletes", []):
+                    name = p.get("fullName", "")
+                    pos = (p.get("position") or {}).get("abbreviation", "") or (p.get("position") or {}).get("name", "")
+                    if name:
+                        result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"  {league_name} roster {abbr}: {exc}", "WARN")
+        log(f"  {league_name} rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"{league_name} rosters: {exc}", "WARN")
+    return result
+
 def fetch_mls_schedule(days_forward: int = 20, days_back: int = 3) -> list[dict]:
     """
     MLS schedule from mlssoccer.com, mirroring how the site's own Schedule &
@@ -4550,6 +4585,21 @@ def main() -> None:
     # folded into the giant bundle, since the frontend only needs to fetch
     # this one small file to replace/refresh its static xG fallback table.
     soccer_fbref = fetch_fbref_all() if S in ("soccer","all") else {}
+    # Injury-integration roster coverage for the 4 non-MLS leagues — these
+    # already have a real win-probability model (_soccerMC's xG/Poisson
+    # engine, same one MLS uses), the roster map was the only missing piece
+    # for computeInjuryImpact() to key off. Stored alongside each league's
+    # existing "teams" xG data in soccer_fbref.json so the frontend only
+    # needs the one file it already fetches (loadSoccerFBref()).
+    if S in ("soccer","all"):
+        for _lkey, _lcfg in ESPN_SOCCER_LEAGUES.items():
+            if _lkey == "mls":
+                continue  # MLS rosters already fetched separately (fetch_mls_rosters)
+            _rosters = fetch_espn_soccer_rosters(_lcfg["espn"], _lcfg["name"])
+            if _rosters:
+                soccer_fbref.setdefault(_lkey, {"league": _lcfg["name"], "fetchedAt": TODAY_ISO, "teams": {}})
+                soccer_fbref[_lkey]["rosters"] = _rosters
+            time.sleep(0.3)
     # MLS gets its own first-party feed straight from mlssoccer.com's stats
     # API — real xG per club (not the goals-per-game proxy the ESPN fallback
     # uses for the other 4 leagues), so it takes priority over whatever
