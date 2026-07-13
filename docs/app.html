@@ -8740,23 +8740,28 @@ function renderOverall(){
   const wk7=now-7*86400000;
   const _mn=getMSTNow();const firstOfMonth=mstFirstOfMonth(_mn);
   const firstOfLastMonth=mstFirstOfMonth(new Date(_mn.getFullYear(),_mn.getMonth()-1,1));
+  // calcPerf takes the full (locked, not-yet-outcome-filtered) bet set for a
+  // period so it can report both "locked" (all bets placed in that window,
+  // incl. still-pending) and "settled" (resolved) counts alongside win%/
+  // record/units — settled-only was previously silently dropping pending
+  // bets from the period's total count.
   const calcPerf=(bets)=>{
     const s=bets.filter(p=>p.outcome!=='pending');
     const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;
     const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
-    return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u};
+    return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u,locked:bets.length,settledN:s.length};
   };
   const _todStr=today();
   const _ydStr=yesterday();
-  const todPerf   = calcPerf(settled.filter(p=>p.date===_todStr));
-  const ydPerf   = calcPerf(settled.filter(p=>p.date===_ydStr));
-  const wk7Perf  = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
-  const moPerf   = calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
-  const lastMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
+  const todPerf   = calcPerf(all.filter(p=>p.date===_todStr));
+  const ydPerf   = calcPerf(all.filter(p=>p.date===_ydStr));
+  const wk7Perf  = calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
+  const moPerf   = calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
+  const lastMoPerf=calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
   const moLbl    = firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
-  const allTimePerf  = calcPerf(settled);
+  const allTimePerf  = calcPerf(all);
   const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime(); // July 1 2026 00:00 ET
-  const sinceLaunchPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
+  const sinceLaunchPerf=calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
   // ── Filter-by-month selector — lets the user pick any specific month
   // (not just "this month"/"last month") to see that month's performance,
@@ -8773,25 +8778,23 @@ function renderOverall(){
   const [_selY,_selM]=_selMonth.split('-').map(Number);
   const selMoStart=new Date(_selY,_selM-1,1).getTime();
   const selMoEnd=new Date(_selY,_selM,1).getTime();
-  const selMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=selMoStart&&p.lockedAt<selMoEnd));
+  const selMoPerf=calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=selMoStart&&p.lockedAt<selMoEnd));
   const selMoLbl=_monthOpts.find(m=>m.key===_selMonth)?.lbl||_selMonth;
 
-  // By engine — every individual sport/league the engine actively covers
-  // (previously a 6-bucket "BY SPORT" summary; expanded per request to list
-  // every engine covered, same granularity as the LEAGUE column below).
-  const engineMap=[
-    {lbl:'MLB',codes:['MLB']},{lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},
-    {lbl:'CBB',codes:['CBB','NCAAB']},{lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},
-    {lbl:'NHL',codes:['NHL']},{lbl:'PWHL',codes:['PWHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
-    {lbl:'KHL',codes:['KHL']},{lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},
-    {lbl:'World Cup',codes:['SOC','WC']},{lbl:'Champions League',codes:['CH','CL']},
-    {lbl:'Premier League',codes:['PL']},{lbl:'La Liga',codes:['LIGA']},{lbl:'Bundesliga',codes:['BL']},{lbl:'MLS',codes:['MLS']},
-    {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},{lbl:'F1',codes:['F1']},
+  // By sport — the 6 broad sports, each a roll-up of every league within
+  // it (not per-league — that's what the LEAGUE column below is for).
+  const sportMap=[
+    {lbl:'BASEBALL',    codes:['MLB','NCAB','NCAAB']},
+    {lbl:'BASKETBALL',  codes:['NBA','WNBA','CBB','NCAAB']},
+    {lbl:'FOOTBALL',    codes:['NFL','CFB','FB']},
+    {lbl:'HOCKEY',      codes:['NHL','PWHL','NCAAH','KHL','SHL','LIIGA','COLLEGE HOCKEY']},
+    {lbl:'SOCCER',      codes:['SOC','WC','PL','LIGA','BL','MLS','CH','CL']},
+    {lbl:'TENNIS',      codes:['TEN','ATP','WTA']},
   ];
-  const bySport=engineMap.map(sm=>{
+  const bySport=sportMap.map(sm=>{
     const sp=settled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
     return{lbl:sm.lbl,sub:!!sm.sub,always:!!sm.always,...calcPerf(sp)};
-  }).filter(d=>d.n>0);
+  });
 
   // By bet type — clean labels
   const typeMap=[
@@ -9028,7 +9031,10 @@ function renderOverall(){
 
   const periodCard=(lbl,perf,col)=>{const empty=perf.n===0;return`
     <div class="card" style="padding:10px;border-top:2px solid ${col}">
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:${col};margin-bottom:7px">${lbl}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:7px">
+        <div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:${col}">${lbl}</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);white-space:nowrap">${perf.locked||0} LOCKED · ${perf.settledN||0} SETTLED</div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="text-align:center;min-width:44px">
           <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':accColor(perf.acc)}">${empty?'N/A':perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
@@ -9173,7 +9179,7 @@ function renderOverall(){
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">ENGINE</div>
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
       ${bySport.map(sportRow).join('')}
     </div>
     <div class="card" style="padding:10px">
