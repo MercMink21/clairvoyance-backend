@@ -430,8 +430,9 @@ body{line-height:1.5}
     <!-- Engine performance section -->
     <div id="home-engine-record" style="margin-bottom:14px"></div>
     <!-- Daily briefing -->
-    <!-- Today's top picks across all sports -->
-    <div id="home-top-picks" style="margin-bottom:14px"></div>
+    <!-- Today's top picks ticker — removed per request; kept as a hidden
+         stub so the render function's `if(tpEl)` guard still no-ops safely. -->
+    <div id="home-top-picks" style="display:none"></div>
     <!-- Today's pending bets -->
     <div id="home-pending-bets" style="margin-bottom:14px"></div>
     <!-- Utility buttons -->
@@ -8757,19 +8758,40 @@ function renderOverall(){
   const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime(); // July 1 2026 00:00 ET
   const sinceLaunchPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
-  // By sport — full names, no emojis
-  const sportMap=[
-    {lbl:'BASEBALL',    codes:['MLB','NCAB','NCAAB']},
-    {lbl:'BASKETBALL',  codes:['NBA','WNBA','CBB','NCAAB']},
-    {lbl:'FOOTBALL',    codes:['NFL','CFB','FB']},
-    {lbl:'HOCKEY',      codes:['NHL','PWHL','NCAAH','KHL','SHL','LIIGA','COLLEGE HOCKEY']},
-    {lbl:'SOCCER',      codes:['SOC','WC','PL','LIGA','BL','MLS']},
-    {lbl:'TENNIS',      codes:['TEN','ATP','WTA','tennis']},
+  // ── Filter-by-month selector — lets the user pick any specific month
+  // (not just "this month"/"last month") to see that month's performance,
+  // in addition to (not instead of) the existing rolling-7d/last-month cards.
+  const _monthOpts=[];
+  {
+    const cursor=new Date(_mn.getFullYear(),_mn.getMonth(),1);
+    for(let i=0;i<12;i++){
+      _monthOpts.push({key:`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`,lbl:cursor.toLocaleDateString('en-US',{month:'long',year:'numeric'}).toUpperCase()});
+      cursor.setMonth(cursor.getMonth()-1);
+    }
+  }
+  const _selMonth=window._ovrSelectedMonth||_monthOpts[0].key;
+  const [_selY,_selM]=_selMonth.split('-').map(Number);
+  const selMoStart=new Date(_selY,_selM-1,1).getTime();
+  const selMoEnd=new Date(_selY,_selM,1).getTime();
+  const selMoPerf=calcPerf(settled.filter(p=>p.lockedAt&&p.lockedAt>=selMoStart&&p.lockedAt<selMoEnd));
+  const selMoLbl=_monthOpts.find(m=>m.key===_selMonth)?.lbl||_selMonth;
+
+  // By engine — every individual sport/league the engine actively covers
+  // (previously a 6-bucket "BY SPORT" summary; expanded per request to list
+  // every engine covered, same granularity as the LEAGUE column below).
+  const engineMap=[
+    {lbl:'MLB',codes:['MLB']},{lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},
+    {lbl:'CBB',codes:['CBB','NCAAB']},{lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},
+    {lbl:'NHL',codes:['NHL']},{lbl:'PWHL',codes:['PWHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
+    {lbl:'KHL',codes:['KHL']},{lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},
+    {lbl:'World Cup',codes:['SOC','WC']},{lbl:'Champions League',codes:['CH','CL']},
+    {lbl:'Premier League',codes:['PL']},{lbl:'La Liga',codes:['LIGA']},{lbl:'Bundesliga',codes:['BL']},{lbl:'MLS',codes:['MLS']},
+    {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},{lbl:'F1',codes:['F1']},
   ];
-  const bySport=sportMap.map(sm=>{
+  const bySport=engineMap.map(sm=>{
     const sp=settled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
     return{lbl:sm.lbl,sub:!!sm.sub,always:!!sm.always,...calcPerf(sp)};
-  });
+  }).filter(d=>d.n>0);
 
   // By bet type — clean labels
   const typeMap=[
@@ -9054,11 +9076,13 @@ function renderOverall(){
         <span style="color:var(--t3)">DEVIATION: <strong style="color:${col}">${b.act!==null?(b.off*100).toFixed(1)+'%':'--'}</strong></span>
         <span style="color:var(--t3)">SAMPLE: <strong style="color:var(--t2)">N=${b.n}</strong></span>
       </div>
-      <div style="height:7px;background:rgba(255,255,255,.07);border-radius:3px;position:relative;overflow:visible;margin-bottom:6px">
+      <div style="height:16px;background:rgba(255,255,255,.07);border-radius:3px;position:relative;overflow:visible;margin-bottom:4px">
+        ${[25,50,75].map(t=>`<div style="position:absolute;top:0;left:${t}%;height:100%;width:1px;background:rgba(255,255,255,.15)"></div>`).join('')}
         <div style="position:absolute;top:0;left:0;height:100%;width:${bar.toFixed(1)}%;background:${col};border-radius:3px;opacity:.8;transition:width .4s"></div>
-        <div style="position:absolute;top:-4px;height:15px;width:2px;background:rgba(255,255,255,.6);border-radius:1px;left:${expBar.toFixed(1)}%" title="Expected win rate"></div>
+        <div style="position:absolute;top:-4px;height:24px;width:2px;background:rgba(255,255,255,.6);border-radius:1px;left:${expBar.toFixed(1)}%" title="Expected win rate"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:6px"><span>0%</span><span>↑ EXPECTED ${(b.exp*100).toFixed(0)}%</span><span>100%</span></div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:6px"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t2);margin-bottom:6px">↑ white marker = expected ${(b.exp*100).toFixed(0)}%</div>
       ${b.n>=3&&b.act!==null&&b.off>=0.04?`<div style="font-family:var(--mono);font-size:14px;color:${col};margin-bottom:4px">⚠ ${drift}</div>`:''}
       <div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.6">${action}</div>
     </div>`;
@@ -9135,12 +9159,21 @@ function renderOverall(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     ${periodCard('SINCE LAUNCH (JUL 1, 2026)',sinceLaunchPerf,'var(--hc)')}
     ${periodCard('ALL TIME',allTimePerf,'rgba(255,221,0,.9)')}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+    <span style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:var(--t3)">FILTER BY MONTH:</span>
+    <select id="ovr-month-select" onchange="window._ovrSelectedMonth=this.value;renderOverall()" style="background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:15px;padding:4px 8px;border-radius:2px">
+      ${_monthOpts.map(m=>`<option value="${m.key}"${m.key===_selMonth?' selected':''}>${m.lbl}</option>`).join('')}
+    </select>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:14px">
+    ${periodCard(selMoLbl,selMoPerf,'var(--pc)')}
   </div>`;
 
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">ENGINE</div>
       ${bySport.map(sportRow).join('')}
     </div>
     <div class="card" style="padding:10px">
@@ -9200,6 +9233,7 @@ function renderOverall(){
         <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${calSummaryCol}">${calStatusSummary}</div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">OVERALL STATUS</div>
         ${avgCalDev!==null?`<div style="font-family:var(--mono);font-size:14px;color:${calSummaryCol};margin-top:2px">AVG DEV ${(avgCalDev*100).toFixed(1)}%</div>`:''}
+        <button id="calib-btn" class="btn btn-p btn-sm" style="margin-top:8px" onclick="triggerInstantCalibration()">CALIBRATE NOW</button>
       </div>
     </div>
     <div style="background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.12);border-radius:4px;padding:8px 10px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.7">
@@ -12459,7 +12493,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   else if(sport==='cbb'&&tabId==='games'){try{renderGenericWeek('cbb-week-list','basketball/mens-college-basketball','CBB',null);}catch(e){}}
   if(sport==='fut'){renderFuturesPanes(tabId);}
   if(sport==='ovr'){if(tabId==='dash')renderOverall();if(tabId==='history')renderOverallHistory();if(tabId==='adaptive')renderAdaptiveLearning();if(tabId==='sync')renderCrossDeviceSync();if(tabId==='ops')renderEngineOps();}
-  if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderSlam('uso');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
+  if(sport==='ten'){if(tabId==='today')renderTennisToday();if(tabId==='picks')renderTennisPicks();if(tabId==='schedule')renderTennisScheduleOdds();if(tabId==='atp'){renderTennisRankings('atp','hard');}if(tabId==='wta'){renderTennisRankings('wta','hard');}if(tabId==='slams'){renderTournamentDetail('Cincinnati Open');try{renderTournamentCalendar('all');}catch(e){}}if(tabId==='compare'){try{populateComparePickers();}catch(e){}}if(tabId==='h2h'){populateH2HPickers();}if(tabId==='live'){startTennisLive();renderTennisPendingBets();}if(tabId==='model'){renderTennisModel();renderModelWeights('ten','ten-model-weights');}if(tabId==='rankings'){renderTennisRankings('atp','hard');}if(tabId==='config'){}}
   if(sport==='f1'){if(tabId==='today'||tabId==='schedule')renderF1Schedule();if(tabId==='drivers'||tabId==='standings'){renderF1Drivers();renderF1Constructors();}if(tabId==='constructors')renderF1Constructors();if(tabId==='stats'||tabId==='analysis')renderF1Analysis();if(tabId==='picks'){startF1Live();}if(tabId==='model'){renderModelWeights('f1','f1-model-weights');}if(tabId==='config'){}}
   if(sport==='social'){if(tabId==='cards')renderIntelCards();if(tabId==='record')renderTrackRecord();}
   if(sport==='news'){if(tabId==='all')renderNewsAll();if(tabId==='injuries')renderNewsInjuries();if(tabId==='trades')renderNewsTrades();}
@@ -19305,7 +19339,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   // Tennis init
   try{renderTennisToday();}catch(e){console.error('tennisToday',e);}
   try{renderTennisPicks();}catch(e){console.error('tennisPicks',e);}
-  try{renderSlam('uso');}catch(e){console.error('tennisSlam',e);}
+  try{renderTournamentDetail('Cincinnati Open');}catch(e){console.error('tennisSlam',e);}
   try{populateH2HPickers();}catch(e){console.error('h2hPickers',e);}
   try{populateComparePickers();}catch(e){}
   try{renderTournamentCalendar('all');}catch(e){}
