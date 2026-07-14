@@ -2609,6 +2609,59 @@ function warApprox(player,sport){
 const API_BASE = window.CLAIRVOYANCE_API || '';
 const API_ONLINE = () => !!API_BASE;
 
+// ═══ SUPABASE MIRROR ══════════════════════════════════════════
+// localStorage/IndexedDB stay the source of truth for reads (getP()) — this
+// is a one-way write-through mirror so scripts/clairvoyance_update.py's
+// scheduled GitHub Actions runs can read the real bet ledger server-side
+// (Stale Pending Audit, CLV, calibration) instead of only when a browser
+// tab happens to be open. The publishable key is safe to ship client-side
+// by design (Supabase's anon/publishable tier); write access is scoped by
+// RLS policies on the `bets` table (insert/update allowed, no delete).
+const SUPABASE_URL='https://vhwkbeblforpnliowpam.supabase.co';
+const SUPABASE_KEY='sb_publishable_AEgqvpaIh0MWpDdXI35BYw_lD8HzBlM';
+function _supabaseBetRow(p){
+  return{
+    id:p.id,ha:p.hA||null,awa:p.awA||null,sport:p.sport||null,
+    bet_type:p.betType||null,bet_on:p.betOn||null,
+    win_prob:(p.winProb!=null&&!isNaN(p.winProb))?p.winProb:null,
+    ml:p.ml!=null?String(p.ml):null,
+    dec_odds:(p.decOdds!=null&&!isNaN(p.decOdds))?p.decOdds:null,
+    wager:(p.wager!=null&&!isNaN(p.wager))?p.wager:100,
+    outcome:p.outcome||'pending',date:p.date||null,
+    locked_at:p.lockedAt||null,settled_at:p.settledAt||null,
+    grade:p.grade||null,note:p.note||null,raw:p,
+  };
+}
+let _supabaseSyncTimer=null;
+function syncBetsToSupabase(){
+  // Debounced — saveP() can fire many times in a row (bulk imports,
+  // migrations, settle sweeps); coalesce into one upload 2.5s after the
+  // last change instead of one request per call.
+  clearTimeout(_supabaseSyncTimer);
+  _supabaseSyncTimer=setTimeout(async()=>{
+    try{
+      const bets=(typeof getP==='function'?getP():[]).filter(p=>p&&p.id);
+      if(!bets.length)return;
+      const rows=bets.map(_supabaseBetRow);
+      // PostgREST request bodies aren't unlimited — chunk into batches.
+      for(let i=0;i<rows.length;i+=200){
+        const chunk=rows.slice(i,i+200);
+        const r=await fetch(SUPABASE_URL+'/rest/v1/bets',{
+          method:'POST',
+          headers:{
+            'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,
+            'Content-Type':'application/json',
+            'Prefer':'resolution=merge-duplicates,return=minimal', // upsert on id (primary key)
+          },
+          body:JSON.stringify(chunk),
+        });
+        if(!r.ok){console.warn('[CV] Supabase sync chunk failed:',r.status,await r.text().catch(()=>''));}
+      }
+      console.log('[CV] Supabase sync: '+rows.length+' bets mirrored');
+    }catch(e){console.warn('[CV] Supabase sync failed (offline?):',e.message);}
+  },2500);
+}
+
 // API helper — returns null on failure so callers can fallback gracefully
 async function api(method, path, body) {
   if (!API_BASE) return null;
@@ -4296,6 +4349,7 @@ function getP(){
 function saveP(a){
   const cleaned=_filterWiped(a);
   S.s('preds',cleaned);idbSavePicks(cleaned);
+  try{syncBetsToSupabase();}catch(e){} // mirror to Supabase, debounced, non-blocking
 }// shadow to IndexedDB
 function getDailyLog(){return S.g('daily_log',{})||{};}
 function saveDailyLog(d){S.s('daily_log',d);idbSaveDailyLog(d);/* always expand, never reduce */}
@@ -19655,6 +19709,11 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}
   try{renderOverallHistory();}catch(e){console.error('renderOverallHistory',e);}
+  // One-time full mirror to Supabase on every boot — covers the case where
+  // picks were already in localStorage before this sync existed (the
+  // one-off migration of existing history) and just re-affirms everything
+  // stays in sync going forward even if saveP() somehow isn't hit.
+  try{syncBetsToSupabase();}catch(e){console.error('supabaseSync',e);}
   try{adaptiveTick();}catch(e){console.error('adaptiveTick',e);}
   // Daily morning recalibration
   (function(){try{var _today=new Date().toDateString();if(localStorage.getItem('_last_cal')!==_today){setTimeout(function(){try{if(typeof adaptiveTick==='function'){adaptiveTick();localStorage.setItem('_last_cal',_today);};}catch(e){}},3000);}}catch(e){}})();

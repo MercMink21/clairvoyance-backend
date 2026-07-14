@@ -3477,6 +3477,139 @@ def fetch_sports_news() -> dict:
             log(f"News {sport_key}: {exc}", "WARN"); news[sport_key] = []
     return news
 
+# ═══════════════════════════════════════════════════════════════════════════
+# SUPABASE BET LEDGER — the real bet ledger lives in the browser
+# (localStorage/IndexedDB); docs/app.html's syncBetsToSupabase() mirrors every
+# locked/settled bet to this table on a debounce. This gives the scheduled
+# GitHub Actions run (this script, 3x/day) something real to read for
+# automation that previously could only run client-side while a browser tab
+# was open: stale-pending detection, and settling bets against the box
+# scores this same run already fetched.
+# ═══════════════════════════════════════════════════════════════════════════
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vhwkbeblforpnliowpam.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+
+def _supabase_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+def fetch_bets_from_supabase() -> list[dict]:
+    """All bets currently mirrored from the frontend. Read-only — the
+    publishable key's RLS policy allows insert/update but this call only
+    ever GETs. Paginates in case the ledger grows past PostgREST's default
+    page size."""
+    if not SUPABASE_KEY:
+        log("SUPABASE_KEY not set — skipping Supabase bet-ledger automation", "WARN")
+        return []
+    rows: list[dict] = []
+    offset = 0
+    page = 1000
+    try:
+        while True:
+            r = _session.get(
+                f"{SUPABASE_URL}/rest/v1/bets",
+                headers={**_supabase_headers(), "Range": f"{offset}-{offset+page-1}"},
+                params={"select": "*", "order": "date.desc"},
+                timeout=15,
+            )
+            if r.status_code not in (200, 206):
+                log(f"Supabase fetch: HTTP {r.status_code} {r.text[:200]}", "WARN")
+                break
+            batch = r.json()
+            rows.extend(batch)
+            if len(batch) < page:
+                break
+            offset += page
+        log(f"Supabase: fetched {len(rows)} bets")
+    except Exception as exc:
+        log(f"Supabase fetch: {exc}", "WARN")
+    return rows
+
+def _supabase_patch_outcome(bet_id: str, outcome: str, h_score: int, a_score: int) -> bool:
+    try:
+        r = _session.patch(
+            f"{SUPABASE_URL}/rest/v1/bets",
+            headers={**_supabase_headers(), "Prefer": "return=minimal"},
+            params={"id": f"eq.{bet_id}"},
+            json={"outcome": outcome, "settled_at": int(time.time() * 1000)},
+            timeout=10,
+        )
+        return r.status_code in (200, 204)
+    except Exception as exc:
+        log(f"Supabase patch {bet_id}: {exc}", "WARN")
+        return False
+
+def run_supabase_automation(nba_final: list, mlb_final: list, nhl_final: list) -> dict:
+    """
+    Server-side counterpart to the client-side Stale Pending Audit /
+    auto-settle — the difference is this actually runs on the 3x/day
+    schedule regardless of whether a browser is open. Two jobs:
+      1. Settle any pending bet whose game already has a final score in
+         the box scores this same run fetched (same game_index matching
+         logic as the existing local auto_settle(), just sourced from
+         Supabase instead of locked_props.json).
+      2. Flag bets that are still pending with a date >24h in the past —
+         these didn't match a final score above, so either the game
+         hasn't been added to game_index yet or something's off; surfaced
+         in the run log rather than silently sitting unresolved.
+    """
+    bets = fetch_bets_from_supabase()
+    if not bets:
+        return {"settled": 0, "stale": 0}
+
+    def game_index(games: list) -> dict:
+        idx = {}
+        for g in games:
+            h, a = g.get("home", ""), g.get("away", "")
+            state = str(g.get("state", ""))
+            if state in ("post", "FINAL", "OFF", "7", "F", "OT", "SO") and h and a:
+                idx[(h, a)] = g; idx[(a, h)] = g
+        return idx
+
+    all_idx: dict = {}
+    all_idx.update(game_index(nba_final))
+    all_idx.update(game_index(mlb_final))
+    all_idx.update(game_index(nhl_final))
+
+    settled_count = 0
+    stale = []
+    now_ms = int(time.time() * 1000)
+    for bet in bets:
+        if bet.get("outcome", "pending") != "pending":
+            continue
+        raw = bet.get("raw") or {}
+        hA, awA = raw.get("hA", "") or bet.get("ha", ""), raw.get("awA", "") or bet.get("awa", "")
+        game = all_idx.get((hA, awA))
+        bet_type = str(bet.get("bet_type", "ML")).upper()
+        if game:
+            hs, as_ = int(game.get("homeScore") or 0), int(game.get("awayScore") or 0)
+            outcome = None
+            if bet_type == "ML":
+                winner = game.get("home") if hs > as_ else game.get("away")
+                team = raw.get("team", "")
+                outcome = "win" if team == winner else "loss"
+            if outcome and _supabase_patch_outcome(bet["id"], outcome, hs, as_):
+                settled_count += 1
+                log(f"  Supabase auto-settle: {bet.get('bet_on', bet['id'])} -> {outcome.upper()}")
+                continue
+        # Not matched to a final — check staleness
+        bet_date = bet.get("date")
+        if bet_date:
+            try:
+                bet_ts = datetime.strptime(bet_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000
+                if now_ms - bet_ts > 24 * 3600 * 1000:
+                    stale.append(bet.get("bet_on", bet["id"]))
+            except Exception:
+                pass
+
+    if stale:
+        log(f"Supabase: {len(stale)} bets pending >24h past their date and unmatched to a final score", "WARN")
+    log(f"Supabase automation: settled {settled_count}, {len(stale)} still stale")
+    return {"settled": settled_count, "stale": len(stale)}
+
 def fetch_injuries_all() -> dict:
     """
     Dedicated injury fetcher for all sports. fetch_espn_injuries() is
@@ -4725,6 +4858,17 @@ def main() -> None:
         mlb_today + mlb_tom,
         nhl_today + nhl_tom,
     )
+    # Real bet ledger lives in Supabase now (mirrored from the browser) —
+    # run the same settle/stale-audit logic against it so this actually
+    # happens on schedule instead of only while a browser tab is open.
+    try:
+        run_supabase_automation(
+            nba_today + nba_tom,
+            mlb_today + mlb_tom,
+            nhl_today + nhl_tom,
+        )
+    except Exception as exc:
+        log(f"Supabase automation: {exc}", "WARN")
 
     # Bet history
     history = merge_settled_to_history(settled)
