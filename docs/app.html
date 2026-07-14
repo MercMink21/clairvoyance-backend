@@ -18364,6 +18364,115 @@ function renderTrackRecord(){
   })()}</div>
   <div style="display:flex;gap:8px;margin-bottom:16px">
     <button onclick="_genLeaguePerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT LEAGUE PERFORMANCE CARD</button>
+  </div>
+
+  <!-- ── EVENT / TOURNAMENT PERFORMANCE CARD ──────────────────────────────
+       For events that span a custom date range spilling across two
+       calendar months (e.g. Wimbledon Jun 29 - Jul 12), the standard
+       THIS MONTH/LAST MONTH period buttons can't isolate the event —
+       either one alone misses days. This card uses an explicit start/end
+       date range instead of a fixed period, plus the same league filter
+       pattern as the League Performance card above so a single league
+       (or a couple, run one export each) can be isolated within that
+       window. -->
+  <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// EVENT / TOURNAMENT PERFORMANCE CARD — SOCIAL EXPORT</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">Custom date range · e.g. Wimbledon Jun 29 – Jul 12 · 1080×1350 PNG</div>
+  <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+    ${[
+      {lbl:'WIMBLEDON 2026',name:'WIMBLEDON 2026',start:'2026-06-29',end:'2026-07-12'},
+      {lbl:'FRENCH OPEN 2026',name:'FRENCH OPEN 2026',start:'2026-05-25',end:'2026-06-08'},
+      {lbl:'WORLD CUP 2026',name:'WORLD CUP 2026',start:'2026-06-11',end:'2026-07-19'},
+    ].map(pr=>`<button onclick="renderTrackRecord._eventName='${pr.name}';renderTrackRecord._eventStart='${pr.start}';renderTrackRecord._eventEnd='${pr.end}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:14px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${pr.lbl}</button>`).join('')}
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;border:1px solid rgba(0,240,255,.25);border-radius:3px;background:rgba(0,240,255,.04)">
+    <span style="font-family:var(--mono);font-size:14px;color:#00f0ff;letter-spacing:1px">EVENT NAME</span>
+    <input type="text" value="${renderTrackRecord._eventName||''}" placeholder="e.g. Wimbledon 2026" onchange="renderTrackRecord._eventName=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;min-width:180px">
+    <span style="font-family:var(--mono);font-size:14px;color:#00f0ff;letter-spacing:1px">START</span>
+    <input type="date" value="${renderTrackRecord._eventStart||''}" onchange="renderTrackRecord._eventStart=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
+    <span style="font-family:var(--mono);font-size:14px;color:#00f0ff;letter-spacing:1px">END</span>
+    <input type="date" max="${todayStr}" value="${renderTrackRecord._eventEnd||''}" onchange="renderTrackRecord._eventEnd=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+    <span style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5);letter-spacing:1px">FILTER:</span>
+    <select id="cv-event-filter-sel" onchange="renderTrackRecord._eventFilter=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(240,0,255,.3);color:#f000ff;border-radius:2px;max-width:220px">
+      <option value="" ${!renderTrackRecord._eventFilter?'selected':''}>ALL LEAGUES</option>
+      ${LEAGUE_FILTER_LABELS.map(lbl=>`<option value="${lbl}" ${renderTrackRecord._eventFilter===lbl?'selected':''}>${lbl.toUpperCase()}</option>`).join('')}
+    </select>
+  </div>
+  <div style="background:rgba(4,0,12,.9);border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;padding:12px 14px;margin-bottom:12px;max-width:480px">${(()=>{
+    const LDEFS3=[
+      {lbl:'NFL',          codes:['NFL','FB']},
+      {lbl:'CFB',          codes:['CFB']},
+      {lbl:'MLB',          codes:['MLB']},
+      {lbl:'NHL',          codes:['NHL']},
+      {lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
+      {lbl:'SHL',          codes:['SHL']},
+      {lbl:'LIIGA',        codes:['LIIGA']},
+      {lbl:'KHL',          codes:['KHL']},
+      {lbl:'PWHL',         codes:['PWHL']},
+      {lbl:'NBA',          codes:['NBA']},
+      {lbl:'WNBA',         codes:['WNBA']},
+      {lbl:'CBB',          codes:['CBB','NCAAB']},
+      {lbl:'ATP',          codes:['ATP']},
+      {lbl:'WTA',          codes:['WTA']},
+      {lbl:'World Cup',    codes:['SOC','WC']},
+      {lbl:'Champions League',codes:['CH','CL']},
+      {lbl:'Premier League',codes:['PL']},
+      {lbl:'La Liga',      codes:['LIGA']},
+      {lbl:'Bundesliga',   codes:['BL']},
+      {lbl:'MLS',          codes:['MLS']},
+    ];
+    const eventName=(renderTrackRecord._eventName||'EVENT').toUpperCase();
+    const eStart=renderTrackRecord._eventStart||'';
+    const eEnd=renderTrackRecord._eventEnd||'';
+    const eventFilter=renderTrackRecord._eventFilter||'';
+    const rangeLbl=(eStart&&eEnd)?(_fmtDay(eStart).split(',').slice(0,2).join(',')+' – '+_fmtDay(eEnd).split(',').slice(0,2).join(','))
+      :'SET START/END DATES';
+    // Filter on the bet's own "date" string (YYYY-MM-DD), not lockedAt —
+    // a lot of seed/historical bet-history entries carry a lockedAt epoch
+    // timestamp that's a full year off from their "date" field (an old
+    // data-seeding bug unrelated to this card), so date-range filtering
+    // on lockedAt silently drops real historical bets. "date" is the
+    // field every other part of the app treats as the source of truth
+    // for which calendar day a bet belongs to.
+    const eventBets=(eStart&&eEnd)?allBets.filter(b=>b.date&&b.date>=eStart&&b.date<=eEnd):[];
+    const activeLDEFS3=eventFilter?LDEFS3.filter(lm=>lm.lbl===eventFilter):LDEFS3;
+    const filteredBets3=eventFilter?eventBets.filter(b=>{const lm=LDEFS3.find(l=>l.lbl===eventFilter);return lm&&lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase());}):eventBets;
+    const totalP3=cP(filteredBets3);
+    window._cvEventPeriodData={LDEFS:activeLDEFS3,periodBets:eventBets,eventName,frameLabel:rangeLbl,totalP:totalP3,eventFilter};
+    const rC3=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
+    const uC3=u=>u>=0?'#00f0ff':'#ff2090';
+    const hdr3='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:18px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px">'+eventName+'</div><div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+rangeLbl+'</div></div>';
+    const divider3='<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:6px"></div>';
+    if(!eStart||!eEnd){
+      return hdr3+divider3+'<div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.4);text-align:center;padding:20px 0">Pick a preset above or set START/END dates to see this event’s performance.</div>';
+    }
+    const colHdr3='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div></div>';
+    const rows3=(eventFilter?[]:LDEFS3).map(lm=>{
+      const lb=eventBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
+      const p=cP(lb);
+      if(!p.n)return'';
+      const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
+      const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+      return'<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+        +'<div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 6px #f000ff88">'+lm.lbl+'</div>'
+        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:rgba(230,235,255,.9)">'+p.w+'W-'+p.l+'L</div>'
+        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+rC3(p.pct)+'">'+pctStr+'</div>'
+        +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+uC3(p.units)+'">'+unitStr+'</div>'
+        +'</div>';
+    }).join('')||'<div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.4);text-align:center;padding:10px 0">NO BETS LOCKED IN THIS DATE RANGE</div>';
+    const tPct3=totalP3.n>0&&totalP3.pct!==null?(totalP3.pct*100).toFixed(1)+'%':'—';
+    const tUnit3=totalP3.n>0?(totalP3.units>=0?'+':'')+totalP3.units.toFixed(1)+'u':'—';
+    const totalRow3=totalP3.n>0?('<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
+      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">'+(eventFilter?eventFilter.toUpperCase():'TOTAL')+'</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+rangeLbl+'</div></div>'
+      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+totalP3.w+'W-'+totalP3.l+'L</div>'
+      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tPct3+'</div>'
+      +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tUnit3+'</div>'
+      +'</div>'):'';
+    return hdr3+divider3+colHdr3+rows3+totalRow3;
+  })()}</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button onclick="_genEventPerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT EVENT PERFORMANCE CARD</button>
   </div>`;
 }
 
@@ -18677,6 +18786,101 @@ async function _genLeaguePerfGraphic(){
   _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 12px "Orbitron"','#f000ff',10,'center');
 
   _saveCanvas(cv,'cv-league-perf-'+today().replace(/-/g,'')+'.png','LEAGUE PERFORMANCE CARD');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENT / TOURNAMENT PERFORMANCE CARD — custom date-range export (spans two
+// calendar months, e.g. Wimbledon Jun 29 - Jul 12, so the fixed THIS MONTH/
+// LAST MONTH period buttons can't isolate it) — 1080×1350 PNG EXPORT
+// ═══════════════════════════════════════════════════════════════════════════
+async function _genEventPerfGraphic(){
+  try{renderTrackRecord();}catch(e){} // refresh at save time
+  const d=window._cvEventPeriodData;
+  if(!d||!d.periodBets){toast('// SWITCH TO TRACK RECORD TAB FIRST');return;}
+  if(!d.frameLabel||d.frameLabel==='SET START/END DATES'){toast('// PICK A PRESET OR SET START/END DATES FIRST');return;}
+  const{LDEFS,periodBets,eventName,frameLabel,totalP,eventFilter}=d;
+
+  const W=1080,H=1350;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  _cfBg(ctx,W,H);
+
+  const rC=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
+  const uC=u=>u>=0?'#00f0ff':'#ff2090';
+  const cP=bets=>{const s=bets.filter(p=>p.outcome!=='pending');const w=s.filter(p=>p.outcome==='win').length,l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:p.outcome==='loss'?a-1:a,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};};
+  const today=()=>new Date().toISOString().slice(0,10);
+
+  // Header — event name where LEAGUE PERFORMANCE would normally go, date
+  // range where the period label would normally go.
+  _glowText(ctx,'CLAIRVOYANCE',W/2,72,'900 41px "Orbitron"','#f000ff',22,'center');
+  _glowText(ctx,'ADVANCED SPORTS INTELLIGENCE ENGINE',W/2,104,'600 14px "Orbitron"','#00f0ff',8,'center');
+  _glowText(ctx,eventName,W/2,124,'700 14px "Orbitron"','#f000ff',8,'center');
+
+  ctx.save();const hd=ctx.createLinearGradient(80,142,W-80,142);
+  hd.addColorStop(0,'transparent');hd.addColorStop(.5,'rgba(240,0,255,.7)');hd.addColorStop(1,'transparent');
+  ctx.strokeStyle=hd;ctx.lineWidth=1.5;ctx.shadowColor='#f000ff';ctx.shadowBlur=8;
+  ctx.beginPath();ctx.moveTo(80,142);ctx.lineTo(W-80,142);ctx.stroke();ctx.restore();
+  _glowText(ctx,'// EVENT PERFORMANCE · '+frameLabel,80,164,'700 14px "Orbitron"','#f000ff',8,'left');
+
+  const cX={league:80,record:430,pct:660,units:W-60};
+  const hdrY=190;
+  ctx.globalAlpha=.45;
+  _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'left');
+  _glowText(ctx,'RECORD',cX.record,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'WIN%',cX.pct,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  ctx.globalAlpha=1;
+
+  // Only draw leagues with actual bets in this window — an event card
+  // showing 18 "0W-0L NO DATA" rows for leagues that weren't even playing
+  // during the date range is just noise.
+  const activeRows=(eventFilter?LDEFS:LDEFS).map(lm=>{
+    const lb=periodBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
+    return{lm,p:cP(lb)};
+  }).filter(r=>r.p.n>0);
+
+  const startY=214;
+  const rowH=Math.min(90,(H-390)/Math.max(activeRows.length+1,1));
+
+  if(!activeRows.length){
+    _glowText(ctx,'NO BETS LOCKED IN THIS DATE RANGE',W/2,startY+60,'400 18px "Orbitron"','rgba(220,190,255,.4)',4,'center');
+  }
+  activeRows.forEach(({lm,p},i)=>{
+    const y=startY+i*rowH+rowH/2;
+    ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(80,startY+i*rowH);ctx.lineTo(W-80,startY+i*rowH);ctx.stroke();ctx.restore();
+    _glowText(ctx,lm.lbl,cX.league,y,'700 19px "Orbitron"','#f000ff',14,'left');
+    _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 18px "Orbitron"','rgba(230,235,255,.9)',6,'center');
+    const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
+    _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.pct),10,'center');
+    const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+    _glowText(ctx,unitStr,cX.units,y,'700 19px "Orbitron"',uC(p.units),12,'right');
+  });
+
+  const totalY=startY+activeRows.length*rowH;
+  if(totalP.n>0){
+    ctx.save();const td=ctx.createLinearGradient(80,totalY,W-80,totalY);
+    td.addColorStop(0,'transparent');td.addColorStop(.5,'rgba(240,0,255,.35)');td.addColorStop(1,'transparent');
+    ctx.strokeStyle=td;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,totalY);ctx.lineTo(W-80,totalY);ctx.stroke();ctx.restore();
+    const tY=totalY+rowH/2;
+    _glowText(ctx,eventFilter?eventFilter.toUpperCase():'TOTAL',cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
+    _glowText(ctx,frameLabel,cX.league,tY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',3,'left');
+    const tRec=totalP.w+'W-'+totalP.l+'L';
+    const tPct=totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
+    const tUnit=(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u';
+    _glowText(ctx,tRec,cX.record,tY,'700 21px "Orbitron"','#00f0ff',10,'center');
+    _glowText(ctx,tPct,cX.pct,tY,'700 21px "Orbitron"','#00f0ff',12,'center');
+    _glowText(ctx,tUnit,cX.units,tY,'700 23px "Orbitron"','#00f0ff',14,'right');
+  }
+
+  const footY=totalP.n>0?(totalY+rowH+28):(startY+120);
+  ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
+  fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
+  ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
+  _glowText(ctx,'𝕏 @clairvoyanceeng  ·  IG @clairvoyanceengine',W/2,H-58,'700 14px "Orbitron"','#f000ff',10,'center');
+  _glowText(ctx,'clairvoyanceengine.info',W/2,H-36,'600 12px "Orbitron"','#f000ff',10,'center');
+
+  _saveCanvas(cv,'cv-event-perf-'+(eventName||'event').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png','EVENT PERFORMANCE CARD');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
