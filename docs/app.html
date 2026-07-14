@@ -18392,12 +18392,19 @@ function renderTrackRecord(){
     <span style="font-family:var(--mono);font-size:14px;color:#00f0ff;letter-spacing:1px">END</span>
     <input type="date" max="${todayStr}" value="${renderTrackRecord._eventEnd||''}" onchange="renderTrackRecord._eventEnd=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,240,255,.3);color:#e6eaff;border-radius:2px;color-scheme:dark">
   </div>
-  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-    <span style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5);letter-spacing:1px">FILTER:</span>
-    <select id="cv-event-filter-sel" onchange="renderTrackRecord._eventFilter=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(240,0,255,.3);color:#f000ff;border-radius:2px;max-width:220px">
-      <option value="" ${!renderTrackRecord._eventFilter?'selected':''}>ALL LEAGUES</option>
-      ${LEAGUE_FILTER_LABELS.map(lbl=>`<option value="${lbl}" ${renderTrackRecord._eventFilter===lbl?'selected':''}>${lbl.toUpperCase()}</option>`).join('')}
-    </select>
+  <!-- Multi-select league filter — chips instead of a single-select dropdown
+       so multiple leagues can be combined for one event, e.g. ATP + WTA for
+       Wimbledon. Empty selection = show every league with activity in the
+       window (unchanged default behavior). -->
+  <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5);letter-spacing:1px;padding-top:4px">FILTER:</span>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;max-width:640px">
+      <button onclick="renderTrackRecord._eventFilters=[];renderTrackRecord()" style="padding:4px 9px;font-family:var(--mono);font-size:13px;border-radius:2px;cursor:pointer;border:1px solid ${!(renderTrackRecord._eventFilters||[]).length?'rgba(0,240,255,.6)':'rgba(240,0,255,.3)'};background:${!(renderTrackRecord._eventFilters||[]).length?'rgba(0,240,255,.15)':'rgba(240,0,255,.06)'};color:${!(renderTrackRecord._eventFilters||[]).length?'#00f0ff':'#f000ff'};letter-spacing:1px">ALL LEAGUES</button>
+      ${LEAGUE_FILTER_LABELS.map(lbl=>{
+        const active=(renderTrackRecord._eventFilters||[]).includes(lbl);
+        return`<button onclick="renderTrackRecord._eventFilters=renderTrackRecord._eventFilters||[];const i=renderTrackRecord._eventFilters.indexOf('${lbl}');if(i>=0)renderTrackRecord._eventFilters.splice(i,1);else renderTrackRecord._eventFilters.push('${lbl}');renderTrackRecord()" style="padding:4px 9px;font-family:var(--mono);font-size:13px;border-radius:2px;cursor:pointer;border:1px solid ${active?'rgba(0,240,255,.6)':'rgba(240,0,255,.3)'};background:${active?'rgba(0,240,255,.15)':'rgba(240,0,255,.06)'};color:${active?'#00f0ff':'#f000ff'};letter-spacing:1px">${active?'✓ ':''}${lbl.toUpperCase()}</button>`;
+      }).join('')}
+    </div>
   </div>
   <div style="background:rgba(4,0,12,.9);border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;padding:12px 14px;margin-bottom:12px;max-width:480px">${(()=>{
     const LDEFS3=[
@@ -18425,7 +18432,7 @@ function renderTrackRecord(){
     const eventName=(renderTrackRecord._eventName||'EVENT').toUpperCase();
     const eStart=renderTrackRecord._eventStart||'';
     const eEnd=renderTrackRecord._eventEnd||'';
-    const eventFilter=renderTrackRecord._eventFilter||'';
+    const eventFilters=renderTrackRecord._eventFilters||[]; // array — multi-select, e.g. ['ATP','WTA']
     const rangeLbl=(eStart&&eEnd)?(_fmtDay(eStart).split(',').slice(0,2).join(',')+' – '+_fmtDay(eEnd).split(',').slice(0,2).join(','))
       :'SET START/END DATES';
     // Filter on the bet's own "date" string (YYYY-MM-DD), not lockedAt —
@@ -18436,10 +18443,11 @@ function renderTrackRecord(){
     // field every other part of the app treats as the source of truth
     // for which calendar day a bet belongs to.
     const eventBets=(eStart&&eEnd)?allBets.filter(b=>b.date&&b.date>=eStart&&b.date<=eEnd):[];
-    const activeLDEFS3=eventFilter?LDEFS3.filter(lm=>lm.lbl===eventFilter):LDEFS3;
-    const filteredBets3=eventFilter?eventBets.filter(b=>{const lm=LDEFS3.find(l=>l.lbl===eventFilter);return lm&&lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase());}):eventBets;
+    const activeLDEFS3=eventFilters.length?LDEFS3.filter(lm=>eventFilters.includes(lm.lbl)):LDEFS3;
+    const filteredBets3=eventFilters.length?eventBets.filter(b=>activeLDEFS3.some(lm=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()))):eventBets;
     const totalP3=cP(filteredBets3);
-    window._cvEventPeriodData={LDEFS:activeLDEFS3,periodBets:eventBets,eventName,frameLabel:rangeLbl,totalP:totalP3,eventFilter};
+    const totalLbl3=eventFilters.length===1?eventFilters[0].toUpperCase():eventFilters.length>1?eventFilters.map(f=>f.toUpperCase()).join(' + '):'TOTAL';
+    window._cvEventPeriodData={LDEFS:activeLDEFS3,periodBets:eventBets,eventName,frameLabel:rangeLbl,totalP:totalP3,totalLbl:totalLbl3};
     const rC3=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
     const uC3=u=>u>=0?'#00f0ff':'#ff2090';
     const hdr3='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:18px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px">'+eventName+'</div><div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+rangeLbl+'</div></div>';
@@ -18448,7 +18456,7 @@ function renderTrackRecord(){
       return hdr3+divider3+'<div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.4);text-align:center;padding:20px 0">Pick a preset above or set START/END dates to see this event’s performance.</div>';
     }
     const colHdr3='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div></div>';
-    const rows3=(eventFilter?[]:LDEFS3).map(lm=>{
+    const rows3=activeLDEFS3.map(lm=>{
       const lb=eventBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
       const p=cP(lb);
       if(!p.n)return'';
@@ -18463,8 +18471,11 @@ function renderTrackRecord(){
     }).join('')||'<div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.4);text-align:center;padding:10px 0">NO BETS LOCKED IN THIS DATE RANGE</div>';
     const tPct3=totalP3.n>0&&totalP3.pct!==null?(totalP3.pct*100).toFixed(1)+'%':'—';
     const tUnit3=totalP3.n>0?(totalP3.units>=0?'+':'')+totalP3.units.toFixed(1)+'u':'—';
-    const totalRow3=totalP3.n>0?('<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
-      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">'+(eventFilter?eventFilter.toUpperCase():'TOTAL')+'</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+rangeLbl+'</div></div>'
+    // Skip the TOTAL row when it would just duplicate a single already-shown
+    // league row (activeLDEFS3.length===1) — only useful once 2+ leagues
+    // are being combined (or showing everything with data).
+    const totalRow3=(totalP3.n>0&&activeLDEFS3.length!==1)?('<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
+      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">'+totalLbl3+'</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+rangeLbl+'</div></div>'
       +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+totalP3.w+'W-'+totalP3.l+'L</div>'
       +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tPct3+'</div>'
       +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tUnit3+'</div>'
@@ -18798,7 +18809,7 @@ async function _genEventPerfGraphic(){
   const d=window._cvEventPeriodData;
   if(!d||!d.periodBets){toast('// SWITCH TO TRACK RECORD TAB FIRST');return;}
   if(!d.frameLabel||d.frameLabel==='SET START/END DATES'){toast('// PICK A PRESET OR SET START/END DATES FIRST');return;}
-  const{LDEFS,periodBets,eventName,frameLabel,totalP,eventFilter}=d;
+  const{LDEFS,periodBets,eventName,frameLabel,totalP,totalLbl}=d;
 
   const W=1080,H=1350;
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;
@@ -18833,8 +18844,9 @@ async function _genEventPerfGraphic(){
 
   // Only draw leagues with actual bets in this window — an event card
   // showing 18 "0W-0L NO DATA" rows for leagues that weren't even playing
-  // during the date range is just noise.
-  const activeRows=(eventFilter?LDEFS:LDEFS).map(lm=>{
+  // during the date range is just noise. LDEFS is already narrowed to
+  // whichever leagues were multi-selected (or every league, if none were).
+  const activeRows=LDEFS.map(lm=>{
     const lb=periodBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
     return{lm,p:cP(lb)};
   }).filter(r=>r.p.n>0);
@@ -18857,13 +18869,16 @@ async function _genEventPerfGraphic(){
     _glowText(ctx,unitStr,cX.units,y,'700 19px "Orbitron"',uC(p.units),12,'right');
   });
 
+  // Skip the TOTAL row when it would just duplicate a single already-shown
+  // league row — only useful once 2+ leagues are being combined (or
+  // showing everything with data).
   const totalY=startY+activeRows.length*rowH;
-  if(totalP.n>0){
+  if(totalP.n>0&&activeRows.length!==1){
     ctx.save();const td=ctx.createLinearGradient(80,totalY,W-80,totalY);
     td.addColorStop(0,'transparent');td.addColorStop(.5,'rgba(240,0,255,.35)');td.addColorStop(1,'transparent');
     ctx.strokeStyle=td;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,totalY);ctx.lineTo(W-80,totalY);ctx.stroke();ctx.restore();
     const tY=totalY+rowH/2;
-    _glowText(ctx,eventFilter?eventFilter.toUpperCase():'TOTAL',cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
+    _glowText(ctx,totalLbl,cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
     _glowText(ctx,frameLabel,cX.league,tY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',3,'left');
     const tRec=totalP.w+'W-'+totalP.l+'L';
     const tPct=totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
@@ -18873,7 +18888,7 @@ async function _genEventPerfGraphic(){
     _glowText(ctx,tUnit,cX.units,tY,'700 23px "Orbitron"','#00f0ff',14,'right');
   }
 
-  const footY=totalP.n>0?(totalY+rowH+28):(startY+120);
+  const footY=(totalP.n>0&&activeRows.length!==1)?(totalY+rowH+28):activeRows.length?(totalY+28):(startY+120);
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
