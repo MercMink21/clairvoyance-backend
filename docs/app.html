@@ -18483,7 +18483,7 @@ function renderTrackRecord(){
     return hdr3+divider3+colHdr3+rows3+totalRow3;
   })()}</div>
   <div style="display:flex;gap:8px;margin-bottom:16px">
-    <button onclick="_genEventPerfGraphic()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT EVENT PERFORMANCE CARD</button>
+    <button onclick="_exportEventPerfCard()" style="flex:1;padding:10px;background:rgba(240,0,255,.08);border:1px solid rgba(240,0,255,.35);color:#f000ff;font-family:var(--mono);font-size:16px;border-radius:2px;cursor:pointer">EXPORT EVENT PERFORMANCE CARD</button>
   </div>`;
 }
 
@@ -18804,7 +18804,7 @@ async function _genLeaguePerfGraphic(){
 // calendar months, e.g. Wimbledon Jun 29 - Jul 12, so the fixed THIS MONTH/
 // LAST MONTH period buttons can't isolate it) — 1080×1350 PNG EXPORT
 // ═══════════════════════════════════════════════════════════════════════════
-async function _genEventPerfGraphic(){
+async function _exportEventPerfCard(){
   try{renderTrackRecord();}catch(e){} // refresh at save time
   const d=window._cvEventPeriodData;
   if(!d||!d.periodBets){toast('// SWITCH TO TRACK RECORD TAB FIRST');return;}
@@ -18897,6 +18897,15 @@ async function _genEventPerfGraphic(){
 
   _saveCanvas(cv,'cv-event-perf-'+(eventName||'event').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.png','EVENT PERFORMANCE CARD');
 }
+// Explicit window export — this function's declaration alone wasn't reaching
+// global scope for the inline onclick="" handler to find (reproduced with a
+// bare ReferenceError on click, confirmed via multiple independent checks:
+// ReferenceError on click, typeof undefined after a clean reload, and after
+// renaming the function entirely — ruling out a name collision). This exact
+// explicit-export pattern already exists ~60 other times in this file for
+// functions with the same symptom, so it's evidently a known class of issue
+// in this file rather than something specific to this function.
+window._exportEventPerfCard=_exportEventPerfCard;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI PICK REASONING — TEMPLATE-BASED NATURAL LANGUAGE
