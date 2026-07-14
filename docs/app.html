@@ -18013,6 +18013,21 @@ async function _genPerfGraphic(periodLabel,sublabel,perf,fh,fname){
   },'image/png');
 }
 
+// Same 20 league labels as the League Performance card's LDEFS — kept as a
+// standalone list so the filter <select>'s options can be rendered inline
+// in the template (see the note by cv-league-filter-sel) without needing
+// LDEFS itself hoisted out of its IIFE.
+const LEAGUE_FILTER_LABELS=['NFL','CFB','MLB','NHL','College Hockey','SHL','LIIGA','KHL','PWHL','NBA','WNBA','CBB','ATP','WTA','World Cup','Champions League','Premier League','La Liga','Bundesliga','MLS'];
+// Current streak (consecutive W or L, most recent first) for a bet array —
+// shared by the Track Record / Sport Performance / League Performance social
+// cards (both their HTML preview and canvas PNG export versions).
+function _calcStreak(bets){
+  const s=bets.filter(p=>p.outcome==='win'||p.outcome==='loss').sort((a,b)=>(a.lockedAt||0)-(b.lockedAt||0));
+  if(!s.length)return null;
+  const type=s[s.length-1].outcome;let n=0;
+  for(let i=s.length-1;i>=0;i--){if(s[i].outcome===type)n++;else break;}
+  return{n,type,str:n+(type==='win'?'W':'L')};
+}
 // ═══════════════════════════════════════════════════════════════════════════
 // TRACK RECORD PUBLIC VIEW
 // ═══════════════════════════════════════════════════════════════════════════
@@ -18155,7 +18170,15 @@ function renderTrackRecord(){
 
   <!-- Period selector -->
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+    ${periods.map(per=>`<button onclick="renderTrackRecord._sportPeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:${(renderTrackRecord._sportPeriod||'ALL TIME')===per.key?'rgba(240,0,255,.28)':'rgba(240,0,255,.06)'};color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+  </div>
+  <!-- Sport filter — narrows the card to a single sport instead of all 6 -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+    <span style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5);letter-spacing:1px">FILTER:</span>
+    <select onchange="renderTrackRecord._sportFilter=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(240,0,255,.3);color:#f000ff;border-radius:2px">
+      <option value="" ${!renderTrackRecord._sportFilter?'selected':''}>ALL SPORTS</option>
+      ${['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER','TENNIS'].map(s=>`<option value="${s}" ${renderTrackRecord._sportFilter===s?'selected':''}>${s}</option>`).join('')}
+    </select>
   </div>
 
   ${(()=>{
@@ -18178,11 +18201,12 @@ function renderTrackRecord(){
     <!-- Divider -->
     <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:8px;position:relative"></div>
     <!-- Column headers -->
-    <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:0;margin-bottom:4px;position:relative">
+    <div style="display:grid;grid-template-columns:1.7fr 1.3fr .8fr .8fr .8fr;gap:0;margin-bottom:4px;position:relative">
       <div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">SPORT</div>
       <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">RECORD</div>
       <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">WIN%</div>
-      <div style="text-align:right;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">UNITS</div>
+      <div style="text-align:right;font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.3);letter-spacing:1px">STRK</div>
     </div>
     <!-- Sport rows -->
     <div style="flex:1;position:relative">${(()=>{
@@ -18194,18 +18218,22 @@ function renderTrackRecord(){
         activePeriod==='ROLLING 7D'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
         activePeriod==='THIS MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
         activePeriod==='LAST MONTH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
+        activePeriod==='SINCE LAUNCH'?allBets.filter(b=>b.lockedAt&&b.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()):
         allBets;
       const frameLabel=_filterDate?_fmtDay(_filterDate):(activePeriod==='SINCE LAUNCH'?'SINCE JULY 1 LAUNCH':(per.sub||per.label));
       // Group by the 6 BROAD sports (baseball/basketball/football/hockey/soccer/
       // tennis), not individual leagues — e.g. NBA+WNBA+CBB all roll into
       // BASKETBALL here. League-level detail lives on the League Performance
-      // card below instead.
+      // card below instead. Sport filter narrows this to a single sport.
+      const sportFilter=renderTrackRecord._sportFilter||'';
       const SPORT_ORDER=['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER','TENNIS'];
       const bySport={};SPORT_ORDER.forEach(s=>bySport[s]=[]);
       periodBets.forEach(b=>{const s=_broadSportOf(_normSport(b));if(s&&bySport[s])bySport[s].push(b);});
-      const sportList=SPORT_ORDER;
-      const totalP=cP(periodBets);
-      window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel,totalP};
+      const sportList=sportFilter?[sportFilter]:SPORT_ORDER;
+      const filteredBets=sportFilter?bySport[sportFilter]||[]:periodBets;
+      const totalP=cP(filteredBets);
+      const totalStreak=_calcStreak(filteredBets);
+      window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel,totalP,totalStreak,sportFilter};
       // Which leagues make up each broad sport — shown as a sub-line under
       // the sport name, in the same greyish tone as the column headers.
       const SPORT_LEAGUES={BASEBALL:'MLB',BASKETBALL:'NBA, WNBA, CBB',FOOTBALL:'NFL, CFB',
@@ -18214,30 +18242,35 @@ function renderTrackRecord(){
         TENNIS:'ATP, WTA'};
       const sportRows=sportList.slice(0,6).map(s=>{
         const p=cP(bySport[s]);
+        const streak=_calcStreak(bySport[s]);
         const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
         const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-        return'<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
+        const streakCol=streak?(streak.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.3)';
+        return'<div style="display:grid;grid-template-columns:1.7fr 1.3fr .8fr .8fr .8fr;align-items:center;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">'
           +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;letter-spacing:1.5px;color:#f000ff;font-weight:700;text-shadow:0 0 6px #f000ff88">'+s+'</div>'
           +'<div style="font-family:var(--mono);font-size:9px;color:#00f0ff;letter-spacing:.5px;margin-top:1px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;line-height:1.35">'+(SPORT_LEAGUES[s]||'')+'</div></div>'
           +(p.n>0
-            ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
-             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:rgb(230,235,255)">'+pctStr+'</div></div>'
-             +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:rgb(230,235,255)">'+unitStr+'</div></div>'
+            ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:rgb(230,235,255)">'+p.w+'W-'+p.l+'L</div></div>'
+             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:rgb(230,235,255)">'+pctStr+'</div></div>'
+             +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:rgb(230,235,255)">'+unitStr+'</div></div>'
+             +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:'+streakCol+'">'+(streak?streak.str:'—')+'</div></div>'
             :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.3)">NO DATA</div>')
           +'</div>';
       }).join('');
       const tPct=totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
       const tUnit=(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u';
-      const totalRow='<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;align-items:center;gap:0;padding:6px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
-        +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;letter-spacing:1.5px;color:#00f0ff;font-weight:900;text-shadow:0 0 8px #00f0ff">TOTAL</div>'
+      const tStreakCol=totalStreak?(totalStreak.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.35)';
+      const totalRow='<div style="display:grid;grid-template-columns:1.7fr 1.3fr .8fr .8fr .8fr;align-items:center;gap:0;padding:6px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
+        +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:12px;letter-spacing:1.5px;color:#00f0ff;font-weight:900;text-shadow:0 0 8px #00f0ff">'+(sportFilter?sportFilter:'TOTAL')+'</div>'
         +'<div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.35)">'+frameLabel+'</div></div>'
         +(totalP.n>0
-          ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:#00f0ff">'+totalP.w+'W-'+totalP.l+'L</div></div>'
-           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:16px;font-weight:700;color:#00f0ff">'+tPct+'</div></div>'
-           +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:17px;font-weight:700;color:#00f0ff">'+tUnit+'</div></div>'
+          ?'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:#00f0ff">'+totalP.w+'W-'+totalP.l+'L</div></div>'
+           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:#00f0ff">'+tPct+'</div></div>'
+           +'<div style="text-align:center"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:#00f0ff">'+tUnit+'</div></div>'
+           +'<div style="text-align:right"><div style="font-family:\'Orbitron\',sans-serif;font-size:15px;font-weight:700;color:'+tStreakCol+'">'+(totalStreak?totalStreak.str:'—')+'</div></div>'
           :'<div style="grid-column:2/-1;font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.3)">NO DATA</div>')
         +'</div>';
-      return sportRows+totalRow;
+      return sportFilter?totalRow:(sportRows+totalRow);
     })()}</div>
     <!-- Footer -->
     <div style="position:relative;margin-top:8px">
@@ -18259,9 +18292,24 @@ function renderTrackRecord(){
 
   <!-- ── LEAGUE PERFORMANCE CARD ── -->
   <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// LEAGUE PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units · 1080×1350 PNG</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units, streak · 1080×1350 PNG</div>
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:rgba(240,0,255,.06);color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+    ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:${(renderTrackRecord._leaguePeriod||'ALL TIME')===per.key?'rgba(240,0,255,.28)':'rgba(240,0,255,.06)'};color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
+  </div>
+  <!-- League filter — narrows the card to a single league instead of all 20,
+       e.g. ATP only for a "rolling 7d ATP" export. Options are rendered
+       inline (with the selected attribute set from state) rather than
+       populated via a DOM-mutation side effect — this whole card is
+       rebuilt via el.innerHTML on every renderTrackRecord() call, so any
+       script that looks up and mutates #cv-league-filter-sel before that
+       assignment runs is touching the outgoing (about to be replaced)
+       element, not the new one; the value never actually stuck. -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+    <span style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5);letter-spacing:1px">FILTER:</span>
+    <select id="cv-league-filter-sel" onchange="renderTrackRecord._leagueFilter=this.value;renderTrackRecord()" style="font-family:var(--mono);font-size:15px;padding:4px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(240,0,255,.3);color:#f000ff;border-radius:2px;max-width:220px">
+      <option value="" ${!renderTrackRecord._leagueFilter?'selected':''}>ALL LEAGUES</option>
+      ${LEAGUE_FILTER_LABELS.map(lbl=>`<option value="${lbl}" ${renderTrackRecord._leagueFilter===lbl?'selected':''}>${lbl.toUpperCase()}</option>`).join('')}
+    </select>
   </div>
   <div style="background:rgba(4,0,12,.9);border:1px solid rgba(240,0,255,.35);border-radius:4px;overflow:hidden;padding:12px 14px;margin-bottom:12px;max-width:480px">${(()=>{
     const LDEFS=[
@@ -18286,6 +18334,7 @@ function renderTrackRecord(){
       {lbl:'Bundesliga',   codes:['BL']},
       {lbl:'MLS',          codes:['MLS']},
     ];
+    const leagueFilter=renderTrackRecord._leagueFilter||'';
     const activePeriod=renderTrackRecord._leaguePeriod||'ALL TIME';
     const per2=periods.find(p=>p.key===activePeriod)||periods[periods.length-1];
     const periodBets2=_filterDate?_dayBets:
@@ -18299,32 +18348,40 @@ function renderTrackRecord(){
     const frameLabel2=_filterDate?_fmtDay(_filterDate):(activePeriod==='SINCE LAUNCH'?'SINCE JULY 1 LAUNCH':(per2.sub||per2.label));
     const rC2=p=>p===null?'rgba(220,190,255,.45)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
     const uC2=u=>u>=0?'#00f0ff':'#ff2090';
-    const totalP2=cP(periodBets2);
-    window._cvLeaguePeriodData={LDEFS,periodBets:periodBets2,activePeriod,frameLabel:frameLabel2,totalP:totalP2};
+    const activeLDEFS=leagueFilter?LDEFS.filter(lm=>lm.lbl===leagueFilter):LDEFS;
+    const filteredBets2=leagueFilter?periodBets2.filter(b=>{const lm=LDEFS.find(l=>l.lbl===leagueFilter);return lm&&lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase());}):periodBets2;
+    const totalP2=cP(filteredBets2);
+    const totalStreak2=_calcStreak(filteredBets2);
+    window._cvLeaguePeriodData={LDEFS:activeLDEFS,periodBets:periodBets2,activePeriod,frameLabel:frameLabel2,totalP:totalP2,totalStreak:totalStreak2,leagueFilter};
     const hdr='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:18px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px">LEAGUE PERFORMANCE</div><div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+frameLabel2+'</div></div>';
     const divider='<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:6px"></div>';
-    const colHdr='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div></div>';
-    const rows=LDEFS.map(lm=>{
+    const colHdr='<div style="display:grid;grid-template-columns:1.7fr 1.2fr .8fr .8fr .7fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">STRK</div></div>';
+    const rows=(leagueFilter?[]:LDEFS).map(lm=>{
       const lb=periodBets2.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
       const p=cP(lb);
+      const streak=_calcStreak(lb);
       const pctStr=p.n>0&&p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
       const unitStr=p.n>0?(p.units>=0?'+':'')+p.units.toFixed(1)+'u':'—';
       const col=p.n>0?rC2(p.pct):'rgba(220,190,255,.25)';
       const ucol=p.n>0?uC2(p.units):'rgba(220,190,255,.25)';
-      return'<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+      const streakCol=streak?(streak.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.25)';
+      return'<div style="display:grid;grid-template-columns:1.7fr 1.2fr .8fr .8fr .7fr;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
         +'<div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:700;color:#f000ff;text-shadow:0 0 6px #f000ff88">'+lm.lbl+'</div>'
         +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:rgba(230,235,255,.9)">'+(p.n>0?p.w+'W-'+p.l+'L':'0W-0L')+'</div>'
         +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+col+'">'+pctStr+'</div>'
-        +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+ucol+'">'+unitStr+'</div>'
+        +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+ucol+'">'+unitStr+'</div>'
+        +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:12px;font-weight:700;color:'+streakCol+'">'+(streak?streak.str:'—')+'</div>'
         +'</div>';
     }).join('');
     const tPct2=totalP2.n>0&&totalP2.pct!==null?(totalP2.pct*100).toFixed(1)+'%':'—';
     const tUnit2=totalP2.n>0?(totalP2.units>=0?'+':'')+totalP2.units.toFixed(1)+'u':'—';
-    const totalRow2='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
-      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">TOTAL</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+frameLabel2+'</div></div>'
+    const tStreakCol2=totalStreak2?(totalStreak2.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.35)';
+    const totalRow2='<div style="display:grid;grid-template-columns:1.7fr 1.2fr .8fr .8fr .7fr;align-items:center;padding:5px 0;border-top:1px solid rgba(240,0,255,.3);margin-top:2px">'
+      +'<div><div style="font-family:\'Orbitron\',sans-serif;font-size:11px;font-weight:900;color:#00f0ff;text-shadow:0 0 8px #00f0ff">'+(leagueFilter?leagueFilter.toUpperCase():'TOTAL')+'</div><div style="font-family:var(--mono);font-size:9px;color:rgba(220,190,255,.35)">'+frameLabel2+'</div></div>'
       +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+(totalP2.n>0?totalP2.w+'W-'+totalP2.l+'L':'0W-0L')+'</div>'
       +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tPct2+'</div>'
-      +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tUnit2+'</div>'
+      +'<div style="text-align:center;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:#00f0ff">'+tUnit2+'</div>'
+      +'<div style="text-align:right;font-family:\'Orbitron\',sans-serif;font-size:14px;font-weight:700;color:'+tStreakCol2+'">'+(totalStreak2?totalStreak2.str:'—')+'</div>'
       +'</div>';
     return hdr+divider+colHdr+rows+totalRow2;
   })()}</div>
@@ -18462,21 +18519,24 @@ async function _genSportPerfGraphic(){
   ctx.beginPath();ctx.moveTo(80,142);ctx.lineTo(W-80,142);ctx.stroke();ctx.restore();
   _glowText(ctx,'// SPORT PERFORMANCE',80,164,'700 14px "Orbitron"','#f000ff',8,'left');
 
-  // Column headers: SPORT | RECORD | WIN% | UNITS
-  const cX={sport:80,record:440,pct:670,units:W-80};
+  // Column headers: SPORT | RECORD | WIN% | UNITS | STRK
+  const cX={sport:80,record:400,pct:590,units:770,streak:W-80};
   const hdrY=188;
   ctx.globalAlpha=.45;
   _glowText(ctx,'SPORT',cX.sport,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'left');
   _glowText(ctx,'RECORD',cX.record,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'WIN%',cX.pct,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'STRK',cX.streak,hdrY,'500 13px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
   // Header underline
   ctx.save();ctx.strokeStyle='rgba(0,240,255,.18)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(80,hdrY+8);ctx.lineTo(W-80,hdrY+8);ctx.stroke();ctx.restore();
 
-  const sports=d.sportList.slice(0,8);
+  // sportFilter narrows to a single sport — draw just that one row instead
+  // of all 6, matching the HTML preview's filtered behavior.
+  const sports=(d.sportFilter?d.sportList:d.sportList).slice(0,8);
   const rowH=Math.min(120,(H-380)/Math.max(sports.length+1,1));
   const startY=hdrY+26;
   const SPORT_LEAGUES={BASEBALL:'MLB',BASKETBALL:'NBA, WNBA, CBB',FOOTBALL:'NFL, CFB',
@@ -18489,43 +18549,50 @@ async function _genSportPerfGraphic(){
     const mid=Math.ceil(parts.length/2);
     return[parts.slice(0,mid).join(', '),parts.slice(mid).join(', ')];
   };
+  const strkCol=st=>st?(st.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.3)';
 
-  sports.forEach((s,i)=>{
-    const p=cP(d.bySport[s]);
-    const y=startY+i*rowH+rowH/2;
-    _glowText(ctx,s,cX.sport,y-13,'700 21px "Orbitron"','#f000ff',14,'left');
-    if(SPORT_LEAGUES[s]){
-      const[ln1,ln2]=_splitLeagues(SPORT_LEAGUES[s]);
-      _glowText(ctx,ln1,cX.sport,y+9,'400 11px "Orbitron"','#00f0ff',2,'left');
-      if(ln2)_glowText(ctx,ln2,cX.sport,y+20,'400 11px "Orbitron"','#00f0ff',2,'left');
-    }
-    if(p.n>0){
-      _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 19px "Orbitron"','#e6eaff',6,'center');
-      const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
-      _glowText(ctx,pctStr,cX.pct,y,'700 19px "Orbitron"',rC(p.pct),10,'center');
-      const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
-      _glowText(ctx,unitStr,cX.units,y,'700 21px "Orbitron"',uC(p.units),12,'right');
-    } else {
-      _glowText(ctx,'NO DATA',cX.record,y,'400 14px "Orbitron"','rgba(220,190,255,.3)',3,'center');
-    }
-    ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();
-  });
+  if(!d.sportFilter){
+    sports.forEach((s,i)=>{
+      const p=cP(d.bySport[s]);
+      const streak=_calcStreak(d.bySport[s]);
+      const y=startY+i*rowH+rowH/2;
+      _glowText(ctx,s,cX.sport,y-13,'700 21px "Orbitron"','#f000ff',14,'left');
+      if(SPORT_LEAGUES[s]){
+        const[ln1,ln2]=_splitLeagues(SPORT_LEAGUES[s]);
+        _glowText(ctx,ln1,cX.sport,y+9,'400 11px "Orbitron"','#00f0ff',2,'left');
+        if(ln2)_glowText(ctx,ln2,cX.sport,y+20,'400 11px "Orbitron"','#00f0ff',2,'left');
+      }
+      if(p.n>0){
+        _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 18px "Orbitron"','#e6eaff',6,'center');
+        const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
+        _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.pct),10,'center');
+        const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
+        _glowText(ctx,unitStr,cX.units,y,'700 18px "Orbitron"',uC(p.units),12,'center');
+        _glowText(ctx,streak?streak.str:'—',cX.streak,y,'700 18px "Orbitron"',strkCol(streak),10,'right');
+      } else {
+        _glowText(ctx,'NO DATA',cX.record,y,'400 14px "Orbitron"','rgba(220,190,255,.3)',3,'center');
+      }
+      ctx.save();ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,startY+(i+1)*rowH);ctx.lineTo(W-80,startY+(i+1)*rowH);ctx.stroke();ctx.restore();
+    });
+  }
 
-  // TOTAL row
-  const totalY=startY+sports.length*rowH+rowH/2;
-  ctx.save();ctx.strokeStyle='rgba(240,0,255,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,startY+sports.length*rowH);ctx.lineTo(W-80,startY+sports.length*rowH);ctx.stroke();ctx.restore();
-  _glowText(ctx,'TOTAL',cX.sport,totalY,'900 21px "Orbitron"','#00f0ff',14,'left');
+  // TOTAL row (or the single filtered sport's totals when sportFilter is set)
+  const totalRowIdx=d.sportFilter?0:sports.length;
+  const totalY=startY+totalRowIdx*rowH+rowH/2;
+  ctx.save();ctx.strokeStyle='rgba(240,0,255,.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,startY+totalRowIdx*rowH);ctx.lineTo(W-80,startY+totalRowIdx*rowH);ctx.stroke();ctx.restore();
+  _glowText(ctx,d.sportFilter?d.sportFilter:'TOTAL',cX.sport,totalY,'900 21px "Orbitron"','#00f0ff',14,'left');
   _glowText(ctx,d.frameLabel,cX.sport,totalY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',2,'left');
   if(d.totalP&&d.totalP.n>0){
-    _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 21px "Orbitron"','#e6eaff',10,'center');
+    _glowText(ctx,d.totalP.w+'W-'+d.totalP.l+'L',cX.record,totalY,'700 20px "Orbitron"','#e6eaff',10,'center');
     const tPct=d.totalP.pct!==null?(d.totalP.pct*100).toFixed(1)+'%':'—';
-    _glowText(ctx,tPct,cX.pct,totalY,'700 21px "Orbitron"',rC(d.totalP.pct),12,'center');
+    _glowText(ctx,tPct,cX.pct,totalY,'700 20px "Orbitron"',rC(d.totalP.pct),12,'center');
     const tUnit=(d.totalP.units>=0?'+':'')+d.totalP.units.toFixed(1)+'u';
-    _glowText(ctx,tUnit,cX.units,totalY,'700 23px "Orbitron"',uC(d.totalP.units),14,'right');
+    _glowText(ctx,tUnit,cX.units,totalY,'700 20px "Orbitron"',uC(d.totalP.units),14,'center');
+    _glowText(ctx,d.totalStreak?d.totalStreak.str:'—',cX.streak,totalY,'700 20px "Orbitron"',strkCol(d.totalStreak),12,'right');
   }
 
   // Footer
-  const footY=startY+(sports.length+1)*rowH+20;
+  const footY=startY+((d.sportFilter?1:sports.length+1))*rowH+20;
   ctx.save();const fd=ctx.createLinearGradient(80,footY,W-80,footY);
   fd.addColorStop(0,'transparent');fd.addColorStop(.5,'rgba(240,0,255,.4)');fd.addColorStop(1,'transparent');
   ctx.strokeStyle=fd;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,footY);ctx.lineTo(W-80,footY);ctx.stroke();ctx.restore();
@@ -18542,7 +18609,7 @@ async function _genLeaguePerfGraphic(){
   try{renderTrackRecord();}catch(e){} // refresh dynamic dates/data at save time
   const d=window._cvLeaguePeriodData;
   if(!d){toast('// SWITCH TO TRACK RECORD TAB FIRST');return;}
-  const{LDEFS,periodBets,activePeriod,frameLabel,totalP}=d;
+  const{LDEFS,periodBets,activePeriod,frameLabel,totalP,totalStreak,leagueFilter}=d;
 
   // 1080×1350 (4:5) — the max Instagram-feed portrait ratio, also clean on X.
   // 19 league rows fit at ~47px each. Kept uniform with the other social cards.
@@ -18573,22 +18640,27 @@ async function _genLeaguePerfGraphic(){
   _glowText(ctx,'// LEAGUE PERFORMANCE',80,164,'700 14px "Orbitron"','#f000ff',8,'left');
 
   // Column headers
-  const cX={league:80,record:430,pct:660,units:W-60};
+  const cX={league:80,record:400,pct:590,units:770,streak:W-60};
   const hdrY=190;
   ctx.globalAlpha=.45;
   _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'left');
   _glowText(ctx,'RECORD',cX.record,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
   _glowText(ctx,'WIN%',cX.pct,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
-  _glowText(ctx,'UNITS',cX.units,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'right');
+  _glowText(ctx,'UNITS',cX.units,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'center');
+  _glowText(ctx,'STRK',cX.streak,hdrY,'500 14px "Orbitron"','rgba(220,190,255,.8)',3,'right');
   ctx.globalAlpha=1;
 
-  // League rows
+  const strkCol=st=>st?(st.type==='win'?'#00f0ff':'#ff2090'):'rgba(220,190,255,.25)';
+
+  // League rows — LDEFS is already narrowed to the single filtered league
+  // when leagueFilter is set, same list the HTML preview computed.
   const startY=214;
-  const rowH=Math.min(80,(H-390)/LDEFS.length);
+  const rowH=Math.min(80,(H-390)/Math.max(LDEFS.length,1));
 
   LDEFS.forEach((lm,i)=>{
     const lb=periodBets.filter(b=>lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase()));
     const p=cP(lb);
+    const streak=_calcStreak(lb);
     const y=startY+i*rowH+rowH/2;
 
     // Row divider
@@ -18600,15 +18672,18 @@ async function _genLeaguePerfGraphic(){
 
     // Record
     const recStr=p.n>0?p.w+'W-'+p.l+'L':'0W-0L';
-    _glowText(ctx,recStr,cX.record,y,'700 18px "Orbitron"','rgba(230,235,255,.9)',6,'center');
+    _glowText(ctx,recStr,cX.record,y,'700 17px "Orbitron"','rgba(230,235,255,.9)',6,'center');
 
     // Win%
     const pctStr=p.n>0&&p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
-    _glowText(ctx,pctStr,cX.pct,y,'700 18px "Orbitron"',rC(p.n>0?p.pct:null),10,'center');
+    _glowText(ctx,pctStr,cX.pct,y,'700 17px "Orbitron"',rC(p.n>0?p.pct:null),10,'center');
 
     // Units
     const unitStr=p.n>0?(p.units>=0?'+':'')+p.units.toFixed(1)+'u':'—';
-    _glowText(ctx,unitStr,cX.units,y,'700 19px "Orbitron"',p.n>0?uC(p.units):'rgba(220,190,255,.25)',12,'right');
+    _glowText(ctx,unitStr,cX.units,y,'700 17px "Orbitron"',p.n>0?uC(p.units):'rgba(220,190,255,.25)',12,'center');
+
+    // Streak
+    _glowText(ctx,streak?streak.str:'—',cX.streak,y,'700 17px "Orbitron"',strkCol(streak),10,'right');
   });
 
   // Total row separator
@@ -18617,16 +18692,17 @@ async function _genLeaguePerfGraphic(){
   td.addColorStop(0,'transparent');td.addColorStop(.5,'rgba(240,0,255,.35)');td.addColorStop(1,'transparent');
   ctx.strokeStyle=td;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(80,totalY);ctx.lineTo(W-80,totalY);ctx.stroke();ctx.restore();
 
-  // Total row
+  // Total row (label becomes the filtered league's name when narrowed)
   const tY=totalY+rowH/2;
-  _glowText(ctx,'TOTAL',cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
+  _glowText(ctx,leagueFilter?leagueFilter.toUpperCase():'TOTAL',cX.league,tY,'900 21px "Orbitron"','#00f0ff',14,'left');
   _glowText(ctx,frameLabel,cX.league,tY+18,'400 12px "Orbitron"','rgba(220,190,255,.35)',3,'left');
   const tRec=totalP.n>0?totalP.w+'W-'+totalP.l+'L':'0W-0L';
   const tPct=totalP.n>0&&totalP.pct!==null?(totalP.pct*100).toFixed(1)+'%':'—';
   const tUnit=totalP.n>0?(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u':'—';
-  _glowText(ctx,tRec,cX.record,tY,'700 21px "Orbitron"','#00f0ff',10,'center');
-  _glowText(ctx,tPct,cX.pct,tY,'700 21px "Orbitron"','#00f0ff',12,'center');
-  _glowText(ctx,tUnit,cX.units,tY,'700 23px "Orbitron"','#00f0ff',14,'right');
+  _glowText(ctx,tRec,cX.record,tY,'700 20px "Orbitron"','#00f0ff',10,'center');
+  _glowText(ctx,tPct,cX.pct,tY,'700 20px "Orbitron"','#00f0ff',12,'center');
+  _glowText(ctx,tUnit,cX.units,tY,'700 20px "Orbitron"','#00f0ff',14,'center');
+  _glowText(ctx,totalStreak?totalStreak.str:'—',cX.streak,tY,'700 20px "Orbitron"',strkCol(totalStreak),12,'right');
 
   // Footer
   const footY=totalY+rowH+28;
