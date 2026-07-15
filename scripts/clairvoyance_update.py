@@ -4512,10 +4512,12 @@ def verify_deployment(retries: int = 3, delay_sec: int = 20) -> bool:
             d = r.json()
             games_total = (len(d.get("mlb", {}).get("today", [])) + len(d.get("nba", {}).get("today", []))
                            + len(d.get("nhl", {}).get("today", [])) + len(d.get("wnba", {}).get("today", []))
-                           + len(d.get("tennis", {}).get("schedule", [])))
-            has_content = bool(d.get("generated")) and (games_total > 0 or len(d.get("bestBets", [])) > 0)
+                           + len(d.get("ncaaBaseball", {}).get("today", [])) + len(d.get("pwhl", {}).get("today", []))
+                           + len(d.get("tennis", {}).get("schedule", [])) + len(d.get("f1", {}).get("schedule", [])))
+            bets_total = len(d.get("bestBets", [])) + len(d.get("heroPicksForDay", []))
+            has_content = bool(d.get("generated")) and (games_total > 0 or bets_total > 0)
             if has_content:
-                note(f"deployment verified ✓ ({games_total} games today, {len(d.get('bestBets', []))} best bets)")
+                note(f"deployment verified ✓ ({games_total} games/matches today, {bets_total} best bets)")
                 return True
             log(f"verify_deployment: live data.json parses but looks empty (attempt {attempt+1}/{retries})", "WARN")
         except Exception as exc:
