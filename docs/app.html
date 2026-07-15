@@ -4050,7 +4050,7 @@ function _ouAdj(hA,awA,date,baseOverP,ouL,delta){
 // Shared by _adjV and a new oninput handler on the input itself so both
 // paths (step buttons AND direct typing) always keep the sign current.
 function _syncSprdLabels(id){var el=document.getElementById(id);if(!el)return;var nv=Math.round((parseFloat(el.value)||0)*2)/2;var fl=document.getElementById('fav_'+id);var dl=document.getElementById('dog_'+id);if(fl)fl.textContent=(nv<0?'':'+')+(nv).toFixed(1);if(dl){var dv=-nv;dl.textContent=(dv<0?'':'+')+(dv).toFixed(1);}}
-function _adjV(id,d){var el=document.getElementById(id);if(!el)return;var v=parseFloat(el.value)||0;var nv=Math.round((v+d)*2)/2;el.value=nv.toFixed(1);_syncSprdLabels(id);}
+function _adjV(id,d){var el=document.getElementById(id);if(!el)return;var v=parseFloat(el.value)||0;var nv=Math.round((v+d)*2)/2;el.value=nv.toFixed(1);if(id.indexOf('ah_wc_')===0)_syncAHLabels(id);else _syncSprdLabels(id);}
 function _ouLockDir(hA,awA,date,baseOverP,baseL,inputId,dir,sport){
   var inp=document.getElementById(inputId);
   var nl=inp?parseFloat(inp.value):parseFloat(baseL);
@@ -4092,6 +4092,16 @@ function _spreadLockDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir){
   var label=dir==='FAV'?favN+' -'+(Math.abs(ns)).toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
   lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
 }
+function _ahLockDir(hc,ac,date,favN,dogN,baseFavP,baseAH,inputId,dir){
+  var inp=document.getElementById(inputId);
+  var ns=inp?parseFloat(inp.value):parseFloat(baseAH);
+  if(isNaN(ns))ns=parseFloat(baseAH);
+  var delta=Math.abs(ns)-Math.abs(parseFloat(baseAH));
+  var p=dir==='FAV'?Math.max(.15,Math.min(.85,baseFavP-delta*0.045)):Math.max(.15,Math.min(.85,(1-baseFavP)+delta*0.045));
+  var label=dir==='FAV'?favN+' '+ns.toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
+  lockPick(hc,ac,'SOC','AH '+label,p,'-110',1.909,date||today());
+}
+function _syncAHLabels(id){var el=document.getElementById(id);if(!el)return;var nv=Math.round((parseFloat(el.value)||0)*2)/2;var fl=document.getElementById('fav_'+id);var dl=document.getElementById('dog_'+id);if(fl)fl.textContent=nv.toFixed(1);if(dl)dl.textContent='+'+Math.abs(nv).toFixed(1);}
 function _spreadParlayDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport){
   var inp=document.getElementById(inputId);
   var ns=inp?parseFloat(inp.value):parseFloat(baseSprd);
@@ -22860,10 +22870,10 @@ function _renderWCMatchCard(m,liveScore){
     +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
     +(ah!==0?'<div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px">'
     +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">ASIAN HCP</div>'
-    +'<div style="font-family:var(--mono);font-size:14px;color:var(--gc)">'+ahFavTeam+' '+ah+'</div>'
+    +'<div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV(\'ah_wc_'+m.hc+'_'+m.ac+'\',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>'+'<input type="number" step="0.5" value="'+ah+'" id="ah_wc_'+m.hc+'_'+m.ac+'" style="width:50px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncAHLabels(this.id)">'+'<button onclick="event.stopPropagation();_adjV(\'ah_wc_'+m.hc+'_'+m.ac+'\',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div>'
     +'<div style="display:flex;gap:2px">'
-    +'<button onclick="event.stopPropagation();lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+ahFavTeam+' '+ah+'\','+ahFavP.toFixed(3)+',\'-110\',1.909,\''+m.date+'\')" style="font-size:13px;padding:2px 4px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">'+ahFavTeam+' ▼</button>'
-    +'<button onclick="event.stopPropagation();lockPick(\''+m.hc+'\',\''+m.ac+'\',\'SOC\',\'AH '+ahDogTeam+' +'+(Math.abs(ah))+'\','+ahDogP.toFixed(3)+',\'-110\',1.909,\''+m.date+'\')" style="font-size:13px;padding:2px 4px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">+'+ahDogTeam+'</button>'
+    +'<button onclick="event.stopPropagation();_ahLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',\''+ahFavTeam+'\',\''+ahDogTeam+'\','+ahFavP.toFixed(4)+',\''+ah+'\',\'ah_wc_'+m.hc+'_'+m.ac+'\',\'FAV\')" style="font-size:13px;padding:2px 4px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer">'+ahFavTeam+' <span id="fav_ah_wc_'+m.hc+'_'+m.ac+'">'+ah+'</span></button>'
+    +'<button onclick="event.stopPropagation();_ahLockDir(\''+m.hc+'\',\''+m.ac+'\',\''+m.date+'\',\''+ahFavTeam+'\',\''+ahDogTeam+'\','+ahFavP.toFixed(4)+',\''+ah+'\',\'ah_wc_'+m.hc+'_'+m.ac+'\',\'DOG\')" style="font-size:13px;padding:2px 4px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer">'+ahDogTeam+' <span id="dog_ah_wc_'+m.hc+'_'+m.ac+'">+'+Math.abs(ah)+'</span></button>'
     +'</div></div>':'')
     +'<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
     +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
