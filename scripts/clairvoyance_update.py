@@ -4510,7 +4510,9 @@ def verify_deployment(retries: int = 3, delay_sec: int = 20) -> bool:
             r = requests.get(f"{url}?_v={int(time.time())}", timeout=15)
             r.raise_for_status()
             d = r.json()
-            games_total = len(d.get("mlb", {}).get("today", [])) + len(d.get("nba", {}).get("today", [])) + len(d.get("nhl", {}).get("today", []))
+            games_total = (len(d.get("mlb", {}).get("today", [])) + len(d.get("nba", {}).get("today", []))
+                           + len(d.get("nhl", {}).get("today", [])) + len(d.get("wnba", {}).get("today", []))
+                           + len(d.get("tennis", {}).get("schedule", [])))
             has_content = bool(d.get("generated")) and (games_total > 0 or len(d.get("bestBets", [])) > 0)
             if has_content:
                 note(f"deployment verified ✓ ({games_total} games today, {len(d.get('bestBets', []))} best bets)")
