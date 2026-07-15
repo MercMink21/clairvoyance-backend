@@ -4512,8 +4512,8 @@ def verify_deployment(retries: int = 3, delay_sec: int = 20) -> bool:
             d = r.json()
             games_total = (len(d.get("mlb", {}).get("today", [])) + len(d.get("nba", {}).get("today", []))
                            + len(d.get("nhl", {}).get("today", [])) + len(d.get("wnba", {}).get("today", []))
-                           + len(d.get("ncaaBaseball", {}).get("today", [])) + len(d.get("pwhl", {}).get("today", []))
-                           + len(d.get("tennis", {}).get("schedule", [])) + len(d.get("f1", {}).get("schedule", [])))
+                           + len(d.get("pwhl", {}).get("today", []))
+                           + len(d.get("tennis", {}).get("schedule", [])))
             bets_total = len(d.get("bestBets", [])) + len(d.get("heroPicksForDay", []))
             has_content = bool(d.get("generated")) and (games_total > 0 or bets_total > 0)
             if has_content:
@@ -4597,7 +4597,7 @@ def main() -> None:
     parser.add_argument("--no-linemate",   action="store_true", help="Skip Playwright/Linemate")
     parser.add_argument("--no-reference",  action="store_true", help="Skip Baseball/Basketball/Hockey Reference")
     parser.add_argument("--mode",          choices=["full","live","props"], default="full")
-    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","f1","soccer","all"], default="all")
+    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","soccer","all"], default="all")
     parser.add_argument("--verbose","-v",  action="store_true")
     args    = parser.parse_args()
     _verbose = args.verbose
@@ -4674,12 +4674,15 @@ def main() -> None:
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
     tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
 
-    f1_data          = fetch_f1()               if S in ("f1","all") else {}
-    f1_analytics     = fetch_f1_analytics()     if S in ("f1","all") else {}
-    f1_tracing       = fetch_f1_tracing_insights() if S in ("f1","all") else {}
-    f1_calendar      = fetch_f1_calendar_datastop() if S in ("f1","all") else []
-    f1_comprehensive = fetch_f1_data()          if S in ("f1","all") else {}
-    f1_unchained     = fetch_f1_unchained()     if S in ("f1","all") else {}
+    # F1 is no longer tracked in the engine — purged from the daily fetch.
+    # Bundle keys are kept (empty) below so the frontend's d.get('f1',...)
+    # reads don't need matching changes.
+    f1_data: dict          = {}
+    f1_analytics: dict     = {}
+    f1_tracing: dict       = {}
+    f1_calendar: list      = []
+    f1_comprehensive: dict = {}
+    f1_unchained: dict     = {}
 
     roland_garros    = fetch_roland_garros()    if S in ("tennis","all") else {}
     tennis_odds      = fetch_tennis_odds()      if S in ("tennis","all") else {}
@@ -4711,7 +4714,9 @@ def main() -> None:
                     lm_props[sport] = validate_props_against_schedule(lm_props[sport], _lm_schedule[sport])
 
     # NCAA Baseball + WNBA + PWHL
-    ncaa_baseball = fetch_ncaa_baseball() if S in ("mlb","all") else {}
+    # NCAA baseball is no longer tracked in the engine — purged from the
+    # daily fetch. Bundle key kept (empty) below for the same reason as F1.
+    ncaa_baseball: dict = {}
     wnba          = fetch_wnba()          if S in ("nba","all") else {}
     if lm_props.get("wnba"):
         lm_props["wnba"] = validate_props_against_schedule(lm_props["wnba"], wnba.get("today", []))
