@@ -848,12 +848,20 @@ def _name_to_abbr(name: str) -> str:
     """Convert Odds API team name → ESPN abbreviation. Falls back to first 3 chars."""
     return _TEAM_NAME_TO_ABBR.get(name, name[:3].upper())
 
-def fetch_best_odds(sport: str, game_list: list) -> dict:
+def fetch_best_odds(sport: str, game_list: list, name_resolver=None) -> dict:
     """
     Fetch best available moneyline + O/U odds from The Odds API (free tier).
     Falls back to ESPN odds already in game_list if no API key.
-    Returns dict keyed by 'home_abbr:away_abbr' → {homeML, awayML, ou, book}.
+    Returns dict keyed by 'home_key:away_key' → {homeML, awayML, ou, book}.
+
+    name_resolver: full team/country name -> the key this sport actually
+    identifies teams by elsewhere in the engine. Defaults to _name_to_abbr
+    (ESPN 3-letter abbreviations, used by mlb/nba/nhl/wnba/nfl/cfb). Soccer
+    callers pass _wc_name_to_abbr (World Cup 3-letter country codes) or
+    _soccer_club_key (club leagues, which key by normalized full name, not
+    an abbreviation — see _soccer_club_key's docstring for why).
     """
+    resolver = name_resolver or _name_to_abbr
     api_key = os.environ.get("ODDS_API_KEY", "")
     best: dict = {}
     if not api_key:
@@ -865,17 +873,24 @@ def fetch_best_odds(sport: str, game_list: list) -> dict:
 
     sport_key = {"mlb": "baseball_mlb", "nba": "basketball_nba",
                  "nhl": "icehockey_nhl", "wnba": "basketball_wnba",
-                 "nfl": "americanfootball_nfl", "cfb": "americanfootball_ncaaf"}.get(sport, "")
+                 "nfl": "americanfootball_nfl", "cfb": "americanfootball_ncaaf",
+                 "pl": "soccer_epl", "liga": "soccer_spain_la_liga",
+                 "bl": "soccer_germany_bundesliga", "mls": "soccer_usa_mls",
+                 "wc": "soccer_fifa_world_cup_2026"}.get(sport, "")
     if not sport_key:
         return best
 
     try:
         url  = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
-        data = fetch_json(url, params={
+        params = {
             "apiKey": api_key, "regions": "us",
             "markets": "h2h,totals",       # moneyline + over/under
             "oddsFormat": "american", "dateFormat": "iso",
-        }) or []
+        }
+        # Soccer markets settle draws too — h2h alone still returns 3-way
+        # (home/draw/away) prices from The Odds API for these sport keys,
+        # no separate market needed.
+        data = fetch_json(url, params=params) or []
 
         remaining = None
         log(f"Odds API {sport}: {len(data)} events")
@@ -883,12 +898,13 @@ def fetch_best_odds(sport: str, game_list: list) -> dict:
         for event in data:
             home_name = event.get("home_team", "")
             away_name = event.get("away_team", "")
-            home_abbr = _name_to_abbr(home_name)
-            away_abbr = _name_to_abbr(away_name)
+            home_abbr = resolver(home_name)
+            away_abbr = resolver(away_name)
             key = f"{home_abbr}:{away_abbr}"
 
             best_home_ml: int | None = None
             best_away_ml: int | None = None
+            best_draw_ml: int | None = None
             best_home_book = ""
             best_away_book = ""
             best_ou: float | None  = None
@@ -912,6 +928,9 @@ def fetch_best_odds(sport: str, game_list: list) -> dict:
                                 if best_away_ml is None or int(p) > best_away_ml:
                                     best_away_ml   = int(p)
                                     best_away_book = bk_title
+                            elif nm == "Draw":
+                                if best_draw_ml is None or int(p) > best_draw_ml:
+                                    best_draw_ml = int(p)
                         elif mkey == "totals" and nm == "Over" and pt is not None:
                             # Take the highest (most favorable) total line
                             if best_ou is None or float(pt) > best_ou:
@@ -922,13 +941,14 @@ def fetch_best_odds(sport: str, game_list: list) -> dict:
                 best[key] = {
                     "homeML":   best_home_ml,
                     "awayML":   best_away_ml,
+                    "drawML":   best_draw_ml,
                     "ou":       best_ou,
                     "book":     book_str,
                     "homeBook": best_home_book,
                     "awayBook": best_away_book,
                 }
                 vlog(f"  {key}: home {best_home_ml} ({best_home_book}) / "
-                     f"away {best_away_ml} ({best_away_book}) O/U {best_ou}")
+                     f"away {best_away_ml} ({best_away_book}) draw {best_draw_ml} O/U {best_ou}")
 
     except Exception as exc:
         log(f"Odds API fetch ({sport}): {exc}", "WARN")
@@ -2717,6 +2737,47 @@ def fetch_fbref_league(key: str) -> dict:
         log(f"FBref {cfg['name']}: {exc}", "WARN")
     return out
 
+# World Cup country name -> 3-letter code, ported directly from the frontend's
+# WC26_GROUPS (docs/app.html) so it stays a single source of truth for the
+# codes the engine already uses everywhere else (WC26_SCHEDULE's hc/ac
+# fields, lockPick calls, etc). The Odds API returns full country names for
+# its World Cup market, so this is what actually resolves them to something
+# the rest of the engine can match against.
+_WC26_COUNTRY_TO_CODE: dict[str, str] = {
+    "Mexico": "MEX", "South Africa": "RSA", "South Korea": "KOR", "Czechia": "CZE",
+    "Canada": "CAN", "Bosnia-Herzegovina": "BIH", "Qatar": "QAT", "Switzerland": "SUI",
+    "Brazil": "BRA", "Morocco": "MAR", "Haiti": "HAI", "Scotland": "SCO",
+    "United States": "USA", "Paraguay": "PAR", "Australia": "AUS", "Türkiye": "TUR",
+    "Turkey": "TUR", "Germany": "GER", "Curaçao": "CUW", "Ivory Coast": "CIV",
+    "Côte d'Ivoire": "CIV", "Ecuador": "ECU", "Netherlands": "NED", "Japan": "JPN",
+    "Sweden": "SWE", "Tunisia": "TUN", "Belgium": "BEL", "Egypt": "EGY", "Iran": "IRN",
+    "New Zealand": "NZL", "Spain": "ESP", "Cape Verde": "CPV", "Saudi Arabia": "KSA",
+    "Uruguay": "URU", "France": "FRA", "Senegal": "SEN", "Iraq": "IRQ", "Norway": "NOR",
+    "Argentina": "ARG", "Algeria": "ALG", "Austria": "AUT", "Jordan": "JOR",
+    "Portugal": "POR", "Congo DR": "COD", "DR Congo": "COD", "Uzbekistan": "UZB",
+    "Colombia": "COL", "England": "ENG", "Croatia": "CRO", "Ghana": "GHA", "Panama": "PAN",
+}
+
+def _wc_name_to_abbr(name: str) -> str:
+    return _WC26_COUNTRY_TO_CODE.get(name, name[:3].upper())
+
+# Club leagues (PL/La Liga/Bundesliga/MLS) key their FBref-sourced team data
+# (docs/soccer_fbref.json) by lowercased full club name, not a 3-letter
+# code — see fetch_fbref_league()'s `out["teams"][team]` — so odds
+# resolution for these just needs to normalize both sides the same way
+# rather than needing a hand-built abbreviation table like the other
+# sports. Strips the generic corporate-entity suffixes ("FC", "CF", "AFC",
+# "SC") that FBref/Odds API disagree on including, so "Inter Miami CF"
+# and "Inter Miami" normalize to the same key.
+_SOCCER_CLUB_SUFFIXES = (" fc", " cf", " afc", " sc", " cd", " ud")
+
+def _soccer_club_key(name: str) -> str:
+    n = (name or "").strip().lower()
+    for suf in _SOCCER_CLUB_SUFFIXES:
+        if n.endswith(suf):
+            n = n[: -len(suf)]
+    return n.strip()
+
 ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "cl":   {"name": "Champions League", "espn": "UEFA.champions"},
     "pl":   {"name": "Premier League",   "espn": "eng.1"},
@@ -3627,7 +3688,39 @@ def run_supabase_automation(nba_final: list, mlb_final: list, nhl_final: list) -
     if stale:
         log(f"Supabase: {len(stale)} bets pending >24h past their date and unmatched to a final score", "WARN")
     log(f"Supabase automation: settled {settled_count}, {len(stale)} still stale")
-    return {"settled": settled_count, "stale": len(stale)}
+    return {"settled": settled_count, "stale": len(stale), "bets": bets}
+
+def supabase_bets_to_history(bets: list[dict]) -> list[dict]:
+    """
+    Normalize Supabase's row schema (snake_case, PostgREST column names)
+    into the same shape build_overall_stats()/compute_calibration_metrics()
+    already expect from the local bet_history.json path (camelCase,
+    matching what the frontend's lockPick() writes). This is what actually
+    connects overallStats/calibration to the REAL 346-bet ledger — before
+    this, both were computed from local bet_history.json, which stays
+    empty now that the real ledger lives in Supabase (mirrored from the
+    browser), so every settled-bet-derived stat in the scheduled bundle
+    was silently running against zero real bets.
+    """
+    out = []
+    for row in bets:
+        if row.get("outcome") not in ("win", "loss", "push"):
+            continue
+        raw = row.get("raw") or {}
+        out.append({
+            "id":        row.get("id"),
+            "sport":     row.get("sport") or raw.get("sport"),
+            "betType":   raw.get("betType") or row.get("bet_type"),
+            "betOn":     raw.get("betOn") or row.get("bet_on"),
+            "winProb":   row.get("win_prob") if row.get("win_prob") is not None else raw.get("winProb"),
+            "ml":        row.get("ml") or raw.get("ml"),
+            "outcome":   row.get("outcome"),
+            "date":      row.get("date") or raw.get("date"),
+            "settledAt": row.get("settled_at") or raw.get("settledAt"),
+            "wager":     row.get("wager", 100),
+            "pnl":       raw.get("pnl"),
+        })
+    return out
 
 def fetch_injuries_all() -> dict:
     """
@@ -4319,6 +4412,7 @@ def build_overall_stats(history: list[dict]) -> dict:
         "fetchedAt": TODAY_ISO,
         "roi":       compute_roi(history),
         "streak":    compute_streak(history),
+        "calibration": compute_calibration_metrics(history),
     }
 
 def compute_roi(history: list[dict]) -> dict:
@@ -4366,6 +4460,84 @@ def compute_streak(history: list[dict]) -> dict:
         if d == "W": lw = max(lw, run)
         else: ll = max(ll, run)
     return {"current": cur, "direction": cur_dir, "longestW": lw, "longestL": ll}
+
+def compute_calibration_metrics(history: list[dict]) -> dict:
+    """
+    Brier score and log-loss — the actual quantitative "is this model any
+    good" answer, computed from settled bets against the model's own
+    winProb at lock time. Existing calibration UI in the frontend buckets
+    predicted-vs-actual into bands (CALIBRATED/SLIGHT DRIFT/etc) but never
+    surfaced a real proper-scoring-rule number; this fills that gap.
+
+    Brier score = mean((predicted_prob - actual_outcome)^2). 0 = perfect,
+    0.25 = a coin flip guessed at 50%, 1.0 = maximally wrong. Lower is
+    better, and unlike raw win%, it punishes overconfidence directly (a
+    bet locked at 90% that loses costs 0.81; the same loss at 55% only
+    costs 0.30).
+
+    Log-loss = mean(-log(p_actual_outcome)), clipped away from 0/1 to
+    avoid -inf. Also lower-is-better; punishes confident wrong calls even
+    more sharply than Brier (a 95% "sure thing" that loses costs ~3.0,
+    versus Brier's 0.9).
+
+    Also returns a 10-bucket reliability-diagram table (predicted prob
+    decile -> actual win rate in that decile) — the same shape as the
+    frontend's existing bucket UI, but computed server-side from the full
+    settled history so it isn't limited to whatever's in this browser's
+    localStorage.
+    """
+    import math
+    settled = [
+        b for b in history
+        if b.get("outcome") in ("win", "loss")
+        and b.get("winProb") is not None
+    ]
+    if not settled:
+        return {"n": 0, "brier": None, "logLoss": None, "bySport": {}, "reliability": []}
+
+    def _score(bets: list[dict]) -> dict:
+        n = len(bets)
+        if not n:
+            return {"n": 0, "brier": None, "logLoss": None}
+        brier_sum = 0.0
+        ll_sum = 0.0
+        eps = 1e-9
+        for b in bets:
+            p = max(0.0, min(1.0, float(b["winProb"])))
+            y = 1.0 if b["outcome"] == "win" else 0.0
+            brier_sum += (p - y) ** 2
+            p_actual = p if y == 1.0 else (1.0 - p)
+            ll_sum += -math.log(max(eps, min(1 - eps, p_actual)))
+        return {"n": n, "brier": round(brier_sum / n, 4), "logLoss": round(ll_sum / n, 4)}
+
+    from collections import defaultdict
+    by_sport: dict = defaultdict(list)
+    for b in settled:
+        by_sport[b.get("sport", "?")].append(b)
+
+    # 10-bucket reliability diagram: predicted-prob decile -> actual win rate
+    buckets = [[] for _ in range(10)]
+    for b in settled:
+        p = max(0.0, min(0.999, float(b["winProb"])))
+        buckets[int(p * 10)].append(b)
+    reliability = []
+    for i, bucket in enumerate(buckets):
+        if not bucket:
+            continue
+        wins = sum(1 for b in bucket if b["outcome"] == "win")
+        reliability.append({
+            "predictedLow": i / 10, "predictedHigh": (i + 1) / 10,
+            "predictedMid": round((i + 0.5) / 10, 2),
+            "actualWinRate": round(wins / len(bucket), 4),
+            "n": len(bucket),
+        })
+
+    return {
+        **_score(settled),
+        "bySport": {k: _score(v) for k, v in by_sport.items()},
+        "reliability": reliability,
+        "fetchedAt": TODAY_ISO,
+    }
 
 def surface_best_bets_for_day(best_bets: list[dict], n: int = 6) -> list[dict]:
     """Top N deduped picks by composite EV+confidence score for the home tab hero section.
@@ -4853,6 +5025,16 @@ def main() -> None:
     wnba_best_odds = fetch_best_odds("wnba", wnba.get("today", [])) if S in ("nba","all") else {}
     nfl_best_odds  = fetch_best_odds("nfl", []) if S in ("all",) else {}
     cfb_best_odds  = fetch_best_odds("cfb", []) if S in ("all",) else {}
+    # Soccer leagues — the piece explicitly deferred in the last odds pass.
+    # Club leagues (PL/La Liga/Bundesliga/MLS) key by normalized full club
+    # name (_soccer_club_key) to match how soccer_fbref.json already keys
+    # its FBref-sourced team data; World Cup keys by the same 3-letter
+    # country codes WC26_SCHEDULE already uses (_wc_name_to_abbr).
+    pl_best_odds   = fetch_best_odds("pl",   [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
+    liga_best_odds = fetch_best_odds("liga", [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
+    bl_best_odds   = fetch_best_odds("bl",   [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
+    mls_best_odds = fetch_best_odds("mls", [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
+    wc_best_odds   = fetch_best_odds("wc",   [], name_resolver=_wc_name_to_abbr) if S in ("soccer","all") else {}
 
     # Backfill real book odds into game objects so the app displays them
     def _backfill_odds(game_list: list, odds_map: dict) -> None:
@@ -4902,17 +5084,26 @@ def main() -> None:
     # Real bet ledger lives in Supabase now (mirrored from the browser) —
     # run the same settle/stale-audit logic against it so this actually
     # happens on schedule instead of only while a browser tab is open.
+    supabase_history: list[dict] = []
     try:
-        run_supabase_automation(
+        sb_result = run_supabase_automation(
             nba_today + nba_tom,
             mlb_today + mlb_tom,
             nhl_today + nhl_tom,
         )
+        supabase_history = supabase_bets_to_history(sb_result.get("bets", []))
     except Exception as exc:
         log(f"Supabase automation: {exc}", "WARN")
 
-    # Bet history
+    # Bet history — merges the local (legacy, effectively empty) path with
+    # the real Supabase-mirrored ledger, deduped by id, so overallStats and
+    # calibration reflect the actual 346-bet history rather than nothing.
     history = merge_settled_to_history(settled)
+    if supabase_history:
+        existing_ids = {b.get("id", "") for b in history}
+        new_from_supabase = [b for b in supabase_history if b.get("id") not in existing_ids]
+        history = history + new_from_supabase
+        log(f"History: +{len(new_from_supabase)} from Supabase ledger ({len(history)} total)")
     export_bet_history_csv(history)
     overall_stats = build_overall_stats(history)
 
@@ -5001,7 +5192,11 @@ def main() -> None:
         "bestBets":      best_bets,
         "heroPicksForDay": surface_best_bets_for_day(best_bets),
         "bestOdds":      {**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
-        "bestOddsExt":   {"wnba": wnba_best_odds, "nfl": nfl_best_odds, "cfb": cfb_best_odds},
+        "bestOddsExt":   {
+            "wnba": wnba_best_odds, "nfl": nfl_best_odds, "cfb": cfb_best_odds,
+            "pl": pl_best_odds, "liga": liga_best_odds, "bl": bl_best_odds,
+            "mls": mls_best_odds, "wc": wc_best_odds,
+        },
         "settled":       settled,
         "betHistory":    history[-200:],  # last 200 for frontend
         "overallStats":  overall_stats,

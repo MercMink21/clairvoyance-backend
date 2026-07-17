@@ -8893,6 +8893,28 @@ function renderOverall(){
     return{lbl:b.lbl,min:b.min,max:b.max,n:bp.length,act,exp,off,dir};
   }).filter(b=>b.n>0);
 
+  // Brier score / log-loss — the quantitative "is this model actually
+  // good" answer, distinct from the band-deviation view above. Band
+  // deviation tells you WHERE calibration drifts; these are single proper-
+  // scoring-rule numbers that punish overconfidence directly (a locked-at-
+  // 90% pick that loses costs far more than one locked at 55%), so they
+  // move even when raw win% looks fine. 0 = perfect, 0.25 Brier = a coin
+  // flip guessed at 50%, lower is always better for both.
+  const _scoredBets=settled.filter(p=>p.winProb!=null&&!isNaN(p.winProb));
+  let _brierScore=null,_logLossScore=null;
+  if(_scoredBets.length){
+    let bSum=0,lSum=0;const eps=1e-9;
+    _scoredBets.forEach(p=>{
+      const pr=Math.max(0,Math.min(1,p.winProb));
+      const y=p.outcome==='win'?1:0;
+      bSum+=(pr-y)**2;
+      const pActual=y===1?pr:(1-pr);
+      lSum+=-Math.log(Math.max(eps,Math.min(1-eps,pActual)));
+    });
+    _brierScore=bSum/_scoredBets.length;
+    _logLossScore=lSum/_scoredBets.length;
+  }
+
   // ── Compute & store per-band calibration adjustments ─────────────────────
   // Each qualifying band gets an adjustment: partial Bayesian update toward actual win rate.
   // Rate of update: 40% move toward actual when n≥10, 20% when n≥5, skip <5.
@@ -9315,6 +9337,18 @@ function renderOverall(){
         <button id="calib-btn" class="btn btn-p btn-sm" style="margin-top:8px" onclick="triggerInstantCalibration()">CALIBRATE NOW</button>
       </div>
     </div>
+    ${_brierScore!==null?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="background:rgba(0,0,0,.3);border:1px solid rgba(0,200,255,.15);border-radius:4px;padding:10px;text-align:center">
+        <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${_brierScore<0.15?'var(--nc)':_brierScore<0.22?'var(--vc)':'var(--hc)'}">${_brierScore.toFixed(4)}</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">BRIER SCORE (n=${_scoredBets.length})</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:2px">0=perfect · 0.25=coin flip · lower is better</div>
+      </div>
+      <div style="background:rgba(0,0,0,.3);border:1px solid rgba(0,200,255,.15);border-radius:4px;padding:10px;text-align:center">
+        <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:${_logLossScore<0.45?'var(--nc)':_logLossScore<0.65?'var(--vc)':'var(--hc)'}">${_logLossScore.toFixed(4)}</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">LOG-LOSS (n=${_scoredBets.length})</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t3);margin-top:2px">punishes confident misses hardest · lower is better</div>
+      </div>
+    </div>`:''}
     <div style="background:rgba(0,200,255,.04);border:1px solid rgba(0,200,255,.12);border-radius:4px;padding:8px 10px;margin-bottom:12px;font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.7">
       <strong style="color:var(--ic)">HOW TO READ:</strong> CALIBRATED = actual ≈ expected (within 4%). SLIGHT DRIFT = 4–8% gap — minor correction applied. NEEDS RECALIBRATION = 8%+ gap — engine has reduced unit size for this band and is boosting sample weight from recent picks to realign.
     </div>
