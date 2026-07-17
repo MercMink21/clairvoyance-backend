@@ -824,6 +824,24 @@ _TEAM_NAME_TO_ABBR: dict[str, str] = {
     "Seattle Kraken":"SEA","St. Louis Blues":"STL","Tampa Bay Lightning":"TB",
     "Toronto Maple Leafs":"TOR","Utah Hockey Club":"UTA","Vancouver Canucks":"VAN",
     "Vegas Golden Knights":"VGK","Washington Capitals":"WSH","Winnipeg Jets":"WPG",
+    # WNBA
+    "Atlanta Dream":"ATL","Chicago Sky":"CHI","Connecticut Sun":"CON",
+    "Dallas Wings":"DAL","Golden State Valkyries":"GS","Indiana Fever":"IND",
+    "Las Vegas Aces":"LV","Los Angeles Sparks":"LA","Minnesota Lynx":"MIN",
+    "New York Liberty":"NY","Phoenix Mercury":"PHX","Seattle Storm":"SEA",
+    "Washington Mystics":"WSH",
+    # NFL
+    "Arizona Cardinals":"ARI","Atlanta Falcons":"ATL","Baltimore Ravens":"BAL",
+    "Buffalo Bills":"BUF","Carolina Panthers":"CAR","Chicago Bears":"CHI",
+    "Cincinnati Bengals":"CIN","Cleveland Browns":"CLE","Dallas Cowboys":"DAL",
+    "Denver Broncos":"DEN","Detroit Lions":"DET","Green Bay Packers":"GB",
+    "Houston Texans":"HOU","Indianapolis Colts":"IND","Jacksonville Jaguars":"JAX",
+    "Kansas City Chiefs":"KC","Las Vegas Raiders":"LV","Los Angeles Chargers":"LAC",
+    "Los Angeles Rams":"LAR","Miami Dolphins":"MIA","Minnesota Vikings":"MIN",
+    "New England Patriots":"NE","New Orleans Saints":"NO","New York Giants":"NYG",
+    "New York Jets":"NYJ","Philadelphia Eagles":"PHI","Pittsburgh Steelers":"PIT",
+    "San Francisco 49ers":"SF","Seattle Seahawks":"SEA","Tampa Bay Buccaneers":"TB",
+    "Tennessee Titans":"TEN","Washington Commanders":"WSH",
 }
 
 def _name_to_abbr(name: str) -> str:
@@ -846,7 +864,8 @@ def fetch_best_odds(sport: str, game_list: list) -> dict:
         return best
 
     sport_key = {"mlb": "baseball_mlb", "nba": "basketball_nba",
-                 "nhl": "icehockey_nhl"}.get(sport, "")
+                 "nhl": "icehockey_nhl", "wnba": "basketball_wnba",
+                 "nfl": "americanfootball_nfl", "cfb": "americanfootball_ncaaf"}.get(sport, "")
     if not sport_key:
         return best
 
@@ -4822,6 +4841,18 @@ def main() -> None:
     mlb_best_odds = fetch_best_odds("mlb", mlb_today) if S in ("mlb","all") else {}
     nba_best_odds = fetch_best_odds("nba", nba_today) if S in ("nba","all") else {}
     nhl_best_odds = fetch_best_odds("nhl", nhl_today) if S in ("nhl","all") else {}
+    # WNBA/NFL/CFB weren't covered server-side before — the frontend was
+    # instead making its own live client-side Odds API calls for these (plus
+    # soccer), using a key hardcoded in the shipped page source. That both
+    # leaked a real secret publicly and multiplied quota usage across every
+    # visitor's browser against the same 500 req/month free-tier budget,
+    # which is what caused the 401s on exactly these sports. Fetching them
+    # here instead means one shared call per scheduled run, not one per
+    # visitor per page load. Soccer leagues aren't covered yet — their team
+    # names need their own name->abbr map, tracked as a follow-up.
+    wnba_best_odds = fetch_best_odds("wnba", wnba.get("today", [])) if S in ("nba","all") else {}
+    nfl_best_odds  = fetch_best_odds("nfl", []) if S in ("all",) else {}
+    cfb_best_odds  = fetch_best_odds("cfb", []) if S in ("all",) else {}
 
     # Backfill real book odds into game objects so the app displays them
     def _backfill_odds(game_list: list, odds_map: dict) -> None:
@@ -4839,6 +4870,7 @@ def main() -> None:
     _backfill_odds(mlb_today, mlb_best_odds)
     _backfill_odds(nba_today, nba_best_odds)
     _backfill_odds(nhl_today, nhl_best_odds)
+    _backfill_odds(wnba.get("today", []), wnba_best_odds)
 
     best_bets = calculate_best_bets(
         nba_today, mlb_today, nhl_today, weather, mp, nhl_edge,
@@ -4969,6 +5001,7 @@ def main() -> None:
         "bestBets":      best_bets,
         "heroPicksForDay": surface_best_bets_for_day(best_bets),
         "bestOdds":      {**mlb_best_odds, **nba_best_odds, **nhl_best_odds},
+        "bestOddsExt":   {"wnba": wnba_best_odds, "nfl": nfl_best_odds, "cfb": cfb_best_odds},
         "settled":       settled,
         "betHistory":    history[-200:],  # last 200 for frontend
         "overallStats":  overall_stats,
