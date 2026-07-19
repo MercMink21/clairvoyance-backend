@@ -107,6 +107,18 @@ def generate_cards(out_dir: Path) -> list[Path]:
         page.wait_for_timeout(400)
         page.evaluate("async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; }")
 
+        # Track Record always shows every period as its own row (today,
+        # yesterday, rolling 7d, etc) in one card — no period selection
+        # needed, "today" here just means the snapshot is dated/generated
+        # as of today, which it already is by default.
+        #
+        # Sport Performance and League Performance are single-period cards
+        # (renderTrackRecord._sportPeriod / _leaguePeriod, default
+        # 'ALL TIME') — set to YESTERDAY before generating those two so the
+        # daily card reflects yesterday's slate rather than the full
+        # history every time.
+        page.evaluate("() => { renderTrackRecord._sportPeriod = 'YESTERDAY'; renderTrackRecord._leaguePeriod = 'YESTERDAY'; }")
+
         for _, js_call, label in CARD_JOBS:
             log(f"Rendering {label} card…")
             with page.expect_download(timeout=15000) as download_info:
