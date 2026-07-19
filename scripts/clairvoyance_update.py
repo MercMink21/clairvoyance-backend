@@ -3722,6 +3722,35 @@ def supabase_bets_to_history(bets: list[dict]) -> list[dict]:
                 settled_at = datetime.fromtimestamp(settled_at / 1000, tz=timezone.utc).isoformat()
             except Exception:
                 settled_at = None
+        outcome = row.get("outcome")
+        # Unit-normalized PnL (1 unit staked per bet, regardless of the
+        # `wager` field) — matches the frontend's own calcPerf() exactly
+        # (win: decOdds-1, loss: -1, push: 0), which is the convention
+        # behind every "+187.4u"-style number already shown in the app.
+        # Nothing writes a `pnl` field at all today - not Supabase rows,
+        # not local bet_history.json, not the frontend's own bet objects -
+        # so compute_roi()'s totalPnl/roi has always silently been 0
+        # through this pipeline. Computing it here, once, at the same
+        # place settledAt already gets normalized.
+        dec_odds = row.get("dec_odds") if row.get("dec_odds") is not None else raw.get("decOdds")
+        try:
+            dec_odds = float(dec_odds) if dec_odds is not None else None
+        except (TypeError, ValueError):
+            dec_odds = None  # a handful of real rows have junk in dec_odds (e.g. a venue string) — fall through to ml
+        if dec_odds is None:
+            ml = row.get("ml") or raw.get("ml")
+            try:
+                dec_odds = _ml_to_dec(float(ml))
+            except Exception:
+                dec_odds = 2.0
+        pnl = raw.get("pnl")
+        if pnl is None:
+            if outcome == "win":
+                pnl = dec_odds - 1
+            elif outcome == "loss":
+                pnl = -1.0
+            else:
+                pnl = 0.0
         out.append({
             "id":        row.get("id"),
             "sport":     row.get("sport") or raw.get("sport"),
@@ -3729,11 +3758,12 @@ def supabase_bets_to_history(bets: list[dict]) -> list[dict]:
             "betOn":     raw.get("betOn") or row.get("bet_on"),
             "winProb":   row.get("win_prob") if row.get("win_prob") is not None else raw.get("winProb"),
             "ml":        row.get("ml") or raw.get("ml"),
-            "outcome":   row.get("outcome"),
+            "decOdds":   dec_odds,
+            "outcome":   outcome,
             "date":      row.get("date") or raw.get("date"),
             "settledAt": settled_at or raw.get("settledAt"),
             "wager":     row.get("wager", 100),
-            "pnl":       raw.get("pnl"),
+            "pnl":       pnl,
         })
     return out
 
@@ -4408,14 +4438,22 @@ def build_overall_stats(history: list[dict]) -> dict:
     by_type:  dict = defaultdict(lambda: {"w":0,"l":0,"push":0,"total":0})
     by_date:  dict = defaultdict(lambda: {"w":0,"l":0,"push":0,"total":0})
 
+    # outcome -> bucket key. Was `o if o!="win" else "w"`, which correctly
+    # mapped "win"->"w" but left "loss" mapping to itself ("loss") instead
+    # of "l" - every bucket's "l" count silently stayed 0 forever, on both
+    # local and real Supabase-sourced history, since this ran regardless
+    # of data source. Only just discovered because this was the first time
+    # real settled-bet data (with actual losses in it) flowed through here.
+    _outcome_key = {"win": "w", "loss": "l", "push": "push"}
     for b in history:
         o = b.get("outcome","pending")
         if o not in ("win","loss","push"): continue
         sport = b.get("sport","?")
         btype = b.get("betType","ML")
         day   = (b.get("settledAt","") or b.get("date",""))[:10]
+        k = _outcome_key[o]
         for bucket in (total, by_sport[sport], by_type[btype], by_date[day]):
-            bucket[o if o!="win" else "w"] = bucket.get(o if o!="win" else "w",0) + 1
+            bucket[k] = bucket.get(k,0) + 1
             bucket["total"] = bucket.get("total",0) + 1
 
     def pct(d): return round(d["w"]/d["total"]*100,1) if d["total"] else 0
@@ -4431,7 +4469,17 @@ def build_overall_stats(history: list[dict]) -> dict:
     }
 
 def compute_roi(history: list[dict]) -> dict:
-    """ROI and PnL from settled bet history."""
+    """
+    ROI and units (PnL) from settled bet history. `pnl` on each bet is
+    unit-normalized (1 unit staked per bet - win: decOdds-1, loss: -1,
+    push: 0 - see supabase_bets_to_history()), the same convention behind
+    every "+187.4u"-style number already shown in the frontend. ROI is
+    therefore computed as units won/lost per unit staked (pnl / n_bets),
+    not against the dollar-style `wager` field - `totalWagered` is still
+    reported for reference, but mixing it into the roi ratio itself would
+    be off by ~100x (wager defaults to 100 "dollars" per bet; pnl is
+    scaled in ~1s).
+    """
     settled = [b for b in history if b.get("outcome") in ("win","loss","push")]
     if not settled:
         return {"roi": 0.0, "totalWagered": 0.0, "totalPnl": 0.0, "avgOdds": 0.0, "n": 0}
@@ -4446,7 +4494,7 @@ def compute_roi(history: list[dict]) -> dict:
         except Exception:
             pass
     return {
-        "roi":          round(pnl / wagered * 100, 2) if wagered else 0.0,
+        "roi":          round(pnl / len(settled) * 100, 2),
         "totalWagered": round(wagered, 2),
         "totalPnl":     round(pnl, 2),
         "avgOdds":      round(odds_sum / odds_n, 3) if odds_n else 0.0,
