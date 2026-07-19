@@ -3707,6 +3707,21 @@ def supabase_bets_to_history(bets: list[dict]) -> list[dict]:
         if row.get("outcome") not in ("win", "loss", "push"):
             continue
         raw = row.get("raw") or {}
+        settled_at = row.get("settled_at")
+        if settled_at is not None and not isinstance(settled_at, str):
+            # Supabase's settled_at column is a bigint (epoch ms) — every
+            # other settledAt in this pipeline (local bet_history.json,
+            # merge_settled_to_history's NOW.isoformat() writes) is a
+            # string, and build_overall_stats()/compute_streak() both
+            # slice/compare it as one. Left as a raw int, the very first
+            # scheduled run after wiring in the real Supabase ledger
+            # crashed on `settledAt[:10]` with "'int' object is not
+            # subscriptable" — normalizing here, once, is simpler than
+            # making every downstream consumer defensive.
+            try:
+                settled_at = datetime.fromtimestamp(settled_at / 1000, tz=timezone.utc).isoformat()
+            except Exception:
+                settled_at = None
         out.append({
             "id":        row.get("id"),
             "sport":     row.get("sport") or raw.get("sport"),
@@ -3716,7 +3731,7 @@ def supabase_bets_to_history(bets: list[dict]) -> list[dict]:
             "ml":        row.get("ml") or raw.get("ml"),
             "outcome":   row.get("outcome"),
             "date":      row.get("date") or raw.get("date"),
-            "settledAt": row.get("settled_at") or raw.get("settledAt"),
+            "settledAt": settled_at or raw.get("settledAt"),
             "wager":     row.get("wager", 100),
             "pnl":       raw.get("pnl"),
         })
