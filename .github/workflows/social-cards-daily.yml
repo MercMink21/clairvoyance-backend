@@ -1,0 +1,33 @@
+name: Daily Social Cards Email
+
+on:
+  schedule:
+    # 08:00 MT = 14:00 UTC (MDT) / 15:00 UTC (MST) — before the day's posting window
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+jobs:
+  generate-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install chromium --with-deps
+
+      - name: Generate cards and send email
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python scripts/generate_social_cards.py
