@@ -751,6 +751,7 @@ def main() -> None:
                 locked=str(stats.get("lockedCount", "—")),
                 out_path=video_path,
                 variant=variant,
+                date_str=yesterday_mt.strftime("%B %-d, %Y"),
             )
             log(f"Daily video variant: {variant}")
             daily_attachments.append(video_path)

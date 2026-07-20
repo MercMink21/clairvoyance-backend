@@ -152,7 +152,8 @@ STATS_VARIANT_NAMES = list(STATS_VARIANTS.keys())
 
 
 def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path,
-                         variant: str = "fade", duration_s: float | None = None, locked: str | None = None) -> Path:
+                         variant: str = "fade", duration_s: float | None = None, locked: str | None = None,
+                         date_str: str | None = None) -> Path:
     template_name, default_duration = STATS_VARIANTS[variant]
     setup_js = f"""
     () => {{
@@ -162,6 +163,8 @@ def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_pa
       document.getElementById('v-units').textContent = {json.dumps(units)};
       var lockedEl = document.getElementById('v-locked');
       if (lockedEl) lockedEl.textContent = {json.dumps(locked or "—")};
+      var dateEl = document.getElementById('headline-date');
+      if (dateEl) dateEl.textContent = {json.dumps(date_str or "")};
     }}
     """
     return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
