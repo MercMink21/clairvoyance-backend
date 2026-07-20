@@ -263,14 +263,18 @@ def generate_event_card(page, out_dir: Path, event: dict) -> Path | None:
 def get_event_stats(page) -> dict | None:
     """Win/loss/pct/units for the event window just rendered by
     generate_event_card() — reads window._cvEventPeriodData.totalP, which
-    the card renderer already computed and left on the page."""
+    the card renderer already computed and left on the page. Note: the
+    cP() in scope here (docs/app.html ~line 18044) names the units field
+    "units", not "u" like the other cP() defined near line 11609 — they're
+    separate closures, easy to mix up (this was a real bug: reading t.u
+    silently returned undefined -> "N/A" in every event caption/video)."""
     return page.evaluate(
         """
         () => {
           const d = window._cvEventPeriodData;
           if (!d || !d.totalP) return null;
           const t = d.totalP;
-          return { w: t.w, l: t.l, n: t.n, pct: t.pct, units: t.u };
+          return { w: t.w, l: t.l, n: t.n, pct: t.pct, units: t.units };
         }
         """
     )
