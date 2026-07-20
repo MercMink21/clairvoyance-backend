@@ -33,11 +33,13 @@ def main() -> None:
     parser.add_argument("--intro", default="")
     parser.add_argument("--caption-ig", default=None)
     parser.add_argument("--caption-x", default=None)
+    parser.add_argument("--to", default=None, help="Override recipient (defaults to SOCIAL_CARD_EMAIL_TO)")
     parser.add_argument("--file", action="append", dest="files", required=True)
     args = parser.parse_args()
 
-    if not RESEND_API_KEY or not SOCIAL_CARD_EMAIL_TO:
-        raise RuntimeError("RESEND_API_KEY / SOCIAL_CARD_EMAIL_TO not set")
+    recipient = args.to or SOCIAL_CARD_EMAIL_TO
+    if not RESEND_API_KEY or not recipient:
+        raise RuntimeError("RESEND_API_KEY not set, or no recipient (pass --to or set SOCIAL_CARD_EMAIL_TO)")
 
     attachments = []
     for f in args.files:
@@ -61,7 +63,7 @@ def main() -> None:
         headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
         json={
             "from": "Clairvoyance Engine <onboarding@resend.dev>",
-            "to": [SOCIAL_CARD_EMAIL_TO],
+            "to": [recipient],
             "subject": args.subject,
             "html": body_html,
             "attachments": attachments,

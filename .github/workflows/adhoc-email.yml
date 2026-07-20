@@ -21,6 +21,10 @@ on:
         description: 'X caption'
         required: false
         default: ''
+      to:
+        description: 'Recipient override (defaults to SOCIAL_CARD_EMAIL_TO secret)'
+        required: false
+        default: ''
 
 jobs:
   send:
@@ -47,6 +51,9 @@ jobs:
           IFS=',' read -ra FILES <<< "${{ github.event.inputs.files }}"
           ARGS=()
           for f in "${FILES[@]}"; do ARGS+=(--file "$f"); done
+          if [ -n "${{ github.event.inputs.to }}" ]; then
+            ARGS+=(--to "${{ github.event.inputs.to }}")
+          fi
           python scripts/send_adhoc_email.py \
             --subject "${{ github.event.inputs.subject }}" \
             --intro "${{ github.event.inputs.intro }}" \
