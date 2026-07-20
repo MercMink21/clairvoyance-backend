@@ -340,12 +340,26 @@ def get_year_stats(page, year: int) -> dict:
             return a;
           }, 0);
           // Same 6-broad-sport grouping the Sport Performance card itself
-          // uses (_broadSportOf/_normSport are the app's own helpers) so
-          // this lines up exactly with what the daily/weekly/monthly
-          // breakdown videos already show, just for the full year.
+          // uses (_normSport is the app's own helper, confirmed reachable
+          // globally). _broadSportOf is NOT reliably reachable from an
+          // external page.evaluate() — on the live page it ends up nested
+          // inside a scope that only the app's own internal functions can
+          // see (confirmed via typeof check: _normSport is a global
+          // function, _broadSportOf is undefined from outside) — so its
+          // mapping table is inlined here instead of calling it directly.
+          const _broadSport = (tag) => {
+            const t = (tag || '').toUpperCase().trim();
+            if (t === 'MLB') return 'BASEBALL';
+            if (['NBA','WNBA','CBB','NCAAB'].includes(t)) return 'BASKETBALL';
+            if (['NFL','CFB'].includes(t)) return 'FOOTBALL';
+            if (['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'].includes(t)) return 'HOCKEY';
+            if (['SOC','WC','WORLD_CUP','WORLDCUP','PL','LIGA','BL','MLS','CH'].includes(t)) return 'SOCCER';
+            if (['ATP','WTA','TEN','TENNIS'].includes(t)) return 'TENNIS';
+            return null;
+          };
           const SPORT_ORDER = ['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER','TENNIS'];
           const bucket = {}; SPORT_ORDER.forEach(s => bucket[s] = []);
-          inYear.forEach(b => { const s = _broadSportOf(_normSport(b)); if (s && bucket[s]) bucket[s].push(b); });
+          inYear.forEach(b => { const s = _broadSport(_normSport(b)); if (s && bucket[s]) bucket[s].push(b); });
           const bySport = SPORT_ORDER.map(s => {
             const bets = bucket[s];
             const settledS = bets.filter(p => p.outcome === 'win' || p.outcome === 'loss');
