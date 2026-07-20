@@ -5,58 +5,88 @@
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:1080px; height:1350px; overflow:hidden; background:#222233; }
+  html,body { width:1080px; height:1350px; overflow:hidden; }
   .stage {
     width:1080px; height:1350px; position:relative;
-    background:
-      repeating-linear-gradient(45deg, rgba(78,166,176,.5) 0 1px, transparent 1px 17px),
-      repeating-linear-gradient(-45deg, rgba(78,166,176,.5) 0 1px, transparent 1px 17px),
-      radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,.22) 72%);
-    background-color:#222233;
-    display:flex; flex-direction:column; align-items:center; padding-top:110px;
-  }
-  .tag {
-    font-family:'Share Tech Mono',monospace; font-size:18px; letter-spacing:8px;
-    color:#00f0ff; text-shadow:0 0 12px rgba(0,240,255,.6);
-    opacity:0; animation: reveal .6s ease-out forwards;
-  }
-  .title {
-    font-family:'Orbitron',sans-serif; font-weight:900; font-size:52px; text-align:center;
-    color:#f000ff; text-shadow:0 0 18px #f000ff,0 0 44px rgba(240,0,255,.6);
-    max-width:860px; margin:18px 0 60px; opacity:0;
-    animation: reveal .7s ease-out .35s forwards;
-  }
-  .lines { width:860px; display:flex; flex-direction:column; gap:36px; }
-  .line {
-    font-family:'Orbitron',sans-serif; font-weight:700; font-size:30px; line-height:1.55;
-    color:#e6eaff; opacity:0; transform:translateY(14px); border-left:3px solid rgba(240,0,255,.6);
-    padding-left:24px;
+    background:transparent;
+    display:flex; flex-direction:column; align-items:center; padding-top:64px;
   }
   .logo {
-    position:absolute; bottom:130px; left:0; right:0; text-align:center;
-    font-family:'Orbitron',sans-serif; font-weight:900; font-size:36px; letter-spacing:5px;
-    color:#f000ff; text-shadow:0 0 14px #f000ff,0 0 32px rgba(240,0,255,.6);
-    opacity:0;
+    font-family:'Orbitron',sans-serif; font-weight:900; font-size:56px; letter-spacing:6px;
+    color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.7);
+    opacity:0; animation: reveal .6s ease-out forwards;
+  }
+  .sub {
+    font-family:'Orbitron',sans-serif; font-weight:600; font-size:20px; letter-spacing:4px;
+    color:#00f0ff; text-shadow:0 0 10px #00f0ff; margin-top:8px;
+    opacity:0; animation: reveal .6s ease-out .2s forwards;
+  }
+  .tag {
+    font-family:'Share Tech Mono',monospace; font-size:17px; letter-spacing:7px;
+    color:#00f0ff; text-shadow:0 0 10px rgba(0,240,255,.5);
+    margin-top:44px; opacity:0; animation: reveal .6s ease-out .5s forwards;
+  }
+  .title {
+    font-family:'Orbitron',sans-serif; font-weight:900; font-size:46px; text-align:center;
+    color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.6);
+    max-width:880px; margin:14px 0 48px; opacity:0;
+    animation: reveal .7s ease-out .75s forwards;
+  }
+  .lines { width:860px; display:flex; flex-direction:column; gap:32px; }
+  .line {
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:28px; line-height:1.5;
+    color:#e6eaff; opacity:0; transform:translateY(14px); border-left:3px solid rgba(240,0,255,.6);
+    padding-left:22px;
   }
   .footer {
-    position:absolute; bottom:70px; left:0; right:0; text-align:center;
-    font-family:'Share Tech Mono',monospace; font-size:15px; color:rgba(220,210,255,.5);
+    position:absolute; bottom:60px; left:0; right:0; text-align:center;
+    font-family:'Orbitron',sans-serif; font-size:17px; letter-spacing:3px; color:#f000ff;
     opacity:0;
+  }
+  .footer-sub {
+    font-family:'Share Tech Mono',monospace; font-size:13px; color:rgba(220,210,255,.5);
+    margin-top:6px;
   }
   @keyframes reveal { to { opacity:1; transform:translateY(0); } }
 </style>
 </head>
 <body>
+  <canvas id="bgCanvas" width="1080" height="1350" style="position:absolute;top:0;left:0;z-index:-1"></canvas>
+  <script>
+    // Exact same background algorithm as _cfBg() in docs/app.html (the
+    // real card generator) — pixel-matched to StandardLogo.png. Drawing
+    // it with canvas instead of approximating with CSS gradients avoids
+    // any anti-aliasing/rendering differences between the two.
+    (function(){
+      var cv=document.getElementById('bgCanvas');
+      var ctx=cv.getContext('2d');
+      var W=1080,H=1350,cx=W/2,cy=H/2;
+      ctx.fillStyle='#222233';ctx.fillRect(0,0,W,H);
+      var DS=Math.max(8,Math.round(W/64));
+      ctx.save();
+      ctx.strokeStyle='rgba(78,166,176,.5)';ctx.lineWidth=1;
+      for(var i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+      for(var i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+      ctx.restore();
+      var vg=ctx.createRadialGradient(cx,cy,W*.30,cx,cy,W*.72);
+      vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.22)');
+      ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+    })();
+  </script>
   <div class="stage">
+    <div class="logo">CLAIRVOYANCE</div>
+    <div class="sub">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
     <div class="tag" id="tag">// EDUCATIONAL</div>
     <div class="title" id="title">HOW WE GRADE PICKS</div>
     <div class="lines" id="lines"></div>
-    <div class="logo" id="logo">CLAIRVOYANCE</div>
-    <div class="footer" id="footer">clairvoyanceengine.info &nbsp;·&nbsp; X @clairvoyanceeng &nbsp;·&nbsp; IG @clairvoyanceengine</div>
+    <div class="footer" id="footer">
+      X @clairvoyanceeng &nbsp;·&nbsp; IG @clairvoyanceengine
+      <div class="footer-sub">clairvoyanceengine.info</div>
+    </div>
   </div>
   <script>
     // populateLines(tag, title, [line1, line2, ...]) — each line fades/
-    // slides in staggered, then logo + footer settle in after the last one.
+    // slides in staggered, then the footer settles in after the last one.
     window.populateLines = function(tag, title, lines) {
       document.getElementById('tag').textContent = tag;
       document.getElementById('title').textContent = title;
@@ -66,12 +96,11 @@
         const div = document.createElement('div');
         div.className = 'line';
         div.textContent = text;
-        div.style.animation = `reveal .6s ease-out ${0.9 + i * 1.1}s forwards`;
+        div.style.animation = `reveal .6s ease-out ${1.1 + i * 1.1}s forwards`;
         container.appendChild(div);
       });
-      const tailDelay = 0.9 + lines.length * 1.1 + 0.4;
-      document.getElementById('logo').style.animation = `reveal .7s ease-out ${tailDelay}s forwards`;
-      document.getElementById('footer').style.animation = `reveal .7s ease-out ${tailDelay + 0.25}s forwards`;
+      const tailDelay = 1.1 + lines.length * 1.1 + 0.4;
+      document.getElementById('footer').style.animation = `reveal .7s ease-out ${tailDelay}s forwards`;
     };
   </script>
 </body>

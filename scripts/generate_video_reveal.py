@@ -91,7 +91,7 @@ STATS_VARIANT_NAMES = list(STATS_VARIANTS.keys())
 
 
 def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path,
-                         variant: str = "fade", duration_s: float | None = None) -> Path:
+                         variant: str = "fade", duration_s: float | None = None, locked: str | None = None) -> Path:
     template_name, default_duration = STATS_VARIANTS[variant]
     setup_js = f"""
     () => {{
@@ -99,6 +99,8 @@ def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_pa
       document.getElementById('v-record').textContent = {json.dumps(record)};
       document.getElementById('v-pct').textContent = {json.dumps(pct)};
       document.getElementById('v-units').textContent = {json.dumps(units)};
+      var lockedEl = document.getElementById('v-locked');
+      if (lockedEl) lockedEl.textContent = {json.dumps(locked or "—")};
     }}
     """
     return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
@@ -184,15 +186,9 @@ EDUCATIONAL_TOPICS = {
             "Graded. Delivered. Tracked publicly, win or lose.",
         ],
     },
-    "what-it-covers": {
-        "tag": "// WHAT THE ENGINE COVERS",
-        "title": "20 LEAGUES. 6 SPORTS.",
-        "lines": [
-            "Baseball, basketball, football, hockey, soccer, tennis.",
-            "MLB · NBA · WNBA · NFL · NHL · World Cup · ATP · WTA — and more.",
-            "One calibrated model per sport, not a one-size-fits-all number.",
-        ],
-    },
+    # "what-it-covers" removed — flagged as off/not wanted; the pinned
+    # card asset (Clairvoyance-Pinned-Card3.png) is meant to cover "what
+    # Clairvoyance covers" content instead, once that asset is available.
 }
 
 

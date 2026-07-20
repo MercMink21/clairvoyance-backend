@@ -109,7 +109,7 @@ EVENTS: list[dict] = [
 # every 5 calendar days, deterministically (days-since-epoch // 5), so it
 # never needs stored state and can't double-fire or drift out of sync.
 ROTATION_EPOCH = datetime(2026, 7, 1, tzinfo=timezone.utc)
-ROTATION_CONTENT = ["how-it-works", "data-to-decision", "what-it-covers", "grading", "subscription"]
+ROTATION_CONTENT = ["how-it-works", "data-to-decision", "grading", "subscription"]
 ROTATION_DAYS = 5
 
 
@@ -205,16 +205,23 @@ def generate_cards(page, out_dir: Path, period: str, prefix_extra: str = "") -> 
           // w/l/pct inline via its own cP() closure, which isn't reachable
           // from here, so replicate that same win/loss/settled-only logic
           // directly against the raw array.
+          let lockedCount = 0;
           const bySport = (d.sportList || []).map(s => {
             const bets = (d.bySport && d.bySport[s]) || [];
+            lockedCount += bets.length;
             const settled = bets.filter(p => p.outcome === 'win' || p.outcome === 'loss');
             const w = settled.filter(p => p.outcome === 'win').length;
             const l = settled.length - w;
-            return { label: s, w, l, n: settled.length, pct: settled.length ? w / settled.length : null };
+            const units = settled.reduce((a, p) => {
+              if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+              if (p.outcome === 'loss') return a - 1;
+              return a;
+            }, 0);
+            return { label: s, w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units };
           }).filter(s => s.n);
           return {
             w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units,
-            bySport,
+            lockedCount, bySport,
           };
         }
         """
@@ -294,7 +301,7 @@ def get_year_stats(page, year: int) -> dict:
             if (p.outcome === 'loss') return a - 1;
             return a;
           }, 0);
-          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units };
+          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units, lockedCount: inYear.length };
         }
         """,
         year,
@@ -648,6 +655,7 @@ def main() -> None:
                 record=f"{stats['w']}W-{stats['l']}L",
                 pct=_fmt_pct(stats.get("pct")),
                 units=_fmt_units(stats.get("units")),
+                locked=str(stats.get("lockedCount", "—")),
                 out_path=video_path,
                 variant=variant,
             )
@@ -658,10 +666,12 @@ def main() -> None:
             by_sport = stats.get("bySport") or []
             if by_sport:
                 rows = [
-                    {"label": s["label"], "record": f"{s['w']}W-{s['l']}L", "pct": _fmt_pct(s.get("pct")), "isTotal": False}
+                    {"label": s["label"], "record": f"{s['w']}W-{s['l']}L", "pct": _fmt_pct(s.get("pct")),
+                     "units": _fmt_units(s.get("units")), "isTotal": False}
                     for s in by_sport
                 ]
-                rows.append({"label": "TOTAL", "record": f"{stats['w']}W-{stats['l']}L", "pct": _fmt_pct(stats.get("pct")), "isTotal": True})
+                rows.append({"label": "TOTAL", "record": f"{stats['w']}W-{stats['l']}L", "pct": _fmt_pct(stats.get("pct")),
+                             "units": _fmt_units(stats.get("units")), "isTotal": True})
                 breakdown_path = out_dir / f"cv-breakdown-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_breakdown_reveal("SPORT PERFORMANCE", rows, breakdown_path)
                 daily_attachments.append(breakdown_path)
@@ -695,7 +705,7 @@ def main() -> None:
                 record_big_recap_reveal(
                     tag="WEEKLY RECAP", date_range=range_str,
                     record=f"{w_stats['w']}W-{w_stats['l']}L", pct=_fmt_pct(w_stats.get("pct")),
-                    units=_fmt_units(w_stats.get("units")), extra_val="7 DAYS", extra_lbl="TRACKED",
+                    units=_fmt_units(w_stats.get("units")), extra_val=str(w_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
                     out_path=recap_path,
                 )
                 weekly_attachments.append(recap_path)
@@ -719,12 +729,11 @@ def main() -> None:
         if m_stats.get("w") is not None:
             try:
                 from generate_video_reveal import record_big_recap_reveal
-                days_in_month = last_month_end.day
                 recap_path = out_dir / f"cv-monthly-recap-{last_month_end.strftime('%Y%m')}.mp4"
                 record_big_recap_reveal(
                     tag="MONTHLY RECAP", date_range=last_month_end.strftime("%B %Y").upper(),
                     record=f"{m_stats['w']}W-{m_stats['l']}L", pct=_fmt_pct(m_stats.get("pct")),
-                    units=_fmt_units(m_stats.get("units")), extra_val=f"{days_in_month} DAYS", extra_lbl="TRACKED",
+                    units=_fmt_units(m_stats.get("units")), extra_val=str(m_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
                     out_path=recap_path,
                 )
                 monthly_attachments.append(recap_path)
@@ -753,7 +762,7 @@ def main() -> None:
                 record_big_recap_reveal(
                     tag="YEAR IN REVIEW", date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}",
                     record=f"{y_stats['w']}W-{y_stats['l']}L", pct=_fmt_pct(y_stats.get("pct")),
-                    units=_fmt_units(y_stats.get("units")), extra_val=f"{y_stats['n']} BETS", extra_lbl="TRACKED",
+                    units=_fmt_units(y_stats.get("units")), extra_val=str(y_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
                     out_path=recap_path, duration_s=8.0,
                 )
                 yearly_attachments.append(recap_path)

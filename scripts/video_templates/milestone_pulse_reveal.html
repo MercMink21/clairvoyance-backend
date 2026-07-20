@@ -5,14 +5,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:1080px; height:1350px; overflow:hidden; background:#222233; }
+  html,body { width:1080px; height:1350px; overflow:hidden; }
   .stage {
     width:1080px; height:1350px; position:relative;
-    background:
-      repeating-linear-gradient(45deg, rgba(78,166,176,.5) 0 1px, transparent 1px 17px),
-      repeating-linear-gradient(-45deg, rgba(78,166,176,.5) 0 1px, transparent 1px 17px),
-      radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,.22) 72%);
-    background-color:#222233;
+    background:transparent;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     overflow:hidden;
   }
@@ -56,6 +52,28 @@
 </style>
 </head>
 <body>
+  <canvas id="bgCanvas" width="1080" height="1350" style="position:absolute;top:0;left:0;z-index:-1"></canvas>
+  <script>
+    // Exact same background algorithm as _cfBg() in docs/app.html (the
+    // real card generator) — pixel-matched to StandardLogo.png. Drawing
+    // it with canvas instead of approximating with CSS gradients avoids
+    // any anti-aliasing/rendering differences between the two.
+    (function(){
+      var cv=document.getElementById('bgCanvas');
+      var ctx=cv.getContext('2d');
+      var W=1080,H=1350,cx=W/2,cy=H/2;
+      ctx.fillStyle='#222233';ctx.fillRect(0,0,W,H);
+      var DS=Math.max(8,Math.round(W/64));
+      ctx.save();
+      ctx.strokeStyle='rgba(78,166,176,.5)';ctx.lineWidth=1;
+      for(var i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+      for(var i=-H;i<=W+H;i+=DS){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+      ctx.restore();
+      var vg=ctx.createRadialGradient(cx,cy,W*.30,cx,cy,W*.72);
+      vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.22)');
+      ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+    })();
+  </script>
   <div class="stage">
     <div class="ring"></div>
     <div class="ring"></div>
