@@ -66,7 +66,7 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
-def generate_cards(out_dir: Path) -> list[Path]:
+def generate_cards(out_dir: Path) -> tuple[list[Path], dict | None]:
     from playwright.sync_api import sync_playwright
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -129,15 +129,80 @@ def generate_cards(out_dir: Path) -> list[Path]:
             saved.append(path)
             log(f"  saved {path} ({path.stat().st_size/1024:.0f} KB)")
 
+        # Pull yesterday's real record/win%/units straight from the same
+        # data the Sport Performance card just drew (window._cvSportPeriodData
+        # .totalP, set by _genSportPerfGraphic() above via renderTrackRecord())
+        # rather than recomputing it separately in Python — guarantees the
+        # caption numbers can never drift from what the card image itself
+        # shows.
+        stats = page.evaluate(
+            """
+            () => {
+              const d = window._cvSportPeriodData;
+              if (!d || !d.totalP) return null;
+              return { w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units };
+            }
+            """
+        )
+
         browser.close()
 
     if not saved:
         raise RuntimeError("No cards were captured — no downloads fired")
 
-    return saved
+    return saved, stats
 
 
-def send_email(cards: list[Path]) -> None:
+def build_captions(stats: dict | None) -> dict[str, str]:
+    """
+    IG/X captions for the daily post, paired with the Track Record /
+    Sport Performance / League Performance cards. Record/win%/units come
+    straight from the Sport Performance card's own yesterday-window totals
+    (passed in via `stats`) so the caption can never say something the
+    image doesn't back up.
+    """
+    from datetime import timedelta
+
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    date_str = yesterday.strftime("%B %-d, %Y")  # e.g. "July 18, 2026"
+
+    if stats and stats.get("w") is not None:
+        record = f"{stats['w']}W-{stats['l']}L"
+        pct = f"{stats['pct']*100:.1f}%" if stats.get("pct") is not None else "N/A"
+        units = stats.get("units")
+        units_str = f"{'+' if units is not None and units >= 0 else ''}{units:.1f}u" if units is not None else "N/A"
+        tally_line = f"Final tally: {record} · {pct} win rate · {units_str}\n\n"
+    else:
+        tally_line = ""
+
+    header = f"Yesterday's Performance — {date_str}"
+
+    ig = (
+        f"{header}\n\n"
+        f"This is Clairvoyance.\n\n"
+        f"{tally_line}"
+        f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\n"
+        f"IG @clairvoyanceengine\n"
+        f"X @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+    )
+
+    x = (
+        f"{header}\n\n"
+        f"This is Clairvoyance.\n\n"
+        f"{tally_line}"
+        f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks"
+    )
+
+    return {"instagram": ig, "x": x}
+
+
+def send_email(cards: list[Path], captions: dict[str, str]) -> None:
     if not RESEND_API_KEY:
         log("RESEND_API_KEY not set — skipping email, cards saved locally only", )
         return
@@ -154,7 +219,21 @@ def send_email(cards: list[Path]) -> None:
         })
 
     filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
-    body_html = f"<p>Today's social cards are attached, ready to post:</p><ul>{filename_list_html}</ul>"
+
+    def _caption_block(title: str, text: str) -> str:
+        html_text = text.replace("\n", "<br>")
+        return (
+            f'<h3 style="margin-bottom:4px">{title}</h3>'
+            f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
+            f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
+        )
+
+    body_html = (
+        f"<p>Today's social cards are attached, ready to post:</p><ul>{filename_list_html}</ul>"
+        f"<p>Captions below, ready to copy-paste:</p>"
+        f"{_caption_block('Instagram caption', captions['instagram'])}"
+        f"{_caption_block('X caption', captions['x'])}"
+    )
 
     resp = requests.post(
         "https://api.resend.com/emails",
@@ -180,11 +259,13 @@ def main() -> None:
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
-    cards = generate_cards(out_dir)
+    cards, stats = generate_cards(out_dir)
     log(f"Generated {len(cards)} card(s) in {out_dir}")
+    captions = build_captions(stats)
+    log("Captions:\n--- INSTAGRAM ---\n" + captions["instagram"] + "\n--- X ---\n" + captions["x"])
 
     if not args.no_email:
-        send_email(cards)
+        send_email(cards, captions)
     else:
         log("--no-email set, skipping send")
 
