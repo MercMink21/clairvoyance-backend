@@ -646,7 +646,7 @@ def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro:
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
         json={
-            "from": "Clairvoyance Engine <alerts@clairvoyanceengine.info>",
+            "from": "Clairvoyance Engine <onboarding@resend.dev>",
             "to": [SOCIAL_CARD_EMAIL_TO],
             "subject": subject,
             "html": body_html,
