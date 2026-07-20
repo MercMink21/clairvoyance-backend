@@ -18868,7 +18868,10 @@ async function _exportEventPerfCard(){
   _glowText(ctx,eventName,W/2,164,'800 28px "Orbitron"','#e6eaff',10,'center');
   _glowText(ctx,'// EVENT PERFORMANCE',W/2,190,'700 15px "Orbitron"','#f000ff',8,'center');
 
-  const cX={league:80,record:430,pct:660,units:W-60};
+  // Column layout + the WIN% progress bar match the Track Record card's
+  // "yesterday" row exactly (same bar geometry/teal fill/glow) for visual
+  // consistency across cards — bar column sits between WIN% and UNITS.
+  const cX={league:80,record:400,pct:560,bar:630,units:W-60};
   const hdrY=214;
   ctx.globalAlpha=.45;
   _glowText(ctx,'LEAGUE',cX.league,hdrY,'500 15px "Orbitron"','rgba(220,190,255,.8)',3,'left');
@@ -18900,6 +18903,10 @@ async function _exportEventPerfCard(){
     _glowText(ctx,p.w+'W-'+p.l+'L',cX.record,y,'700 20px "Orbitron"','rgba(230,235,255,.9)',6,'center');
     const pctStr=p.pct!==null?(p.pct*100).toFixed(1)+'%':'—';
     _glowText(ctx,pctStr,cX.pct,y,'700 20px "Orbitron"',rC(p.pct),10,'center');
+    const barW=110,barX=cX.bar,barY=y+14;
+    ctx.save();ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(barX,barY-5,barW,5);
+    ctx.fillStyle='rgba(0,240,255,.5)';ctx.shadowColor='#00f0ff';ctx.shadowBlur=6;
+    ctx.fillRect(barX,barY-5,Math.round(barW*(p.pct||0)),5);ctx.restore();
     const unitStr=(p.units>=0?'+':'')+p.units.toFixed(1)+'u';
     _glowText(ctx,unitStr,cX.units,y,'700 21px "Orbitron"',uC(p.units),12,'right');
   });
@@ -18919,6 +18926,10 @@ async function _exportEventPerfCard(){
     const tUnit=(totalP.units>=0?'+':'')+totalP.units.toFixed(1)+'u';
     _glowText(ctx,tRec,cX.record,tY,'700 23px "Orbitron"','#00f0ff',10,'center');
     _glowText(ctx,tPct,cX.pct,tY,'700 23px "Orbitron"','#00f0ff',12,'center');
+    const tBarW=110,tBarX=cX.bar,tBarY=tY+15;
+    ctx.save();ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(tBarX,tBarY-5,tBarW,5);
+    ctx.fillStyle='rgba(0,240,255,.5)';ctx.shadowColor='#00f0ff';ctx.shadowBlur=6;
+    ctx.fillRect(tBarX,tBarY-5,Math.round(tBarW*(totalP.pct||0)),5);ctx.restore();
     _glowText(ctx,tUnit,cX.units,tY,'700 25px "Orbitron"','#00f0ff',14,'right');
   }
 

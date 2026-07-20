@@ -114,7 +114,7 @@ def _record_template_sized(template_name: str, setup_js: str, out_path: Path,
     return out_path
 
 
-def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 10.0,
+def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 11.5,
                                 width: int = 1080, height: int = 1080) -> Path:
     """Turns a static card image (any size — the full image, text and all,
     kept intact) into a glitch-reveal video: a burst of RGB-split slice
@@ -144,10 +144,10 @@ def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: flo
 # consecutive daily posts don't all look identical. Keyed by name so
 # callers/rotation logic can pick by index without knowing filenames.
 STATS_VARIANTS = {
-    "fade":     ("daily_reveal.html", 5.5),      # original: staggered fade-up
-    "scanline": ("scanline_reveal.html", 4.8),   # HUD scan-bar sweep, blur-to-sharp
-    "glitch":   ("glitch_reveal.html", 4.2),     # RGB-split glitch settle, terminal feel
-    "split":    ("split_reveal.html", 4.0),      # fast alternating slide-in, punchier
+    "fade":     ("daily_reveal.html", 7.0),      # original: staggered fade-up
+    "scanline": ("scanline_reveal.html", 6.3),   # HUD scan-bar sweep, blur-to-sharp
+    "glitch":   ("glitch_reveal.html", 5.7),     # RGB-split glitch settle, terminal feel
+    "split":    ("split_reveal.html", 5.5),      # fast alternating slide-in, punchier
 }
 STATS_VARIANT_NAMES = list(STATS_VARIANTS.keys())
 
@@ -177,13 +177,13 @@ def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path, dur
     last row should typically have isTotal=True. Duration auto-scales with
     row count if not given (each row adds ~0.28s to the reveal)."""
     if duration_s is None:
-        duration_s = 1.5 + len(rows) * 0.28 + 1.0
+        duration_s = 1.5 + len(rows) * 0.28 + 2.5
     setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)})"
     return _record_template("breakdown_reveal.html", setup_js, out_path, duration_s)
 
 
 def record_big_recap_reveal(tag: str, date_range: str, record: str, pct: str, units: str,
-                             extra_val: str, extra_lbl: str, out_path: Path, duration_s: float = 7.0) -> Path:
+                             extra_val: str, extra_lbl: str, out_path: Path, duration_s: float = 8.5) -> Path:
     """Dedicated weekly/monthly style — bigger reveal, 4-stat grid instead
     of 3 (extra_val/extra_lbl is a 4th callout, e.g. "7 DAYS"/"TRACKED" for
     weekly or "31 DAYS"/"TRACKED" for monthly), slower cinematic pacing."""
@@ -204,8 +204,8 @@ def record_big_recap_reveal(tag: str, date_range: str, record: str, pct: str, un
 # Two milestone styles to rotate between so back-to-back milestones (e.g.
 # a streak followed later by a count threshold) don't look identical.
 MILESTONE_VARIANTS = {
-    "flash": ("milestone_reveal.html", 5.0),        # white flash + pop-in headline
-    "pulse": ("milestone_pulse_reveal.html", 5.0),  # concentric expanding rings
+    "flash": ("milestone_reveal.html", 6.5),        # white flash + pop-in headline
+    "pulse": ("milestone_pulse_reveal.html", 6.5),  # concentric expanding rings
 }
 
 
@@ -257,12 +257,12 @@ EDUCATIONAL_TOPICS = {
 def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: Path, duration_s: float | None = None) -> Path:
     """lines: list of short (~1 sentence) strings, revealed one at a time."""
     if duration_s is None:
-        duration_s = 0.9 + len(lines) * 1.1 + 1.6
+        duration_s = 0.9 + len(lines) * 1.1 + 3.1
     setup_js = f"window.populateLines({json.dumps(tag)}, {json.dumps(title)}, {json.dumps(lines)})"
     return _record_template("educational_reveal.html", setup_js, out_path, duration_s)
 
 
-def record_grading_tiers_reveal(out_path: Path, duration_s: float = 6.5) -> Path:
+def record_grading_tiers_reveal(out_path: Path, duration_s: float = 8.0) -> Path:
     """Dedicated Pick Grading System video - static content (no live
     stats), matches the site's public PREMIUM/OPTIMAL/LEAN/SKIP tiers but
     deliberately omits the exact win-prob/EV thresholds the site itself
@@ -271,7 +271,7 @@ def record_grading_tiers_reveal(out_path: Path, duration_s: float = 6.5) -> Path
     return _record_template("grading_tiers_reveal.html", "() => {}", out_path, duration_s)
 
 
-def record_subscription_tiers_reveal(out_path: Path, duration_s: float = 6.0) -> Path:
+def record_subscription_tiers_reveal(out_path: Path, duration_s: float = 7.5) -> Path:
     """Dedicated 'Choose Your Tier' subscription video - static content,
     real public pricing (not methodology, so no vagueness needed here)."""
     return _record_template("subscription_tiers_reveal.html", "() => {}", out_path, duration_s)
