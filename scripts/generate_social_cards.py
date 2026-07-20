@@ -892,7 +892,7 @@ def main() -> None:
                 slug = re.sub(r"[^a-z0-9]+", "-", ev["event"]["name"].lower()).strip("-")
                 event_video_path = out_dir / f"cv-event-{slug}-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_stats_reveal(
-                    headline=f"{ev['event']['name']} — FINAL",
+                    headline=ev["event"]["name"].title(),
                     record=f"{ev_stats['w']}W-{ev_stats['l']}L",
                     pct=_fmt_pct(ev_stats.get("pct")),
                     units=_fmt_units(ev_stats.get("units")),
