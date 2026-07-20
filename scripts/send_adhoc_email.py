@@ -18,10 +18,21 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 
 
+def _caption_block(title: str, text: str) -> str:
+    html_text = text.replace("\n", "<br>")
+    return (
+        f'<h3 style="margin-bottom:4px">{title}</h3>'
+        f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
+        f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", required=True)
     parser.add_argument("--intro", default="")
+    parser.add_argument("--caption-ig", default=None)
+    parser.add_argument("--caption-x", default=None)
     parser.add_argument("--file", action="append", dest="files", required=True)
     args = parser.parse_args()
 
@@ -38,6 +49,12 @@ def main() -> None:
 
     filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
     body_html = f"<p>{args.intro}</p><p>Attached:</p><ul>{filename_list_html}</ul>"
+    if args.caption_ig or args.caption_x:
+        body_html += "<p>Captions below, ready to copy-paste:</p>"
+        if args.caption_ig:
+            body_html += _caption_block("Instagram caption", args.caption_ig)
+        if args.caption_x:
+            body_html += _caption_block("X caption", args.caption_x)
 
     resp = requests.post(
         "https://api.resend.com/emails",
