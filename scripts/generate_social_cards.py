@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-generate_social_cards.py — daily automated export of the social-tab canvas
-cards (Track Record, Sport Performance, League Performance), emailed for
-easy same-day posting.
+generate_social_cards.py — automated export of the social-tab canvas cards
+(Track Record, Sport Performance, League Performance, and — when a known
+event window is configured — Event Performance), emailed daily for easy
+same-day posting.
 
 The cards themselves are rendered client-side by JS canvas code in
 docs/app.html (_genCombinedTrackGraphic, _genSportPerfGraphic,
-_genLeaguePerfGraphic) — there's no server-side equivalent, and duplicating
-that drawing logic in Python would just be a second thing to keep in sync
-with every visual tweak made to the real cards. Instead this drives a
-headless Chromium (Playwright, already a project dependency for Linemate
-scraping) against the LIVE deployed app, so whatever the cards actually
-look like in the browser is exactly what gets emailed.
+_genLeaguePerfGraphic, _exportEventPerfCard) — there's no server-side
+equivalent, and duplicating that drawing logic in Python would just be a
+second thing to keep in sync with every visual tweak made to the real
+cards. Instead this drives a headless Chromium (Playwright, already a
+project dependency for Linemate scraping) against the LIVE deployed app,
+so whatever the cards actually look like in the browser is exactly what
+gets emailed.
 
 Two problems a naive "just load the page and click export" approach hits,
 both handled below:
@@ -24,15 +26,29 @@ both handled below:
   2. The export functions trigger a real browser file download
      (_saveCanvas creates an <a download> and clicks it). _saveCanvas
      itself lives inside a closure, not on window, so it can't be
-     monkey-patched from outside (confirmed: typeof _saveCanvas is
-     undefined at global scope, even though the exported generator
-     functions that call it internally work fine). So instead of fighting
-     that, this just lets the real download happen and captures it via
-     Playwright's native download interception.
+     monkey-patched from outside. So instead of fighting that, this just
+     lets the real download happen and captures it via Playwright's
+     native download interception.
 
-Event Performance card is deliberately NOT included — it needs a manually
-set tournament name/date window with no sensible default, so
-auto-generating it would risk emailing an empty/garbage card silently.
+Cadence — one run per day, but the day's date decides what extra content
+rides along with the standard daily post:
+  - Every day:      Track Record + Sport/League Performance (YESTERDAY)
+  - Sundays:        + a weekly recap (ROLLING 7D) — bigger "7-day roundup"
+  - 1st of month:   + a monthly recap (LAST MONTH)
+  - Configured event end dates (see EVENTS below): + an Event Performance
+    card for that tournament/season, the day after it ends
+  - Any run:        a milestone check (win streak / round-number bet-count
+    triggers) — fires a bonus email the day a new one is crossed. State is
+    persisted in data/social_milestones.json (committed back to the repo
+    by the workflow) so a milestone only ever fires once.
+
+Caption copy rotates through a few hook-style variants (see HOOK_STYLES)
+so consecutive daily posts don't read as obviously templated.
+
+EVENTS is empty by default — Event Performance cards need a real
+tournament name/date window, and there's no way to auto-detect "this
+tournament just ended" from the data alone. Add entries as they're known
+(see the EVENTS docstring below for the exact shape).
 
 Usage:
   python3 scripts/generate_social_cards.py            # generate + email
@@ -42,9 +58,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
-import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -52,8 +68,30 @@ import requests
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
+ROOT = Path(__file__).resolve().parent.parent
+MILESTONE_STATE_PATH = ROOT / "data" / "social_milestones.json"
 
-# filename prefix written by each card's _saveCanvas() call -> (JS call, human label)
+# Known tournament/season windows to auto-post an Event Performance card
+# for, the day after they end. Add entries as they're known — each is
+# {"name": <exact string to show on the card>, "start": "YYYY-MM-DD",
+# "end": "YYYY-MM-DD", "leagues": [<league filter labels, matching
+# LEAGUE_FILTER_LABELS in app.html, or [] for no filter / all activity>]}.
+EVENTS: list[dict] = [
+    {"name": "WIMBLEDON 2026", "start": "2026-06-29", "end": "2026-07-12", "leagues": ["ATP", "WTA"]},
+    {"name": "WORLD CUP 2026", "start": "2026-06-11", "end": "2026-07-19", "leagues": []},
+]
+
+# Rotating opening-hook styles for the daily caption, keyed by weekday
+# index (Mon=0..Sun=6) so the same day of week always gets the same
+# style — avoids two similar-sounding posts landing back to back while
+# still giving four distinct voices across a week.
+HOOK_STYLES = [
+    lambda date_str: f"Yesterday's Performance — {date_str}",
+    lambda date_str: f"{date_str} results are in.",
+    lambda date_str: f"How we did on {date_str}:",
+    lambda date_str: f"The numbers don't lie — {date_str} recap:",
+]
+
 CARD_JOBS = [
     ("cv-track-record-", "_genCombinedTrackGraphic()", "Track Record"),
     ("cv-sport-perf-",   "_genSportPerfGraphic()",     "Sport Performance"),
@@ -66,33 +104,163 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
-def generate_cards(out_dir: Path) -> tuple[list[Path], dict | None]:
+def _mt_now() -> datetime:
+    # Good enough for day-of-week/day-of-month cadence decisions — this
+    # project's other scheduled workflows are all pinned to MDT (UTC-6)
+    # rather than doing real DST-aware conversion, same convention here.
+    return datetime.now(timezone.utc) - timedelta(hours=6)
+
+
+def load_milestone_state() -> dict:
+    if MILESTONE_STATE_PATH.exists():
+        try:
+            return json.loads(MILESTONE_STATE_PATH.read_text())
+        except Exception:
+            pass
+    return {"lastStreak": 0, "lastCountMilestone": 0}
+
+
+def save_milestone_state(state: dict) -> None:
+    MILESTONE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MILESTONE_STATE_PATH.write_text(json.dumps(state, indent=2))
+
+
+def _fmt_units(units: float | None) -> str:
+    if units is None:
+        return "N/A"
+    return f"{'+' if units >= 0 else ''}{units:.1f}u"
+
+
+def _fmt_pct(pct: float | None) -> str:
+    return f"{pct*100:.1f}%" if pct is not None else "N/A"
+
+
+def generate_cards(page, out_dir: Path, period: str, prefix_extra: str = "") -> tuple[list[Path], dict | None]:
+    """Generate the standard 3-card set for a given period ('YESTERDAY',
+    'ROLLING 7D', 'LAST MONTH', etc). prefix_extra distinguishes filenames
+    across multiple generations in the same run (e.g. daily + weekly on a
+    Sunday)."""
+    saved: list[Path] = []
+    page.evaluate(
+        f"() => {{ renderTrackRecord._sportPeriod = '{period}'; renderTrackRecord._leaguePeriod = '{period}'; }}"
+    )
+    for _, js_call, label in CARD_JOBS:
+        log(f"Rendering {label} card ({period})…")
+        with page.expect_download(timeout=15000) as download_info:
+            page.evaluate(f"async () => {{ await {js_call}; }}")
+        download = download_info.value
+        fname = f"{prefix_extra}{download.suggested_filename}" if prefix_extra else download.suggested_filename
+        path = out_dir / fname
+        download.save_as(str(path))
+        saved.append(path)
+        log(f"  saved {path} ({path.stat().st_size/1024:.0f} KB)")
+
+    stats = page.evaluate(
+        """
+        () => {
+          const d = window._cvSportPeriodData;
+          if (!d || !d.totalP) return null;
+          return { w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units };
+        }
+        """
+    )
+    return saved, stats
+
+
+def generate_event_card(page, out_dir: Path, event: dict) -> Path | None:
+    log(f"Rendering Event Performance card for {event['name']}…")
+    leagues_js = json.dumps(event.get("leagues") or [])
+    page.evaluate(
+        f"""
+        () => {{
+          renderTrackRecord._eventName = {json.dumps(event['name'])};
+          renderTrackRecord._eventStart = {json.dumps(event['start'])};
+          renderTrackRecord._eventEnd = {json.dumps(event['end'])};
+          renderTrackRecord._eventFilters = {leagues_js};
+        }}
+        """
+    )
+    page.wait_for_timeout(200)
+    try:
+        with page.expect_download(timeout=15000) as download_info:
+            page.evaluate("async () => { await _exportEventPerfCard(); }")
+    except Exception as exc:
+        log(f"  Event Performance card for {event['name']} failed to generate: {exc}")
+        return None
+    download = download_info.value
+    path = out_dir / download.suggested_filename
+    download.save_as(str(path))
+    log(f"  saved {path} ({path.stat().st_size/1024:.0f} KB)")
+    return path
+
+
+def get_milestone_data(page) -> dict:
+    """All-time settled-bet count and current win/loss streak, computed
+    from the real ledger already loaded into this page's localStorage."""
+    return page.evaluate(
+        """
+        () => {
+          const all = getP();
+          const settled = all
+            .filter(p => p.outcome === 'win' || p.outcome === 'loss')
+            .sort((a, b) => (a.settledAt || a.lockedAt || 0) - (b.settledAt || b.lockedAt || 0));
+          let streak = 0, dir = null;
+          for (let i = settled.length - 1; i >= 0; i--) {
+            const d = settled[i].outcome === 'win' ? 'W' : 'L';
+            if (dir === null) { dir = d; streak = 1; }
+            else if (d === dir) { streak++; }
+            else break;
+          }
+          return { totalSettled: settled.length, streak, streakDir: dir };
+        }
+        """
+    )
+
+
+def run(out_dir: Path) -> dict:
     from playwright.sync_api import sync_playwright
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    saved: list[Path] = []
+    now_mt = _mt_now()
+    yesterday_mt = now_mt - timedelta(days=1)
+    is_sunday = now_mt.weekday() == 6
+    is_first_of_month = now_mt.day == 1
+
+    result = {"daily": None, "weekly": None, "monthly": None, "events": [], "milestone": None}
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 1400, "height": 1000}, accept_downloads=True)
         page = context.new_page()
         log(f"Loading {APP_URL} …")
-        # networkidle never fires on this page (live-score polling never
-        # stops), so wait for the basic load event plus a fixed settle time.
         page.goto(APP_URL, wait_until="load", timeout=60000)
         page.wait_for_timeout(3000)
 
-        # Real ledger only exists in Supabase / the user's own browser — a
-        # fresh headless session starts empty, so pull it in before
-        # rendering anything that reads getP().
         bet_count = page.evaluate(
             """
             async () => {
-              const r = await fetch(SUPABASE_URL + '/rest/v1/bets?select=raw&order=date.desc', {
-                headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
-              });
-              if (!r.ok) return -1;
-              const rows = await r.json();
+              // PostgREST caps a single response at 1000 rows by default —
+              // the real ledger is already past that, so an unpaginated
+              // fetch here would silently undercount getP() (which feeds
+              // both the cards and the milestone streak/count check).
+              // Page through with the Range header until a batch comes
+              // back short.
+              const rows = [];
+              let offset = 0;
+              const page_size = 1000;
+              while (true) {
+                const r = await fetch(SUPABASE_URL + '/rest/v1/bets?select=raw&order=date.desc', {
+                  headers: {
+                    apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY,
+                    Range: offset + '-' + (offset + page_size - 1),
+                  }
+                });
+                if (!r.ok) return -1;
+                const batch = await r.json();
+                rows.push(...batch);
+                if (batch.length < page_size) break;
+                offset += page_size;
+              }
               const preds = rows.map(x => x.raw).filter(Boolean);
               saveP(preds);
               return preds.length;
@@ -107,149 +275,189 @@ def generate_cards(out_dir: Path) -> tuple[list[Path], dict | None]:
         page.wait_for_timeout(400)
         page.evaluate("async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; }")
 
-        # Track Record always shows every period as its own row (today,
-        # yesterday, rolling 7d, etc) in one card — no period selection
-        # needed, "today" here just means the snapshot is dated/generated
-        # as of today, which it already is by default.
-        #
-        # Sport Performance and League Performance are single-period cards
-        # (renderTrackRecord._sportPeriod / _leaguePeriod, default
-        # 'ALL TIME') — set to YESTERDAY before generating those two so the
-        # daily card reflects yesterday's slate rather than the full
-        # history every time.
-        page.evaluate("() => { renderTrackRecord._sportPeriod = 'YESTERDAY'; renderTrackRecord._leaguePeriod = 'YESTERDAY'; }")
+        # Daily (always)
+        cards, stats = generate_cards(page, out_dir, "YESTERDAY")
+        result["daily"] = {"cards": cards, "stats": stats}
 
-        for _, js_call, label in CARD_JOBS:
-            log(f"Rendering {label} card…")
-            with page.expect_download(timeout=15000) as download_info:
-                page.evaluate(f"async () => {{ await {js_call}; }}")
-            download = download_info.value
-            path = out_dir / download.suggested_filename
-            download.save_as(str(path))
-            saved.append(path)
-            log(f"  saved {path} ({path.stat().st_size/1024:.0f} KB)")
+        # Weekly (Sundays)
+        if is_sunday:
+            cards, stats = generate_cards(page, out_dir, "ROLLING 7D", prefix_extra="weekly-")
+            result["weekly"] = {"cards": cards, "stats": stats}
 
-        # Pull yesterday's real record/win%/units straight from the same
-        # data the Sport Performance card just drew (window._cvSportPeriodData
-        # .totalP, set by _genSportPerfGraphic() above via renderTrackRecord())
-        # rather than recomputing it separately in Python — guarantees the
-        # caption numbers can never drift from what the card image itself
-        # shows.
-        stats = page.evaluate(
-            """
-            () => {
-              const d = window._cvSportPeriodData;
-              if (!d || !d.totalP) return null;
-              return { w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units };
-            }
-            """
-        )
+        # Monthly (1st of month — covers the month that just ended)
+        if is_first_of_month:
+            cards, stats = generate_cards(page, out_dir, "LAST MONTH", prefix_extra="monthly-")
+            result["monthly"] = {"cards": cards, "stats": stats}
+
+        # Events — the day after a configured window ends
+        for event in EVENTS:
+            end_date = datetime.strptime(event["end"], "%Y-%m-%d").date()
+            if yesterday_mt.date() == end_date:
+                path = generate_event_card(page, out_dir, event)
+                if path:
+                    result["events"].append({"event": event, "card": path})
+
+        # Milestones
+        milestone_data = get_milestone_data(page)
+        result["milestone_data"] = milestone_data
 
         browser.close()
 
-    if not saved:
-        raise RuntimeError("No cards were captured — no downloads fired")
-
-    return saved, stats
+    return result
 
 
-def build_captions(stats: dict | None) -> dict[str, str]:
-    """
-    IG/X captions for the daily post, paired with the Track Record /
-    Sport Performance / League Performance cards. Record/win%/units come
-    straight from the Sport Performance card's own yesterday-window totals
-    (passed in via `stats`) so the caption can never say something the
-    image doesn't back up.
-    """
-    from datetime import timedelta
-
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    date_str = yesterday.strftime("%B %-d, %Y")  # e.g. "July 18, 2026"
-
+def build_daily_caption(stats: dict | None, date_ref: datetime) -> dict[str, str]:
+    date_str = date_ref.strftime("%B %-d, %Y")
+    hook = HOOK_STYLES[date_ref.weekday() % len(HOOK_STYLES)](date_str)
+    tally_line = ""
     if stats and stats.get("w") is not None:
-        record = f"{stats['w']}W-{stats['l']}L"
-        pct = f"{stats['pct']*100:.1f}%" if stats.get("pct") is not None else "N/A"
-        units = stats.get("units")
-        units_str = f"{'+' if units is not None and units >= 0 else ''}{units:.1f}u" if units is not None else "N/A"
-        tally_line = f"Final tally: {record} · {pct} win rate · {units_str}\n\n"
-    else:
-        tally_line = ""
-
-    header = f"Yesterday's Performance — {date_str}"
-
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
     ig = (
-        f"{header}\n\n"
-        f"This is Clairvoyance.\n\n"
-        f"{tally_line}"
+        f"{hook}\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
-        f"clairvoyanceengine.info\n"
-        f"IG @clairvoyanceengine\n"
-        f"X @clairvoyanceeng\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
         f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
     )
-
     x = (
-        f"{header}\n\n"
-        f"This is Clairvoyance.\n\n"
-        f"{tally_line}"
+        f"{hook}\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
-        f"clairvoyanceengine.info\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingtips #bettingpicks"
     )
-
     return {"instagram": ig, "x": x}
 
 
-def send_email(cards: list[Path], captions: dict[str, str]) -> None:
-    if not RESEND_API_KEY:
-        log("RESEND_API_KEY not set — skipping email, cards saved locally only", )
-        return
-    if not SOCIAL_CARD_EMAIL_TO:
-        log("SOCIAL_CARD_EMAIL_TO not set — skipping email, cards saved locally only")
-        return
-
-    today_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    attachments = []
-    for path in cards:
-        attachments.append({
-            "filename": path.name,
-            "content": base64.b64encode(path.read_bytes()).decode("ascii"),
-        })
-
-    filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
-
-    def _caption_block(title: str, text: str) -> str:
-        html_text = text.replace("\n", "<br>")
-        return (
-            f'<h3 style="margin-bottom:4px">{title}</h3>'
-            f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
-            f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
+def build_weekly_caption(stats: dict | None, week_end: datetime) -> dict[str, str]:
+    week_start = week_end - timedelta(days=6)
+    range_str = f"{week_start.strftime('%B %-d')}–{week_end.strftime('%-d, %Y')}"
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
         )
+    ig = (
+        f"This Week in Review — {range_str}\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"Seven days. Every pick graded, every line evaluated for edge. No guesswork.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #weeklyrecap"
+    )
+    x = (
+        f"This Week in Review — {range_str}\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"Seven days. Every pick graded, every line evaluated for edge.\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingtips #weeklyrecap"
+    )
+    return {"instagram": ig, "x": x}
 
+
+def build_monthly_caption(stats: dict | None, month_ref: datetime) -> dict[str, str]:
+    last_month = (month_ref.replace(day=1) - timedelta(days=1))
+    month_str = last_month.strftime("%B %Y")
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
+    ig = (
+        f"{month_str} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"A full month tracked, graded, and public. No cherry-picking, no deleted losses.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #monthlyrecap"
+    )
+    x = (
+        f"{month_str} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"A full month tracked, graded, and public. No cherry-picking.\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks #monthlyrecap"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_event_caption(event: dict) -> dict[str, str]:
+    event_hashtag = "#" + "".join(w.capitalize() for w in event["name"].split())
+    ig = (
+        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n"
+        f"Every pick tracked. Every result public. No guesswork.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#SportsBetting #BettingModel {event_hashtag} #SportsAnalytics #ModelPicks"
+    )
+    x = (
+        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n"
+        f"Clairvoyance Engine doesn't miss. 🎯\n\n"
+        f"#SportsBetting {event_hashtag}"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_milestone_caption(milestone_data: dict, trigger: str, threshold: int) -> dict[str, str]:
+    if trigger == "streak":
+        # threshold here is the round streak number just crossed (e.g. 10),
+        # not necessarily the live streak count — announce the milestone
+        # that was hit, not whatever the streak has ticked up to by the
+        # time this caption gets built.
+        dir_word = "WIN" if milestone_data["streakDir"] == "W" else "LOSS"
+        headline = f"{threshold}-{dir_word} STREAK"
+        body = f"{threshold} straight {'wins' if dir_word=='WIN' else 'losses'}. The model doesn't flinch either way — every pick graded the same, win or lose."
+    else:
+        headline = f"{threshold} BETS TRACKED"
+        body = f"{threshold} graded picks, settled and public. Every single one — no cherry-picking, no deleted losses."
+    ig = (
+        f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping"
+    )
+    x = f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n#sportsbetting #bettingpicks"
+    return {"instagram": ig, "x": x}
+
+
+def _caption_block(title: str, text: str) -> str:
+    html_text = text.replace("\n", "<br>")
+    return (
+        f'<h3 style="margin-bottom:4px">{title}</h3>'
+        f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
+        f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
+    )
+
+
+def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro: str = "") -> None:
+    if not RESEND_API_KEY or not SOCIAL_CARD_EMAIL_TO:
+        log(f"Email creds not set — skipping send for: {subject}")
+        return
+    attachments = [
+        {"filename": p.name, "content": base64.b64encode(p.read_bytes()).decode("ascii")}
+        for p in cards
+    ]
+    filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
     body_html = (
-        f"<p>Today's social cards are attached, ready to post:</p><ul>{filename_list_html}</ul>"
+        f"<p>{intro}</p>"
+        f"<p>Cards attached:</p><ul>{filename_list_html}</ul>"
         f"<p>Captions below, ready to copy-paste:</p>"
         f"{_caption_block('Instagram caption', captions['instagram'])}"
         f"{_caption_block('X caption', captions['x'])}"
     )
-
     resp = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
         json={
             "from": "Clairvoyance Engine <onboarding@resend.dev>",
             "to": [SOCIAL_CARD_EMAIL_TO],
-            "subject": f"Clairvoyance — Daily Social Cards ({today_str})",
+            "subject": subject,
             "html": body_html,
             "attachments": attachments,
         },
         timeout=30,
     )
     if resp.status_code >= 300:
-        raise RuntimeError(f"Resend send failed: HTTP {resp.status_code} {resp.text[:300]}")
-    log(f"Email sent to {SOCIAL_CARD_EMAIL_TO} with {len(attachments)} card(s)")
+        raise RuntimeError(f"Resend send failed for '{subject}': HTTP {resp.status_code} {resp.text[:300]}")
+    log(f"Email sent: {subject} ({len(attachments)} attachment(s))")
 
 
 def main() -> None:
@@ -259,15 +467,100 @@ def main() -> None:
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
-    cards, stats = generate_cards(out_dir)
-    log(f"Generated {len(cards)} card(s) in {out_dir}")
-    captions = build_captions(stats)
-    log("Captions:\n--- INSTAGRAM ---\n" + captions["instagram"] + "\n--- X ---\n" + captions["x"])
+    now_mt = _mt_now()
+    yesterday_mt = now_mt - timedelta(days=1)
 
+    result = run(out_dir)
+
+    # Daily
+    daily = result["daily"]
+    captions = build_daily_caption(daily["stats"], yesterday_mt)
+    log("Daily captions:\n--- IG ---\n" + captions["instagram"] + "\n--- X ---\n" + captions["x"])
     if not args.no_email:
-        send_email(cards, captions)
+        send_email(
+            f"Clairvoyance — Daily Social Cards ({yesterday_mt.strftime('%B %d, %Y')})",
+            daily["cards"], captions,
+            intro="Today's social cards are attached, ready to post:",
+        )
+
+    # Weekly
+    if result["weekly"]:
+        captions = build_weekly_caption(result["weekly"]["stats"], yesterday_mt)
+        log("Weekly captions:\n--- IG ---\n" + captions["instagram"])
+        if not args.no_email:
+            send_email(
+                f"Clairvoyance — Weekly Recap ({yesterday_mt.strftime('%B %d, %Y')})",
+                result["weekly"]["cards"], captions,
+                intro="It's Sunday — here's the 7-day roundup, good pinned-post material:",
+            )
+
+    # Monthly
+    if result["monthly"]:
+        captions = build_monthly_caption(result["monthly"]["stats"], now_mt)
+        log("Monthly captions:\n--- IG ---\n" + captions["instagram"])
+        if not args.no_email:
+            send_email(
+                f"Clairvoyance — Monthly Recap ({(now_mt.replace(day=1)-timedelta(days=1)).strftime('%B %Y')})",
+                result["monthly"]["cards"], captions,
+                intro="First of the month — last month's recap is ready:",
+            )
+
+    # Events
+    for ev in result["events"]:
+        captions = build_event_caption(ev["event"])
+        log(f"Event captions ({ev['event']['name']}):\n--- IG ---\n" + captions["instagram"])
+        if not args.no_email:
+            send_email(
+                f"Clairvoyance — {ev['event']['name']} Wrap-Up",
+                [ev["card"]], captions,
+                intro=f"{ev['event']['name']} just wrapped — final performance card is ready:",
+            )
+
+    # Milestones
+    milestone_data = result.get("milestone_data") or {}
+    state = load_milestone_state()
+    new_state = dict(state)
+    triggered = None
+
+    triggered_threshold = None
+    streak = milestone_data.get("streak", 0)
+    streak_thresholds = [5, 10, 15, 20, 25, 30]
+    for t in streak_thresholds:
+        if streak >= t > state.get("lastStreak", 0):
+            triggered = "streak"
+            triggered_threshold = t
+            new_state["lastStreak"] = t
+            break
+    if streak < state.get("lastStreak", 0):
+        # streak broke — reset so the next run up can re-trigger at the same threshold later
+        new_state["lastStreak"] = 0
+
+    total = milestone_data.get("totalSettled", 0)
+    count_thresholds = [100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000]
+    if triggered is None:
+        for t in count_thresholds:
+            if total >= t > state.get("lastCountMilestone", 0):
+                triggered = "count"
+                triggered_threshold = t
+                new_state["lastCountMilestone"] = t
+                break
+
+    if triggered:
+        log(f"Milestone triggered: {triggered} @ {triggered_threshold} ({milestone_data})")
+        captions = build_milestone_caption(milestone_data, triggered, triggered_threshold)
+        log("Milestone captions:\n--- IG ---\n" + captions["instagram"])
+        if not args.no_email:
+            send_email(
+                "Clairvoyance — 🎯 New Milestone!",
+                [daily["cards"][0]],  # reuse the Track Record card already generated this run
+                captions,
+                intro="A milestone just hit — good spike-engagement post, don't sit on this one:",
+            )
+        save_milestone_state(new_state)
     else:
-        log("--no-email set, skipping send")
+        log(f"No new milestone (streak={streak}, total={total}, state={state})")
+
+    log("Done.")
 
 
 if __name__ == "__main__":

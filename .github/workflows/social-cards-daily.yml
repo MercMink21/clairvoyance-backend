@@ -6,6 +6,9 @@ on:
     - cron: '30 17 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   generate-and-email:
     runs-on: ubuntu-latest
@@ -14,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,3 +36,20 @@ jobs:
           SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
         run: |
           python scripts/generate_social_cards.py
+
+      # Milestone state (data/social_milestones.json) has to persist across
+      # runs so a milestone only ever fires once - GitHub Actions runners
+      # are ephemeral, so the repo itself is the only place that can hold
+      # that state between runs.
+      - name: Commit milestone state
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          git add data/social_milestones.json
+          if git diff --cached --quiet; then
+            echo "No milestone state change"
+          else
+            git commit -m "social-cards: milestone state update"
+            git pull --rebase origin main
+            git push
+          fi
