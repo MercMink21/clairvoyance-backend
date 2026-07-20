@@ -177,7 +177,7 @@ def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path, dur
     last row should typically have isTotal=True. Duration auto-scales with
     row count if not given (each row adds ~0.28s to the reveal)."""
     if duration_s is None:
-        duration_s = 1.5 + len(rows) * 0.28 + 2.5
+        duration_s = 1.5 + len(rows) * 0.4 + 2.5
     setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)})"
     return _record_template("breakdown_reveal.html", setup_js, out_path, duration_s)
 
