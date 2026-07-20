@@ -78,6 +78,7 @@ import argparse
 import base64
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -259,6 +260,22 @@ def generate_event_card(page, out_dir: Path, event: dict) -> Path | None:
     return path
 
 
+def get_event_stats(page) -> dict | None:
+    """Win/loss/pct/units for the event window just rendered by
+    generate_event_card() — reads window._cvEventPeriodData.totalP, which
+    the card renderer already computed and left on the page."""
+    return page.evaluate(
+        """
+        () => {
+          const d = window._cvEventPeriodData;
+          if (!d || !d.totalP) return null;
+          const t = d.totalP;
+          return { w: t.w, l: t.l, n: t.n, pct: t.pct, units: t.u };
+        }
+        """
+    )
+
+
 def get_milestone_data(page) -> dict:
     """All-time settled-bet count and current win/loss streak, computed
     from the real ledger already loaded into this page's localStorage."""
@@ -395,7 +412,8 @@ def run(out_dir: Path) -> dict:
             if yesterday_mt.date() == end_date:
                 path = generate_event_card(page, out_dir, event)
                 if path:
-                    result["events"].append({"event": event, "card": path})
+                    event_stats = get_event_stats(page)
+                    result["events"].append({"event": event, "card": path, "stats": event_stats})
 
         # Milestones
         milestone_data = get_milestone_data(page)
@@ -800,10 +818,30 @@ def main() -> None:
     for ev in result["events"]:
         captions = build_event_caption(ev["event"])
         log(f"Event captions ({ev['event']['name']}):\n--- IG ---\n" + captions["instagram"])
+        event_attachments = [ev["card"]]
+        ev_stats = ev.get("stats") or {}
+        if ev_stats.get("w") is not None:
+            try:
+                from generate_video_reveal import record_stats_reveal
+                slug = re.sub(r"[^a-z0-9]+", "-", ev["event"]["name"].lower()).strip("-")
+                event_video_path = out_dir / f"cv-event-{slug}-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+                record_stats_reveal(
+                    headline=f"{ev['event']['name']} — FINAL",
+                    record=f"{ev_stats['w']}W-{ev_stats['l']}L",
+                    pct=_fmt_pct(ev_stats.get("pct")),
+                    units=_fmt_units(ev_stats.get("units")),
+                    locked=str(ev_stats.get("n", "—")),
+                    out_path=event_video_path,
+                    variant="glitch",
+                )
+                event_attachments.append(event_video_path)
+                log(f"Event glitch video generated: {event_video_path}")
+            except Exception as exc:
+                log(f"Event video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
             send_email(
                 f"Clairvoyance — {ev['event']['name']} Wrap-Up",
-                [ev["card"]], captions,
+                event_attachments, captions,
                 intro=f"{ev['event']['name']} just wrapped — final performance card is ready:",
             )
 
