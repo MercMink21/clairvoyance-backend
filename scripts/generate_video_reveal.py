@@ -114,7 +114,7 @@ def _record_template_sized(template_name: str, setup_js: str, out_path: Path,
     return out_path
 
 
-def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 4.5) -> Path:
+def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 10.0) -> Path:
     """Turns a static square card (any 1080x1080 PNG — the full image,
     text and all, kept intact) into a glitch-reveal video: a burst of
     RGB-split slice glitches settling into the crisp, untouched image."""
