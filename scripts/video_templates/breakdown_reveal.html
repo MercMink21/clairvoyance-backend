@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1080px; height:1350px; overflow:hidden; background:#0a0518; }
+  .stage {
+    width:1080px; height:1350px; position:relative;
+    background:
+      repeating-linear-gradient(45deg, rgba(0,240,255,.05) 0 2px, transparent 2px 40px),
+      repeating-linear-gradient(-45deg, rgba(240,0,255,.05) 0 2px, transparent 2px 40px),
+      radial-gradient(ellipse at 50% 20%, #17103a 0%, #0a0518 70%);
+    display:flex; flex-direction:column; align-items:center; padding-top:70px;
+  }
+  .logo {
+    font-family:'Orbitron',sans-serif; font-weight:900; font-size:54px; letter-spacing:6px;
+    color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.7);
+    opacity:0; animation: reveal .7s ease-out forwards;
+  }
+  .headline {
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:28px; letter-spacing:3px;
+    color:#00f0ff; text-shadow:0 0 12px #00f0ff,0 0 28px rgba(0,240,255,.6);
+    margin-top:14px; opacity:0; animation: reveal .7s ease-out .3s forwards;
+  }
+  .rows { width:880px; margin-top:56px; display:flex; flex-direction:column; gap:16px; }
+  .row {
+    display:flex; justify-content:space-between; align-items:center;
+    background:rgba(20,10,40,.55); border:1px solid rgba(240,0,255,.2); border-radius:6px;
+    padding:20px 28px; opacity:0; transform:translateX(-24px);
+  }
+  .row .label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:26px; color:#e6eaff; }
+  .row .val { font-family:'Share Tech Mono',monospace; font-size:24px; display:flex; gap:24px; }
+  .row .rec { color:#e6eaff; }
+  .row .pct { color:#00f0ff; }
+  .row.total {
+    border-color:rgba(0,218,136,.5); background:rgba(0,218,136,.08); margin-top:8px;
+  }
+  .row.total .label, .row.total .pct { color:#00da88; }
+  .footer {
+    position:absolute; bottom:60px; left:0; right:0; text-align:center;
+    font-family:'Orbitron',sans-serif; font-size:18px; letter-spacing:3px; color:#f000ff;
+    opacity:0; animation: reveal .8s ease-out forwards;
+  }
+  .footer-sub { font-family:'Share Tech Mono',monospace; font-size:14px; color:rgba(220,210,255,.5); margin-top:6px; }
+  @keyframes reveal { to { opacity:1; } }
+  @keyframes rowIn { to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="logo">CLAIRVOYANCE</div>
+    <div class="headline" id="headline">SPORT PERFORMANCE</div>
+    <div class="rows" id="rows"></div>
+    <div class="footer" id="footer" style="animation-delay:0s">
+      X @clairvoyanceeng &nbsp;·&nbsp; IG @clairvoyanceengine
+      <div class="footer-sub">clairvoyanceengine.info</div>
+    </div>
+  </div>
+  <script>
+    // populateRows(headline, [{label, record, pct, isTotal}]) — called
+    // externally via page.evaluate() after load, so the delay-staggering
+    // happens fresh relative to when data actually lands, not baked in.
+    window.populateRows = function(headline, rows) {
+      document.getElementById('headline').textContent = headline;
+      const container = document.getElementById('rows');
+      container.innerHTML = '';
+      rows.forEach((r, i) => {
+        const div = document.createElement('div');
+        div.className = 'row' + (r.isTotal ? ' total' : '');
+        div.innerHTML = `<span class="label">${r.label}</span><span class="val"><span class="rec">${r.record}</span><span class="pct">${r.pct}</span></span>`;
+        div.style.animation = `rowIn .5s ease-out ${0.5 + i * 0.28}s forwards`;
+        container.appendChild(div);
+      });
+      const footerDelay = 0.5 + rows.length * 0.28 + 0.3;
+      document.getElementById('footer').style.animation = `reveal .7s ease-out ${footerDelay}s forwards`;
+    };
+  </script>
+</body>
+</html>

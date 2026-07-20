@@ -166,7 +166,22 @@ def generate_cards(page, out_dir: Path, period: str, prefix_extra: str = "") -> 
         () => {
           const d = window._cvSportPeriodData;
           if (!d || !d.totalP) return null;
-          return { w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units };
+          // d.bySport[sport] is the RAW array of bet objects for that
+          // sport, not a pre-computed summary — the card renderer computes
+          // w/l/pct inline via its own cP() closure, which isn't reachable
+          // from here, so replicate that same win/loss/settled-only logic
+          // directly against the raw array.
+          const bySport = (d.sportList || []).map(s => {
+            const bets = (d.bySport && d.bySport[s]) || [];
+            const settled = bets.filter(p => p.outcome === 'win' || p.outcome === 'loss');
+            const w = settled.filter(p => p.outcome === 'win').length;
+            const l = settled.length - w;
+            return { label: s, w, l, n: settled.length, pct: settled.length ? w / settled.length : null };
+          }).filter(s => s.n);
+          return {
+            w: d.totalP.w, l: d.totalP.l, pct: d.totalP.pct, units: d.totalP.units,
+            bySport,
+          };
         }
         """
     )
@@ -487,9 +502,9 @@ def main() -> None:
     stats = daily["stats"] or {}
     if stats.get("w") is not None:
         try:
-            from generate_video_reveal import record_and_convert
+            from generate_video_reveal import record_stats_reveal, record_breakdown_reveal
             video_path = out_dir / f"cv-reveal-{yesterday_mt.strftime('%Y%m%d')}.mp4"
-            record_and_convert(
+            record_stats_reveal(
                 headline="YESTERDAY'S PERFORMANCE",
                 record=f"{stats['w']}W-{stats['l']}L",
                 pct=_fmt_pct(stats.get("pct")),
@@ -498,6 +513,18 @@ def main() -> None:
             )
             daily_attachments.append(video_path)
             log(f"Video reveal generated: {video_path}")
+
+            by_sport = stats.get("bySport") or []
+            if by_sport:
+                rows = [
+                    {"label": s["label"], "record": f"{s['w']}W-{s['l']}L", "pct": _fmt_pct(s.get("pct")), "isTotal": False}
+                    for s in by_sport
+                ]
+                rows.append({"label": "TOTAL", "record": f"{stats['w']}W-{stats['l']}L", "pct": _fmt_pct(stats.get("pct")), "isTotal": True})
+                breakdown_path = out_dir / f"cv-breakdown-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+                record_breakdown_reveal("SPORT PERFORMANCE", rows, breakdown_path)
+                daily_attachments.append(breakdown_path)
+                log(f"Breakdown video generated: {breakdown_path}")
         except Exception as exc:
             # Video is a bonus on top of the cards, not a hard requirement
             # for the daily post — don't let a video-pipeline hiccup (e.g.
@@ -578,10 +605,28 @@ def main() -> None:
         log(f"Milestone triggered: {triggered} @ {triggered_threshold} ({milestone_data})")
         captions = build_milestone_caption(milestone_data, triggered, triggered_threshold)
         log("Milestone captions:\n--- IG ---\n" + captions["instagram"])
+
+        milestone_attachments = [daily["cards"][0]]  # reuse the Track Record card already generated this run
+        try:
+            from generate_video_reveal import record_milestone_reveal
+            if triggered == "streak":
+                dir_word = "WIN" if milestone_data.get("streakDir") == "W" else "LOSS"
+                m_headline = f"{triggered_threshold}-{dir_word} STREAK"
+                m_body = f"{triggered_threshold} straight {'wins' if dir_word=='WIN' else 'losses'}. The model doesn't flinch either way."
+            else:
+                m_headline = f"{triggered_threshold} BETS TRACKED"
+                m_body = f"{triggered_threshold} graded picks, settled and public. Every single one."
+            milestone_video_path = out_dir / f"cv-milestone-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+            record_milestone_reveal(m_headline, m_body, milestone_video_path)
+            milestone_attachments.append(milestone_video_path)
+            log(f"Milestone video generated: {milestone_video_path}")
+        except Exception as exc:
+            log(f"Milestone video generation failed (non-fatal, skipping): {exc}")
+
         if not args.no_email:
             send_email(
                 "Clairvoyance — 🎯 New Milestone!",
-                [daily["cards"][0]],  # reuse the Track Record card already generated this run
+                milestone_attachments,
                 captions,
                 intro="A milestone just hit — good spike-engagement post, don't sit on this one:",
             )
