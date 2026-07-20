@@ -519,17 +519,23 @@ def build_yearly_caption(stats: dict | None, year: int) -> dict[str, str]:
     return {"instagram": ig, "x": x}
 
 
-def build_event_caption(event: dict) -> dict[str, str]:
+def build_event_caption(event: dict, stats: dict | None = None) -> dict[str, str]:
     event_hashtag = "#" + "".join(w.capitalize() for w in event["name"].split())
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
     ig = (
-        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n"
+        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Every pick tracked. Every result public. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
         f"#SportsBetting #BettingModel {event_hashtag} #SportsAnalytics #ModelPicks"
     )
     x = (
-        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n"
+        f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Clairvoyance Engine doesn't miss. 🎯\n\n"
         f"#SportsBetting {event_hashtag}"
     )
@@ -816,7 +822,7 @@ def main() -> None:
 
     # Events
     for ev in result["events"]:
-        captions = build_event_caption(ev["event"])
+        captions = build_event_caption(ev["event"], ev.get("stats"))
         log(f"Event captions ({ev['event']['name']}):\n--- IG ---\n" + captions["instagram"])
         event_attachments = [ev["card"]]
         ev_stats = ev.get("stats") or {}
