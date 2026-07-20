@@ -1,0 +1,45 @@
+name: Ad-hoc Asset Email
+
+on:
+  workflow_dispatch:
+    inputs:
+      subject:
+        description: 'Email subject'
+        required: true
+      intro:
+        description: 'Intro line'
+        required: false
+        default: ''
+      files:
+        description: 'Comma-separated repo-relative file paths to attach'
+        required: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Send email
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          IFS=',' read -ra FILES <<< "${{ github.event.inputs.files }}"
+          ARGS=()
+          for f in "${FILES[@]}"; do ARGS+=(--file "$f"); done
+          python scripts/send_adhoc_email.py \
+            --subject "${{ github.event.inputs.subject }}" \
+            --intro "${{ github.event.inputs.intro }}" \
+            "${ARGS[@]}"

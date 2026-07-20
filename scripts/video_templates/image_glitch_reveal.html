@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1080px; height:1080px; overflow:hidden; background:#08090b; }
+  .stage { width:1080px; height:1080px; position:relative; overflow:hidden; }
+  .layer {
+    position:absolute; inset:0; width:1080px; height:1080px;
+    background-size:cover; background-position:center;
+  }
+  #base { z-index:1; }
+  #slice-a, #slice-b {
+    z-index:2; mix-blend-mode:screen; opacity:0;
+  }
+  #slice-a { filter:hue-rotate(-40deg) saturate(3) brightness(1.15); }
+  #slice-b { filter:hue-rotate(140deg) saturate(3) brightness(1.15); }
+  .scanbar {
+    position:absolute; left:0; right:0; height:5px; z-index:5;
+    background:linear-gradient(90deg,transparent,rgba(0,240,255,.85),transparent);
+    box-shadow:0 0 26px 5px rgba(0,240,255,.7);
+    top:-5px; opacity:0;
+  }
+  .noise {
+    position:absolute; inset:0; z-index:4; opacity:0;
+    background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.06) 0px,transparent 1px,transparent 2px);
+    mix-blend-mode:overlay;
+  }
+  .flash { position:absolute; inset:0; z-index:6; background:#fff; opacity:0; }
+
+  @keyframes settle { to { opacity:0; } }
+  @keyframes baseIn { from { opacity:0; filter:brightness(2) contrast(1.4); } to { opacity:1; filter:brightness(1) contrast(1); } }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="layer" id="base"></div>
+    <div class="layer" id="slice-a"></div>
+    <div class="layer" id="slice-b"></div>
+    <div class="noise" id="noise"></div>
+    <div class="scanbar" id="scanbar"></div>
+    <div class="flash" id="flash"></div>
+  </div>
+  <script>
+    // Populated by setup_js: sets background-image data URI on base/slice-a/slice-b.
+    window._glitchRun = function() {
+      const base = document.getElementById('base');
+      const sa = document.getElementById('slice-a');
+      const sb = document.getElementById('slice-b');
+      const noise = document.getElementById('noise');
+      const scanbar = document.getElementById('scanbar');
+      const flash = document.getElementById('flash');
+
+      base.style.opacity = '0';
+      noise.style.opacity = '0.9';
+
+      let t = 0;
+      // Digital glitch burst: rapid slice offsets + color-split flicker,
+      // settling into the crisp full card. Runs on rAF for frame-accurate
+      // timing rather than CSS animation-delay stacking.
+      const burst = [
+        { at: 0,    slices: true,  clipY: 8,   dx: 18  },
+        { at: 90,   slices: true,  clipY: 32,  dx: -14 },
+        { at: 160,  slices: true,  clipY: 58,  dx: 22  },
+        { at: 230,  slices: false, clipY: 0,   dx: 0   },
+        { at: 300,  slices: true,  clipY: 74,  dx: -20 },
+        { at: 360,  slices: true,  clipY: 20,  dx: 16  },
+        { at: 420,  slices: false, clipY: 0,   dx: 0   },
+        { at: 480,  slices: true,  clipY: 45,  dx: -10 },
+        { at: 540,  flash: true },
+        { at: 560,  settle: true },
+      ];
+
+      burst.forEach(step => {
+        setTimeout(() => {
+          if (step.flash) {
+            flash.style.transition = 'opacity .05s ease-out';
+            flash.style.opacity = '0.5';
+            setTimeout(() => { flash.style.opacity = '0'; }, 60);
+          }
+          if (step.settle) {
+            base.style.transition = 'opacity .3s ease-out, filter .3s ease-out';
+            base.style.opacity = '1';
+            base.style.filter = 'brightness(1) contrast(1)';
+            sa.style.opacity = '0';
+            sb.style.opacity = '0';
+            scanbar.style.opacity = '0';
+            noise.style.transition = 'opacity .4s ease-out';
+            noise.style.opacity = '0';
+            return;
+          }
+          if (step.slices) {
+            base.style.opacity = '0.85';
+            sa.style.opacity = '0.5';
+            sb.style.opacity = '0.5';
+            sa.style.clipPath = `inset(${step.clipY}% 0 ${100-step.clipY-14}% 0)`;
+            sb.style.clipPath = `inset(${step.clipY+30}% 0 ${100-step.clipY-44}% 0)`;
+            sa.style.transform = `translateX(${step.dx}px)`;
+            sb.style.transform = `translateX(${-step.dx}px)`;
+          } else {
+            sa.style.opacity = '0.15';
+            sb.style.opacity = '0.15';
+            sa.style.transform = 'translateX(0)';
+            sb.style.transform = 'translateX(0)';
+          }
+        }, step.at);
+      });
+
+      setTimeout(() => {
+        scanbar.style.transition = 'top 1.4s cubic-bezier(.3,0,.4,1), opacity .2s';
+        scanbar.style.opacity = '1';
+        scanbar.style.top = '1080px';
+      }, 40);
+    };
+  </script>
+</body>
+</html>

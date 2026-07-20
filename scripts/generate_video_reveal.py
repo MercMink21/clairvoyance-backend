@@ -77,6 +77,65 @@ def _record_template(template_name: str, setup_js: str, out_path: Path, duration
     return out_path
 
 
+def _record_template_sized(template_name: str, setup_js: str, out_path: Path,
+                            duration_s: float, width: int, height: int) -> Path:
+    """Same as _record_template but for templates whose canvas isn't the
+    standard 1080x1350 (e.g. square 1080x1080 card-derived videos)."""
+    from playwright.sync_api import sync_playwright
+    import imageio_ffmpeg
+
+    ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+    template = TEMPLATES / template_name
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            context = browser.new_context(
+                viewport={"width": width, "height": height},
+                record_video_dir=str(tmp_dir),
+                record_video_size={"width": width, "height": height},
+            )
+            page = context.new_page()
+            page.goto(f"file://{template}")
+            page.evaluate(setup_js)
+            page.wait_for_timeout(int(duration_s * 1000))
+            video_path_obj = page.video
+            context.close()
+            browser.close()
+            webm_path = Path(video_path_obj.path())
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [ffmpeg_bin, "-y", "-i", str(webm_path), "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", str(out_path)],
+            check=True, capture_output=True,
+        )
+    return out_path
+
+
+def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 4.5) -> Path:
+    """Turns a static square card (any 1080x1080 PNG — the full image,
+    text and all, kept intact) into a glitch-reveal video: a burst of
+    RGB-split slice glitches settling into the crisp, untouched image."""
+    import base64
+
+    img_b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    data_uri = f"data:image/png;base64,{img_b64}"
+    setup_js = f"""
+    () => {{
+      const uri = {json.dumps(data_uri)};
+      for (const id of ['base', 'slice-a', 'slice-b']) {{
+        document.getElementById(id).style.backgroundImage = `url(${{uri}})`;
+      }}
+      window._glitchRun();
+    }}
+    """
+    return _record_template_sized(
+        "image_glitch_reveal.html", setup_js, out_path, duration_s, 1080, 1080,
+    )
+
+
 # Daily-stats-shaped templates (headline/v-record/v-pct/v-units element
 # IDs, same setup_js works for all of them) — different visual pacing so
 # consecutive daily posts don't all look identical. Keyed by name so
