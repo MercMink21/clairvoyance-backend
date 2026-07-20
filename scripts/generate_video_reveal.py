@@ -77,7 +77,22 @@ def _record_template(template_name: str, setup_js: str, out_path: Path, duration
     return out_path
 
 
-def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path, duration_s: float = 5.5) -> Path:
+# Daily-stats-shaped templates (headline/v-record/v-pct/v-units element
+# IDs, same setup_js works for all of them) — different visual pacing so
+# consecutive daily posts don't all look identical. Keyed by name so
+# callers/rotation logic can pick by index without knowing filenames.
+STATS_VARIANTS = {
+    "fade":     ("daily_reveal.html", 5.5),      # original: staggered fade-up
+    "scanline": ("scanline_reveal.html", 4.8),   # HUD scan-bar sweep, blur-to-sharp
+    "glitch":   ("glitch_reveal.html", 4.2),     # RGB-split glitch settle, terminal feel
+    "split":    ("split_reveal.html", 4.0),      # fast alternating slide-in, punchier
+}
+STATS_VARIANT_NAMES = list(STATS_VARIANTS.keys())
+
+
+def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path,
+                         variant: str = "fade", duration_s: float | None = None) -> Path:
+    template_name, default_duration = STATS_VARIANTS[variant]
     setup_js = f"""
     () => {{
       document.getElementById('headline').textContent = {json.dumps(headline)};
@@ -86,7 +101,7 @@ def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_pa
       document.getElementById('v-units').textContent = {json.dumps(units)};
     }}
     """
-    return _record_template("daily_reveal.html", setup_js, out_path, duration_s)
+    return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
 
 
 # Kept for backwards compat with the existing call site in generate_social_cards.py
@@ -103,14 +118,43 @@ def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path, dur
     return _record_template("breakdown_reveal.html", setup_js, out_path, duration_s)
 
 
-def record_milestone_reveal(headline: str, body_text: str, out_path: Path, duration_s: float = 5.0) -> Path:
+def record_big_recap_reveal(tag: str, date_range: str, record: str, pct: str, units: str,
+                             extra_val: str, extra_lbl: str, out_path: Path, duration_s: float = 7.0) -> Path:
+    """Dedicated weekly/monthly style — bigger reveal, 4-stat grid instead
+    of 3 (extra_val/extra_lbl is a 4th callout, e.g. "7 DAYS"/"TRACKED" for
+    weekly or "31 DAYS"/"TRACKED" for monthly), slower cinematic pacing."""
+    setup_js = f"""
+    () => {{
+      document.getElementById('tag').textContent = {json.dumps(tag)};
+      document.getElementById('range').textContent = {json.dumps(date_range)};
+      document.getElementById('v-record').textContent = {json.dumps(record)};
+      document.getElementById('v-pct').textContent = {json.dumps(pct)};
+      document.getElementById('v-units').textContent = {json.dumps(units)};
+      document.getElementById('v-extra').textContent = {json.dumps(extra_val)};
+      document.getElementById('v-extra-lbl').textContent = {json.dumps(extra_lbl)};
+    }}
+    """
+    return _record_template("big_recap_reveal.html", setup_js, out_path, duration_s)
+
+
+# Two milestone styles to rotate between so back-to-back milestones (e.g.
+# a streak followed later by a count threshold) don't look identical.
+MILESTONE_VARIANTS = {
+    "flash": ("milestone_reveal.html", 5.0),        # white flash + pop-in headline
+    "pulse": ("milestone_pulse_reveal.html", 5.0),  # concentric expanding rings
+}
+
+
+def record_milestone_reveal(headline: str, body_text: str, out_path: Path,
+                             variant: str = "flash", duration_s: float | None = None) -> Path:
+    template_name, default_duration = MILESTONE_VARIANTS[variant]
     setup_js = f"""
     () => {{
       document.getElementById('headline').textContent = {json.dumps(headline)};
       document.getElementById('body').textContent = {json.dumps(body_text)};
     }}
     """
-    return _record_template("milestone_reveal.html", setup_js, out_path, duration_s)
+    return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
 
 
 def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: Path, duration_s: float | None = None) -> Path:
@@ -130,13 +174,18 @@ def main() -> None:
     p_stats.add_argument("--record", required=True)
     p_stats.add_argument("--pct", required=True)
     p_stats.add_argument("--units", required=True)
+    p_stats.add_argument("--variant", choices=STATS_VARIANT_NAMES, default="fade")
     p_stats.add_argument("--out", default="/tmp/cv_reveal.mp4")
 
     p_breakdown = sub.add_parser("breakdown")
     p_breakdown.add_argument("--out", default="/tmp/cv_breakdown.mp4")
 
     p_milestone = sub.add_parser("milestone")
+    p_milestone.add_argument("--variant", choices=list(MILESTONE_VARIANTS.keys()), default="flash")
     p_milestone.add_argument("--out", default="/tmp/cv_milestone.mp4")
+
+    p_recap = sub.add_parser("recap")
+    p_recap.add_argument("--out", default="/tmp/cv_recap.mp4")
 
     p_edu = sub.add_parser("educational")
     p_edu.add_argument("--out", default="/tmp/cv_educational.mp4")
@@ -144,7 +193,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.kind == "stats":
-        out = record_stats_reveal(args.headline, args.record, args.pct, args.units, Path(args.out))
+        out = record_stats_reveal(args.headline, args.record, args.pct, args.units, Path(args.out), variant=args.variant)
+    elif args.kind == "recap":
+        out = record_big_recap_reveal("WEEKLY RECAP", "JULY 12 – 18, 2026", "50W-13L", "79.4%", "+31.4u", "7 DAYS", "TRACKED", Path(args.out))
     elif args.kind == "breakdown":
         demo_rows = [
             {"label": "BASEBALL", "record": "18W-4L", "pct": "81.8%", "isTotal": False},
@@ -154,7 +205,7 @@ def main() -> None:
         ]
         out = record_breakdown_reveal("SPORT PERFORMANCE", demo_rows, Path(args.out))
     elif args.kind == "milestone":
-        out = record_milestone_reveal("10-WIN STREAK", "10 straight wins. The model doesn't flinch either way.", Path(args.out))
+        out = record_milestone_reveal("10-WIN STREAK", "10 straight wins. The model doesn't flinch either way.", Path(args.out), variant=args.variant)
     elif args.kind == "educational":
         out = record_educational_reveal(
             "// EDUCATIONAL", "HOW WE GRADE PICKS",

@@ -502,7 +502,11 @@ def main() -> None:
     stats = daily["stats"] or {}
     if stats.get("w") is not None:
         try:
-            from generate_video_reveal import record_stats_reveal, record_breakdown_reveal
+            from generate_video_reveal import record_stats_reveal, record_breakdown_reveal, STATS_VARIANT_NAMES
+            # Rotate the visual style by weekday (same index basis as the
+            # caption hook rotation) so consecutive daily videos don't all
+            # look identical.
+            variant = STATS_VARIANT_NAMES[yesterday_mt.weekday() % len(STATS_VARIANT_NAMES)]
             video_path = out_dir / f"cv-reveal-{yesterday_mt.strftime('%Y%m%d')}.mp4"
             record_stats_reveal(
                 headline="YESTERDAY'S PERFORMANCE",
@@ -510,7 +514,9 @@ def main() -> None:
                 pct=_fmt_pct(stats.get("pct")),
                 units=_fmt_units(stats.get("units")),
                 out_path=video_path,
+                variant=variant,
             )
+            log(f"Daily video variant: {variant}")
             daily_attachments.append(video_path)
             log(f"Video reveal generated: {video_path}")
 
@@ -543,10 +549,28 @@ def main() -> None:
     if result["weekly"]:
         captions = build_weekly_caption(result["weekly"]["stats"], yesterday_mt)
         log("Weekly captions:\n--- IG ---\n" + captions["instagram"])
+        weekly_attachments = list(result["weekly"]["cards"])
+        w_stats = result["weekly"]["stats"] or {}
+        if w_stats.get("w") is not None:
+            try:
+                from generate_video_reveal import record_big_recap_reveal
+                week_start = yesterday_mt - timedelta(days=6)
+                range_str = f"{week_start.strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}"
+                recap_path = out_dir / f"cv-weekly-recap-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+                record_big_recap_reveal(
+                    tag="WEEKLY RECAP", date_range=range_str,
+                    record=f"{w_stats['w']}W-{w_stats['l']}L", pct=_fmt_pct(w_stats.get("pct")),
+                    units=_fmt_units(w_stats.get("units")), extra_val="7 DAYS", extra_lbl="TRACKED",
+                    out_path=recap_path,
+                )
+                weekly_attachments.append(recap_path)
+                log(f"Weekly recap video generated: {recap_path}")
+            except Exception as exc:
+                log(f"Weekly recap video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
             send_email(
                 f"Clairvoyance — Weekly Recap ({yesterday_mt.strftime('%B %d, %Y')})",
-                result["weekly"]["cards"], captions,
+                weekly_attachments, captions,
                 intro="It's Sunday — here's the 7-day roundup, good pinned-post material:",
             )
 
@@ -554,10 +578,28 @@ def main() -> None:
     if result["monthly"]:
         captions = build_monthly_caption(result["monthly"]["stats"], now_mt)
         log("Monthly captions:\n--- IG ---\n" + captions["instagram"])
+        monthly_attachments = list(result["monthly"]["cards"])
+        m_stats = result["monthly"]["stats"] or {}
+        last_month_end = now_mt.replace(day=1) - timedelta(days=1)
+        if m_stats.get("w") is not None:
+            try:
+                from generate_video_reveal import record_big_recap_reveal
+                days_in_month = last_month_end.day
+                recap_path = out_dir / f"cv-monthly-recap-{last_month_end.strftime('%Y%m')}.mp4"
+                record_big_recap_reveal(
+                    tag="MONTHLY RECAP", date_range=last_month_end.strftime("%B %Y").upper(),
+                    record=f"{m_stats['w']}W-{m_stats['l']}L", pct=_fmt_pct(m_stats.get("pct")),
+                    units=_fmt_units(m_stats.get("units")), extra_val=f"{days_in_month} DAYS", extra_lbl="TRACKED",
+                    out_path=recap_path,
+                )
+                monthly_attachments.append(recap_path)
+                log(f"Monthly recap video generated: {recap_path}")
+            except Exception as exc:
+                log(f"Monthly recap video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
             send_email(
-                f"Clairvoyance — Monthly Recap ({(now_mt.replace(day=1)-timedelta(days=1)).strftime('%B %Y')})",
-                result["monthly"]["cards"], captions,
+                f"Clairvoyance — Monthly Recap ({last_month_end.strftime('%B %Y')})",
+                monthly_attachments, captions,
                 intro="First of the month — last month's recap is ready:",
             )
 
@@ -609,15 +651,22 @@ def main() -> None:
         milestone_attachments = [daily["cards"][0]]  # reuse the Track Record card already generated this run
         try:
             from generate_video_reveal import record_milestone_reveal
+            # Two milestone styles rotate by trigger type so a streak
+            # milestone and a bet-count milestone never look the same —
+            # streaks get the more kinetic "pulse" (expanding rings, fits
+            # a live-momentum feel), round-number counts get the punchier
+            # "flash" (fits a single big-number headline moment).
             if triggered == "streak":
                 dir_word = "WIN" if milestone_data.get("streakDir") == "W" else "LOSS"
                 m_headline = f"{triggered_threshold}-{dir_word} STREAK"
                 m_body = f"{triggered_threshold} straight {'wins' if dir_word=='WIN' else 'losses'}. The model doesn't flinch either way."
+                m_variant = "pulse"
             else:
                 m_headline = f"{triggered_threshold} BETS TRACKED"
                 m_body = f"{triggered_threshold} graded picks, settled and public. Every single one."
+                m_variant = "flash"
             milestone_video_path = out_dir / f"cv-milestone-{yesterday_mt.strftime('%Y%m%d')}.mp4"
-            record_milestone_reveal(m_headline, m_body, milestone_video_path)
+            record_milestone_reveal(m_headline, m_body, milestone_video_path, variant=m_variant)
             milestone_attachments.append(milestone_video_path)
             log(f"Milestone video generated: {milestone_video_path}")
         except Exception as exc:
