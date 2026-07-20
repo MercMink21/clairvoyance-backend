@@ -27,7 +27,9 @@
     background:rgba(20,10,40,.55); border:1px solid rgba(240,0,255,.2); border-radius:6px;
     padding:20px 28px; opacity:0; transform:translateX(-24px);
   }
+  .row .label-col { display:flex; flex-direction:column; }
   .row .label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:30px; color:#e6eaff; }
+  .row .sub { font-family:'Share Tech Mono',monospace; font-size:14px; color:#00f0ff; margin-top:2px; letter-spacing:.5px; }
   .row .val { font-family:'Share Tech Mono',monospace; font-size:26px; display:flex; gap:20px; }
   .row .rec { color:#e6eaff; min-width:90px; text-align:right; }
   .row .pct { color:#00f0ff; min-width:75px; text-align:right; }
@@ -79,11 +81,12 @@
     </div>
   </div>
   <script>
-    // populateRows(headline, [{label, record, pct, units, isTotal}]) —
+    // populateRows(headline, [{label, sub, record, pct, units, isTotal}]) —
     // called externally via page.evaluate() after load, so the delay-
     // staggering happens fresh relative to when data actually lands, not
     // baked in. units is a pre-formatted string (e.g. "+11.8u"); colored
-    // green/pink by sign unless it's the (already-green) total row.
+    // green/pink by sign unless it's the (already-green) total row. "sub"
+    // is optional (e.g. the leagues under a sport name — "NBA, WNBA, CBB").
     window.populateRows = function(headline, rows) {
       document.getElementById('headline').textContent = headline;
       const container = document.getElementById('rows');
@@ -92,7 +95,8 @@
         const div = document.createElement('div');
         div.className = 'row' + (r.isTotal ? ' total' : '');
         const unitsColor = r.isTotal ? '' : (String(r.units).trim().startsWith('-') ? 'color:#ff2090' : 'color:#00da88');
-        div.innerHTML = `<span class="label">${r.label}</span><span class="val"><span class="rec">${r.record}</span><span class="pct">${r.pct}</span><span class="units" style="${unitsColor}">${r.units || ''}</span></span>`;
+        const subHtml = r.sub ? `<span class="sub">${r.sub}</span>` : '';
+        div.innerHTML = `<span class="label-col"><span class="label">${r.label}</span>${subHtml}</span><span class="val"><span class="rec">${r.record}</span><span class="pct">${r.pct}</span><span class="units" style="${unitsColor}">${r.units || ''}</span></span>`;
         div.style.animation = `rowIn .55s ease-out ${0.5 + i * 0.4}s forwards`;
         container.appendChild(div);
       });

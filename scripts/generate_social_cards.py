@@ -155,6 +155,34 @@ def save_milestone_state(state: dict) -> None:
     MILESTONE_STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
+# Matches SPORT_LEAGUES in docs/app.html's Sport Performance card exactly
+# — shown as the sub-line under each sport row in the breakdown videos.
+SPORT_LEAGUES = {
+    "BASEBALL": "MLB",
+    "BASKETBALL": "NBA, WNBA, CBB",
+    "FOOTBALL": "NFL, CFB",
+    "HOCKEY": "NHL, PWHL, KHL, SHL, LIIGA",
+    "SOCCER": "World Cup, Champions League, Premier League, La Liga, Bundesliga, MLS",
+    "TENNIS": "ATP, WTA",
+}
+
+
+def _breakdown_rows(stats: dict) -> list[dict]:
+    """Builds populateRows()-shaped rows (label/sub/record/pct/units) from
+    a stats dict's bySport list, with a TOTAL row appended — shared by
+    daily/weekly/monthly/yearly so they all look identical."""
+    by_sport = stats.get("bySport") or []
+    rows = [
+        {"label": s["label"], "sub": SPORT_LEAGUES.get(s["label"], ""),
+         "record": f"{s['w']}W-{s['l']}L", "pct": _fmt_pct(s.get("pct")),
+         "units": _fmt_units(s.get("units")), "isTotal": False}
+        for s in by_sport
+    ]
+    rows.append({"label": "TOTAL", "record": f"{stats['w']}W-{stats['l']}L", "pct": _fmt_pct(stats.get("pct")),
+                 "units": _fmt_units(stats.get("units")), "isTotal": True})
+    return rows
+
+
 def _fmt_units(units: float | None) -> str:
     if units is None:
         return "N/A"
@@ -311,7 +339,26 @@ def get_year_stats(page, year: int) -> dict:
             if (p.outcome === 'loss') return a - 1;
             return a;
           }, 0);
-          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units, lockedCount: inYear.length };
+          // Same 6-broad-sport grouping the Sport Performance card itself
+          // uses (_broadSportOf/_normSport are the app's own helpers) so
+          // this lines up exactly with what the daily/weekly/monthly
+          // breakdown videos already show, just for the full year.
+          const SPORT_ORDER = ['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER','TENNIS'];
+          const bucket = {}; SPORT_ORDER.forEach(s => bucket[s] = []);
+          inYear.forEach(b => { const s = _broadSportOf(_normSport(b)); if (s && bucket[s]) bucket[s].push(b); });
+          const bySport = SPORT_ORDER.map(s => {
+            const bets = bucket[s];
+            const settledS = bets.filter(p => p.outcome === 'win' || p.outcome === 'loss');
+            const wS = settledS.filter(p => p.outcome === 'win').length;
+            const lS = settledS.length - wS;
+            const unitsS = settledS.reduce((a, p) => {
+              if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+              if (p.outcome === 'loss') return a - 1;
+              return a;
+            }, 0);
+            return { label: s, w: wS, l: lS, n: settledS.length, pct: settledS.length ? wS / settledS.length : null, units: unitsS };
+          }).filter(s => s.n);
+          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units, lockedCount: inYear.length, bySport };
         }
         """,
         year,
@@ -695,15 +742,8 @@ def main() -> None:
             daily_attachments.append(video_path)
             log(f"Video reveal generated: {video_path}")
 
-            by_sport = stats.get("bySport") or []
-            if by_sport:
-                rows = [
-                    {"label": s["label"], "record": f"{s['w']}W-{s['l']}L", "pct": _fmt_pct(s.get("pct")),
-                     "units": _fmt_units(s.get("units")), "isTotal": False}
-                    for s in by_sport
-                ]
-                rows.append({"label": "TOTAL", "record": f"{stats['w']}W-{stats['l']}L", "pct": _fmt_pct(stats.get("pct")),
-                             "units": _fmt_units(stats.get("units")), "isTotal": True})
+            if stats.get("bySport"):
+                rows = _breakdown_rows(stats)
                 breakdown_path = out_dir / f"cv-breakdown-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_breakdown_reveal("SPORT PERFORMANCE", rows, breakdown_path)
                 daily_attachments.append(breakdown_path)
@@ -744,6 +784,16 @@ def main() -> None:
                 log(f"Weekly recap video generated: {recap_path}")
             except Exception as exc:
                 log(f"Weekly recap video generation failed (non-fatal, skipping): {exc}")
+            if w_stats.get("bySport"):
+                try:
+                    from generate_video_reveal import record_breakdown_reveal
+                    rows = _breakdown_rows(w_stats)
+                    w_breakdown_path = out_dir / f"cv-breakdown-weekly-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+                    record_breakdown_reveal("SPORT PERFORMANCE — ROLLING 7D", rows, w_breakdown_path)
+                    weekly_attachments.append(w_breakdown_path)
+                    log(f"Weekly breakdown video generated: {w_breakdown_path}")
+                except Exception as exc:
+                    log(f"Weekly breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
             send_email(
                 f"Clairvoyance — Weekly Recap ({yesterday_mt.strftime('%B %d, %Y')})",
@@ -772,6 +822,16 @@ def main() -> None:
                 log(f"Monthly recap video generated: {recap_path}")
             except Exception as exc:
                 log(f"Monthly recap video generation failed (non-fatal, skipping): {exc}")
+            if m_stats.get("bySport"):
+                try:
+                    from generate_video_reveal import record_breakdown_reveal
+                    rows = _breakdown_rows(m_stats)
+                    m_breakdown_path = out_dir / f"cv-breakdown-monthly-{last_month_end.strftime('%Y%m')}.mp4"
+                    record_breakdown_reveal("SPORT PERFORMANCE — LAST MONTH", rows, m_breakdown_path)
+                    monthly_attachments.append(m_breakdown_path)
+                    log(f"Monthly breakdown video generated: {m_breakdown_path}")
+                except Exception as exc:
+                    log(f"Monthly breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
             send_email(
                 f"Clairvoyance — Monthly Recap ({last_month_end.strftime('%B %Y')})",
@@ -801,6 +861,16 @@ def main() -> None:
                 log(f"Yearly recap video generated: {recap_path}")
             except Exception as exc:
                 log(f"Yearly recap video generation failed (non-fatal, skipping): {exc}")
+            if y_stats.get("bySport"):
+                try:
+                    from generate_video_reveal import record_breakdown_reveal
+                    rows = _breakdown_rows(y_stats)
+                    y_breakdown_path = out_dir / f"cv-breakdown-yearly-{prior_year}.mp4"
+                    record_breakdown_reveal(f"SPORT PERFORMANCE — {prior_year}", rows, y_breakdown_path)
+                    yearly_attachments.append(y_breakdown_path)
+                    log(f"Yearly breakdown video generated: {y_breakdown_path}")
+                except Exception as exc:
+                    log(f"Yearly breakdown video generation failed (non-fatal, skipping): {exc}")
         if yearly_attachments and not args.no_email:
             send_email(
                 f"Clairvoyance — {prior_year} Year In Review",
