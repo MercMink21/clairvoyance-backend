@@ -109,7 +109,10 @@ EVENTS: list[dict] = [
 # every 5 calendar days, deterministically (days-since-epoch // 5), so it
 # never needs stored state and can't double-fire or drift out of sync.
 ROTATION_EPOCH = datetime(2026, 7, 1, tzinfo=timezone.utc)
-ROTATION_CONTENT = ["how-it-works", "data-to-decision", "grading", "subscription"]
+ROTATION_CONTENT = ["how-it-works", "data-to-decision", "grading", "subscription", "covers"]
+# Static "what Clairvoyance covers" asset — a real pre-made card (not
+# generated), attached as-is rather than turned into a video.
+COVERS_CARD_PATH = ROOT / "scripts" / "assets" / "covers_card.png"
 ROTATION_DAYS = 5
 
 
@@ -559,6 +562,21 @@ def build_educational_caption(topic: dict) -> dict[str, str]:
     return {"instagram": ig, "x": x}
 
 
+def build_covers_caption() -> dict[str, str]:
+    ig = (
+        "One engine. Every sport that matters.\n\nThis is Clairvoyance.\n\n"
+        "20 leagues across 6 sports, every pick graded, every result tracked publicly — model outputs, not gut feelings.\n\n"
+        "Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        "#sportsbetting #bettingtips #sportsanalytics #handicapping"
+    )
+    x = (
+        "One engine. Every sport that matters.\n\n20 leagues, 6 sports, every pick graded.\n\n"
+        "clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
+    )
+    return {"instagram": ig, "x": x}
+
+
 def build_milestone_caption(milestone_data: dict, trigger: str, threshold: int) -> dict[str, str]:
     if trigger == "streak":
         # threshold here is the round streak number just crossed (e.g. 10),
@@ -868,26 +886,35 @@ def main() -> None:
                 record_grading_tiers_reveal, record_subscription_tiers_reveal,
                 record_educational_reveal, EDUCATIONAL_TOPICS,
             )
-            rotation_path = out_dir / f"cv-rotation-{rotation_item}-{now_mt.strftime('%Y%m%d')}.mp4"
-            if rotation_item == "grading":
-                record_grading_tiers_reveal(rotation_path)
-                subject = "Clairvoyance — Pick Grading System"
-                intro = "Rotation content — Pick Grading System, ready to post:"
-                captions = build_grading_caption()
-            elif rotation_item == "subscription":
-                record_subscription_tiers_reveal(rotation_path)
-                subject = "Clairvoyance — Choose Your Tier"
-                intro = "Rotation content — Subscription tiers, ready to post:"
-                captions = build_subscription_caption()
+            if rotation_item == "covers":
+                # Static pre-made asset, not a generated video — attach as-is.
+                subject = "Clairvoyance — What We Cover"
+                intro = "Rotation content — What Clairvoyance covers, ready to post:"
+                captions = build_covers_caption()
+                log(f"Rotation asset (static image): {COVERS_CARD_PATH}")
+                if not args.no_email:
+                    send_email(subject, [COVERS_CARD_PATH], captions, intro=intro)
             else:
-                topic = EDUCATIONAL_TOPICS[rotation_item]
-                record_educational_reveal(topic["tag"], topic["title"], topic["lines"], rotation_path)
-                subject = f"Clairvoyance — Educational: {topic['title']}"
-                intro = "Rotation content — educational post, ready to post:"
-                captions = build_educational_caption(topic)
-            log(f"Rotation video generated: {rotation_path}")
-            if not args.no_email:
-                send_email(subject, [rotation_path], captions, intro=intro)
+                rotation_path = out_dir / f"cv-rotation-{rotation_item}-{now_mt.strftime('%Y%m%d')}.mp4"
+                if rotation_item == "grading":
+                    record_grading_tiers_reveal(rotation_path)
+                    subject = "Clairvoyance — Pick Grading System"
+                    intro = "Rotation content — Pick Grading System, ready to post:"
+                    captions = build_grading_caption()
+                elif rotation_item == "subscription":
+                    record_subscription_tiers_reveal(rotation_path)
+                    subject = "Clairvoyance — Choose Your Tier"
+                    intro = "Rotation content — Subscription tiers, ready to post:"
+                    captions = build_subscription_caption()
+                else:
+                    topic = EDUCATIONAL_TOPICS[rotation_item]
+                    record_educational_reveal(topic["tag"], topic["title"], topic["lines"], rotation_path)
+                    subject = f"Clairvoyance — Educational: {topic['title']}"
+                    intro = "Rotation content — educational post, ready to post:"
+                    captions = build_educational_caption(topic)
+                log(f"Rotation video generated: {rotation_path}")
+                if not args.no_email:
+                    send_email(subject, [rotation_path], captions, intro=intro)
         except Exception as exc:
             log(f"Rotation content generation failed (non-fatal, skipping): {exc}")
 
