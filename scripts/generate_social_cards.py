@@ -32,9 +32,27 @@ both handled below:
 
 Cadence — one run per day, but the day's date decides what extra content
 rides along with the standard daily post:
-  - Every day:      Track Record + Sport/League Performance (YESTERDAY)
+  - Every day:      Track Record + Sport/League Performance (YESTERDAY),
+                     all 3 as static cards, plus a daily stats-reveal video
+                     (rotates visual style by weekday) and a Sport
+                     Performance breakdown video — the breakdown video only
+                     sends when there's real per-sport data to show
+                     (relevancy guard: no data, no video, rather than an
+                     empty/misleading one).
   - Sundays:        + a weekly recap (ROLLING 7D) — bigger "7-day roundup"
   - 1st of month:   + a monthly recap (LAST MONTH)
+  - January 1st:    + a year-in-review post covering Jan 1 - Dec 31 of the
+                     year that just ended. Computed directly from the real
+                     ledger's date field (the underlying app has no
+                     built-in "calendar year" period the way it has
+                     YESTERDAY/ROLLING 7D/LAST MONTH, so this bypasses that
+                     system and filters bets by date range itself) - video
+                     only, no static cards (same reason).
+  - Every 5th day:  + one bonus content video, cycling through the
+                     ROTATION_CONTENT list (grading system, subscription
+                     tiers, and the 3 educational topics) - deterministic
+                     from the calendar date, not stored state, so it can't
+                     drift or double-fire.
   - Configured event end dates (see EVENTS below): + an Event Performance
     card for that tournament/season, the day after it ends
   - Any run:        a milestone check (win streak / round-number bet-count
@@ -86,6 +104,22 @@ EVENTS: list[dict] = [
     # events so don't belong here, and end of MLB playoffs (World Series
     # date TBD). Add each with real dates once known.
 ]
+
+# Bonus content that isn't tied to daily performance data — cycles once
+# every 5 calendar days, deterministically (days-since-epoch // 5), so it
+# never needs stored state and can't double-fire or drift out of sync.
+ROTATION_EPOCH = datetime(2026, 7, 1, tzinfo=timezone.utc)
+ROTATION_CONTENT = ["how-it-works", "data-to-decision", "what-it-covers", "grading", "subscription"]
+ROTATION_DAYS = 5
+
+
+def get_rotation_item(today_mt: datetime) -> str | None:
+    days_since = (today_mt.date() - ROTATION_EPOCH.date()).days
+    if days_since < 0 or days_since % ROTATION_DAYS != 0:
+        return None
+    idx = (days_since // ROTATION_DAYS) % len(ROTATION_CONTENT)
+    return ROTATION_CONTENT[idx]
+
 
 # Rotating opening-hook styles for the daily caption, keyed by weekday
 # index (Mon=0..Sun=6) so the same day of week always gets the same
@@ -238,6 +272,35 @@ def get_milestone_data(page) -> dict:
     )
 
 
+def get_year_stats(page, year: int) -> dict:
+    """Win/loss/pct/units for a full calendar year, computed directly from
+    the real ledger's date field. The underlying app has no "calendar
+    year" period option (only YESTERDAY/ROLLING 7D/LAST MONTH/etc via
+    renderTrackRecord._sportPeriod), so this bypasses that system entirely
+    rather than trying to force a year-long window through it. Same unit-
+    normalized pnl convention as everywhere else (win: decOdds-1, loss:
+    -1) so the units figure is directly comparable to daily/weekly/
+    monthly numbers."""
+    return page.evaluate(
+        """
+        (year) => {
+          const start = year + '-01-01', end = year + '-12-31';
+          const inYear = getP().filter(p => p.date && p.date >= start && p.date <= end);
+          const settled = inYear.filter(p => p.outcome === 'win' || p.outcome === 'loss');
+          const w = settled.filter(p => p.outcome === 'win').length;
+          const l = settled.length - w;
+          const units = settled.reduce((a, p) => {
+            if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+            if (p.outcome === 'loss') return a - 1;
+            return a;
+          }, 0);
+          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units };
+        }
+        """,
+        year,
+    )
+
+
 def run(out_dir: Path) -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -246,8 +309,9 @@ def run(out_dir: Path) -> dict:
     yesterday_mt = now_mt - timedelta(days=1)
     is_sunday = now_mt.weekday() == 6
     is_first_of_month = now_mt.day == 1
+    is_new_year = now_mt.month == 1 and now_mt.day == 1
 
-    result = {"daily": None, "weekly": None, "monthly": None, "events": [], "milestone": None}
+    result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "milestone": None}
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -309,6 +373,11 @@ def run(out_dir: Path) -> dict:
         if is_first_of_month:
             cards, stats = generate_cards(page, out_dir, "LAST MONTH", prefix_extra="monthly-")
             result["monthly"] = {"cards": cards, "stats": stats}
+
+        # Year in review (Jan 1 — covers the year that just ended)
+        if is_new_year:
+            year_stats = get_year_stats(page, now_mt.year - 1)
+            result["yearly"] = {"stats": year_stats}
 
         # Events — the day after a configured window ends
         for event in EVENTS:
@@ -400,6 +469,28 @@ def build_monthly_caption(stats: dict | None, month_ref: datetime) -> dict[str, 
     return {"instagram": ig, "x": x}
 
 
+def build_yearly_caption(stats: dict | None, year: int) -> dict[str, str]:
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
+    ig = (
+        f"{year} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"A full year tracked, graded, and public. Every pick, every result — no cherry-picking, no deleted losses.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #yearinreview"
+    )
+    x = (
+        f"{year} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"A full year tracked, graded, and public. No cherry-picking.\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks #yearinreview"
+    )
+    return {"instagram": ig, "x": x}
+
+
 def build_event_caption(event: dict) -> dict[str, str]:
     event_hashtag = "#" + "".join(w.capitalize() for w in event["name"].split())
     ig = (
@@ -414,6 +505,50 @@ def build_event_caption(event: dict) -> dict[str, str]:
         f"Clairvoyance Engine doesn't miss. 🎯\n\n"
         f"#SportsBetting {event_hashtag}"
     )
+    return {"instagram": ig, "x": x}
+
+
+def build_grading_caption() -> dict[str, str]:
+    ig = (
+        "Not all picks are created equal.\n\nThis is Clairvoyance.\n\n"
+        "Every signal gets graded before it goes public — some clear the bar, some don't make the cut at all. "
+        "That's the point. We're not chasing volume, we're chasing quality.\n\n"
+        "No hype. No \"lock of the century.\" Just picks that clear the bar, and ones that don't get thrown out.\n\n"
+        "Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        "#sportsbetting #bettingtips #sportsanalytics #smartbetting"
+    )
+    x = (
+        "Not all picks are created equal.\n\nEvery signal gets graded before it goes public. "
+        "If the numbers don't clear our bar, it doesn't get posted.\n\n"
+        "clairvoyanceengine.info\n\n#sportsbetting #bettingpicks #handicapping"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_subscription_caption() -> dict[str, str]:
+    ig = (
+        "Full access. No guesswork.\n\nThis is Clairvoyance.\n\n"
+        "Every tier gets real graded picks, real game lines, and Discord access — the only difference is how much of the model you want.\n\n"
+        "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        "#sportsbetting #bettingtips #subscription #sportsanalytics"
+    )
+    x = (
+        "Full access. No guesswork.\n\nBase, Plus, Insider — or a Day/Weekend Pass if you just want in for a slate.\n\n"
+        "clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_educational_caption(topic: dict) -> dict[str, str]:
+    body = " ".join(topic["lines"])
+    ig = (
+        f"{topic['title']}\n\nThis is Clairvoyance.\n\n{body}\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #sportsanalytics"
+    )
+    x = f"{topic['title']}\n\n{body}\n\nclairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     return {"instagram": ig, "x": x}
 
 
@@ -603,6 +738,37 @@ def main() -> None:
                 intro="First of the month — last month's recap is ready:",
             )
 
+    # Year in review (Jan 1 — video only, no static cards, since the
+    # underlying app has no calendar-year period to render them against)
+    if result["yearly"]:
+        prior_year = now_mt.year - 1
+        y_stats = result["yearly"]["stats"] or {}
+        captions = build_yearly_caption(y_stats, prior_year)
+        log(f"Yearly captions ({prior_year}):\n--- IG ---\n" + captions["instagram"])
+        yearly_attachments = []
+        if y_stats.get("w") is not None:
+            try:
+                from generate_video_reveal import record_big_recap_reveal
+                recap_path = out_dir / f"cv-yearly-recap-{prior_year}.mp4"
+                record_big_recap_reveal(
+                    tag="YEAR IN REVIEW", date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}",
+                    record=f"{y_stats['w']}W-{y_stats['l']}L", pct=_fmt_pct(y_stats.get("pct")),
+                    units=_fmt_units(y_stats.get("units")), extra_val=f"{y_stats['n']} BETS", extra_lbl="TRACKED",
+                    out_path=recap_path, duration_s=8.0,
+                )
+                yearly_attachments.append(recap_path)
+                log(f"Yearly recap video generated: {recap_path}")
+            except Exception as exc:
+                log(f"Yearly recap video generation failed (non-fatal, skipping): {exc}")
+        if yearly_attachments and not args.no_email:
+            send_email(
+                f"Clairvoyance — {prior_year} Year In Review",
+                yearly_attachments, captions,
+                intro=f"Happy New Year — here's the full {prior_year} recap:",
+            )
+        elif not yearly_attachments:
+            log(f"Year-end recap skipped: no settled bets found for {prior_year}")
+
     # Events
     for ev in result["events"]:
         captions = build_event_caption(ev["event"])
@@ -682,6 +848,39 @@ def main() -> None:
         save_milestone_state(new_state)
     else:
         log(f"No new milestone (streak={streak}, total={total}, state={state})")
+
+    # Rotation content (grading system, subscription tiers, educational
+    # series) — every 5th day since launch, deterministic from the date.
+    rotation_item = get_rotation_item(now_mt)
+    if rotation_item:
+        log(f"Rotation content today: {rotation_item}")
+        try:
+            from generate_video_reveal import (
+                record_grading_tiers_reveal, record_subscription_tiers_reveal,
+                record_educational_reveal, EDUCATIONAL_TOPICS,
+            )
+            rotation_path = out_dir / f"cv-rotation-{rotation_item}-{now_mt.strftime('%Y%m%d')}.mp4"
+            if rotation_item == "grading":
+                record_grading_tiers_reveal(rotation_path)
+                subject = "Clairvoyance — Pick Grading System"
+                intro = "Rotation content — Pick Grading System, ready to post:"
+                captions = build_grading_caption()
+            elif rotation_item == "subscription":
+                record_subscription_tiers_reveal(rotation_path)
+                subject = "Clairvoyance — Choose Your Tier"
+                intro = "Rotation content — Subscription tiers, ready to post:"
+                captions = build_subscription_caption()
+            else:
+                topic = EDUCATIONAL_TOPICS[rotation_item]
+                record_educational_reveal(topic["tag"], topic["title"], topic["lines"], rotation_path)
+                subject = f"Clairvoyance — Educational: {topic['title']}"
+                intro = "Rotation content — educational post, ready to post:"
+                captions = build_educational_caption(topic)
+            log(f"Rotation video generated: {rotation_path}")
+            if not args.no_email:
+                send_email(subject, [rotation_path], captions, intro=intro)
+        except Exception as exc:
+            log(f"Rotation content generation failed (non-fatal, skipping): {exc}")
 
     log("Done.")
 
