@@ -79,6 +79,12 @@ MILESTONE_STATE_PATH = ROOT / "data" / "social_milestones.json"
 EVENTS: list[dict] = [
     {"name": "WIMBLEDON 2026", "start": "2026-06-29", "end": "2026-07-12", "leagues": ["ATP", "WTA"]},
     {"name": "WORLD CUP 2026", "start": "2026-06-11", "end": "2026-07-19", "leagues": []},
+    {"name": "CINCINNATI OPEN 2026", "start": "2026-08-12", "end": "2026-08-23", "leagues": ["ATP", "WTA"]},
+    {"name": "US OPEN 2026", "start": "2026-08-04", "end": "2026-09-13", "leagues": ["ATP", "WTA"]},
+    # Still needed, not guessed: exact 2026 dates for ATP/WTA Finals, end
+    # of NFL/CFB season, start of NHL/NBA seasons aren't "end of window"
+    # events so don't belong here, and end of MLB playoffs (World Series
+    # date TBD). Add each with real dates once known.
 ]
 
 # Rotating opening-hook styles for the daily caption, keyed by weekday
@@ -476,10 +482,33 @@ def main() -> None:
     daily = result["daily"]
     captions = build_daily_caption(daily["stats"], yesterday_mt)
     log("Daily captions:\n--- IG ---\n" + captions["instagram"] + "\n--- X ---\n" + captions["x"])
+
+    daily_attachments = list(daily["cards"])
+    stats = daily["stats"] or {}
+    if stats.get("w") is not None:
+        try:
+            from generate_video_reveal import record_and_convert
+            video_path = out_dir / f"cv-reveal-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+            record_and_convert(
+                headline="YESTERDAY'S PERFORMANCE",
+                record=f"{stats['w']}W-{stats['l']}L",
+                pct=_fmt_pct(stats.get("pct")),
+                units=_fmt_units(stats.get("units")),
+                out_path=video_path,
+            )
+            daily_attachments.append(video_path)
+            log(f"Video reveal generated: {video_path}")
+        except Exception as exc:
+            # Video is a bonus on top of the cards, not a hard requirement
+            # for the daily post — don't let a video-pipeline hiccup (e.g.
+            # ffmpeg conversion issue) block the cards/captions email that
+            # actually matters every day.
+            log(f"Video reveal generation failed (non-fatal, skipping): {exc}")
+
     if not args.no_email:
         send_email(
             f"Clairvoyance — Daily Social Cards ({yesterday_mt.strftime('%B %d, %Y')})",
-            daily["cards"], captions,
+            daily_attachments, captions,
             intro="Today's social cards are attached, ready to post:",
         )
 
