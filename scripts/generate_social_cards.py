@@ -78,7 +78,7 @@ MILESTONE_STATE_PATH = ROOT / "data" / "social_milestones.json"
 # LEAGUE_FILTER_LABELS in app.html, or [] for no filter / all activity>]}.
 EVENTS: list[dict] = [
     {"name": "WIMBLEDON 2026", "start": "2026-06-29", "end": "2026-07-12", "leagues": ["ATP", "WTA"]},
-    {"name": "WORLD CUP 2026", "start": "2026-06-11", "end": "2026-07-19", "leagues": []},
+    {"name": "WORLD CUP 2026", "start": "2026-06-11", "end": "2026-07-19", "leagues": ["World Cup"]},
     {"name": "CINCINNATI OPEN 2026", "start": "2026-08-12", "end": "2026-08-23", "leagues": ["ATP", "WTA"]},
     {"name": "US OPEN 2026", "start": "2026-08-04", "end": "2026-09-13", "leagues": ["ATP", "WTA"]},
     # Still needed, not guessed: exact 2026 dates for ATP/WTA Finals, end

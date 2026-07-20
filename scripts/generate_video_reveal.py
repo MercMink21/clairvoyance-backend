@@ -157,12 +157,66 @@ def record_milestone_reveal(headline: str, body_text: str, out_path: Path,
     return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
 
 
+# Content sourced from clairvoyanceengine.info's public "How The Engine
+# Works" / "From Data To Decision" / "What The Engine Covers" sections,
+# rewritten shorter and deliberately vaguer for social — no exact win-
+# prob/EV thresholds or formulas (those stay on the site itself), just
+# the structural "what happens" story.
+EDUCATIONAL_TOPICS = {
+    "how-it-works": {
+        "tag": "// HOW THE ENGINE WORKS",
+        "title": "SIX STAGES. ONE SIGNAL.",
+        "lines": [
+            "Raw data comes in — form, conditions, lineups, market moves.",
+            "Every matchup gets modeled, not guessed.",
+            "Thousands of simulations run before a single pick is graded.",
+            "The model's number gets checked against the market's number.",
+            "Only real edge makes it out the other side.",
+        ],
+    },
+    "data-to-decision": {
+        "tag": "// FROM DATA TO DECISION",
+        "title": "INGEST → MODEL → GRADE → DELIVER",
+        "lines": [
+            "Odds, scores, form, and weather — ingested daily.",
+            "Normalized, weighted, and run through the model.",
+            "Compared against what the market is actually pricing.",
+            "Graded. Delivered. Tracked publicly, win or lose.",
+        ],
+    },
+    "what-it-covers": {
+        "tag": "// WHAT THE ENGINE COVERS",
+        "title": "20 LEAGUES. 6 SPORTS.",
+        "lines": [
+            "Baseball, basketball, football, hockey, soccer, tennis.",
+            "MLB · NBA · WNBA · NFL · NHL · World Cup · ATP · WTA — and more.",
+            "One calibrated model per sport, not a one-size-fits-all number.",
+        ],
+    },
+}
+
+
 def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: Path, duration_s: float | None = None) -> Path:
     """lines: list of short (~1 sentence) strings, revealed one at a time."""
     if duration_s is None:
         duration_s = 0.9 + len(lines) * 1.1 + 1.6
     setup_js = f"window.populateLines({json.dumps(tag)}, {json.dumps(title)}, {json.dumps(lines)})"
     return _record_template("educational_reveal.html", setup_js, out_path, duration_s)
+
+
+def record_grading_tiers_reveal(out_path: Path, duration_s: float = 6.5) -> Path:
+    """Dedicated Pick Grading System video - static content (no live
+    stats), matches the site's public PREMIUM/OPTIMAL/LEAN/SKIP tiers but
+    deliberately omits the exact win-prob/EV thresholds the site itself
+    shows - qualitative descriptions only, no numbers to keep social copy
+    vague about methodology."""
+    return _record_template("grading_tiers_reveal.html", "() => {}", out_path, duration_s)
+
+
+def record_subscription_tiers_reveal(out_path: Path, duration_s: float = 6.0) -> Path:
+    """Dedicated 'Choose Your Tier' subscription video - static content,
+    real public pricing (not methodology, so no vagueness needed here)."""
+    return _record_template("subscription_tiers_reveal.html", "() => {}", out_path, duration_s)
 
 
 def main() -> None:
@@ -188,7 +242,14 @@ def main() -> None:
     p_recap.add_argument("--out", default="/tmp/cv_recap.mp4")
 
     p_edu = sub.add_parser("educational")
+    p_edu.add_argument("--topic", choices=list(EDUCATIONAL_TOPICS.keys()), default="how-it-works")
     p_edu.add_argument("--out", default="/tmp/cv_educational.mp4")
+
+    p_grading = sub.add_parser("grading")
+    p_grading.add_argument("--out", default="/tmp/cv_grading.mp4")
+
+    p_sub = sub.add_parser("subscription")
+    p_sub.add_argument("--out", default="/tmp/cv_subscription.mp4")
 
     args = parser.parse_args()
 
@@ -207,16 +268,12 @@ def main() -> None:
     elif args.kind == "milestone":
         out = record_milestone_reveal("10-WIN STREAK", "10 straight wins. The model doesn't flinch either way.", Path(args.out), variant=args.variant)
     elif args.kind == "educational":
-        out = record_educational_reveal(
-            "// EDUCATIONAL", "HOW WE GRADE PICKS",
-            [
-                "Not all picks are created equal.",
-                "Every signal gets graded before it goes public.",
-                "Some clear the bar. Some don't make the cut at all.",
-                "That's the whole point.",
-            ],
-            Path(args.out),
-        )
+        topic = EDUCATIONAL_TOPICS[args.topic]
+        out = record_educational_reveal(topic["tag"], topic["title"], topic["lines"], Path(args.out))
+    elif args.kind == "grading":
+        out = record_grading_tiers_reveal(Path(args.out))
+    elif args.kind == "subscription":
+        out = record_subscription_tiers_reveal(Path(args.out))
     print(f"Saved {out} ({out.stat().st_size/1024:.0f} KB)")
 
 
