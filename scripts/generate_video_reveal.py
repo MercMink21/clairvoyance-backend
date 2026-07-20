@@ -114,10 +114,13 @@ def _record_template_sized(template_name: str, setup_js: str, out_path: Path,
     return out_path
 
 
-def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 10.0) -> Path:
-    """Turns a static square card (any 1080x1080 PNG — the full image,
-    text and all, kept intact) into a glitch-reveal video: a burst of
-    RGB-split slice glitches settling into the crisp, untouched image."""
+def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 10.0,
+                                width: int = 1080, height: int = 1080) -> Path:
+    """Turns a static card image (any size — the full image, text and all,
+    kept intact) into a glitch-reveal video: a burst of RGB-split slice
+    glitches settling into the crisp, untouched image. Defaults to the
+    square 1080x1080 covers-card size; pass width/height=1080/1350 for
+    the standard portrait cards (Track Record, Sport/League Performance)."""
     import base64
 
     img_b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
@@ -132,7 +135,7 @@ def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: flo
     }}
     """
     return _record_template_sized(
-        "image_glitch_reveal.html", setup_js, out_path, duration_s, 1080, 1080,
+        "image_glitch_reveal.html", setup_js, out_path, duration_s, width, height,
     )
 
 
