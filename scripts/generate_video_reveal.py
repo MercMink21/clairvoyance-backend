@@ -256,7 +256,7 @@ EDUCATIONAL_TOPICS = {
 def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: Path, duration_s: float | None = None) -> Path:
     """lines: list of short (~1 sentence) strings, revealed one at a time."""
     if duration_s is None:
-        duration_s = 0.9 + len(lines) * 1.1 + 3.1
+        duration_s = 1.6 + len(lines) * 1.1 + 2.0
     setup_js = f"window.populateLines({json.dumps(tag)}, {json.dumps(title)}, {json.dumps(lines)})"
     return _record_template("educational_reveal.html", setup_js, out_path, duration_s)
 

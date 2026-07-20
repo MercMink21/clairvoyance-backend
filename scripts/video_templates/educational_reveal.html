@@ -11,33 +11,47 @@
     background:transparent;
     display:flex; flex-direction:column; align-items:center; padding-top:64px;
   }
-  .logo {
+  .logo-wrap { position:relative; width:1000px; height:66px; }
+  .logo, .logo-r, .logo-c {
     font-family:'Orbitron',sans-serif; font-weight:900; font-size:56px; letter-spacing:6px;
-    color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.7);
-    opacity:0; animation: reveal .6s ease-out forwards;
+    position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap;
   }
+  .logo { color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.7); opacity:0; animation: settle .01s linear .7s forwards; }
+  .logo-r { color:#ff2090; opacity:.8; animation: glitchR .6s steps(2) forwards, hide .01s linear .7s forwards; }
+  .logo-c { color:#00f0ff; opacity:.8; animation: glitchC .6s steps(2) forwards, hide .01s linear .7s forwards; }
   .sub {
     font-family:'Orbitron',sans-serif; font-weight:600; font-size:20px; letter-spacing:4px;
     color:#00f0ff; text-shadow:0 0 10px #00f0ff; margin-top:8px;
-    opacity:0; animation: reveal .6s ease-out .2s forwards;
+    opacity:0; animation: reveal .01s linear .85s forwards;
   }
   .tag {
     font-family:'Share Tech Mono',monospace; font-size:17px; letter-spacing:7px;
     color:#00f0ff; text-shadow:0 0 10px rgba(0,240,255,.5);
-    margin-top:44px; opacity:0; animation: reveal .6s ease-out .5s forwards;
+    margin-top:44px; opacity:0; animation: reveal .01s linear 1.1s forwards;
   }
   .title {
     font-family:'Orbitron',sans-serif; font-weight:900; font-size:46px; text-align:center;
     color:#f000ff; text-shadow:0 0 16px #f000ff,0 0 40px rgba(240,0,255,.6);
     max-width:880px; margin:14px 0 48px; opacity:0;
-    animation: reveal .7s ease-out .75s forwards;
+    animation: reveal .01s linear 1.3s forwards;
   }
   .lines { width:860px; display:flex; flex-direction:column; gap:32px; }
   .line {
     font-family:'Orbitron',sans-serif; font-weight:700; font-size:28px; line-height:1.5;
-    color:#e6eaff; opacity:0; transform:translateY(14px); border-left:3px solid rgba(240,0,255,.6);
-    padding-left:22px;
+    color:#e6eaff; opacity:0; border-left:3px solid rgba(240,0,255,.6);
+    padding-left:22px; display:inline-block;
   }
+  /* Same per-element glitch language as the daily glitch reveal's stats:
+     a hue-rotate + jitter burst, then settle and hold still. */
+  @keyframes lineGlitch {
+    0%   { filter:hue-rotate(0deg) saturate(1); transform:translate(0,0); }
+    20%  { filter:hue-rotate(110deg) saturate(4) brightness(1.3); transform:translate(5px,-2px); }
+    40%  { filter:hue-rotate(-110deg) saturate(4) brightness(1.3); transform:translate(-5px,2px); }
+    60%  { filter:hue-rotate(70deg) saturate(3); transform:translate(3px,1px); }
+    80%  { filter:hue-rotate(-70deg) saturate(3); transform:translate(-3px,-1px); }
+    100% { filter:hue-rotate(0deg) saturate(1); transform:translate(0,0); }
+  }
+  @keyframes lineIn { to { opacity:1; } }
   .footer {
     position:absolute; bottom:60px; left:0; right:0; text-align:center;
     font-family:'Orbitron',sans-serif; font-size:24px; letter-spacing:3px; color:#f000ff;
@@ -47,7 +61,11 @@
     font-family:'Share Tech Mono',monospace; font-size:20px; color:#f000ff; text-shadow:0 0 8px rgba(240,0,255,.5);
     margin-top:6px;
   }
-  @keyframes reveal { to { opacity:1; transform:translateY(0); } }
+  @keyframes glitchR { 0%{transform:translate(calc(-50% - 5px),-3px)} 25%{transform:translate(calc(-50% + 4px),3px)} 50%{transform:translate(calc(-50% - 3px),-2px)} 75%{transform:translate(calc(-50% + 5px),3px)} 100%{transform:translate(calc(-50% - 5px),-3px)} }
+  @keyframes glitchC { 0%{transform:translate(calc(-50% + 5px),3px)} 25%{transform:translate(calc(-50% - 4px),-3px)} 50%{transform:translate(calc(-50% + 3px),2px)} 75%{transform:translate(calc(-50% - 5px),-3px)} 100%{transform:translate(calc(-50% + 5px),3px)} }
+  @keyframes hide { to { opacity:0; } }
+  @keyframes settle { to { opacity:1; } }
+  @keyframes reveal { to { opacity:1; } }
 </style>
 </head>
 <body>
@@ -74,7 +92,11 @@
     })();
   </script>
   <div class="stage">
-    <div class="logo">CLAIRVOYANCE</div>
+    <div class="logo-wrap">
+      <div class="logo-r">CLAIRVOYANCE</div>
+      <div class="logo-c">CLAIRVOYANCE</div>
+      <div class="logo">CLAIRVOYANCE</div>
+    </div>
     <div class="sub">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
     <div class="tag" id="tag">// EDUCATIONAL</div>
     <div class="title" id="title">HOW WE GRADE PICKS</div>
@@ -85,8 +107,9 @@
     </div>
   </div>
   <script>
-    // populateLines(tag, title, [line1, line2, ...]) — each line fades/
-    // slides in staggered, then the footer settles in after the last one.
+    // populateLines(tag, title, [line1, line2, ...]) — each line glitches
+    // in on its own beat (same language as the daily glitch reveal's per-
+    // stat glitch-in), then holds crisp and still. Footer settles after.
     window.populateLines = function(tag, title, lines) {
       document.getElementById('tag').textContent = tag;
       document.getElementById('title').textContent = title;
@@ -96,11 +119,12 @@
         const div = document.createElement('div');
         div.className = 'line';
         div.textContent = text;
-        div.style.animation = `reveal .6s ease-out ${1.1 + i * 1.1}s forwards`;
+        const delay = 1.6 + i * 1.1;
+        div.style.animation = `lineGlitch .4s steps(4) ${delay}s forwards, lineIn .01s linear ${delay}s forwards`;
         container.appendChild(div);
       });
-      const tailDelay = 1.1 + lines.length * 1.1 + 0.4;
-      document.getElementById('footer').style.animation = `reveal .7s ease-out ${tailDelay}s forwards`;
+      const tailDelay = 1.6 + lines.length * 1.1 + 0.4;
+      document.getElementById('footer').style.animation = `reveal .01s linear ${tailDelay}s forwards`;
     };
   </script>
 </body>
