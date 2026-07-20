@@ -60,9 +60,6 @@ rides along with the standard daily post:
     persisted in data/social_milestones.json (committed back to the repo
     by the workflow) so a milestone only ever fires once.
 
-Caption copy rotates through a few hook-style variants (see HOOK_STYLES)
-so consecutive daily posts don't read as obviously templated.
-
 EVENTS is empty by default — Event Performance cards need a real
 tournament name/date window, and there's no way to auto-detect "this
 tournament just ended" from the data alone. Add entries as they're known
@@ -124,17 +121,6 @@ def get_rotation_item(today_mt: datetime) -> str | None:
     idx = (days_since // ROTATION_DAYS) % len(ROTATION_CONTENT)
     return ROTATION_CONTENT[idx]
 
-
-# Rotating opening-hook styles for the daily caption, keyed by weekday
-# index (Mon=0..Sun=6) so the same day of week always gets the same
-# style — avoids two similar-sounding posts landing back to back while
-# still giving four distinct voices across a week.
-HOOK_STYLES = [
-    lambda date_str: f"Yesterday's Performance — {date_str}",
-    lambda date_str: f"{date_str} results are in.",
-    lambda date_str: f"How we did on {date_str}:",
-    lambda date_str: f"The numbers don't lie — {date_str} recap:",
-]
 
 CARD_JOBS = [
     ("cv-track-record-", "_genCombinedTrackGraphic()", "Track Record"),
@@ -429,8 +415,10 @@ def run(out_dir: Path) -> dict:
 
 
 def build_daily_caption(stats: dict | None, date_ref: datetime) -> dict[str, str]:
+    # date_ref is always yesterday relative to the run — callers must pass
+    # the actual reporting date (not "today"), so this line stays accurate
+    # regardless of when the workflow happens to fire.
     date_str = date_ref.strftime("%B %-d, %Y")
-    hook = HOOK_STYLES[date_ref.weekday() % len(HOOK_STYLES)](date_str)
     tally_line = ""
     if stats and stats.get("w") is not None:
         tally_line = (
@@ -438,16 +426,14 @@ def build_daily_caption(stats: dict | None, date_ref: datetime) -> dict[str, str
             f"{_fmt_units(stats.get('units'))}\n\n"
         )
     ig = (
-        f"{hook}\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"Yesterdays Performance\n\n{date_str}\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
         f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
     )
     x = (
-        f"{hook}\n\nThis is Clairvoyance.\n\n{tally_line}"
-        f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
-        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"Yesterdays Performance\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"clairvoyanceengine.info\n\n#sportsbetting #bettingtips #bettingpicks"
     )
     return {"instagram": ig, "x": x}
