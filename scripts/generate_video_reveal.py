@@ -174,13 +174,16 @@ def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_pa
 record_and_convert = record_stats_reveal
 
 
-def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path, duration_s: float | None = None) -> Path:
+def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path,
+                             duration_s: float | None = None, date_range: str | None = None) -> Path:
     """rows: [{"label": "BASEBALL", "record": "18W-4L", "pct": "81.8%", "isTotal": False}, ...]
     last row should typically have isTotal=True. Duration auto-scales with
-    row count if not given (each row adds ~0.28s to the reveal)."""
+    row count if not given (each row adds ~0.28s to the reveal). date_range
+    is an optional sub-line under the headline (e.g. "JULY 13 – 19, 2026"
+    for a weekly breakdown)."""
     if duration_s is None:
         duration_s = 1.5 + len(rows) * 0.4 + 2.5
-    setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)})"
+    setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)}, {json.dumps(date_range or '')})"
     return _record_template("breakdown_reveal.html", setup_js, out_path, duration_s)
 
 
@@ -233,9 +236,9 @@ EDUCATIONAL_TOPICS = {
         "tag": "// HOW THE ENGINE WORKS",
         "title": "SIX STAGES. ONE SIGNAL.",
         "lines": [
-            "Raw data comes in — form, conditions, lineups, market moves.",
-            "Every matchup gets modeled, not guessed.",
-            "Thousands of simulations run before a single pick is graded.",
+            "Raw data comes in — deep analysis begins.",
+            "Every matchup gets modeled and graded, not guessed.",
+            "Situational adjustments and analysis refine the read in real time.",
             "The model's number gets checked against the market's number.",
             "Only real edge makes it out the other side.",
         ],

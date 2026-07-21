@@ -162,7 +162,7 @@ SPORT_LEAGUES = {
     "BASKETBALL": "NBA, WNBA, CBB",
     "FOOTBALL": "NFL, CFB",
     "HOCKEY": "NHL, PWHL, KHL, SHL, LIIGA",
-    "SOCCER": "World Cup, Champions League, Premier League, La Liga, Bundesliga, MLS",
+    "SOCCER": "World Cup, UCL, EPL, La Liga, Bundesliga, MLS",
     "TENNIS": "ATP, WTA",
 }
 
@@ -804,7 +804,8 @@ def main() -> None:
                     from generate_video_reveal import record_breakdown_reveal
                     rows = _breakdown_rows(w_stats)
                     w_breakdown_path = out_dir / f"cv-breakdown-weekly-{yesterday_mt.strftime('%Y%m%d')}.mp4"
-                    record_breakdown_reveal("SPORT PERFORMANCE — ROLLING 7D", rows, w_breakdown_path)
+                    w_range_str = f"{(yesterday_mt - timedelta(days=6)).strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}".upper()
+                    record_breakdown_reveal("SPORT PERFORMANCE — ROLLING 7D", rows, w_breakdown_path, date_range=w_range_str)
                     weekly_attachments.append(w_breakdown_path)
                     log(f"Weekly breakdown video generated: {w_breakdown_path}")
                 except Exception as exc:
@@ -842,7 +843,8 @@ def main() -> None:
                     from generate_video_reveal import record_breakdown_reveal
                     rows = _breakdown_rows(m_stats)
                     m_breakdown_path = out_dir / f"cv-breakdown-monthly-{last_month_end.strftime('%Y%m')}.mp4"
-                    record_breakdown_reveal("SPORT PERFORMANCE — LAST MONTH", rows, m_breakdown_path)
+                    record_breakdown_reveal("SPORT PERFORMANCE — LAST MONTH", rows, m_breakdown_path,
+                                             date_range=last_month_end.strftime("%B %Y").upper())
                     monthly_attachments.append(m_breakdown_path)
                     log(f"Monthly breakdown video generated: {m_breakdown_path}")
                 except Exception as exc:
@@ -881,7 +883,8 @@ def main() -> None:
                     from generate_video_reveal import record_breakdown_reveal
                     rows = _breakdown_rows(y_stats)
                     y_breakdown_path = out_dir / f"cv-breakdown-yearly-{prior_year}.mp4"
-                    record_breakdown_reveal(f"SPORT PERFORMANCE — {prior_year}", rows, y_breakdown_path)
+                    record_breakdown_reveal(f"SPORT PERFORMANCE — {prior_year}", rows, y_breakdown_path,
+                                             date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}")
                     yearly_attachments.append(y_breakdown_path)
                     log(f"Yearly breakdown video generated: {y_breakdown_path}")
                 except Exception as exc:

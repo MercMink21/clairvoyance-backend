@@ -21,16 +21,28 @@
     color:#00f0ff; text-shadow:0 0 12px #00f0ff,0 0 28px rgba(0,240,255,.6);
     margin-top:14px; opacity:0; animation: reveal .7s ease-out .3s forwards;
   }
-  .rows { width:880px; margin-top:56px; display:flex; flex-direction:column; gap:16px; }
+  .headline-range {
+    font-family:'Share Tech Mono',monospace; font-size:16px; letter-spacing:2px;
+    color:#f000ff; text-shadow:0 0 8px rgba(240,0,255,.5);
+    margin-top:8px; opacity:0; animation: reveal .7s ease-out .45s forwards;
+  }
+  .rows { width:880px; margin-top:40px; display:flex; flex-direction:column; gap:16px; }
   .row {
-    display:flex; justify-content:space-between; align-items:center;
+    display:flex; justify-content:space-between; align-items:center; gap:16px;
     background:rgba(20,10,40,.55); border:1px solid rgba(240,0,255,.2); border-radius:6px;
     padding:20px 28px; opacity:0; transform:translateX(-24px);
   }
-  .row .label-col { display:flex; flex-direction:column; }
+  /* label-col is capped and allowed to wrap — a long league list (e.g.
+     SOCCER's) previously had no width limit and would push horizontally
+     into the record/pct/units column, overlapping it. val is flex-shrink:0
+     so the numbers never compress either. */
+  .row .label-col { display:flex; flex-direction:column; max-width:480px; flex-shrink:1; min-width:0; }
   .row .label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:30px; color:#e6eaff; }
-  .row .sub { font-family:'Share Tech Mono',monospace; font-size:14px; color:#00f0ff; margin-top:2px; letter-spacing:.5px; }
-  .row .val { font-family:'Share Tech Mono',monospace; font-size:26px; display:flex; gap:20px; }
+  .row .sub {
+    font-family:'Share Tech Mono',monospace; font-size:13px; color:#00f0ff; margin-top:3px;
+    letter-spacing:.3px; white-space:normal; line-height:1.4;
+  }
+  .row .val { font-family:'Share Tech Mono',monospace; font-size:26px; display:flex; gap:20px; flex-shrink:0; }
   .row .rec { color:#e6eaff; min-width:90px; text-align:right; }
   .row .pct { color:#00f0ff; min-width:75px; text-align:right; }
   .row .units { min-width:90px; text-align:right; }
@@ -43,7 +55,6 @@
     font-family:'Orbitron',sans-serif; font-size:29px; letter-spacing:3px; color:#f000ff;
     opacity:0; animation: reveal .8s ease-out forwards;
   }
-  .footer-sub { font-family:'Share Tech Mono',monospace; font-size:25px; color:#f000ff; text-shadow:0 0 8px rgba(240,0,255,.5); margin-top:6px; }
   @keyframes reveal { to { opacity:1; } }
   @keyframes rowIn { to { opacity:1; transform:translateX(0); } }
 </style>
@@ -74,11 +85,9 @@
   <div class="stage">
     <div class="logo">CLAIRVOYANCE</div>
     <div class="headline" id="headline">SPORT PERFORMANCE</div>
+    <div class="headline-range" id="headline-range"></div>
     <div class="rows" id="rows"></div>
-    <div class="footer" id="footer" style="animation-delay:0s">
-      X @clairvoyanceeng &nbsp;·&nbsp; IG @clairvoyanceengine
-      <div class="footer-sub">clairvoyanceengine.info</div>
-    </div>
+    <div class="footer" id="footer" style="animation-delay:0s">clairvoyanceengine.info &nbsp;·&nbsp; X @clairvoyanceeng &nbsp;·&nbsp; IG @clairvoyanceengine</div>
   </div>
   <script>
     // populateRows(headline, [{label, sub, record, pct, units, isTotal}]) —
@@ -87,8 +96,9 @@
     // baked in. units is a pre-formatted string (e.g. "+11.8u"); colored
     // green/pink by sign unless it's the (already-green) total row. "sub"
     // is optional (e.g. the leagues under a sport name — "NBA, WNBA, CBB").
-    window.populateRows = function(headline, rows) {
+    window.populateRows = function(headline, rows, range) {
       document.getElementById('headline').textContent = headline;
+      document.getElementById('headline-range').textContent = range || '';
       const container = document.getElementById('rows');
       container.innerHTML = '';
       rows.forEach((r, i) => {
