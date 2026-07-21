@@ -388,8 +388,12 @@ def run(out_dir: Path) -> dict:
     is_sunday = now_mt.weekday() == 6
     is_first_of_month = now_mt.day == 1
     is_new_year = now_mt.month == 1 and now_mt.day == 1
+    # Deterministic, days-since-epoch cadence (same pattern as
+    # get_rotation_item) — no stored state, can't drift or double-fire.
+    is_biweekly = (now_mt.date() - ROTATION_EPOCH.date()).days % 14 == 0
 
-    result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "milestone": None}
+    result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "milestone": None,
+              "alltime": None, "sincelaunch": None}
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -457,6 +461,15 @@ def run(out_dir: Path) -> dict:
             year_stats = get_year_stats(page, now_mt.year - 1)
             result["yearly"] = {"stats": year_stats}
 
+        # All Time / Since Launch (every 14 days) — both are real periods
+        # the app itself already supports (renderTrackRecord._sportPeriod),
+        # generated the exact same way as weekly/monthly.
+        if is_biweekly:
+            cards, stats = generate_cards(page, out_dir, "ALL TIME", prefix_extra="alltime-")
+            result["alltime"] = {"cards": cards, "stats": stats}
+            cards, stats = generate_cards(page, out_dir, "SINCE LAUNCH", prefix_extra="sincelaunch-")
+            result["sincelaunch"] = {"cards": cards, "stats": stats}
+
         # Events — the day after a configured window ends
         for event in EVENTS:
             end_date = datetime.strptime(event["end"], "%Y-%m-%d").date()
@@ -520,6 +533,50 @@ def build_weekly_caption(stats: dict | None, week_end: datetime) -> dict[str, st
         f"This Week in Review — {range_str}\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"Seven days. Every pick graded, every line evaluated for edge.\n\n"
         f"clairvoyanceengine.info\n\n#sportsbetting #bettingtips #weeklyrecap"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_alltime_caption(stats: dict | None) -> dict[str, str]:
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
+    ig = (
+        f"All Time — Every Pick, Every Result\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"The full track record, public from day one. No cherry-picking, no deleted losses.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+    )
+    x = (
+        f"All Time — Every Pick, Every Result\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"The full track record, public from day one.\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
+    )
+    return {"instagram": ig, "x": x}
+
+
+def build_sincelaunch_caption(stats: dict | None) -> dict[str, str]:
+    tally_line = ""
+    if stats and stats.get("w") is not None:
+        tally_line = (
+            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
+            f"{_fmt_units(stats.get('units'))}\n\n"
+        )
+    ig = (
+        f"Since Launch\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"Everything tracked since day one — every pick graded, every result public.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+    )
+    x = (
+        f"Since Launch\n\nThis is Clairvoyance.\n\n{tally_line}"
+        f"Everything tracked since day one.\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     )
     return {"instagram": ig, "x": x}
 
@@ -897,6 +954,47 @@ def main() -> None:
             )
         elif not yearly_attachments:
             log(f"Year-end recap skipped: no settled bets found for {prior_year}")
+
+    # All Time / Since Launch (every 14 days)
+    if result["alltime"]:
+        at_stats = result["alltime"]["stats"] or {}
+        captions = build_alltime_caption(at_stats)
+        log("All Time captions:\n--- IG ---\n" + captions["instagram"])
+        at_attachments = list(result["alltime"]["cards"])
+        if at_stats.get("bySport"):
+            try:
+                from generate_video_reveal import record_breakdown_reveal
+                at_breakdown_path = out_dir / f"cv-breakdown-alltime-{now_mt.strftime('%Y%m%d')}.mp4"
+                record_breakdown_reveal("SPORT PERFORMANCE — ALL TIME", _breakdown_rows(at_stats), at_breakdown_path)
+                at_attachments.append(at_breakdown_path)
+            except Exception as exc:
+                log(f"All Time breakdown video generation failed (non-fatal, skipping): {exc}")
+        if not args.no_email:
+            send_email(
+                "Clairvoyance — All Time Track Record",
+                at_attachments, captions,
+                intro="Full all-time track record, good pinned-post material:",
+            )
+
+    if result["sincelaunch"]:
+        sl_stats = result["sincelaunch"]["stats"] or {}
+        captions = build_sincelaunch_caption(sl_stats)
+        log("Since Launch captions:\n--- IG ---\n" + captions["instagram"])
+        sl_attachments = list(result["sincelaunch"]["cards"])
+        if sl_stats.get("bySport"):
+            try:
+                from generate_video_reveal import record_breakdown_reveal
+                sl_breakdown_path = out_dir / f"cv-breakdown-sincelaunch-{now_mt.strftime('%Y%m%d')}.mp4"
+                record_breakdown_reveal("SPORT PERFORMANCE — SINCE LAUNCH", _breakdown_rows(sl_stats), sl_breakdown_path)
+                sl_attachments.append(sl_breakdown_path)
+            except Exception as exc:
+                log(f"Since Launch breakdown video generation failed (non-fatal, skipping): {exc}")
+        if not args.no_email:
+            send_email(
+                "Clairvoyance — Since Launch Track Record",
+                sl_attachments, captions,
+                intro="Since-launch track record, ready to post:",
+            )
 
     # Events
     for ev in result["events"]:
