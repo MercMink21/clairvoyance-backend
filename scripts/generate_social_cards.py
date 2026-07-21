@@ -504,7 +504,7 @@ def build_daily_caption(stats: dict | None, date_ref: datetime) -> dict[str, str
         f"Every pick graded. Every line evaluated for edge. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports"
     )
     x = (
         f"Yesterdays Performance\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -527,7 +527,7 @@ def build_weekly_caption(stats: dict | None, week_end: datetime) -> dict[str, st
         f"Seven days. Every pick graded, every line evaluated for edge. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #weeklyrecap"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports #weeklyrecap"
     )
     x = (
         f"This Week in Review — {range_str}\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -549,7 +549,7 @@ def build_alltime_caption(stats: dict | None) -> dict[str, str]:
         f"The full track record, public from day one. No cherry-picking, no deleted losses.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports"
     )
     x = (
         f"All Time — Every Pick, Every Result\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -571,7 +571,7 @@ def build_sincelaunch_caption(stats: dict | None) -> dict[str, str]:
         f"Everything tracked since day one — every pick graded, every result public.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports"
     )
     x = (
         f"Since Launch\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -595,7 +595,7 @@ def build_monthly_caption(stats: dict | None, month_ref: datetime) -> dict[str, 
         f"A full month tracked, graded, and public. No cherry-picking, no deleted losses.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #monthlyrecap"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports #monthlyrecap"
     )
     x = (
         f"{month_str} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -617,7 +617,7 @@ def build_yearly_caption(stats: dict | None, year: int) -> dict[str, str]:
         f"A full year tracked, graded, and public. Every pick, every result — no cherry-picking, no deleted losses.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping #sports #yearinreview"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping #sports #yearinreview"
     )
     x = (
         f"{year} in the Books\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -640,7 +640,7 @@ def build_event_caption(event: dict, stats: dict | None = None) -> dict[str, str
         f"Every pick tracked. Every result public. No guesswork.\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#SportsBetting #BettingModel {event_hashtag} #SportsAnalytics #ModelPicks"
+        f"#foryou #SportsBetting #BettingModel {event_hashtag} #SportsAnalytics #ModelPicks"
     )
     x = (
         f"{event['name']} is in the books.\n\nThis is Clairvoyance.\n\n{tally_line}"
@@ -658,7 +658,7 @@ def build_grading_caption() -> dict[str, str]:
         "No hype. No \"lock of the century.\" Just picks that clear the bar, and ones that don't get thrown out.\n\n"
         "Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        "#sportsbetting #bettingtips #sportsanalytics #smartbetting"
+        "#foryou #sportsbetting #bettingtips #sportsanalytics #smartbetting"
     )
     x = (
         "Not all picks are created equal.\n\nEvery signal gets graded before it goes public. "
@@ -673,7 +673,7 @@ def build_subscription_caption() -> dict[str, str]:
         "Full access. No guesswork.\n\nThis is Clairvoyance.\n\n"
         "Every tier gets real graded picks, real game lines, and Discord access — the only difference is how much of the model you want.\n\n"
         "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        "#sportsbetting #bettingtips #subscription #sportsanalytics"
+        "#foryou #sportsbetting #bettingtips #subscription #sportsanalytics"
     )
     x = (
         "Full access. No guesswork.\n\nBase, Plus, Insider — or a Day/Weekend Pass if you just want in for a slate.\n\n"
@@ -688,7 +688,7 @@ def build_educational_caption(topic: dict) -> dict[str, str]:
         f"{topic['title']}\n\nThis is Clairvoyance.\n\n{body}\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #sportsanalytics"
+        f"#foryou #sportsbetting #bettingtips #sportsanalytics"
     )
     x = f"{topic['title']}\n\n{body}\n\nclairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     return {"instagram": ig, "x": x}
@@ -700,7 +700,7 @@ def build_covers_caption() -> dict[str, str]:
         "20 leagues across 6 sports, every pick graded, every result tracked publicly — model outputs, not gut feelings.\n\n"
         "Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        "#sportsbetting #bettingtips #sportsanalytics #handicapping"
+        "#foryou #sportsbetting #bettingtips #sportsanalytics #handicapping"
     )
     x = (
         "One engine. Every sport that matters.\n\n20 leagues, 6 sports, every pick graded.\n\n"
@@ -725,7 +725,7 @@ def build_milestone_caption(milestone_data: dict, trigger: str, threshold: int) 
         f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n"
         f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#sportsbetting #bettingtips #bettingpicks #handicapping"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #handicapping"
     )
     x = f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n#sportsbetting #bettingpicks"
     return {"instagram": ig, "x": x}
