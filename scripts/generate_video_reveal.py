@@ -264,12 +264,12 @@ EDUCATIONAL_TOPICS = {
 def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: Path, duration_s: float | None = None) -> Path:
     """lines: list of short (~1 sentence) strings, revealed one at a time."""
     if duration_s is None:
-        duration_s = 8.0
+        duration_s = 12.0
     setup_js = f"window.populateLines({json.dumps(tag)}, {json.dumps(title)}, {json.dumps(lines)})"
     return _record_template("educational_reveal.html", setup_js, out_path, duration_s)
 
 
-def record_grading_tiers_reveal(out_path: Path, duration_s: float = 8.0) -> Path:
+def record_grading_tiers_reveal(out_path: Path, duration_s: float = 10.0) -> Path:
     """Dedicated Pick Grading System video - static content (no live
     stats), matches the site's public PREMIUM/OPTIMAL/LEAN/SKIP tiers but
     deliberately omits the exact win-prob/EV thresholds the site itself
@@ -278,7 +278,7 @@ def record_grading_tiers_reveal(out_path: Path, duration_s: float = 8.0) -> Path
     return _record_template("grading_tiers_reveal.html", "() => {}", out_path, duration_s)
 
 
-def record_subscription_tiers_reveal(out_path: Path, duration_s: float = 8.0) -> Path:
+def record_subscription_tiers_reveal(out_path: Path, duration_s: float = 10.0) -> Path:
     """Dedicated 'Choose Your Tier' subscription video - static content,
     real public pricing (not methodology, so no vagueness needed here)."""
     return _record_template("subscription_tiers_reveal.html", "() => {}", out_path, duration_s)
