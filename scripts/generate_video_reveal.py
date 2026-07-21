@@ -144,11 +144,13 @@ def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: flo
 # consecutive daily posts don't all look identical. Keyed by name so
 # callers/rotation logic can pick by index without knowing filenames.
 STATS_VARIANTS = {
-    "fade":   ("daily_reveal.html", 7.0),    # original: staggered fade-up
-    "glitch": ("glitch_reveal.html", 7.0),   # each stat glitches in individually, then settles
-    "split":  ("split_reveal.html", 5.5),    # fast alternating slide-in, punchier
+    "fade":   ("daily_reveal.html", 8.0),    # original: staggered fade-up
+    "glitch": ("glitch_reveal.html", 8.5),   # each stat glitches in individually, then settles
+    "split":  ("split_reveal.html", 5.5),    # fast alternating slide-in, punchier — kept for ad-hoc use, not in daily rotation
 }
-STATS_VARIANT_NAMES = list(STATS_VARIANTS.keys())
+# Daily rotation alternates strictly between fade and glitch (split
+# available but excluded per explicit feedback).
+STATS_VARIANT_NAMES = ["fade", "glitch"]
 
 
 def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path,
