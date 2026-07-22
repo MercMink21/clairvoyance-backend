@@ -11587,55 +11587,153 @@ function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateStri
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
 function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
-// Scans every tracked sport for today's slate and grades each candidate
-// market via tier() (PREMIUM/OPTIMAL/LEAN/SKIP — same thresholds used
-// everywhere else in the app). Shared by the Daily Briefing panel (display
-// only) and the Pick Queue (review + lock). Each candidate carries the raw
-// hA/awA/betType/ml/decOdds fields lockPick() needs, plus — where a true
-// multi-model ensemble exists (MLB: mc/bay/elo, WNBA: mcP/bayP/eloP) — a
-// `sigma` (model disagreement) and `converged` flag. LEAN is the lowest-
-// confidence tier and the one most likely to be noise, so the Pick Queue
-// only auto-surfaces LEAN candidates where `converged` is true; sports
-// without an ensemble breakdown (NHL/WC/bestBets-sourced picks) leave
-// sigma null and are never auto-surfaced at LEAN (though they still show
-// at PREMIUM/OPTIMAL, and can always be locked manually).
-function _scanGradedCandidates(){
-  const D=window.__CV_DATA||{};
-  const todayStr=today();
-  const candidates=[];
-  const _normProb=v=>v==null?0:v>1?v/100:v;
-  const _normEv=v=>v==null?null:Math.abs(v)>2?v/100:v;
-  const _mapGrade=g=>{const m={GOOD:'OPTIMAL',GREAT:'PREMIUM',SOLID:'LEAN',OK:'LEAN'};return(['PREMIUM','OPTIMAL','LEAN','SKIP'].includes(g))?g:(m[g]||'OPTIMAL');};
-  const LBL=['SKIP','LEAN','OPTIMAL','PREMIUM'];
-  // LEAN convergence threshold mirrors _mlbTier's LEAN sigma cap (<=.14).
-  const LEAN_SIG_MAX=.14;
-  // bestBets.json (cron-updated) — no per-pick hA/awA fields, so split the
-  // "AWAY @ HOME" / "AWAY vs HOME" game string the same way the home-page
-  // ticker does (bbMapped, above) to recover team names for lockPick.
-  try{(D.bestBets||[]).filter(b=>b.date===todayStr).forEach(b=>{
-    const g=_mapGrade(b.grade||'OPTIMAL');if(g==='SKIP')return;
-    const gameParts=(b.game||'').split(/\s+(?:vs|@|at)\s+/i);
-    const mlNum=parseFloat((b.ml||'').toString().replace('+',''))||0;
-    const dec=parseFloat(b.decOdds)||(mlNum>0?(mlNum/100+1):mlNum<0?(100/Math.abs(mlNum)+1):1.91);
-    candidates.push({sport:b.sport||'MLB',matchup:b.game||'',pick:b.pick||b.betOn||'',grade:g,prob:_normProb(b.confidence||b.prob||0),ev:_normEv(b.ev||b.evPct),tierN:g==='PREMIUM'?3:g==='OPTIMAL'?2:1,
-      hA:gameParts[1]||gameParts[0]||'',awA:gameParts[0]||'',betType:(b.betType||'ML').toUpperCase(),betOn:b.pick||b.betOn||'',ml:b.ml||p2ml(_normProb(b.confidence||b.prob||0)),decOdds:dec,date:b.date||todayStr,sigma:null,converged:false});
-  });}catch(e){}
-  // WC today — inline ELO model
-  try{(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).forEach(g=>{
-    if(typeof _wcOut!=='function')return;
-    const out=_wcOut(g.he||1800,g.ae||1800);
-    const hP=out.hW||0.33,aP=out.aW||0.33;
+// ═══ PICK SCANNER REGISTRY ══════════════════════════════════════════════
+// One scanner slot per sport/league CV tracks. Each scanFn is called and
+// try/caught independently by _scanGradedCandidates, so an off-season
+// sport, a sport with no live model yet, or a sport with zero games today
+// simply contributes nothing — it never breaks the others, and it starts
+// contributing the moment real data/models show up for it (no registry
+// change required). Sports with a genuine live ensemble model (MLB/NHL/
+// WNBA) plus the World Cup's inline ELO model scan their own data feeds
+// directly for the highest-fidelity grading. Every other tracked sport/
+// league falls back to _genericBestBetsScan(tag), which reads the same
+// bestBets.json feed already used elsewhere in the app (cron-updated,
+// sport-tagged) — so if the backend ever starts generating NFL/tennis/
+// club-soccer picks, they flow into the Pick Queue automatically.
+//
+// Player props: every candidate carries category:'GAME'|'PROP' and
+// prop:null|{player,stat,line,over}. To add real props for a sport that
+// doesn't have them yet, either (a) populate window._<sportKey>DPData in
+// the same {player,stat,line,over,grade,prob,ev,hA,awA,ml,decOdds} shape
+// MLB/NHL already use — _genericPropCacheScan picks it up with zero other
+// changes — or (b) register a dedicated scanner via registerPickScanner()
+// that sets category:'PROP' directly (see _scanMLBProps/_scanNHLProps).
+const PICK_SCANNERS=[];
+function registerPickScanner(sport,scanFn){PICK_SCANNERS.push({sport,scanFn});}
+// Sport tags a dedicated scanFn below already covers with a live model —
+// generic bestBets scanners are still registered for these too (in case
+// the backend surfaces additional markets the inline model doesn't).
+const PROP_CACHE_KEYS={MLB:'_mlbDPData',NHL:'_nhlPickData'};
+const _normProb=v=>v==null?0:v>1?v/100:v;
+const _normEv=v=>v==null?null:Math.abs(v)>2?v/100:v;
+const _mapGrade=g=>{const m={GOOD:'OPTIMAL',GREAT:'PREMIUM',SOLID:'LEAN',OK:'LEAN'};return(['PREMIUM','OPTIMAL','LEAN','SKIP'].includes(g))?g:(m[g]||'OPTIMAL');};
+const _pickLBL=['SKIP','LEAN','OPTIMAL','PREMIUM'];
+// LEAN convergence threshold mirrors _mlbTier's LEAN sigma cap (<=.14).
+const LEAN_SIG_MAX=.14;
+// Best-effort "Player OVER/UNDER line stat" parse for bestBets prop picks
+// that don't already carry structured player/stat/line fields.
+function _parsePropString(s){
+  const m=/^(.+?)\s+(OVER|UNDER)\s+([\d.]+)\+?\s+(.+)$/i.exec((s||'').trim());
+  if(!m)return null;
+  return{player:m[1],over:m[2].toUpperCase()==='OVER',line:parseFloat(m[3]),stat:m[4]};
+}
+// bestBets.json (cron-updated) — no per-pick hA/awA fields, so split the
+// "AWAY @ HOME" / "AWAY vs HOME" game string to recover team names for
+// lockPick. Generic fallback for any sport tag without a dedicated scanner.
+function _genericBestBetsScan(sportTag){
+  return function(){
+    const D=window.__CV_DATA||{};const todayStr=today();const out=[];
+    try{(D.bestBets||[]).filter(b=>b.date===todayStr&&(b.sport||'').toUpperCase()===sportTag).forEach(b=>{
+      const g=_mapGrade(b.grade||'OPTIMAL');if(g==='SKIP')return;
+      const gameParts=(b.game||'').split(/\s+(?:vs|@|at)\s+/i);
+      const mlNum=parseFloat((b.ml||'').toString().replace('+',''))||0;
+      const dec=parseFloat(b.decOdds)||(mlNum>0?(mlNum/100+1):mlNum<0?(100/Math.abs(mlNum)+1):1.91);
+      const betType=(b.betType||'ML').toUpperCase();
+      const isProp=betType==='PROP';
+      const pickStr=b.pick||b.betOn||'';
+      out.push({sport:sportTag,matchup:b.game||'',pick:pickStr,grade:g,prob:_normProb(b.confidence||b.prob||0),ev:_normEv(b.ev||b.evPct),tierN:g==='PREMIUM'?3:g==='OPTIMAL'?2:1,
+        hA:gameParts[1]||gameParts[0]||'',awA:gameParts[0]||'',betType,betOn:pickStr,ml:b.ml||p2ml(_normProb(b.confidence||b.prob||0)),decOdds:dec,date:b.date||todayStr,sigma:null,converged:false,
+        category:isProp?'PROP':'GAME',prop:isProp?(b.player?{player:b.player,stat:b.stat||null,line:b.line??null,over:b.over??null}:_parsePropString(pickStr)):null});
+    });}catch(e){}
+    return out;
+  };
+}
+// Generic reader for window._<sportKey>DPData-style prop caches populated
+// by individual sport render functions (currently MLB/NHL; forward-
+// compatible with any future sport that adopts the same cache shape).
+function _genericPropCacheScan(sportTag){
+  return function(){
+    const cacheName=PROP_CACHE_KEYS[sportTag];if(!cacheName)return[];
+    const out=[];const todayStr=today();
+    try{(window[cacheName]||[]).forEach(p=>{
+      if(p.grade!=='PREMIUM'&&p.grade!=='OPTIMAL'&&p.grade!=='LEAN')return;
+      const label=p.pick||p.betOn||`${p.player||''} ${p.over?.toUpperCase?.()||(p.over?'OVER':'UNDER')||''} ${p.line??''} ${p.stat||''}`.replace(/\s+/g,' ').trim();
+      out.push({sport:sportTag,matchup:`${p.awA||''} @ ${p.hA||''}`,pick:label,grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:p.grade==='OPTIMAL'?2:1,
+        hA:p.hA,awA:p.awA,betType:p.betType||'PROP',betOn:label,ml:p.ml||'-110',decOdds:p.decOdds||1.91,date:todayStr,sigma:null,converged:false,
+        category:'PROP',prop:{player:p.player||null,stat:p.stat||null,line:p.line??null,over:p.over??null}});
+    });}catch(e){}
+    return out;
+  };
+}
+// ── MLB — ML + run line + O/U from the live ESPN feed + mlbEns() (mc/bay/elo give a true 3-model sigma)
+registerPickScanner('MLB',function(){
+  const todayStr=today();const out=[];
+  try{(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).forEach(g=>{
+    if(!g.homeML&&!g.awayML)return;
+    const mu=`${g.awA} @ ${g.hA}`;
+    const hP=g.homeML?1/ml2d(g.homeML):0.5,aP=g.awayML?1/ml2d(g.awayML):0.5;
     const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?g.home:g.away;const dogTeam=favIsHome?g.away:g.home;
-    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);
-    const t=tier(favP,favEV,'ML');
-    if(t>=1)candidates.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`${favTeam} ML (Grp ${g.group})`,grade:LBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:g.home,awA:g.away,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:null,converged:false});
-    // O/U
-    if(typeof _wcOUProb==='function'&&g.ou){const ovP=_wcOUProb(g.he||1800,g.ae||1800,g.ou);const ouDec=1.91;const ouEV=ev(ovP,ouDec);const ouT=tier(ovP,ouEV,'OU');if(ouT>=2)candidates.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`OVER ${g.ou}`,grade:LBL[ouT],prob:ovP,ev:ouEV,tierN:ouT,
-      hA:g.home,awA:g.away,betType:'OU',betOn:`OVER ${g.ou}`,ml:p2ml(ovP),decOdds:ouDec,date:todayStr,sigma:null,converged:false});}
+    const favTeam=favIsHome?g.hA:g.awA;const dogTeam=favIsHome?g.awA:g.hA;
+    const favML=favIsHome?g.homeML:g.awayML;
+    const favDec=ml2d(favML);const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
+    let mSig=null,mConv=false;
+    try{const _ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;if(_ens)mSig=_sigma([_ens.mc,_ens.bay,_ens.elo]);}catch(e3){}
+    mConv=mSig!=null&&mSig<=LEAN_SIG_MAX;
+    if(t>=1)out.push({sport:'MLB',matchup:mu,pick:`${favTeam} ML ${favML}`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
+      hA:g.hA,awA:g.awA,betType:'ML',betOn:`${favTeam} ML`,ml:favML,decOdds:favDec,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
+    try{
+      const ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;const mc=ens?.mc2;
+      if(mc){
+        const rlP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);
+        const rlDogP=1-rlP;
+        const ouL=g.ou||(mc.avgT||8.5).toFixed(1);
+        const ouP=mc.overP??0.50;
+        const rlFavT=tier(rlP,ev(rlP,1.87),'SPREAD');
+        if(rlFavT>=1)out.push({sport:'MLB',matchup:mu,pick:`${favTeam} -1.5`,grade:_pickLBL[rlFavT],prob:rlP,ev:ev(rlP,1.87),tierN:rlFavT,
+          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
+        const rlDogT=tier(rlDogP,ev(rlDogP,2.05),'SPREAD');
+        if(rlDogT>=1)out.push({sport:'MLB',matchup:mu,pick:`${dogTeam} +1.5`,grade:_pickLBL[rlDogT],prob:rlDogP,ev:ev(rlDogP,2.05),tierN:rlDogT,
+          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
+        const ouT=tier(ouP,ev(ouP,1.91),'OU');
+        if(ouT>=1)out.push({sport:'MLB',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:_pickLBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
+          hA:g.hA,awA:g.awA,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
+      }
+    }catch(e2){}
   });}catch(e){}
-  // WNBA today — ML + spread + O/U (mcP/bayP/eloP give a true 3-model sigma)
+  return out;
+});
+registerPickScanner('MLB',_genericPropCacheScan('MLB'));
+registerPickScanner('MLB',_genericBestBetsScan('MLB'));
+// ── NHL — puck line + O/U from nhlEns (no bay/elo sub-probs exposed, so no genuine sigma here)
+registerPickScanner('NHL',function(){
+  const todayStr=today();const out=[];
+  try{(window.__CV_DATA?.nhl?.today||[]).forEach(g=>{
+    if(!g.h||!g.a||typeof nhlEns!=='function')return;
+    const ens=nhlEns(g.h,g.a);if(!ens)return;
+    const mc=ens.mcD;const hP=ens.p,aP=1-hP;
+    const favIsHome=hP>=aP;const favTeam=favIsHome?g.h:g.a;const dogTeam=favIsHome?g.a:g.h;
+    const mu=`${g.a} @ ${g.h}`;
+    if(mc){
+      const plP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);const plDogP=1-plP;
+      const plFavT=tier(plP,ev(plP,1.87),'SPREAD');
+      if(plFavT>=1)out.push({sport:'NHL',matchup:mu,pick:`${favTeam} -1.5`,grade:_pickLBL[plFavT],prob:plP,ev:ev(plP,1.87),tierN:plFavT,
+        hA:g.h,awA:g.a,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+      const plDogT=tier(plDogP,ev(plDogP,2.05),'SPREAD');
+      if(plDogT>=1)out.push({sport:'NHL',matchup:mu,pick:`${dogTeam} +1.5`,grade:_pickLBL[plDogT],prob:plDogP,ev:ev(plDogP,2.05),tierN:plDogT,
+        hA:g.h,awA:g.a,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+      const ouL=g.ou||5.5;const ouP=mc.overP||0.50;
+      const ouT=tier(ouP,ev(ouP,1.91),'OU');
+      if(ouT>=1)out.push({sport:'NHL',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:_pickLBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
+        hA:g.h,awA:g.a,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+    }
+  });}catch(e){}
+  return out;
+});
+registerPickScanner('NHL',_genericPropCacheScan('NHL'));
+registerPickScanner('NHL',_genericBestBetsScan('NHL'));
+// ── WNBA — ML + spread + O/U (mcP/bayP/eloP give a true 3-model sigma)
+registerPickScanner('WNBA',function(){
+  const todayStr=today();const out=[];
   try{(window._wnbaGameData||[]).forEach(game=>{
     if(typeof wnbaEns!=='function')return;
     const ens=wnbaEns(game.hA||game.home,game.awA||game.away,null);
@@ -11649,87 +11747,75 @@ function _scanGradedCandidates(){
     const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
     const wSig=(ens.mcP!=null&&ens.bayP!=null&&ens.eloP!=null)?_sigma([ens.mcP,ens.bayP,ens.eloP]):null;
     const wConv=wSig!=null&&wSig<=LEAN_SIG_MAX;
-    if(t>=1)candidates.push({sport:'WNBA',matchup:mu,pick:`${favTeam} ML`,grade:LBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:hAraw,awA:awAraw,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:wSig,converged:wConv});
-    // Spread
+    if(t>=1)out.push({sport:'WNBA',matchup:mu,pick:`${favTeam} ML`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
+      hA:hAraw,awA:awAraw,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
     const wSprdLine=+(((0.5-favP)*25)).toFixed(1);const wLineAbs=Math.abs(wSprdLine).toFixed(1);
     const wFavCoverP=Math.min(0.80,Math.max(0.20,favP-0.08));const wDogCoverP=1-wFavCoverP;
     const wSprdFavT=tier(wFavCoverP,ev(wFavCoverP,1.87),'SPREAD');
-    if(wSprdFavT>=1)candidates.push({sport:'WNBA',matchup:mu,pick:`${favTeam} -${wLineAbs}`,grade:LBL[wSprdFavT],prob:wFavCoverP,ev:ev(wFavCoverP,1.87),tierN:wSprdFavT,
-      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${favTeam} -${wLineAbs}`,ml:'-110',decOdds:1.87,date:todayStr,sigma:wSig,converged:wConv});
+    if(wSprdFavT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${favTeam} -${wLineAbs}`,grade:_pickLBL[wSprdFavT],prob:wFavCoverP,ev:ev(wFavCoverP,1.87),tierN:wSprdFavT,
+      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${favTeam} -${wLineAbs}`,ml:'-110',decOdds:1.87,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
     const wSprdDogT=tier(wDogCoverP,ev(wDogCoverP,2.05),'SPREAD');
-    if(wSprdDogT>=1)candidates.push({sport:'WNBA',matchup:mu,pick:`${dogTeam} +${wLineAbs}`,grade:LBL[wSprdDogT],prob:wDogCoverP,ev:ev(wDogCoverP,2.05),tierN:wSprdDogT,
-      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${dogTeam} +${wLineAbs}`,ml:'+110',decOdds:2.05,date:todayStr,sigma:wSig,converged:wConv});
-    // O/U
+    if(wSprdDogT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${dogTeam} +${wLineAbs}`,grade:_pickLBL[wSprdDogT],prob:wDogCoverP,ev:ev(wDogCoverP,2.05),tierN:wSprdDogT,
+      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${dogTeam} +${wLineAbs}`,ml:'+110',decOdds:2.05,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
     try{
       const wOuL=game.ou||168;const wMcR=wnbaMC(game.hA||game.home,game.awA||game.away,100);
       const wOuP=typeof wnbaOUProb==='function'?wnbaOUProb({totalProj:wMcR.avgTotal},wOuL):0.50;
       const wOuT=tier(wOuP,ev(wOuP,1.91),'OU');
-      if(wOuT>=1)candidates.push({sport:'WNBA',matchup:mu,pick:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,grade:LBL[wOuT],prob:wOuP,ev:ev(wOuP,1.91),tierN:wOuT,
-        hA:hAraw,awA:awAraw,betType:'OU',betOn:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,ml:p2ml(wOuP),decOdds:1.91,date:todayStr,sigma:wSig,converged:wConv});
+      if(wOuT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,grade:_pickLBL[wOuT],prob:wOuP,ev:ev(wOuP,1.91),tierN:wOuT,
+        hA:hAraw,awA:awAraw,betType:'OU',betOn:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,ml:p2ml(wOuP),decOdds:1.91,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
     }catch(e2){}
   });}catch(e){}
-  // MLB / ESPN games — ML + run line + O/U (mc/bay/elo give a true 3-model sigma)
-  try{(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).forEach(g=>{
-    if(!g.homeML&&!g.awayML)return;
-    const mu=`${g.awA} @ ${g.hA}`;
-    const hP=g.homeML?1/ml2d(g.homeML):0.5,aP=g.awayML?1/ml2d(g.awayML):0.5;
+  return out;
+});
+registerPickScanner('WNBA',_genericBestBetsScan('WNBA'));
+// ── World Cup-style tournaments — inline ELO model (kept for whenever a
+// tournament is active; the Soccer tab itself was removed after WC26 ended)
+registerPickScanner('WC',function(){
+  const todayStr=today();const out=[];
+  try{(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).forEach(g=>{
+    if(typeof _wcOut!=='function')return;
+    const res=_wcOut(g.he||1800,g.ae||1800);
+    const hP=res.hW||0.33,aP=res.aW||0.33;
     const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?g.hA:g.awA;const dogTeam=favIsHome?g.awA:g.hA;
-    const favML=favIsHome?g.homeML:g.awayML;
-    const favDec=ml2d(favML);const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
-    let mSig=null,mConv=false;
-    try{const _ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;if(_ens)mSig=_sigma([_ens.mc,_ens.bay,_ens.elo]);}catch(e3){}
-    mConv=mSig!=null&&mSig<=LEAN_SIG_MAX;
-    if(t>=1)candidates.push({sport:'MLB',matchup:mu,pick:`${favTeam} ML ${favML}`,grade:LBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:g.hA,awA:g.awA,betType:'ML',betOn:`${favTeam} ML`,ml:favML,decOdds:favDec,date:todayStr,sigma:mSig,converged:mConv});
-    try{
-      const ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;const mc=ens?.mc2;
-      if(mc){
-        const rlP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);
-        const rlDogP=1-rlP;
-        const ouL=g.ou||(mc.avgT||8.5).toFixed(1);
-        const ouP=mc.overP??0.50;
-        const rlFavT=tier(rlP,ev(rlP,1.87),'SPREAD');
-        if(rlFavT>=1)candidates.push({sport:'MLB',matchup:mu,pick:`${favTeam} -1.5`,grade:LBL[rlFavT],prob:rlP,ev:ev(rlP,1.87),tierN:rlFavT,
-          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:mSig,converged:mConv});
-        const rlDogT=tier(rlDogP,ev(rlDogP,2.05),'SPREAD');
-        if(rlDogT>=1)candidates.push({sport:'MLB',matchup:mu,pick:`${dogTeam} +1.5`,grade:LBL[rlDogT],prob:rlDogP,ev:ev(rlDogP,2.05),tierN:rlDogT,
-          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:mSig,converged:mConv});
-        const ouT=tier(ouP,ev(ouP,1.91),'OU');
-        if(ouT>=1)candidates.push({sport:'MLB',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:LBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
-          hA:g.hA,awA:g.awA,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:mSig,converged:mConv});
-      }
-    }catch(e2){}
+    const favTeam=favIsHome?g.home:g.away;
+    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);
+    const t=tier(favP,favEV,'ML');
+    if(t>=1)out.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`${favTeam} ML (Grp ${g.group})`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
+      hA:g.home,awA:g.away,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+    if(typeof _wcOUProb==='function'&&g.ou){const ovP=_wcOUProb(g.he||1800,g.ae||1800,g.ou);const ouDec=1.91;const ouEV=ev(ovP,ouDec);const ouT=tier(ovP,ouEV,'OU');if(ouT>=2)out.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`OVER ${g.ou}`,grade:_pickLBL[ouT],prob:ovP,ev:ouEV,tierN:ouT,
+      hA:g.home,awA:g.away,betType:'OU',betOn:`OVER ${g.ou}`,ml:p2ml(ovP),decOdds:ouDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});}
   });}catch(e){}
-  // window pick-data caches from sport renderers — no ensemble breakdown
-  // available at this layer, so sigma stays null (never auto-surfaced at LEAN).
-  try{(window._mlbDPData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'MLB',matchup:`${p.awA} @ ${p.hA}`,pick:`${p.player} ${p.over?.toUpperCase()||''} ${p.line} ${p.stat}`,grade:p.grade,prob:_normProb(p.prob||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:p.grade==='OPTIMAL'?2:1,
-    hA:p.hA,awA:p.awA,betType:'PROP',betOn:`${p.player} ${p.over?.toUpperCase()||''} ${p.line} ${p.stat}`,ml:p.ml||'-110',decOdds:p.decOdds||1.91,date:todayStr,sigma:null,converged:false});}});}catch(e){}
-  try{(window._nhlPickData||[]).forEach(p=>{if(p.grade==='PREMIUM'||p.grade==='OPTIMAL'||p.grade==='LEAN'){candidates.push({sport:'NHL',matchup:`${p.awA||''} @ ${p.hA||''}`,pick:p.pick||p.betOn||'',grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:2,
-    hA:p.hA,awA:p.awA,betType:p.betType||'PROP',betOn:p.pick||p.betOn||'',ml:p.ml||'-110',decOdds:p.decOdds||1.91,date:todayStr,sigma:null,converged:false});}});}catch(e){}
-  // NHL inline — puck line + O/U from nhlEns (no bay/elo sub-probs exposed
-  // by nhlEns, so no genuine sigma here either — sigma stays null)
-  try{(window.__CV_DATA?.nhl?.today||[]).forEach(g=>{
-    if(!g.h||!g.a||typeof nhlEns!=='function')return;
-    const ens=nhlEns(g.h,g.a);if(!ens)return;
-    const mc=ens.mcD;const hP=ens.p,aP=1-hP;
-    const favIsHome=hP>=aP;const favTeam=favIsHome?g.h:g.a;const dogTeam=favIsHome?g.a:g.h;
-    const mu=`${g.a} @ ${g.h}`;
-    if(mc){
-      const plP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);const plDogP=1-plP;
-      const plFavT=tier(plP,ev(plP,1.87),'SPREAD');
-      if(plFavT>=1)candidates.push({sport:'NHL',matchup:mu,pick:`${favTeam} -1.5`,grade:LBL[plFavT],prob:plP,ev:ev(plP,1.87),tierN:plFavT,
-        hA:g.h,awA:g.a,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:null,converged:false});
-      const plDogT=tier(plDogP,ev(plDogP,2.05),'SPREAD');
-      if(plDogT>=1)candidates.push({sport:'NHL',matchup:mu,pick:`${dogTeam} +1.5`,grade:LBL[plDogT],prob:plDogP,ev:ev(plDogP,2.05),tierN:plDogT,
-        hA:g.h,awA:g.a,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:null,converged:false});
-      const ouL=g.ou||5.5;const ouP=mc.overP||0.50;
-      const ouT=tier(ouP,ev(ouP,1.91),'OU');
-      if(ouT>=1)candidates.push({sport:'NHL',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:LBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
-        hA:g.h,awA:g.a,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:null,converged:false});
-    }
-  });}catch(e){}
+  return out;
+});
+// ── Every other sport/league CV tracks. No dedicated live model/feed
+// exists in the app for these yet, so each is a slot on the generic
+// bestBets.json path — it stays empty (correctly inert, not an error)
+// until the backend starts generating picks for it, whether that's
+// because the sport is off-season or simply not modeled yet.
+['NBA','NFL','CFB','CBB','ATP','WTA','PWHL','KHL','SHL','LIIGA',
+ 'CL','PL','LIGA','BL','MLS'].forEach(tag=>{
+  registerPickScanner(tag,_genericBestBetsScan(tag));
+  if(PROP_CACHE_KEYS[tag])registerPickScanner(tag,_genericPropCacheScan(tag));
+});
+
+// Scans every registered sport/league for today's slate and grades each
+// candidate market via tier() (PREMIUM/OPTIMAL/LEAN/SKIP — same
+// thresholds used everywhere else in the app). Shared by the Daily
+// Briefing panel (display only) and the Pick Queue (review + lock). Each
+// candidate carries the raw hA/awA/betType/ml/decOdds fields lockPick()
+// needs, plus — where a true multi-model ensemble exists (MLB: mc/bay/
+// elo, WNBA: mcP/bayP/eloP) — a `sigma` (model disagreement) and
+// `converged` flag. LEAN is the lowest-confidence tier and the one most
+// likely to be noise, so the Pick Queue only auto-surfaces LEAN
+// candidates where `converged` is true; sports without an ensemble
+// breakdown leave sigma null and are never auto-surfaced at LEAN (though
+// they still show at PREMIUM/OPTIMAL, and can always be locked manually).
+function _scanGradedCandidates(){
+  const candidates=[];
+  PICK_SCANNERS.forEach(({sport,scanFn})=>{
+    try{const res=scanFn();if(Array.isArray(res))candidates.push(...res);}
+    catch(e){console.warn('[pickScan]',sport,'failed',e);}
+  });
   // Deduplicate by pick+sport
   const seen=new Set();
   const deduped=candidates.filter(c=>{const k=`${c.sport}|${c.pick}`;if(seen.has(k))return false;seen.add(k);return true;});
