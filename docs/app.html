@@ -851,29 +851,11 @@ body{line-height:1.5}
     <button class="sb2" onclick="setSub('soc','mls')">MLS</button>
     <button class="btn btn-sm btn-p" onclick="doUpdate()" style="float:right;margin:3px 6px">↻ SYNC</button>
   </nav>
-  <!-- World Cup 2026 concluded Jul 19 — no longer a live sub-tab (matches
-       the Wimbledon/French Open pattern of archiving finished majors
-       instead of keeping them as a persistent active tab). Final results
-       (champion/runner-up/3rd place) are preserved in the bracket data
-       above and still reachable via the nav dropdown -> World Cup 2026. -->
-  <div id="soc-worldcup" class="subp">
-    <nav class="inav" id="wc-in">
-      <button class="nb act" onclick="T('wc','bracket');renderWCBracket()">FINAL RESULTS</button>
-      <button class="nb" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
-      <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
-    </nav>
-    <div class="sa" id="wc-sa">
-      <div id="wc-tab-matches" class="tab">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:15px"><span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
-        <div id="wc-matches-list" style="padding:4px 0"></div>
-      </div>
-      <div id="wc-tab-bracket" class="tab act"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
-      <div id="wc-tab-props" class="tab">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:15px"><span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
-        <div id="wc-props-list" style="padding:4px 0"></div>
-      </div>
-    </div>
-  </div>
+  <!-- World Cup 2026 removed entirely from the UI (concluded Jul 19,
+       fully archived per explicit request) — no sub-tab, no nav-dropdown
+       entry, no bracket page. The settled bet history/ledger entries are
+       untouched, so Sport Performance / League Performance win-loss/units
+       stats stay accurate; only the interactive World Cup pages are gone. -->
 <!-- CHAMPIONS LEAGUE -->
 <div id="soc-cl" class="subp act">
   <nav class="inav" id="cl-in">
@@ -16443,7 +16425,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-07-20 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-07-21 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -22819,8 +22801,9 @@ function renderWCMatches(){
     .then(function(data){
       clearTimeout(tid);
       var liveMap=_wcParseLiveMap(data);
-      if(Object.keys(liveMap).length&&document.getElementById('wc-matches-list')){
-        document.getElementById('wc-matches-list').innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,liveMap);
+      var _wcEl=document.getElementById('wc-matches-list');
+      if(Object.keys(liveMap).length&&_wcEl){
+        _wcEl.innerHTML=_buildWCMatchesHTML(WC26_SCHEDULE,liveMap);
       }
     })
     .catch(function(){clearTimeout(tid);});
@@ -29293,13 +29276,6 @@ function trainerExportInsights() {
       <button onclick="SS('soc');setSub('soc','cl');T('cl','bracket');hideAllND()">Bracket</button>
       <button onclick="SS('soc');setSub('soc','cl');T('cl','model');renderSoccerLeagueModel('cl');hideAllND()">Model</button>
       <button onclick="SS('soc');setSub('soc','cl');T('cl','config');renderSoccerLeagueConfig('cl');hideAllND()">Config</button>
-    </div>
-  </div>
-  <div class="ndl"><button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">World Cup 2026 (Final)</button>
-    <div class="ndl-sub">
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">Final Results</button>
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','matches');renderWCMatches();hideAllND()">Matches</button>
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','props');renderWCProps();hideAllND()">Props</button>
     </div>
   </div>
   <div class="ndl"><button onclick="SS('soc');setSub('soc','pl');T('pl','matches');renderLeagueMatches('pl');hideAllND()">Premier League</button>
