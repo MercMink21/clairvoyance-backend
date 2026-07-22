@@ -5167,6 +5167,24 @@ def main() -> None:
         new_from_supabase = [b for b in supabase_history if b.get("id") not in existing_ids]
         history = history + new_from_supabase
         log(f"History: +{len(new_from_supabase)} from Supabase ledger ({len(history)} total)")
+    # Drop synthetic/placeholder seed rows (e.g. a stray "test-0"/"test-10"
+    # row with a sport tag but no actual bet content) before anything gets
+    # exported or aggregated — this is what let a phantom FOOTBALL row show
+    # up on the Sport Performance card during the NFL off-season. A row
+    # only ever counts as junk if BOTH its id matches the test-N pattern
+    # AND it has no real bet content, so a legitimately-named real bet can
+    # never be swept up here.
+    _junk_n = 0
+    _clean_history = []
+    for _h in history:
+        _hid = str(_h.get("id") or "")
+        if re.match(r"^test-\d+$", _hid, re.I) and not _h.get("betOn") and not _h.get("game") and not _h.get("pick"):
+            _junk_n += 1
+            continue
+        _clean_history.append(_h)
+    if _junk_n:
+        log(f"History: dropped {_junk_n} synthetic/placeholder seed row(s)", "WARN")
+    history = _clean_history
     export_bet_history_csv(history)
     overall_stats = build_overall_stats(history)
 

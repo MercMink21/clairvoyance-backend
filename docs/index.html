@@ -4312,12 +4312,19 @@ function mlbCard(hA,awA,gt,date,espnGame){
   </div>`;
 }
 // ═══ PICK STORAGE — backend first, localStorage fallback ════
+// A row only ever counts as synthetic/placeholder junk if BOTH its id
+// matches the test-seed naming pattern AND it carries no actual bet
+// content (no matchup, no bet description) — so a legitimately-named real
+// bet can never be swept up by this, only genuinely empty seed rows like
+// the "test-0"/"test-10" placeholders that once leaked into Supabase and
+// showed up as a phantom FOOTBALL row on the Sport Performance card.
+function _isJunkPred(p){return/^test-\d+$/i.test(p.id||'')&&!p.betOn&&!p.hA&&!p.awA;}
 function getP(){
   const raw=S.g('preds',[])||[];
   const w=_getWipedIds();
-  if(!w.size)return raw;
-  const filtered=raw.filter(p=>!w.has(p.id));
-  if(filtered.length<raw.length)S.s('preds',filtered); // self-heal: remove any re-seeded wiped picks
+  let filtered=raw.filter(p=>!_isJunkPred(p));
+  if(w.size)filtered=filtered.filter(p=>!w.has(p.id));
+  if(filtered.length<raw.length)S.s('preds',filtered); // self-heal: remove any re-seeded wiped/junk picks
   return filtered;
 }
 function saveP(a){
