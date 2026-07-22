@@ -11731,10 +11731,16 @@ registerPickScanner('NHL',function(){
 });
 registerPickScanner('NHL',_genericPropCacheScan('NHL'));
 registerPickScanner('NHL',_genericBestBetsScan('NHL'));
-// ── WNBA — ML + spread + O/U (mcP/bayP/eloP give a true 3-model sigma)
+// ── WNBA — ML + spread + O/U (mcP/bayP/eloP give a true 3-model sigma).
+// window._wnbaGameData is only populated after a user visits the WNBA tab
+// this session, so fall back to the raw boot-synced D.wnba.today feed —
+// same source that tab uses internally — to avoid silently going empty
+// on days nobody happened to open that tab first.
 registerPickScanner('WNBA',function(){
   const todayStr=today();const out=[];
-  try{(window._wnbaGameData||[]).forEach(game=>{
+  const D=window.__CV_DATA||{};
+  const wnbaGames=(window._wnbaGameData&&window._wnbaGameData.length)?window._wnbaGameData:((D.wnba&&D.wnba.today)||[]);
+  try{wnbaGames.filter(g=>!g.date||g.date.slice(0,10)===todayStr).forEach(game=>{
     if(typeof wnbaEns!=='function')return;
     const ens=wnbaEns(game.hA||game.home,game.awA||game.away,null);
     const hP=ens.hP||0.5,aP=ens.aP||0.5;
@@ -11787,13 +11793,81 @@ registerPickScanner('WC',function(){
   });}catch(e){}
   return out;
 });
-// ── Every other sport/league CV tracks. No dedicated live model/feed
+registerPickScanner('WC',_genericBestBetsScan('WC'));
+// ── NBA — ML from the raw boot-synced D.nba.today feed + nbaEns() (no
+// tab visit required; entries carry hA/awA or home/away depending on feed shape)
+registerPickScanner('NBA',function(){
+  const todayStr=today();const out=[];
+  const D=window.__CV_DATA||{};
+  try{((D.nba&&D.nba.today)||[]).forEach(g=>{
+    const hA=g.hA||g.home,awA=g.awA||g.away;if(!hA||!awA)return;
+    const st=(g.state||g.status||'').toUpperCase();if(st==='FINAL'||st==='F'||st==='POST')return;
+    if(g.date&&g.date.slice(0,10)!==todayStr)return;
+    let hP=g.ens?.p;
+    if(hP==null){try{hP=typeof nbaEns==='function'?nbaEns(hA,awA,g)?.p:null;}catch(e3){}}
+    if(hP==null)hP=g.winProb;
+    if(hP==null)return;
+    const aP=1-hP;const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
+    const favTeam=favIsHome?hA:awA;
+    const mu=`${awA} @ ${hA}`;
+    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
+    if(t>=1)out.push({sport:'NBA',matchup:mu,pick:`${favTeam} ML`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
+      hA,awA,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+  });}catch(e){}
+  return out;
+});
+registerPickScanner('NBA',_genericPropCacheScan('NBA'));
+registerPickScanner('NBA',_genericBestBetsScan('NBA'));
+// ── Club soccer leagues (CL/PL/La Liga/Bundesliga/MLS) — same xG-based
+// Monte Carlo (_soccerMC + _socXG) the league match cards themselves use.
+// Async: uses each league's cached schedule if a tab visit already
+// populated it this session, otherwise fetches it fresh so coverage
+// doesn't depend on which tabs happen to have been opened.
+const _SOCCER_LEAGUE_TAGS={cl:'CL',pl:'PL',liga:'LIGA',bl:'BL',mls:'MLS'};
+Object.keys(_SOCCER_LEAGUE_TAGS).forEach(key=>{
+  const tag=_SOCCER_LEAGUE_TAGS[key];
+  registerPickScanner(tag,async function(){
+    const todayStr=today();const out=[];
+    try{
+      let games=window['_'+key+'Games'];
+      if(!games||!games.length){
+        games=key==='mls'?await _fetchMLSScheduleReal():await _fetchLeagueScoreboard(key);
+      }
+      (games||[]).filter(g=>(g.date||'').slice(0,10)===todayStr).forEach(g=>{
+        if((g.status||'')==='post')return;
+        const hXG=_socXG(g.home,key),aXG=_socXG(g.away,key);
+        const hxg=hXG?(hXG.hxg||hXG.xg):1.4;
+        const axg=aXG?(aXG.axg||aXG.xg):1.1;
+        const mc=_soccerMC(hxg,axg,8000);
+        const hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
+        const hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
+        const mu=`${g.away} @ ${g.home}`;
+        const ouL=g.ou||2.5;
+        const ouP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
+        const markets=[
+          {label:`${g.home} Win`,prob:hP,dec:ml2d(hML),ml:hML,betOn:`${g.home} ML`,betType:'ML'},
+          {label:'Draw',prob:dP,dec:ml2d(dML),ml:dML,betOn:'DRAW',betType:'ML'},
+          {label:`${g.away} Win`,prob:aP,dec:ml2d(aML),ml:aML,betOn:`${g.away} ML`,betType:'ML'},
+          {label:`OVER ${ouL}`,prob:ouP,dec:1.909,ml:p2ml(ouP),betOn:`OVER ${ouL}`,betType:'OU'},
+          {label:`UNDER ${ouL}`,prob:1-ouP,dec:1.909,ml:p2ml(1-ouP),betOn:`UNDER ${ouL}`,betType:'OU'},
+        ];
+        markets.forEach(m=>{
+          const t=tier(m.prob,ev(m.prob,m.dec),m.betType);
+          if(t>=1)out.push({sport:tag,matchup:mu,pick:m.label,grade:_pickLBL[t],prob:m.prob,ev:ev(m.prob,m.dec),tierN:t,
+            hA:g.home,awA:g.away,betType:m.betType,betOn:m.betOn,ml:m.ml,decOdds:m.dec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+        });
+      });
+    }catch(e){}
+    return out;
+  });
+  registerPickScanner(tag,_genericBestBetsScan(tag));
+});
+// ── Every other sport/league CV tracks — no dedicated live model/feed
 // exists in the app for these yet, so each is a slot on the generic
 // bestBets.json path — it stays empty (correctly inert, not an error)
 // until the backend starts generating picks for it, whether that's
 // because the sport is off-season or simply not modeled yet.
-['NBA','NFL','CFB','CBB','ATP','WTA','PWHL','KHL','SHL','LIIGA',
- 'CL','PL','LIGA','BL','MLS'].forEach(tag=>{
+['NFL','CFB','CBB','ATP','WTA','PWHL','KHL','SHL','LIIGA'].forEach(tag=>{
   registerPickScanner(tag,_genericBestBetsScan(tag));
   if(PROP_CACHE_KEYS[tag])registerPickScanner(tag,_genericPropCacheScan(tag));
 });
@@ -11810,19 +11884,22 @@ registerPickScanner('WC',function(){
 // candidates where `converged` is true; sports without an ensemble
 // breakdown leave sigma null and are never auto-surfaced at LEAN (though
 // they still show at PREMIUM/OPTIMAL, and can always be locked manually).
-function _scanGradedCandidates(){
+// Async because a few scanners (the club soccer leagues) fetch their
+// schedule on demand when no tab visit has cached it yet this session.
+// Sync scanners work unchanged — Promise.resolve() is a no-op on a plain array.
+async function _scanGradedCandidates(){
   const candidates=[];
-  PICK_SCANNERS.forEach(({sport,scanFn})=>{
-    try{const res=scanFn();if(Array.isArray(res))candidates.push(...res);}
+  await Promise.all(PICK_SCANNERS.map(async({sport,scanFn})=>{
+    try{const res=await Promise.resolve(scanFn());if(Array.isArray(res))candidates.push(...res);}
     catch(e){console.warn('[pickScan]',sport,'failed',e);}
-  });
+  }));
   // Deduplicate by pick+sport
   const seen=new Set();
   const deduped=candidates.filter(c=>{const k=`${c.sport}|${c.pick}`;if(seen.has(k))return false;seen.add(k);return true;});
   deduped.sort((a,b)=>{const gd=(b.tierN||0)-(a.tierN||0);return gd!==0?gd:(b.prob||0)-(a.prob||0);});
   return deduped;
 }
-function renderDailyBriefing(){
+async function renderDailyBriefing(){
   const el=document.getElementById('home-daily-briefing');if(!el)return;
   const D=window.__CV_DATA||{};
   const now=Date.now();
@@ -11868,7 +11945,7 @@ function renderDailyBriefing(){
 
   // ── Top pick candidates ─────────────────────────────────────────────────
   const gradeColor={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
-  const deduped=_scanGradedCandidates();
+  const deduped=await _scanGradedCandidates();
   const top=deduped.slice(0,8);
   const nPremium=deduped.filter(c=>c.grade==='PREMIUM').length;
   const nOptimal=deduped.filter(c=>c.grade==='OPTIMAL').length;
@@ -17192,10 +17269,30 @@ function showBetJournalModal(lockFn,pickLabel){
 // OPTIMAL / LEAN, and lets the user check off which ones actually get
 // locked. Nothing is ever auto-locked without a click here — this is a
 // review queue, not a bot. No cap on how many can be shown or selected.
-function showPickQueueModal(){
+function _pickQueueShell(innerHtml){
+  return`<div style="background:rgba(8,2,22,.98);border:1px solid rgba(240,0,255,.5);border-radius:4px;padding:18px;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(240,0,255,.25)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">PICK QUEUE</div>
+      <button onclick="document.getElementById('pick-queue-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
+    </div>
+    ${innerHtml}
+  </div>`;
+}
+async function showPickQueueModal(){
   if(document.getElementById('pick-queue-modal'))document.getElementById('pick-queue-modal').remove();
+  const modal=document.createElement('div');
+  modal.id='pick-queue-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  // Scanning every sport (a few — the club soccer leagues — fetch live on
+  // demand) takes a moment; show a placeholder rather than an empty modal.
+  modal.innerHTML=_pickQueueShell(`<div style="font-family:var(--mono);color:var(--t3);padding:40px 20px;text-align:center">
+    <div style="font-size:14px;letter-spacing:2px;margin-bottom:8px">// SCANNING ALL SPORTS…</div>
+    <div style="font-size:12px">MLB · NHL · NBA · WNBA · World Cup-style tournaments · Champions League · Premier League · La Liga · Bundesliga · MLS · and every other tracked league</div>
+  </div>`);
+  document.body.appendChild(modal);
   let cands=[];
-  try{cands=_scanGradedCandidates();}catch(e){console.warn('[pickQueue] scan failed',e);}
+  try{cands=await _scanGradedCandidates();}catch(e){console.warn('[pickQueue] scan failed',e);}
+  if(!document.getElementById('pick-queue-modal'))return; // closed while scanning
   // LEAN is the lowest-confidence tier — only auto-surface it here when a
   // genuine multi-model ensemble backed the number and those models agreed
   // (converged). PREMIUM/OPTIMAL are shown regardless, same as everywhere
@@ -17203,53 +17300,59 @@ function showPickQueueModal(){
   const queueable=cands.filter(c=>c.grade!=='LEAN'||c.converged);
   window._pickQueueItems=queueable;
   const already=new Set((typeof getP==='function'?getP():[]).filter(p=>p.date===today()).map(p=>(p.betOn||'')+'|'+(p.hA||'')));
-  const tierRows=(grade,col,label)=>{
-    const rows=queueable.map((c,i)=>({c,i})).filter(({c})=>c.grade===grade);
-    if(!rows.length)return'';
-    const already_n=rows.filter(({c})=>already.has((c.betOn||'')+'|'+(c.hA||''))).length;
-    return`<div style="margin-bottom:14px">
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:${col};margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-        <span>${label} · ${rows.length}</span>
-        <button onclick="document.querySelectorAll('.pq-cb-${grade}').forEach(cb=>{if(!cb.disabled)cb.checked=true})" style="font-family:var(--mono);font-size:12px;padding:2px 8px;background:transparent;border:1px solid ${col}66;color:${col};border-radius:2px;cursor:pointer">SELECT ALL</button>
+  const rowHtml=(c,i,col)=>{
+    const isLocked=already.has((c.betOn||'')+'|'+(c.hA||''));
+    return`<label style="display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid ${col}33;border-radius:3px;margin-bottom:5px;background:rgba(255,255,255,.02);cursor:${isLocked?'default':'pointer'};opacity:${isLocked?.5:1}">
+      <input type="checkbox" class="pq-cb-${c.category}-${c.grade}" data-idx="${i}" ${isLocked?'disabled':''} style="width:16px;height:16px;flex-shrink:0;accent-color:${col}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-family:var(--mono);font-size:12px;padding:0 4px;border:1px solid ${col}66;color:${col};border-radius:2px">${c.sport}</span>
+          <span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${c.matchup}</span>
+          ${c.sigma!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)" title="model disagreement">σ${c.sigma.toFixed(3)}</span>`:''}
+          ${isLocked?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">· ALREADY LOCKED TODAY</span>`:''}
+        </div>
+        <div style="font-family:var(--mono);font-size:15px;color:var(--t);font-weight:700">${c.pick}</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${c.prob?(c.prob*100).toFixed(1)+'%':''}${c.ev!=null?' · EV '+(c.ev*100>=0?'+':'')+(c.ev*100).toFixed(1)+'%':''}${c.ml?' · '+c.ml:''}</div>
       </div>
-      ${rows.map(({c,i})=>{
-        const isLocked=already.has((c.betOn||'')+'|'+(c.hA||''));
-        return`<label style="display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid ${col}33;border-radius:3px;margin-bottom:5px;background:rgba(255,255,255,.02);cursor:${isLocked?'default':'pointer'};opacity:${isLocked?.5:1}">
-          <input type="checkbox" class="pq-cb-${grade}" data-idx="${i}" ${isLocked?'disabled':''} style="width:16px;height:16px;flex-shrink:0;accent-color:${col}">
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <span style="font-family:var(--mono);font-size:12px;padding:0 4px;border:1px solid ${col}66;color:${col};border-radius:2px">${c.sport}</span>
-              <span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${c.matchup}</span>
-              ${c.sigma!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)" title="model disagreement">σ${c.sigma.toFixed(3)}</span>`:''}
-              ${isLocked?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">· ALREADY LOCKED TODAY</span>`:''}
-            </div>
-            <div style="font-family:var(--mono);font-size:15px;color:var(--t);font-weight:700">${c.pick}</div>
-            <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${c.prob?(c.prob*100).toFixed(1)+'%':''}${c.ev!=null?' · EV '+(c.ev*100>=0?'+':'')+(c.ev*100).toFixed(1)+'%':''}${c.ml?' · '+c.ml:''}</div>
-          </div>
-        </label>`;
-      }).join('')}
+    </label>`;
+  };
+  const tierRows=(rowsAll,grade,col,label)=>{
+    const rows=rowsAll.filter(({c})=>c.grade===grade);
+    if(!rows.length)return'';
+    return`<div style="margin-bottom:12px">
+      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:${col};margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+        <span>${label} · ${rows.length}</span>
+        <button onclick="document.querySelectorAll('.pq-cb-${rows[0].c.category}-${grade}').forEach(cb=>{if(!cb.disabled)cb.checked=true})" style="font-family:var(--mono);font-size:12px;padding:2px 8px;background:transparent;border:1px solid ${col}66;color:${col};border-radius:2px;cursor:pointer">SELECT ALL</button>
+      </div>
+      ${rows.map(({c,i})=>rowHtml(c,i,col)).join('')}
+    </div>`;
+  };
+  // Game markets (ML/spread/O·U) get their own section, always shown above
+  // props — props naturally outnumber games (many players per matchup vs.
+  // ~3 markets per game), so without this split they'd bury the game picks.
+  const indexed=queueable.map((c,i)=>({c,i}));
+  const gameRows=indexed.filter(({c})=>c.category!=='PROP');
+  const propRows=indexed.filter(({c})=>c.category==='PROP');
+  const section=(title,rows)=>{
+    if(!rows.length)return'';
+    return`<div style="margin-bottom:16px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:2px;color:var(--t2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.1)">${title} · ${rows.length}</div>
+      ${tierRows(rows,'PREMIUM','var(--gc)','◆ PREMIUM')}${tierRows(rows,'OPTIMAL','var(--pc)','// OPTIMAL')}${tierRows(rows,'LEAN','var(--nc)','// LEAN (converged only)')}
     </div>`;
   };
   const body=queueable.length
-    ? tierRows('PREMIUM','var(--gc)','◆ PREMIUM')+tierRows('OPTIMAL','var(--pc)','// OPTIMAL')+tierRows('LEAN','var(--nc)','// LEAN (converged only)')
+    ? section('🎯 GAME MARKETS — ML / SPREAD / O·U',gameRows)+section('📊 PLAYER PROPS',propRows)
     : `<div style="font-family:var(--mono);color:var(--t3);padding:20px;text-align:center">NO QUALIFYING CANDIDATES ON TODAY'S SLATE YET — CHECK BACK AS GAMES/LINES LOAD.</div>`;
   const leanSkipped=cands.filter(c=>c.grade==='LEAN'&&!c.converged).length;
-  const modal=document.createElement('div');
-  modal.id='pick-queue-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
-  modal.innerHTML=`<div style="background:rgba(8,2,22,.98);border:1px solid rgba(240,0,255,.5);border-radius:4px;padding:18px;width:100%;max-width:520px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(240,0,255,.25)">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">PICK QUEUE</div>
-      <button onclick="document.getElementById('pick-queue-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
-    </div>
+  if(!document.getElementById('pick-queue-modal'))return;
+  document.getElementById('pick-queue-modal').innerHTML=_pickQueueShell(`
     <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:12px">Review today's auto-graded candidates and check off what you want locked. Nothing locks until you confirm.${leanSkipped?` <span style="color:var(--t3)">(${leanSkipped} LEAN candidate${leanSkipped===1?'':'s'} hidden — model disagreement too high.)</span>`:''}</div>
     <div style="overflow-y:auto;flex:1;padding-right:2px">${body}</div>
     <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
       <button onclick="document.getElementById('pick-queue-modal').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(220,190,255,.7);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">CLOSE</button>
       <button onclick="_confirmPickQueue()" style="flex:2;padding:10px;background:rgba(240,0,255,.15);border:1px solid rgba(240,0,255,.5);color:#f000ff;font-family:var(--mono);font-size:15px;font-weight:700;border-radius:2px;cursor:pointer">LOCK SELECTED</button>
     </div>
-  </div>`;
-  document.body.appendChild(modal);
+  `);
 }
 window.showPickQueueModal=showPickQueueModal;
 async function _confirmPickQueue(){
