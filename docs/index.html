@@ -844,26 +844,30 @@ body{line-height:1.5}
 </div>
 <div id="sp-soc" class="spane">
   <nav class="snav">
-    <button class="sb2 act" onclick="setSub('soc','worldcup')">WORLD CUP</button>
-    <button class="sb2" onclick="setSub('soc','cl')">CHAMPIONS LEAGUE</button>
+    <button class="sb2 act" onclick="setSub('soc','cl')">CHAMPIONS LEAGUE</button>
     <button class="sb2" onclick="setSub('soc','pl')">PREMIER LEAGUE</button>
     <button class="sb2" onclick="setSub('soc','liga')">LA LIGA</button>
     <button class="sb2" onclick="setSub('soc','bl')">BUNDESLIGA</button>
     <button class="sb2" onclick="setSub('soc','mls')">MLS</button>
     <button class="btn btn-sm btn-p" onclick="doUpdate()" style="float:right;margin:3px 6px">↻ SYNC</button>
   </nav>
-  <div id="soc-worldcup" class="subp act">
+  <!-- World Cup 2026 concluded Jul 19 — no longer a live sub-tab (matches
+       the Wimbledon/French Open pattern of archiving finished majors
+       instead of keeping them as a persistent active tab). Final results
+       (champion/runner-up/3rd place) are preserved in the bracket data
+       above and still reachable via the nav dropdown -> World Cup 2026. -->
+  <div id="soc-worldcup" class="subp">
     <nav class="inav" id="wc-in">
-      <button class="nb act" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
+      <button class="nb act" onclick="T('wc','bracket');renderWCBracket()">FINAL RESULTS</button>
+      <button class="nb" onclick="T('wc','matches');renderWCMatches()">MATCHES</button>
       <button class="nb" onclick="T('wc','props');renderWCProps()">PROPS</button>
-      <button class="nb" onclick="T('wc','bracket');renderWCBracket()">BRACKET</button>
     </nav>
     <div class="sa" id="wc-sa">
-      <div id="wc-tab-matches" class="tab act">
+      <div id="wc-tab-matches" class="tab">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:15px"><span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
         <div id="wc-matches-list" style="padding:4px 0"></div>
       </div>
-      <div id="wc-tab-bracket" class="tab"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
+      <div id="wc-tab-bracket" class="tab act"><div id="wc-bracket-list" style="padding:20px 0"></div></div>
       <div id="wc-tab-props" class="tab">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:15px"><span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
         <div id="wc-props-list" style="padding:4px 0"></div>
@@ -871,7 +875,7 @@ body{line-height:1.5}
     </div>
   </div>
 <!-- CHAMPIONS LEAGUE -->
-<div id="soc-cl" class="subp">
+<div id="soc-cl" class="subp act">
   <nav class="inav" id="cl-in">
     <button class="nb act" onclick="T('cl','matches');renderLeagueMatches('cl')">MATCHES</button>
     <button class="nb" onclick="T('cl','bracket')">BRACKET</button>
@@ -12443,7 +12447,7 @@ function SS(s){
   if(s==='analytics'){_t(renderBetAnalyticsLab);}
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
-  if(s==='soc'){_t(()=>T('wc','matches'));_t(renderWCMatches);}
+  if(s==='soc'){_t(()=>T('cl','matches'));_t(()=>renderLeagueMatches('cl'));}
   if(s==='sim'){_t(simUpdateTeams);_t(()=>{try{_simRenderHistory();}catch(e){}});_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
   if(s==='tracker'){_t(renderLockedTracker);_t(()=>{try{setTrackerTab('locked');}catch(e){}});}
   if(s==='parlay'){_t(renderParlayTracker);_t(()=>{try{cvXParlayInit();}catch(e){}});}
@@ -23168,16 +23172,17 @@ function renderWCBracket(){
     {id:'M96',date:'Jul 7',time:'FT',a:15,b:16,winner:ov['r16_M96']||'SUI',score:ov['r16_M96_score']||'0-0 (4-3p)'},
   ];
   var QF=[
-    {id:'QF1',date:'Jul 9',feeds:['M89','M90'],winner:ov['qf_QF1']||null},
-    {id:'QF2',date:'Jul 10',feeds:['M91','M92'],winner:ov['qf_QF2']||null},
-    {id:'QF3',date:'Jul 11',feeds:['M93','M94'],winner:ov['qf_QF3']||null},
-    {id:'QF4',date:'Jul 11',feeds:['M95','M96'],winner:ov['qf_QF4']||null},
+    {id:'QF1',date:'Jul 9',time:'FT',feeds:['M89','M90'],winner:ov['qf_QF1']||'FRA'},
+    {id:'QF2',date:'Jul 10',time:'FT',feeds:['M91','M92'],winner:ov['qf_QF2']||'ESP'},
+    {id:'QF3',date:'Jul 11',time:'FT',feeds:['M93','M94'],winner:ov['qf_QF3']||'ENG'},
+    {id:'QF4',date:'Jul 11',time:'FT',feeds:['M95','M96'],winner:ov['qf_QF4']||'ARG'},
   ];
   var SF=[
-    {id:'SF1',date:'Jul 14',feeds:['QF1','QF2'],winner:ov['sf_SF1']||null},
-    {id:'SF2',date:'Jul 15',feeds:['QF3','QF4'],winner:ov['sf_SF2']||null},
+    {id:'SF1',date:'Jul 14',time:'FT',feeds:['QF1','QF2'],winner:ov['sf_SF1']||'ESP',score:'0-2'},
+    {id:'SF2',date:'Jul 15',time:'FT',feeds:['QF3','QF4'],winner:ov['sf_SF2']||'ARG',score:'1-2'},
   ];
-  var FINAL={date:'Jul 19',winner:ov['final']||null};
+  var FINAL={date:'Jul 19',time:'FT',winner:ov['final']||'ESP',score:'1-0',
+    note:'Spain 1-0 Argentina. Third place: England 6-4 France.'};
 
   function r32winner(id){var m=R32.find(function(x){return x.id===id;});return m?m.winner:null;}
   function r16winner(id){var m=R16.find(function(x){return x.id===id;});return m?m.winner:null;}
@@ -23369,7 +23374,7 @@ function renderWCBracket(){
   var sf2Loser=sf2W?(SF[1].a===SF[1].winner?SF[1].h:SF[1].a):null;
   var tp1={code:sf1Loser,label:sf1Loser||'L SF1',flag:sf1Loser?flag(sf1Loser):'❓'};
   var tp2={code:sf2Loser,label:sf2Loser||'L SF2',flag:sf2Loser?flag(sf2Loser):'❓'};
-  var thirdOv=ov['third'];
+  var thirdOv=ov['third']||'ENG';
   var thirdCard=bCard(tp1.code,tp1.label,tp1.flag,thirdOv&&thirdOv===tp1.code,!!thirdOv,false,null,'');
   var thirdCard2=bCard(tp2.code,tp2.label,tp2.flag,thirdOv&&thirdOv===tp2.code,!!thirdOv,false,null,'');
   var thirdBtns=(tp1.code&&tp2.code&&!thirdOv)?'<div style="display:flex;gap:1px;margin-top:2px">'
@@ -23380,7 +23385,7 @@ function renderWCBracket(){
     +'<div style="font-family:var(--orb);font-size:14px;color:rgba(180,180,180,.6);letter-spacing:2px;text-align:center;margin-bottom:5px">🥉 3RD PLACE · Jul 18</div>'
     +'<div style="display:flex;gap:4px">'+thirdCard+thirdCard2+'</div>'
     +thirdBtns
-    +(thirdOv?'<div style="font-family:var(--mono);font-size:13px;color:#aaa;text-align:center;margin-top:3px">'+flag(thirdOv)+' '+thirdOv+' TAKES BRONZE</div>':'')
+    +(thirdOv?'<div style="font-family:var(--mono);font-size:13px;color:#aaa;text-align:center;margin-top:3px">'+flag(thirdOv)+' '+thirdOv+' TAKES BRONZE · 6-4</div>':'')
     +'</div>';
 
   var html='<div style="padding:0 2px">'
@@ -29278,12 +29283,11 @@ function trainerExportInsights() {
       <button onclick="SS('soc');setSub('soc','cl');T('cl','config');renderSoccerLeagueConfig('cl');hideAllND()">Config</button>
     </div>
   </div>
-  <div class="ndl"><button onclick="SS('soc');setSub('soc','worldcup');hideAllND()">World Cup 2026</button>
+  <div class="ndl"><button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">World Cup 2026 (Final)</button>
     <div class="ndl-sub">
+      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">Final Results</button>
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','matches');renderWCMatches();hideAllND()">Matches</button>
       <button onclick="SS('soc');setSub('soc','worldcup');T('wc','props');renderWCProps();hideAllND()">Props</button>
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','standings');renderWCStandings();hideAllND()">Standings</button>
-      <button onclick="SS('soc');setSub('soc','worldcup');T('wc','bracket');renderWCBracket();hideAllND()">Bracket</button>
     </div>
   </div>
   <div class="ndl"><button onclick="SS('soc');setSub('soc','pl');T('pl','matches');renderLeagueMatches('pl');hideAllND()">Premier League</button>
