@@ -849,7 +849,7 @@ def main() -> None:
                 record_big_recap_reveal(
                     tag="WEEKLY RECAP", date_range=range_str,
                     record=f"{w_stats['w']}W-{w_stats['l']}L", pct=_fmt_pct(w_stats.get("pct")),
-                    units=_fmt_units(w_stats.get("units")), extra_val=str(w_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
+                    units=_fmt_units(w_stats.get("units")), extra_val=str(w_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
                     out_path=recap_path,
                 )
                 weekly_attachments.append(recap_path)
@@ -888,7 +888,7 @@ def main() -> None:
                 record_big_recap_reveal(
                     tag="MONTHLY RECAP", date_range=last_month_end.strftime("%B %Y").upper(),
                     record=f"{m_stats['w']}W-{m_stats['l']}L", pct=_fmt_pct(m_stats.get("pct")),
-                    units=_fmt_units(m_stats.get("units")), extra_val=str(m_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
+                    units=_fmt_units(m_stats.get("units")), extra_val=str(m_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
                     out_path=recap_path,
                 )
                 monthly_attachments.append(recap_path)
@@ -928,7 +928,7 @@ def main() -> None:
                 record_big_recap_reveal(
                     tag="YEAR IN REVIEW", date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}",
                     record=f"{y_stats['w']}W-{y_stats['l']}L", pct=_fmt_pct(y_stats.get("pct")),
-                    units=_fmt_units(y_stats.get("units")), extra_val=str(y_stats.get("lockedCount", "—")), extra_lbl="BETS LOCKED",
+                    units=_fmt_units(y_stats.get("units")), extra_val=str(y_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
                     out_path=recap_path, duration_s=8.0,
                 )
                 yearly_attachments.append(recap_path)
