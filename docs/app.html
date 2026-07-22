@@ -19666,10 +19666,22 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
-  try{await Promise.race([idbRecoverPicks(),new Promise(r=>setTimeout(r,2000))]);}catch(e){console.error('idbRecover',e);}
-  try{await Promise.race([loadPicksFromGitHub(),new Promise(r=>setTimeout(r,4000))]);}catch(e){}
-  try{await Promise.race([idbRecoverDailyLog(),new Promise(r=>setTimeout(r,2000))]);}catch(e){console.error('idbRecoverLog',e);}
-  try{await Promise.race([syncPicksFromBackend(),new Promise(r=>setTimeout(r,5000))]);}catch(e){console.error('syncPicks',e);}
+  // These 4 recovery/sync calls each read from a separate independent
+  // source (IndexedDB picks, IndexedDB daily log, GitHub, backend API)
+  // and only ever additively merge into localStorage — none depends on
+  // another's result. Previously awaited one at a time with their own
+  // timeout (2s+4s+2s+5s = up to 13s of sequential blocking on a slow
+  // connection/backend before the rest of init could even continue).
+  // Running them concurrently caps the wait at the slowest single call
+  // (5s) instead of the sum of all four.
+  try{
+    await Promise.allSettled([
+      Promise.race([idbRecoverPicks(),new Promise(r=>setTimeout(r,2000))]),
+      Promise.race([loadPicksFromGitHub(),new Promise(r=>setTimeout(r,4000))]),
+      Promise.race([idbRecoverDailyLog(),new Promise(r=>setTimeout(r,2000))]),
+      Promise.race([syncPicksFromBackend(),new Promise(r=>setTimeout(r,5000))]),
+    ]);
+  }catch(e){console.error('parallelSync',e);}
   try{_migrateTenSport();}catch(e){console.error('migrateTenSport',e);}
   try{_migrateMlbNhlMislabel();}catch(e){console.error('migrateMlbNhl',e);}
   try{_migrateWCMisclassified();}catch(e){console.error('migrateWC',e);}
