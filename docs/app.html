@@ -3695,7 +3695,7 @@ async function loadGames(dateStr){
     const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;
     const hML=g.hML||p2ml(ens.p),hD=ml2d(hML),hEV=ev(ens.p,hD);
     const awML=g.aML||p2ml(1-ens.p),awD=ml2d(awML),awEV=ev(1-ens.p,awD);
-    const ouL=(Math.round(parseFloat(g.ou||(mc?.avgT||8.5))*2)/2).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
+    const ouL=g.ou!=null?(Math.round(parseFloat(g.ou)*2)/2).toFixed(1):_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
     const evT=(+document.getElementById('s-evt')?.value||2)/100;
     [[ens.p,String(hML),hD,hEV,`ML ${g.hA}`,g.hA,g.awA],
      [1-ens.p,String(awML),awD,awEV,`ML ${g.awA}`,g.hA,g.awA],
@@ -4077,6 +4077,19 @@ function _spreadParlayDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport
   if(typeof cvParlayAddLeg==='function')cvParlayAddLeg(sport||'xp',label,'-115',sp,matchup,'GAME');
   else lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
 }
+// MLB O/U fallback line — used whenever there's no real market total to
+// display (g.ou / espnGame.ou missing), so the app has to fall back to the
+// Monte Carlo projection (mc.avgT) instead. Real MLB totals are always
+// priced at a half-run (8.5, 9.5, ...) to avoid a push; a plain
+// Math.round(avgT*2)/2 can legitimately land on a whole number by chance
+// (e.g. avgT=9.02 rounds to 9.0), which then displays as a non-standard
+// "10.0"-style default line. Flooring to the nearest half-below instead
+// guarantees the fallback always ends in .5 — genuine market lines (g.ou)
+// are left untouched since those come from the real book, not a guess.
+function _mlbOuDefault(avgT){
+  const a=avgT!=null&&!isNaN(avgT)?parseFloat(avgT):8.5;
+  return(Math.floor(a)+0.5).toFixed(1);
+}
 function mlbEns(hA,awA,espnGame){
   const ouLine=parseFloat(espnGame?.ou||8.5);
   const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
@@ -4138,7 +4151,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hML=espnGame?.hML||p2ml(hP),aML=espnGame?.aML||p2ml(aP);
   const hD=ml2d(hML),aD=ml2d(aML);
   const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
-  const ouL=(Math.round(parseFloat(espnGame?.ou||(mc?mc.avgT:8.5))*2)/2).toFixed(1);
+  const ouL=espnGame?.ou!=null?(Math.round(parseFloat(espnGame.ou)*2)/2).toFixed(1):_mlbOuDefault(mc?mc.avgT:null);
   const ouP=mc?.overP??( mc&&mc.avgT>parseFloat(ouL)?.52:.48);const ouCS=chipC(ouP,ev(ouP,1.91));
   const rlP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38);const rlCS=chipC(rlP,ev(rlP,1.87));
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
@@ -6004,7 +6017,7 @@ function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)r
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:23px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:22px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(240,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:22px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
-function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=(r.mc?.avgT||8.5).toFixed(1);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:19px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><input type="number" step="0.5" value="${ouL}" id="ouinp_parlaymlb_${r.hA}_${r.awA}" style="width:46px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:15px;padding:2px 4px;border-radius:2px;text-align:center"><button class="btn btn-n btn-sm" style="font-size:14px;color:var(--nc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','OVER')">▲O</button><button class="btn btn-o btn-sm" style="font-size:14px;color:var(--hc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','UNDER')">▼U</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
+function renderParlayG(rows){const el=document.getElementById('p-gl');if(!el)return;el.innerHTML=rows.map(r=>{const hML=r.ens.mc2?p2ml(r.ens.p):'+100';const awML=p2ml(1-r.ens.p);const ouL=_mlbOuDefault(r.mc?.avgT);return`<div class="card cp" style="margin-bottom:5px;padding:9px"><div style="font-family:var(--orb);font-size:19px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--pc)">${r.awA} at ${r.hA}</div><div style="display:flex;gap:3px;flex-wrap:wrap"><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.hA}','${hML}',${r.ens.p.toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.hA} ${hML}</button><button class="btn btn-o btn-sm" onclick="addLeg('ML ${r.awA}','${awML}',${(1-r.ens.p).toFixed(3)},'${r.hA}v${r.awA}')">ML ${r.awA} ${awML}</button><input type="number" step="0.5" value="${ouL}" id="ouinp_parlaymlb_${r.hA}_${r.awA}" style="width:46px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:15px;padding:2px 4px;border-radius:2px;text-align:center"><button class="btn btn-n btn-sm" style="font-size:14px;color:var(--nc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','OVER')">▲O</button><button class="btn btn-o btn-sm" style="font-size:14px;color:var(--hc)" onclick="_ouLockDir('${r.hA}','${r.awA}',null,.52,'${ouL}','ouinp_parlaymlb_${r.hA}_${r.awA}','UNDER')">▼U</button></div></div>`;}).join('')||'<div class="empty">LOAD GAMES FIRST</div>';}
 function addLeg(name,ml,prob,matchup){if(PAR.length>=8){toast('// MAX 8 LEGS');return;}const legCount=PAR.filter(l=>l.matchup===matchup).length;if(legCount>=3){toast('// MAX 3 LEGS PER GAME');return;}PAR.push({name,ml,prob:parseFloat(prob),matchup,dec:ml2d(ml)});renderLegs();calcP();toast(`// +LEG: ${name}`);}
 function addLeg2(hA,awA){T('mlb','parlay');toast(`// SELECT BET FOR ${awA} at ${hA}`);}
 function removeLeg(i){PAR.splice(i,1);renderLegs();calcP();}
@@ -11693,7 +11706,7 @@ registerPickScanner('MLB',function(){
       if(mc){
         const rlP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);
         const rlDogP=1-rlP;
-        const ouL=g.ou||(mc.avgT||8.5).toFixed(1);
+        const ouL=g.ou||_mlbOuDefault(mc.avgT);
         const ouP=mc.overP??0.50;
         const rlFavT=tier(rlP,ev(rlP,1.87),'SPREAD');
         if(rlFavT>=1)out.push({sport:'MLB',matchup:mu,pick:`${favTeam} -1.5`,grade:_pickLBL[rlFavT],prob:rlP,ev:ev(rlP,1.87),tierN:rlFavT,
@@ -21382,7 +21395,7 @@ function _socialPicks(sport){
     for(const g of(TONIGHT||[])){const h=NHL?.[g.h],aw=NHL?.[g.a];if(!h||!aw)continue;const ens=nhlEns(g.h,g.a);const mc=ens.mcD;const hP=ens.p,aP=1-ens.p;const ouP=mc?.overP||.52;[[hP,p2ml(hP),ev(hP,ml2d(p2ml(hP))),`ML ${g.h}`],[aP,p2ml(aP),ev(aP,ml2d(p2ml(aP))),`ML ${g.a}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${g.ou}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'NHL',matchup:`${g.h} vs ${g.a}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
     return picks;
   }
-  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou||(mc?.avgT||8.5).toFixed(1);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
+  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou||_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
   return picks;
 }
 function _filterTier(picks,tf){if(tf==='elite')return picks.filter(p=>p.t===3);if(tf==='lock')return picks.filter(p=>p.t>=2);return picks;}
