@@ -444,7 +444,10 @@ body{line-height:1.5}
         <div style="font-family:'Orbitron',sans-serif;font-size:15px;color:#f000ff;text-shadow:0 0 8px rgba(240,0,255,.5)">PICK QUEUE</div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">Auto-graded candidates across every sport — review and lock the ones you want.</div>
       </div>
-      <button class="btn btn-p btn-sm" onclick="showPickQueueModal()">REVIEW QUEUE</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-o btn-sm" onclick="showCalibrationReport()" title="Backtests today's grading against real settled results, by sport">CALIBRATION</button>
+        <button class="btn btn-p btn-sm" onclick="showPickQueueModal()">REVIEW QUEUE</button>
+      </div>
     </div>
     <!-- Utility buttons -->
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
@@ -11919,6 +11922,48 @@ async function _scanGradedCandidates(){
   deduped.sort((a,b)=>{const gd=(b.tierN||0)-(a.tierN||0);return gd!==0?gd:(b.prob||0)-(a.prob||0);});
   return deduped;
 }
+// ═══ TIER CALIBRATION ════════════════════════════════════════════════════
+// Answers the actual accuracy question behind the Pick Queue: does a
+// PREMIUM grade in MLB win at the same rate as a PREMIUM grade in soccer,
+// and does PREMIUM genuinely outperform OPTIMAL/LEAN in practice? Every
+// settled bet already carries the raw winProb/decOdds/betType tier()
+// needs, so the grade doesn't have to be stored at lock time — it's
+// recomputed here with today's tier()/calibration logic against real
+// outcomes, which is the correct backtest: "if this grading rule had been
+// applied, how would it actually have performed?" Buckets under MIN_N are
+// flagged low-confidence rather than hidden, so a thin sample is visible
+// instead of silently missing.
+const CAL_MIN_N=5;
+function _computeTierCalibration(){
+  const settled=getP().filter(p=>(p.outcome==='win'||p.outcome==='loss')&&p.winProb!=null);
+  const buckets={}; // key: sport|grade
+  settled.forEach(p=>{
+    const sport=(typeof _normSport==='function'?_normSport(p):null)||p.sport||'MISC';
+    const dec=parseFloat(p.decOdds)||(p.ml?ml2d(p.ml):2);
+    const evVal=ev(p.winProb,dec);
+    const t=tier(p.winProb,evVal,p.betType||'ML');
+    const grade=['SKIP','LEAN','OPTIMAL','PREMIUM'][t]||'SKIP';
+    const key=sport+'|'+grade;
+    if(!buckets[key])buckets[key]={sport,grade,n:0,wins:0,sumPredicted:0,sumUnits:0};
+    const b=buckets[key];
+    b.n++;
+    if(p.outcome==='win')b.wins++;
+    b.sumPredicted+=p.winProb;
+    b.sumUnits+=p.outcome==='win'?dec-1:-1;
+  });
+  const rows=Object.values(buckets).map(b=>{
+    const actualWinRate=b.wins/b.n;
+    const avgPredicted=b.sumPredicted/b.n;
+    // Positive gap = the grade over-predicts (real accuracy is lower than
+    // claimed); negative = under-predicts (the model is sandbagging).
+    const gap=avgPredicted-actualWinRate;
+    return{sport:b.sport,grade:b.grade,n:b.n,wins:b.wins,losses:b.n-b.wins,
+      actualWinRate,avgPredicted,gap,units:b.sumUnits,reliable:b.n>=CAL_MIN_N};
+  });
+  const gradeOrder={PREMIUM:3,OPTIMAL:2,LEAN:1,SKIP:0};
+  rows.sort((a,b)=>{const gd=gradeOrder[b.grade]-gradeOrder[a.grade];return gd!==0?gd:b.n-a.n;});
+  return rows;
+}
 async function renderDailyBriefing(){
   const el=document.getElementById('home-daily-briefing');if(!el)return;
   const D=window.__CV_DATA||{};
@@ -17375,6 +17420,61 @@ async function showPickQueueModal(){
   `);
 }
 window.showPickQueueModal=showPickQueueModal;
+
+// Backtests today's tier()/calibration rules against real settled history,
+// broken out by sport + grade, so you can see whether PREMIUM/OPTIMAL/LEAN
+// actually predict consistently across sports rather than just trusting
+// the labels. Read-only — this doesn't change any grading, it just shows
+// the gap between what a grade claims and what it's actually delivered.
+function showCalibrationReport(){
+  if(document.getElementById('cal-report-modal'))document.getElementById('cal-report-modal').remove();
+  let rows=[];
+  try{rows=_computeTierCalibration();}catch(e){console.warn('[calibration] failed',e);}
+  const gradeCol={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
+  const fmtPct=v=>(v*100).toFixed(1)+'%';
+  const gapCol=g=>Math.abs(g)<.05?'var(--nc)':Math.abs(g)<.12?'var(--gc)':'var(--hc)';
+  const rowsHtml=rows.length?rows.map(r=>{
+    const col=gradeCol[r.grade]||'var(--t3)';
+    return`<tr style="border-bottom:1px solid rgba(255,255,255,.06);opacity:${r.reliable?1:.55}">
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t2)">${r.sport}</td>
+      <td style="padding:6px 8px"><span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid ${col}66;color:${col};border-radius:2px">${r.grade}</span></td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t2);text-align:center">${r.wins}-${r.losses}${r.reliable?'':' ⚠'}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t);text-align:center;font-weight:700">${fmtPct(r.actualWinRate)}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t3);text-align:center">${fmtPct(r.avgPredicted)}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:${gapCol(r.gap)};text-align:center;font-weight:700">${r.gap>=0?'+':''}${(r.gap*100).toFixed(1)}pp</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:${r.units>=0?'var(--nc)':'var(--hc)'};text-align:right">${r.units>=0?'+':''}${r.units.toFixed(1)}u</td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="7" style="padding:24px;text-align:center;font-family:var(--mono);color:var(--t3)">NOT ENOUGH SETTLED HISTORY YET</td></tr>`;
+  const modal=document.createElement('div');
+  modal.id='cal-report-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML=`<div style="background:rgba(8,2,22,.98);border:1px solid rgba(240,0,255,.5);border-radius:4px;padding:18px;width:100%;max-width:720px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(240,0,255,.25)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+      <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">TIER CALIBRATION</div>
+      <button onclick="document.getElementById('cal-report-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:12px">Real settled results, graded by today's tier() rule. <span style="color:var(--t2)">GAP</span> = predicted win% minus actual win% (positive = grade is over-confident, negative = under-confident). Rows marked ⚠ have fewer than ${CAL_MIN_N} bets — noisy, not yet trustworthy.</div>
+    <div style="overflow:auto;flex:1">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+          <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:12px;color:var(--t3)">SPORT</th>
+          <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:12px;color:var(--t3)">GRADE</th>
+          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">RECORD</th>
+          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">ACTUAL</th>
+          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">PREDICTED</th>
+          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">GAP</th>
+          <th style="padding:6px 8px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--t3)">UNITS</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
+      <button onclick="document.getElementById('cal-report-modal').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(220,190,255,.7);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">CLOSE</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+window.showCalibrationReport=showCalibrationReport;
 async function _confirmPickQueue(){
   const items=window._pickQueueItems||[];
   const checked=[...document.querySelectorAll('#pick-queue-modal input[type=checkbox]:checked')];
