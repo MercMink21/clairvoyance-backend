@@ -11851,16 +11851,22 @@ registerPickScanner('NBA',function(){
     const hA=g.hA||g.home,awA=g.awA||g.away;if(!hA||!awA)return;
     const st=(g.state||g.status||'').toUpperCase();if(st==='FINAL'||st==='F'||st==='POST')return;
     if(g.date&&g.date.slice(0,10)!==todayStr)return;
-    let hP=g.ens?.p;
-    if(hP==null){try{hP=typeof nbaEns==='function'?nbaEns(hA,awA,g)?.p:null;}catch(e3){}}
-    if(hP==null)hP=g.winProb;
+    // nbaEns returns the same {p,mc,bay,elo} 3-model shape mlbEns does, so
+    // a genuine convergence sigma is computable here too — previously this
+    // only ever pulled .p and left sigma null, meaning NBA LEAN picks could
+    // never auto-surface in the Pick Queue even when the models agreed.
+    let ens=null;
+    try{ens=typeof nbaEns==='function'?nbaEns(hA,awA,g):null;}catch(e3){}
+    let hP=g.ens?.p??ens?.p??g.winProb;
     if(hP==null)return;
+    let nSig=null,nConv=false;
+    if(ens&&ens.mc!=null&&ens.bay!=null&&ens.elo!=null){nSig=_sigma([ens.mc,ens.bay,ens.elo]);nConv=nSig<=LEAN_SIG_MAX;}
     const aP=1-hP;const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
     const favTeam=favIsHome?hA:awA;
     const mu=`${awA} @ ${hA}`;
     const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
     if(t>=1)out.push({sport:'NBA',matchup:mu,pick:`${favTeam} ML`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
-      hA,awA,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+      hA,awA,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:nSig,converged:nConv,category:'GAME',prop:null});
   });}catch(e){}
   return out;
 });
@@ -11886,6 +11892,13 @@ Object.keys(_SOCCER_LEAGUE_TAGS).forEach(key=>{
         const hXG=_socXG(g.home,key),aXG=_socXG(g.away,key);
         const hxg=hXG?(hXG.hxg||hXG.xg):1.4;
         const axg=aXG?(aXG.axg||aXG.xg):1.1;
+        // Soccer has no 3-model ensemble to compute a sigma from, so there's
+        // no fabricated convergence number here — instead, "converged" means
+        // both teams have real FBref xG data rather than the model quietly
+        // falling back to a league-average placeholder (1.4/1.1) for one or
+        // both sides. A LEAN pick built on two guessed inputs is a coin flip
+        // dressed up as a grade; one built on real data for both teams is not.
+        const socConverged=!!(hXG&&aXG);
         const mc=_soccerMC(hxg,axg,8000);
         const hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
         const hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
@@ -11902,7 +11915,7 @@ Object.keys(_SOCCER_LEAGUE_TAGS).forEach(key=>{
         markets.forEach(m=>{
           const t=tier(m.prob,ev(m.prob,m.dec),m.betType);
           if(t>=1)out.push({sport:tag,matchup:mu,pick:m.label,grade:_pickLBL[t],prob:m.prob,ev:ev(m.prob,m.dec),tierN:t,
-            hA:g.home,awA:g.away,betType:m.betType,betOn:m.betOn,ml:m.ml,decOdds:m.dec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
+            hA:g.home,awA:g.away,betType:m.betType,betOn:m.betOn,ml:m.ml,decOdds:m.dec,date:todayStr,sigma:null,converged:socConverged,category:'GAME',prop:null});
         });
       });
     }catch(e){}
