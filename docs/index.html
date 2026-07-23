@@ -4689,7 +4689,14 @@ function renderPicks(picks){
   });
   el.innerHTML=html;
 }
-async function lockPick(hA,awA,type,betOn,p,ml,d,date){
+async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
+  // source: 'queue' when locked via the Pick Queue's automated review-and-
+  // confirm flow, 'manual' (the default) for every other lock path in the
+  // app. Lets the Tier Calibration report eventually answer "is the
+  // automated queue itself accurate", separate from manually-picked bets —
+  // without this, a queue-sourced and a manually-locked pick are
+  // indistinguishable in history.
+  const _lockSource=source==='queue'?'queue':'manual';
   // Bet Journal: record reason (set via showBetJournalModal or skipped)
   const dateKey=date||today();
   // ── Sport + league + bet-type detection — computed FIRST so both the
@@ -4757,7 +4764,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
     const res=await api('POST','/picks/',body);
     if(res){
       const preds=getP();const localId=`api_${res.id}`;
-      if(!preds.find(x=>x.id===localId))preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now()});
+      if(!preds.find(x=>x.id===localId))preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now(),source:_lockSource});
       saveP(preds);
       const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
@@ -4768,7 +4775,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date){
   }
   const preds=getP();
   const id=`${dateKey}_${hA}_${awA}_${type}_${betOn.replace(/\s/g,'')}`;
-  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now(),hA,awA);}catch(e){}}
+  if(!preds.find(x=>x.id===id)){preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,source:_lockSource});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now(),hA,awA);}catch(e){}}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
@@ -9249,6 +9256,24 @@ function renderOverall(){
     ${periodCard(selMoLbl,selMoPerf,'var(--pc)')}
   </div>`;
 
+  // Pick Queue — picks locked via the automated review-and-confirm queue,
+  // broken out from manually-locked picks (lockPick tags source:'queue'
+  // when _confirmPickQueue() calls it). Lets you see at a glance whether
+  // the automation is actually pulling its weight, separate from the
+  // overall dashboard above.
+  {
+    const queuePicks=all.filter(p=>p.source==='queue');
+    const queueAllTime=calcPerf(queuePicks);
+    const queueWk7=calcPerf(queuePicks.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
+    const queueMo=calcPerf(queuePicks.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
+    h+=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:#f000ff;margin:12px 0 6px">PICK QUEUE — AUTOMATED LOCKS</div>
+    ${queuePicks.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      ${periodCard('ROLLING 7 DAYS',queueWk7,'#f000ff')}
+      ${periodCard('THIS MONTH',queueMo,'#f000ff')}
+      ${periodCard('ALL TIME',queueAllTime,'#f000ff')}
+    </div>`:`<div class="card" style="padding:14px;text-align:center;font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:14px">NO PICK QUEUE LOCKS YET — REVIEW &amp; LOCK CANDIDATES FROM THE HOME TAB'S PICK QUEUE PANEL</div>`}`;
+  }
+
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
@@ -11934,8 +11959,13 @@ async function _scanGradedCandidates(){
 // flagged low-confidence rather than hidden, so a thin sample is visible
 // instead of silently missing.
 const CAL_MIN_N=5;
-function _computeTierCalibration(){
-  const settled=getP().filter(p=>(p.outcome==='win'||p.outcome==='loss')&&p.winProb!=null);
+// sourceFilter: 'all' (default), 'queue', or 'manual'. Picks locked before
+// lockPick() started tagging `source` have no field at all — treat those
+// as 'manual' since every lock path was manual before the Pick Queue existed.
+function _computeTierCalibration(sourceFilter){
+  let settled=getP().filter(p=>(p.outcome==='win'||p.outcome==='loss')&&p.winProb!=null);
+  if(sourceFilter==='queue')settled=settled.filter(p=>p.source==='queue');
+  else if(sourceFilter==='manual')settled=settled.filter(p=>p.source!=='queue');
   const buckets={}; // key: sport|grade
   settled.forEach(p=>{
     const sport=(typeof _normSport==='function'?_normSport(p):null)||p.sport||'MISC';
@@ -15048,7 +15078,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:17px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:16px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',${ml2d(mlStr)},'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   } else if(tour==='men'&&round==='r3'){
@@ -15072,7 +15102,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:17px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:16px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.65,'${mlStr}',1.0,'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.65,'${mlStr}',${ml2d(mlStr)},'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   } else if(tour==='women'&&round==='r3'){
@@ -15096,7 +15126,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:17px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:16px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.65,'${mlStr}',1.0,'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.65,'${mlStr}',${ml2d(mlStr)},'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   } else if(tour==='women'&&round==='r1'){
@@ -15153,7 +15183,7 @@ function renderRGDraw(tour,round){
         </div>
         ${m.grade!=='SKIP'?`<div style="font-family:var(--mono);font-size:17px;color:var(--gc);margin-bottom:5px">LEAN: ${leanP}${leanS?' '+leanS:''} <span style="color:var(--nc)">${mlStr}</span></div>`:''}
         <div style="font-family:var(--mono);font-size:16px;color:var(--t3);line-height:1.5;margin-bottom:6px">${m.basis}</div>
-        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',1.0,'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
+        ${m.grade!=='SKIP'?`<button class="btn btn-p btn-sm" onclick="lockPick('${leanP}','${m.lean===1?m.p2:m.p1}','TEN','${leanP}',0.6,'${mlStr}',${ml2d(mlStr)},'${today()}')">OPTIMAL ${leanP}</button>`:'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">— SKIP —</span>'}
       </div>`;
     }).join('');
   } else if(tour==='men'&&round==='qf'){
@@ -17426,10 +17456,18 @@ window.showPickQueueModal=showPickQueueModal;
 // actually predict consistently across sports rather than just trusting
 // the labels. Read-only — this doesn't change any grading, it just shows
 // the gap between what a grade claims and what it's actually delivered.
-function showCalibrationReport(){
+function showCalibrationReport(sourceFilter){
+  sourceFilter=sourceFilter||'all';
   if(document.getElementById('cal-report-modal'))document.getElementById('cal-report-modal').remove();
   let rows=[];
-  try{rows=_computeTierCalibration();}catch(e){console.warn('[calibration] failed',e);}
+  try{rows=_computeTierCalibration(sourceFilter);}catch(e){console.warn('[calibration] failed',e);}
+  const allPreds=(typeof getP==='function'?getP():[]).filter(p=>p.outcome==='win'||p.outcome==='loss');
+  const nQueue=allPreds.filter(p=>p.source==='queue').length;
+  const nManual=allPreds.length-nQueue;
+  const filterBtn=(val,label,count)=>{
+    const active=sourceFilter===val;
+    return`<button onclick="showCalibrationReport('${val}')" style="font-family:var(--mono);font-size:12px;padding:3px 9px;background:${active?'rgba(240,0,255,.18)':'transparent'};border:1px solid ${active?'rgba(240,0,255,.6)':'rgba(255,255,255,.2)'};color:${active?'#f000ff':'rgba(220,190,255,.6)'};border-radius:2px;cursor:pointer">${label} (${count})</button>`;
+  };
   const gradeCol={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
   const fmtPct=v=>(v*100).toFixed(1)+'%';
   const gapCol=g=>Math.abs(g)<.05?'var(--nc)':Math.abs(g)<.12?'var(--gc)':'var(--hc)';
@@ -17453,7 +17491,8 @@ function showCalibrationReport(){
       <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">TIER CALIBRATION</div>
       <button onclick="document.getElementById('cal-report-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
     </div>
-    <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:12px">Real settled results, graded by today's tier() rule. <span style="color:var(--t2)">GAP</span> = predicted win% minus actual win% (positive = grade is over-confident, negative = under-confident). Rows marked ⚠ have fewer than ${CAL_MIN_N} bets — noisy, not yet trustworthy.</div>
+    <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:8px">Real settled results, graded by today's tier() rule. <span style="color:var(--t2)">GAP</span> = predicted win% minus actual win% (positive = grade is over-confident, negative = under-confident). Rows marked ⚠ have fewer than ${CAL_MIN_N} bets — noisy, not yet trustworthy.</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">${filterBtn('all','ALL',allPreds.length)}${filterBtn('queue','QUEUE ONLY',nQueue)}${filterBtn('manual','MANUAL ONLY',nManual)}</div>
     <div style="overflow:auto;flex:1">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
@@ -17482,7 +17521,7 @@ async function _confirmPickQueue(){
   let n=0;
   for(const cb of checked){
     const c=items[+cb.dataset.idx];if(!c||!c.hA)continue;
-    try{await lockPick(c.hA,c.awA,c.betType,c.betOn,c.prob,c.ml,c.decOdds,c.date||today());n++;}catch(e){console.warn('[pickQueue] lock failed',c,e);}
+    try{await lockPick(c.hA,c.awA,c.betType,c.betOn,c.prob,c.ml,c.decOdds,c.date||today(),'queue');n++;}catch(e){console.warn('[pickQueue] lock failed',c,e);}
   }
   document.getElementById('pick-queue-modal')?.remove();
   toast(`// ${n} PICK${n===1?'':'S'} LOCKED`);
