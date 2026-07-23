@@ -24113,17 +24113,15 @@ function _renderSocMatchCard(g,leagueKey){
   var dateStr2=isNaN(gDate)?'':gDate.toLocaleDateString([],{month:'short',day:'numeric'});
   var timeStr=isNaN(gDate)?'':gDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   var statusTxt=(isFinal?'FINAL':isLive?'LIVE':timeStr)+(dateStr2?' · '+dateStr2:'');
-  // dateStr feeds lockPick()/addLeg2()/_ouLockDir() below — those all treat
-  // it as "the date this pick was locked" (matches every other sport's
-  // convention: history is grouped by lock date, not by match/kickoff
-  // date), so it must always be today(), never the match's own kickoff
-  // date/timestamp (g.date). Using g.date here was a real bug: it could
-  // record a soccer pick under the match's calendar date instead of the
-  // day it was actually locked, so it wouldn't show up in that day's
-  // history log. dateStr2 (display-only, above) still uses g.date on
-  // purpose — showing the match's own date/time on the card is correct;
-  // only the value handed to the lock functions needed to change.
-  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away,dateStr=today();
+  // dateStr feeds lockPick()/addLeg2()/_ouLockDir() below — history should
+  // show a soccer pick under the match's own calendar date, not whatever
+  // day it happened to be clicked. Slice the calendar date straight out of
+  // g.date's ISO string (YYYY-MM-DD prefix) rather than passing the raw
+  // kickoff timestamp through — lockPick's date field is compared/grouped
+  // as an exact 'YYYY-MM-DD' string everywhere else in the app (same
+  // format today() returns), so a full ISO datetime-with-time-and-offset
+  // string would silently break those comparisons even on the right day.
+  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away,dateStr=(g.date||'').slice(0,10)||today();
   return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
     +'<div class="gch"><div>'
     +'<div style="display:flex;align-items:center;gap:6px">'
