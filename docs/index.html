@@ -8895,6 +8895,26 @@ function renderOverall(){
     return{lbl:lm.lbl,always:!!lm.always,...calcPerf(lb)};
   }).filter(d=>d.n>0||d.always);
 
+  // Sport/bet-type/league breakdown for whichever month is selected in the
+  // FILTER BY MONTH dropdown above — a separate set of tables built from
+  // the exact same sportMap/typeMap/leagueMap definitions (so labels/
+  // grouping stay identical to the all-time breakdown), just scoped to
+  // selMoStart..selMoEnd instead of all-time settled. The all-time bySport/
+  // byType/byLeague tables above are untouched by this.
+  const selMoSettled=all.filter(p=>p.lockedAt&&p.lockedAt>=selMoStart&&p.lockedAt<selMoEnd&&p.outcome!=='pending');
+  const bySportMo=sportMap.map(sm=>{
+    const sp=selMoSettled.filter(p=>sm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+    return{lbl:sm.lbl,...calcPerf(sp)};
+  }).filter(d=>d.n>0);
+  const byTypeMo=typeMap.map(tm=>{
+    const tp=selMoSettled.filter(p=>tm.codes.some(c=>p.betType&&p.betType.toUpperCase()===c.toUpperCase()));
+    return{lbl:tm.lbl,...calcPerf(tp)};
+  }).filter(d=>d.n>0);
+  const byLeagueMo=leagueMap.map(lm=>{
+    const lb=selMoSettled.filter(p=>lm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+    return{lbl:lm.lbl,...calcPerf(lb)};
+  }).filter(d=>d.n>0);
+
   // Last N
   const lastN=[10,25,50,75,100];
   const lastNData=lastN.map(n=>{
@@ -9254,6 +9274,21 @@ function renderOverall(){
   </div>
   <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:14px">
     ${periodCard(selMoLbl,selMoPerf,'var(--pc)')}
+  </div>
+  <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--t3);margin-bottom:8px">${selMoLbl} — BY SPORT / BET TYPE / LEAGUE</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
+      ${bySportMo.length?bySportMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+    </div>
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">BET TYPE</div>
+      ${byTypeMo.length?byTypeMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+    </div>
+    <div class="card" style="padding:10px">
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">LEAGUE</div>
+      ${byLeagueMo.length?byLeagueMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+    </div>
   </div>`;
 
   // Pick Queue — picks locked via the automated review-and-confirm queue,
