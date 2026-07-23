@@ -24115,13 +24115,15 @@ function _renderSocMatchCard(g,leagueKey){
   var statusTxt=(isFinal?'FINAL':isLive?'LIVE':timeStr)+(dateStr2?' · '+dateStr2:'');
   // dateStr feeds lockPick()/addLeg2()/_ouLockDir() below — history should
   // show a soccer pick under the match's own calendar date, not whatever
-  // day it happened to be clicked. Slice the calendar date straight out of
-  // g.date's ISO string (YYYY-MM-DD prefix) rather than passing the raw
-  // kickoff timestamp through — lockPick's date field is compared/grouped
-  // as an exact 'YYYY-MM-DD' string everywhere else in the app (same
-  // format today() returns), so a full ISO datetime-with-time-and-offset
-  // string would silently break those comparisons even on the right day.
-  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away,dateStr=(g.date||'').slice(0,10)||today();
+  // day it happened to be clicked. g.date's ISO string is UTC (mlssoccer.com/
+  // ESPN kickoff timestamps), so slicing the first 10 chars directly reads
+  // the UTC calendar date — an evening MLS kickoff (e.g. 8pm Mountain on
+  // 7/22) is already past midnight UTC (7/23), so that naive slice rolled
+  // it to the wrong day. today() itself always resolves in America/Denver,
+  // so the match date has to be converted into that same zone (not UTC) to
+  // land on the day the game actually happened locally.
+  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away;
+  var dateStr=isNaN(gDate)?today():gDate.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
   return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
     +'<div class="gch"><div>'
     +'<div style="display:flex;align-items:center;gap:6px">'
@@ -24216,8 +24218,19 @@ async function _fetchMLSScheduleReal(){
     // is restricted to strictly today's matches only (not a rolling
     // window) — a completed match still shows for the rest of that same
     // day, but disappears the moment the calendar date changes.
+    // Kickoff timestamps are UTC; today() always resolves in America/Denver.
+    // Naively slicing the first 10 chars of a UTC ISO string compares a UTC
+    // calendar date against a Mountain-time one — an evening MLS kickoff
+    // (e.g. 8pm Mountain, already past midnight UTC) would silently fall on
+    // the "wrong" side of that comparison and vanish from today's list (or
+    // appear a day early/late). Convert each kickoff into Denver's own
+    // calendar date before comparing, same as the lock-date fix above.
     var todayIso=typeof today==='function'?today():new Date().toISOString().slice(0,10);
-    games=games.filter(function(g){return(g.date||'').slice(0,10)===todayIso;});
+    games=games.filter(function(g){
+      var gd=new Date(g.date);
+      var gIso=isNaN(gd)?(g.date||'').slice(0,10):gd.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+      return gIso===todayIso;
+    });
     _mlsScheduleCache=games;_mlsScheduleCacheTs=now;return games;
   }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
 }
