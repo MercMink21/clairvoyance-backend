@@ -24201,6 +24201,14 @@ async function _fetchMLSScheduleReal(){
       };
     });
     games.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+    // mls_schedule.json is the whole-season fixture list, so without this
+    // MLS keeps showing every already-played matchday forever — unlike the
+    // other 4 leagues, which go through _fetchLeagueScoreboard's bounded
+    // "past/next 3 weeks" window and naturally age out old fixtures. Once
+    // a matchday's date has fully passed, drop it — today's still-in-
+    // progress matches stay.
+    var todayIso=typeof today==='function'?today():new Date().toISOString().slice(0,10);
+    games=games.filter(function(g){var iso=(g.date||'').slice(0,10);return!iso||iso>=todayIso;});
     _mlsScheduleCache=games;_mlsScheduleCacheTs=now;return games;
   }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
 }
