@@ -24204,11 +24204,12 @@ async function _fetchMLSScheduleReal(){
     // mls_schedule.json is the whole-season fixture list, so without this
     // MLS keeps showing every already-played matchday forever — unlike the
     // other 4 leagues, which go through _fetchLeagueScoreboard's bounded
-    // "past/next 3 weeks" window and naturally age out old fixtures. Once
-    // a matchday's date has fully passed, drop it — today's still-in-
-    // progress matches stay.
+    // "past/next 3 weeks" window and naturally age out old fixtures. MLS
+    // is restricted to strictly today's matches only (not a rolling
+    // window) — a completed match still shows for the rest of that same
+    // day, but disappears the moment the calendar date changes.
     var todayIso=typeof today==='function'?today():new Date().toISOString().slice(0,10);
-    games=games.filter(function(g){var iso=(g.date||'').slice(0,10);return!iso||iso>=todayIso;});
+    games=games.filter(function(g){return(g.date||'').slice(0,10)===todayIso;});
     _mlsScheduleCache=games;_mlsScheduleCacheTs=now;return games;
   }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
 }
@@ -24222,14 +24223,16 @@ async function renderLeagueMatches(key,filterDate){
   var games=key==='mls'?await _fetchMLSScheduleReal():null;
   if(!games)games=await _fetchLeagueScoreboard(key);
   if(!games.length){
-    el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">NO MATCHES IN THE PAST/NEXT 3 WEEKS<br><span style="font-size:15px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
+    var _emptyMsg=key==='mls'?'NO MLS MATCHES TODAY':'NO MATCHES IN THE PAST/NEXT 3 WEEKS';
+    el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">'+_emptyMsg+'<br><span style="font-size:15px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
     return;
   }
   window['_'+key+'Games']=games;
   // Day-grouped + date-filterable, same UX as MLB/WNBA's 7-day windows —
   // shared across all non-MLS leagues here since renderLeagueMatches()
-  // already handles cl/pl/liga/bl generically (MLS uses its own real
-  // mlssoccer.com schedule but goes through this same render path).
+  // already handles cl/pl/liga/bl generically. MLS is restricted to
+  // today-only by _fetchMLSScheduleReal() itself, so it never has more
+  // than one date bucket and skips the (otherwise pointless) week-filter bar.
   var byDate={};
   games.forEach(function(g){
     var iso=(g.date||'').slice(0,10);if(!iso)return;
@@ -24240,7 +24243,9 @@ async function renderLeagueMatches(key,filterDate){
   if(activeDate)dates=dates.filter(function(d){return d===activeDate;});
   var todayIso=today();
   var callExpr="renderLeagueMatches('"+key+"',{DATE})";
-  var html='<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES (7-DAY WINDOW) · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
+  var html=key==='mls'
+    ?'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCH'+(games.length===1?'':'ES')+' TODAY · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
+    :'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES (7-DAY WINDOW) · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
     +_weekFilterBar(key,activeDate,days,callExpr);
   if(!dates.length)html+='<div class="empty">NO MATCHES ON THIS DATE</div>';
   dates.forEach(function(d){
