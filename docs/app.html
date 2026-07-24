@@ -423,7 +423,6 @@ body{line-height:1.5}
   <button class="sp" onclick="SS('parlay')" onmouseenter="showND(this,'parlay')" onmouseleave="startHideND()">PARLAY</button>
   <button class="sp" onclick="SS('social')" onmouseenter="showND(this,'social')" onmouseleave="startHideND()">SOCIAL</button>
   <button class="sp" onclick="SS('news')" onmouseenter="showND(this,'news')" onmouseleave="startHideND()">NEWS</button>
-  <button class="sp" onclick="showPickQueueModal()" style="color:#f000ff">PICK QUEUE</button>
 </nav>
 
 <!-- HOME -->
@@ -437,18 +436,6 @@ body{line-height:1.5}
     <div id="home-top-picks" style="display:none"></div>
     <!-- Today's pending bets -->
     <div id="home-pending-bets" style="margin-bottom:14px"></div>
-    <!-- Pick Queue — automated scan across all tracked sports, graded
-         PREMIUM/OPTIMAL/LEAN, reviewed and confirmed here before anything locks. -->
-    <div style="border:1px solid rgba(240,0,255,.3);border-radius:4px;padding:12px 14px;margin-bottom:14px;background:rgba(240,0,255,.04);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-family:'Orbitron',sans-serif;font-size:15px;color:#f000ff;text-shadow:0 0 8px rgba(240,0,255,.5)">PICK QUEUE</div>
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">Auto-graded candidates across every sport — review and lock the ones you want.</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-o btn-sm" onclick="showCalibrationReport()" title="Backtests today's grading against real settled results, by sport">CALIBRATION</button>
-        <button class="btn btn-p btn-sm" onclick="showPickQueueModal()">REVIEW QUEUE</button>
-      </div>
-    </div>
     <!-- Utility buttons -->
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
       <button class="btn btn-n btn-sm" onclick="showImportModal()">IMPORT BET</button>
@@ -3434,6 +3421,21 @@ function tier(p,e,mktType){
     }
   }
   if(p>=.67&&e>=.05)return 3;if(p>=.62&&e>=.03)return 2;if(p>=.55&&e>=.01)return 1;return 0;
+}
+// Grade for a locked pick — recomputed from its stored winProb/decOdds/
+// betType via tier() (the grade itself was never persisted at lock time),
+// same convention the Tier Calibration work used: "what would today's
+// grading rule call this" rather than a stale label from whenever it locked.
+function _gradeLabel(p){
+  if(p==null||p.winProb==null)return null;
+  const dec=parseFloat(p.decOdds)||(p.ml?ml2d(p.ml):2);
+  const t=tier(p.winProb,ev(p.winProb,dec),p.betType||'ML');
+  return['SKIP','LEAN','OPTIMAL','PREMIUM'][t]||null;
+}
+function _gradeChipHtml(p){
+  const g=_gradeLabel(p);if(!g||g==='SKIP')return'';
+  const col=g==='PREMIUM'?'var(--gc)':g==='OPTIMAL'?'var(--pc)':'var(--nc)';
+  return`<span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${col}66;color:${col};border-radius:2px;letter-spacing:1px">${g}</span>`;
 }
 // MLB-specific tier: tighter thresholds + ensemble convergence requirement
 function _mlbTier(p,e,sigmaV){
@@ -9291,24 +9293,6 @@ function renderOverall(){
     </div>
   </div>`;
 
-  // Pick Queue — picks locked via the automated review-and-confirm queue,
-  // broken out from manually-locked picks (lockPick tags source:'queue'
-  // when _confirmPickQueue() calls it). Lets you see at a glance whether
-  // the automation is actually pulling its weight, separate from the
-  // overall dashboard above.
-  {
-    const queuePicks=all.filter(p=>p.source==='queue');
-    const queueAllTime=calcPerf(queuePicks);
-    const queueWk7=calcPerf(queuePicks.filter(p=>p.lockedAt&&p.lockedAt>=wk7));
-    const queueMo=calcPerf(queuePicks.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
-    h+=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:#f000ff;margin:12px 0 6px">PICK QUEUE — AUTOMATED LOCKS</div>
-    ${queuePicks.length?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      ${periodCard('ROLLING 7 DAYS',queueWk7,'#f000ff')}
-      ${periodCard('THIS MONTH',queueMo,'#f000ff')}
-      ${periodCard('ALL TIME',queueAllTime,'#f000ff')}
-    </div>`:`<div class="card" style="padding:14px;text-align:center;font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:14px">NO PICK QUEUE LOCKS YET — REVIEW &amp; LOCK CANDIDATES FROM THE HOME TAB'S PICK QUEUE PANEL</div>`}`;
-  }
-
   // By Sport + By Bet Type + By League
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
@@ -10028,6 +10012,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
             <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
             <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
+            ${_gradeChipHtml(p)}
             <span style="font-family:var(--mono);font-size:15px;color:var(--t3)">${p.date||''}</span>
           </div>
           <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||p.betType,p.sport)}</div>
@@ -11670,546 +11655,6 @@ function prepareDayEnd(){const yd=new Date(Date.now()-86400000).toLocaleDateStri
 
 // ═══ NAVIGATION ══════════════════════════════════════════════
 function yesterday(){return new Date(Date.now()-86400000).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}
-// ═══ PICK SCANNER REGISTRY ══════════════════════════════════════════════
-// One scanner slot per sport/league CV tracks. Each scanFn is called and
-// try/caught independently by _scanGradedCandidates, so an off-season
-// sport, a sport with no live model yet, or a sport with zero games today
-// simply contributes nothing — it never breaks the others, and it starts
-// contributing the moment real data/models show up for it (no registry
-// change required). Sports with a genuine live ensemble model (MLB/NHL/
-// WNBA) plus the World Cup's inline ELO model scan their own data feeds
-// directly for the highest-fidelity grading. Every other tracked sport/
-// league falls back to _genericBestBetsScan(tag), which reads the same
-// bestBets.json feed already used elsewhere in the app (cron-updated,
-// sport-tagged) — so if the backend ever starts generating NFL/tennis/
-// club-soccer picks, they flow into the Pick Queue automatically.
-//
-// Player props: every candidate carries category:'GAME'|'PROP' and
-// prop:null|{player,stat,line,over}. To add real props for a sport that
-// doesn't have them yet, either (a) populate window._<sportKey>DPData in
-// the same {player,stat,line,over,grade,prob,ev,hA,awA,ml,decOdds} shape
-// MLB/NHL already use — _genericPropCacheScan picks it up with zero other
-// changes — or (b) register a dedicated scanner via registerPickScanner()
-// that sets category:'PROP' directly (see _scanMLBProps/_scanNHLProps).
-const PICK_SCANNERS=[];
-function registerPickScanner(sport,scanFn){PICK_SCANNERS.push({sport,scanFn});}
-// Sport tags a dedicated scanFn below already covers with a live model —
-// generic bestBets scanners are still registered for these too (in case
-// the backend surfaces additional markets the inline model doesn't).
-const PROP_CACHE_KEYS={MLB:'_mlbDPData',NHL:'_nhlPickData'};
-const _normProb=v=>v==null?0:v>1?v/100:v;
-const _normEv=v=>v==null?null:Math.abs(v)>2?v/100:v;
-const _mapGrade=g=>{const m={GOOD:'OPTIMAL',GREAT:'PREMIUM',SOLID:'LEAN',OK:'LEAN'};return(['PREMIUM','OPTIMAL','LEAN','SKIP'].includes(g))?g:(m[g]||'OPTIMAL');};
-const _pickLBL=['SKIP','LEAN','OPTIMAL','PREMIUM'];
-// LEAN convergence threshold mirrors _mlbTier's LEAN sigma cap (<=.14).
-const LEAN_SIG_MAX=.14;
-// Best-effort "Player OVER/UNDER line stat" parse for bestBets prop picks
-// that don't already carry structured player/stat/line fields.
-function _parsePropString(s){
-  const m=/^(.+?)\s+(OVER|UNDER)\s+([\d.]+)\+?\s+(.+)$/i.exec((s||'').trim());
-  if(!m)return null;
-  return{player:m[1],over:m[2].toUpperCase()==='OVER',line:parseFloat(m[3]),stat:m[4]};
-}
-// bestBets.json (cron-updated) — no per-pick hA/awA fields, so split the
-// "AWAY @ HOME" / "AWAY vs HOME" game string to recover team names for
-// lockPick. Generic fallback for any sport tag without a dedicated scanner.
-function _genericBestBetsScan(sportTag){
-  return function(){
-    const D=window.__CV_DATA||{};const todayStr=today();const out=[];
-    try{(D.bestBets||[]).filter(b=>b.date===todayStr&&(b.sport||'').toUpperCase()===sportTag).forEach(b=>{
-      const g=_mapGrade(b.grade||'OPTIMAL');if(g==='SKIP')return;
-      const gameParts=(b.game||'').split(/\s+(?:vs|@|at)\s+/i);
-      const mlNum=parseFloat((b.ml||'').toString().replace('+',''))||0;
-      const dec=parseFloat(b.decOdds)||(mlNum>0?(mlNum/100+1):mlNum<0?(100/Math.abs(mlNum)+1):1.91);
-      const betType=(b.betType||'ML').toUpperCase();
-      const isProp=betType==='PROP';
-      const pickStr=b.pick||b.betOn||'';
-      out.push({sport:sportTag,matchup:b.game||'',pick:pickStr,grade:g,prob:_normProb(b.confidence||b.prob||0),ev:_normEv(b.ev||b.evPct),tierN:g==='PREMIUM'?3:g==='OPTIMAL'?2:1,
-        hA:gameParts[1]||gameParts[0]||'',awA:gameParts[0]||'',betType,betOn:pickStr,ml:b.ml||p2ml(_normProb(b.confidence||b.prob||0)),decOdds:dec,date:b.date||todayStr,sigma:null,converged:false,
-        category:isProp?'PROP':'GAME',prop:isProp?(b.player?{player:b.player,stat:b.stat||null,line:b.line??null,over:b.over??null}:_parsePropString(pickStr)):null});
-    });}catch(e){}
-    return out;
-  };
-}
-// Generic reader for window._<sportKey>DPData-style prop caches populated
-// by individual sport render functions (currently MLB/NHL; forward-
-// compatible with any future sport that adopts the same cache shape).
-function _genericPropCacheScan(sportTag){
-  return function(){
-    const cacheName=PROP_CACHE_KEYS[sportTag];if(!cacheName)return[];
-    const out=[];const todayStr=today();
-    try{(window[cacheName]||[]).forEach(p=>{
-      if(p.grade!=='PREMIUM'&&p.grade!=='OPTIMAL'&&p.grade!=='LEAN')return;
-      const label=p.pick||p.betOn||`${p.player||''} ${p.over?.toUpperCase?.()||(p.over?'OVER':'UNDER')||''} ${p.line??''} ${p.stat||''}`.replace(/\s+/g,' ').trim();
-      out.push({sport:sportTag,matchup:`${p.awA||''} @ ${p.hA||''}`,pick:label,grade:p.grade,prob:_normProb(p.prob||p.winProb||0),ev:_normEv(p.ev),tierN:p.grade==='PREMIUM'?3:p.grade==='OPTIMAL'?2:1,
-        hA:p.hA,awA:p.awA,betType:p.betType||'PROP',betOn:label,ml:p.ml||'-110',decOdds:p.decOdds||1.91,date:todayStr,sigma:null,converged:false,
-        category:'PROP',prop:{player:p.player||null,stat:p.stat||null,line:p.line??null,over:p.over??null}});
-    });}catch(e){}
-    return out;
-  };
-}
-// ── MLB — ML + run line + O/U from the live ESPN feed + mlbEns() (mc/bay/elo give a true 3-model sigma)
-registerPickScanner('MLB',function(){
-  const todayStr=today();const out=[];
-  try{(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).forEach(g=>{
-    if(!g.homeML&&!g.awayML)return;
-    const mu=`${g.awA} @ ${g.hA}`;
-    const hP=g.homeML?1/ml2d(g.homeML):0.5,aP=g.awayML?1/ml2d(g.awayML):0.5;
-    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?g.hA:g.awA;const dogTeam=favIsHome?g.awA:g.hA;
-    const favML=favIsHome?g.homeML:g.awayML;
-    const favDec=ml2d(favML);const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
-    let mSig=null,mConv=false;
-    try{const _ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;if(_ens)mSig=_sigma([_ens.mc,_ens.bay,_ens.elo]);}catch(e3){}
-    mConv=mSig!=null&&mSig<=LEAN_SIG_MAX;
-    if(t>=1)out.push({sport:'MLB',matchup:mu,pick:`${favTeam} ML ${favML}`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:g.hA,awA:g.awA,betType:'ML',betOn:`${favTeam} ML`,ml:favML,decOdds:favDec,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
-    try{
-      const ens=typeof mlbEns==='function'?mlbEns(g.hA,g.awA,g):null;const mc=ens?.mc2;
-      if(mc){
-        const rlP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);
-        const rlDogP=1-rlP;
-        const ouL=g.ou||_mlbOuDefault(mc.avgT);
-        const ouP=mc.overP??0.50;
-        const rlFavT=tier(rlP,ev(rlP,1.87),'SPREAD');
-        if(rlFavT>=1)out.push({sport:'MLB',matchup:mu,pick:`${favTeam} -1.5`,grade:_pickLBL[rlFavT],prob:rlP,ev:ev(rlP,1.87),tierN:rlFavT,
-          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
-        const rlDogT=tier(rlDogP,ev(rlDogP,2.05),'SPREAD');
-        if(rlDogT>=1)out.push({sport:'MLB',matchup:mu,pick:`${dogTeam} +1.5`,grade:_pickLBL[rlDogT],prob:rlDogP,ev:ev(rlDogP,2.05),tierN:rlDogT,
-          hA:g.hA,awA:g.awA,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
-        const ouT=tier(ouP,ev(ouP,1.91),'OU');
-        if(ouT>=1)out.push({sport:'MLB',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:_pickLBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
-          hA:g.hA,awA:g.awA,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:mSig,converged:mConv,category:'GAME',prop:null});
-      }
-    }catch(e2){}
-  });}catch(e){}
-  return out;
-});
-registerPickScanner('MLB',_genericPropCacheScan('MLB'));
-registerPickScanner('MLB',_genericBestBetsScan('MLB'));
-// ── NHL — puck line + O/U from nhlEns (no bay/elo sub-probs exposed, so no genuine sigma here)
-registerPickScanner('NHL',function(){
-  const todayStr=today();const out=[];
-  try{(window.__CV_DATA?.nhl?.today||[]).forEach(g=>{
-    if(!g.h||!g.a||typeof nhlEns!=='function')return;
-    const ens=nhlEns(g.h,g.a);if(!ens)return;
-    const mc=ens.mcD;const hP=ens.p,aP=1-hP;
-    const favIsHome=hP>=aP;const favTeam=favIsHome?g.h:g.a;const dogTeam=favIsHome?g.a:g.h;
-    const mu=`${g.a} @ ${g.h}`;
-    if(mc){
-      const plP=favIsHome?(mc.rl15||.38):(mc.rlN||.38);const plDogP=1-plP;
-      const plFavT=tier(plP,ev(plP,1.87),'SPREAD');
-      if(plFavT>=1)out.push({sport:'NHL',matchup:mu,pick:`${favTeam} -1.5`,grade:_pickLBL[plFavT],prob:plP,ev:ev(plP,1.87),tierN:plFavT,
-        hA:g.h,awA:g.a,betType:'RL',betOn:`${favTeam} -1.5`,ml:'-130',decOdds:1.87,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
-      const plDogT=tier(plDogP,ev(plDogP,2.05),'SPREAD');
-      if(plDogT>=1)out.push({sport:'NHL',matchup:mu,pick:`${dogTeam} +1.5`,grade:_pickLBL[plDogT],prob:plDogP,ev:ev(plDogP,2.05),tierN:plDogT,
-        hA:g.h,awA:g.a,betType:'RL',betOn:`${dogTeam} +1.5`,ml:'+110',decOdds:2.05,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
-      const ouL=g.ou||5.5;const ouP=mc.overP||0.50;
-      const ouT=tier(ouP,ev(ouP,1.91),'OU');
-      if(ouT>=1)out.push({sport:'NHL',matchup:mu,pick:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,grade:_pickLBL[ouT],prob:ouP,ev:ev(ouP,1.91),tierN:ouT,
-        hA:g.h,awA:g.a,betType:'OU',betOn:`${ouP>=.5?'OVER':'UNDER'} ${ouL}`,ml:p2ml(ouP),decOdds:1.91,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
-    }
-  });}catch(e){}
-  return out;
-});
-registerPickScanner('NHL',_genericPropCacheScan('NHL'));
-registerPickScanner('NHL',_genericBestBetsScan('NHL'));
-// ── WNBA — ML + spread + O/U (mcP/bayP/eloP give a true 3-model sigma).
-// window._wnbaGameData is only populated after a user visits the WNBA tab
-// this session, so fall back to the raw boot-synced D.wnba.today feed —
-// same source that tab uses internally — to avoid silently going empty
-// on days nobody happened to open that tab first.
-registerPickScanner('WNBA',function(){
-  const todayStr=today();const out=[];
-  const D=window.__CV_DATA||{};
-  const wnbaGames=(window._wnbaGameData&&window._wnbaGameData.length)?window._wnbaGameData:((D.wnba&&D.wnba.today)||[]);
-  try{wnbaGames.filter(g=>!g.date||g.date.slice(0,10)===todayStr).forEach(game=>{
-    if(typeof wnbaEns!=='function')return;
-    const ens=wnbaEns(game.hA||game.home,game.awA||game.away,null);
-    const hP=ens.hP||0.5,aP=ens.aP||0.5;
-    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?(game.hA||game.home):(game.awA||game.away);
-    const dogTeam=favIsHome?(game.awA||game.away):(game.hA||game.home);
-    const hAraw=game.hA||game.home||'',awAraw=game.awA||game.away||'';
-    const mu=`${awAraw} @ ${hAraw}`;
-    const favDec=ml2d(typeof _wnbaML==='function'?_wnbaML(favP):p2ml(favP));
-    const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
-    const wSig=(ens.mcP!=null&&ens.bayP!=null&&ens.eloP!=null)?_sigma([ens.mcP,ens.bayP,ens.eloP]):null;
-    const wConv=wSig!=null&&wSig<=LEAN_SIG_MAX;
-    if(t>=1)out.push({sport:'WNBA',matchup:mu,pick:`${favTeam} ML`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:hAraw,awA:awAraw,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
-    const wSprdLine=+(((0.5-favP)*25)).toFixed(1);const wLineAbs=Math.abs(wSprdLine).toFixed(1);
-    const wFavCoverP=Math.min(0.80,Math.max(0.20,favP-0.08));const wDogCoverP=1-wFavCoverP;
-    const wSprdFavT=tier(wFavCoverP,ev(wFavCoverP,1.87),'SPREAD');
-    if(wSprdFavT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${favTeam} -${wLineAbs}`,grade:_pickLBL[wSprdFavT],prob:wFavCoverP,ev:ev(wFavCoverP,1.87),tierN:wSprdFavT,
-      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${favTeam} -${wLineAbs}`,ml:'-110',decOdds:1.87,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
-    const wSprdDogT=tier(wDogCoverP,ev(wDogCoverP,2.05),'SPREAD');
-    if(wSprdDogT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${dogTeam} +${wLineAbs}`,grade:_pickLBL[wSprdDogT],prob:wDogCoverP,ev:ev(wDogCoverP,2.05),tierN:wSprdDogT,
-      hA:hAraw,awA:awAraw,betType:'RL',betOn:`${dogTeam} +${wLineAbs}`,ml:'+110',decOdds:2.05,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
-    try{
-      const wOuL=game.ou||168;const wMcR=wnbaMC(game.hA||game.home,game.awA||game.away,100);
-      const wOuP=typeof wnbaOUProb==='function'?wnbaOUProb({totalProj:wMcR.avgTotal},wOuL):0.50;
-      const wOuT=tier(wOuP,ev(wOuP,1.91),'OU');
-      if(wOuT>=1)out.push({sport:'WNBA',matchup:mu,pick:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,grade:_pickLBL[wOuT],prob:wOuP,ev:ev(wOuP,1.91),tierN:wOuT,
-        hA:hAraw,awA:awAraw,betType:'OU',betOn:`${wOuP>=.5?'OVER':'UNDER'} ${wOuL}`,ml:p2ml(wOuP),decOdds:1.91,date:todayStr,sigma:wSig,converged:wConv,category:'GAME',prop:null});
-    }catch(e2){}
-  });}catch(e){}
-  return out;
-});
-registerPickScanner('WNBA',_genericBestBetsScan('WNBA'));
-// ── World Cup-style tournaments — inline ELO model (kept for whenever a
-// tournament is active; the Soccer tab itself was removed after WC26 ended)
-registerPickScanner('WC',function(){
-  const todayStr=today();const out=[];
-  try{(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).forEach(g=>{
-    if(typeof _wcOut!=='function')return;
-    const res=_wcOut(g.he||1800,g.ae||1800);
-    const hP=res.hW||0.33,aP=res.aW||0.33;
-    const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?g.home:g.away;
-    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);
-    const t=tier(favP,favEV,'ML');
-    if(t>=1)out.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`${favTeam} ML (Grp ${g.group})`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
-      hA:g.home,awA:g.away,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});
-    if(typeof _wcOUProb==='function'&&g.ou){const ovP=_wcOUProb(g.he||1800,g.ae||1800,g.ou);const ouDec=1.91;const ouEV=ev(ovP,ouDec);const ouT=tier(ovP,ouEV,'OU');if(ouT>=2)out.push({sport:'WC',matchup:`${g.home} vs ${g.away}`,pick:`OVER ${g.ou}`,grade:_pickLBL[ouT],prob:ovP,ev:ouEV,tierN:ouT,
-      hA:g.home,awA:g.away,betType:'OU',betOn:`OVER ${g.ou}`,ml:p2ml(ovP),decOdds:ouDec,date:todayStr,sigma:null,converged:false,category:'GAME',prop:null});}
-  });}catch(e){}
-  return out;
-});
-registerPickScanner('WC',_genericBestBetsScan('WC'));
-// ── NBA — ML from the raw boot-synced D.nba.today feed + nbaEns() (no
-// tab visit required; entries carry hA/awA or home/away depending on feed shape)
-registerPickScanner('NBA',function(){
-  const todayStr=today();const out=[];
-  const D=window.__CV_DATA||{};
-  try{((D.nba&&D.nba.today)||[]).forEach(g=>{
-    const hA=g.hA||g.home,awA=g.awA||g.away;if(!hA||!awA)return;
-    const st=(g.state||g.status||'').toUpperCase();if(st==='FINAL'||st==='F'||st==='POST')return;
-    if(g.date&&g.date.slice(0,10)!==todayStr)return;
-    // nbaEns returns the same {p,mc,bay,elo} 3-model shape mlbEns does, so
-    // a genuine convergence sigma is computable here too — previously this
-    // only ever pulled .p and left sigma null, meaning NBA LEAN picks could
-    // never auto-surface in the Pick Queue even when the models agreed.
-    let ens=null;
-    try{ens=typeof nbaEns==='function'?nbaEns(hA,awA,g):null;}catch(e3){}
-    let hP=g.ens?.p??ens?.p??g.winProb;
-    if(hP==null)return;
-    let nSig=null,nConv=false;
-    if(ens&&ens.mc!=null&&ens.bay!=null&&ens.elo!=null){nSig=_sigma([ens.mc,ens.bay,ens.elo]);nConv=nSig<=LEAN_SIG_MAX;}
-    const aP=1-hP;const favIsHome=hP>=aP;const favP=Math.max(hP,aP);
-    const favTeam=favIsHome?hA:awA;
-    const mu=`${awA} @ ${hA}`;
-    const favDec=ml2d(p2ml(favP));const favEV=ev(favP,favDec);const t=tier(favP,favEV,'ML');
-    if(t>=1)out.push({sport:'NBA',matchup:mu,pick:`${favTeam} ML`,grade:_pickLBL[t],prob:favP,ev:favEV,tierN:t,
-      hA,awA,betType:'ML',betOn:`${favTeam} ML`,ml:p2ml(favP),decOdds:favDec,date:todayStr,sigma:nSig,converged:nConv,category:'GAME',prop:null});
-  });}catch(e){}
-  return out;
-});
-registerPickScanner('NBA',_genericPropCacheScan('NBA'));
-registerPickScanner('NBA',_genericBestBetsScan('NBA'));
-// ── Club soccer leagues (CL/PL/La Liga/Bundesliga/MLS) — same xG-based
-// Monte Carlo (_soccerMC + _socXG) the league match cards themselves use.
-// Async: uses each league's cached schedule if a tab visit already
-// populated it this session, otherwise fetches it fresh so coverage
-// doesn't depend on which tabs happen to have been opened.
-const _SOCCER_LEAGUE_TAGS={cl:'CL',pl:'PL',liga:'LIGA',bl:'BL',mls:'MLS'};
-Object.keys(_SOCCER_LEAGUE_TAGS).forEach(key=>{
-  const tag=_SOCCER_LEAGUE_TAGS[key];
-  registerPickScanner(tag,async function(){
-    const todayStr=today();const out=[];
-    try{
-      let games=window['_'+key+'Games'];
-      if(!games||!games.length){
-        games=key==='mls'?await _fetchMLSScheduleReal():await _fetchLeagueScoreboard(key);
-      }
-      (games||[]).filter(g=>(g.date||'').slice(0,10)===todayStr).forEach(g=>{
-        if((g.status||'')==='post')return;
-        const hXG=_socXG(g.home,key),aXG=_socXG(g.away,key);
-        const hxg=hXG?(hXG.hxg||hXG.xg):1.4;
-        const axg=aXG?(aXG.axg||aXG.xg):1.1;
-        // Soccer has no 3-model ensemble to compute a sigma from, so there's
-        // no fabricated convergence number here — instead, "converged" means
-        // both teams have real FBref xG data rather than the model quietly
-        // falling back to a league-average placeholder (1.4/1.1) for one or
-        // both sides. A LEAN pick built on two guessed inputs is a coin flip
-        // dressed up as a grade; one built on real data for both teams is not.
-        const socConverged=!!(hXG&&aXG);
-        const mc=_soccerMC(hxg,axg,8000);
-        const hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
-        const hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
-        const mu=`${g.away} @ ${g.home}`;
-        const ouL=g.ou||2.5;
-        const ouP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
-        const markets=[
-          {label:`${g.home} Win`,prob:hP,dec:ml2d(hML),ml:hML,betOn:`${g.home} ML`,betType:'ML'},
-          {label:'Draw',prob:dP,dec:ml2d(dML),ml:dML,betOn:'DRAW',betType:'ML'},
-          {label:`${g.away} Win`,prob:aP,dec:ml2d(aML),ml:aML,betOn:`${g.away} ML`,betType:'ML'},
-          {label:`OVER ${ouL}`,prob:ouP,dec:1.909,ml:p2ml(ouP),betOn:`OVER ${ouL}`,betType:'OU'},
-          {label:`UNDER ${ouL}`,prob:1-ouP,dec:1.909,ml:p2ml(1-ouP),betOn:`UNDER ${ouL}`,betType:'OU'},
-        ];
-        markets.forEach(m=>{
-          const t=tier(m.prob,ev(m.prob,m.dec),m.betType);
-          if(t>=1)out.push({sport:tag,matchup:mu,pick:m.label,grade:_pickLBL[t],prob:m.prob,ev:ev(m.prob,m.dec),tierN:t,
-            hA:g.home,awA:g.away,betType:m.betType,betOn:m.betOn,ml:m.ml,decOdds:m.dec,date:todayStr,sigma:null,converged:socConverged,category:'GAME',prop:null});
-        });
-      });
-    }catch(e){}
-    return out;
-  });
-  registerPickScanner(tag,_genericBestBetsScan(tag));
-});
-// ── Every other sport/league CV tracks — no dedicated live model/feed
-// exists in the app for these yet, so each is a slot on the generic
-// bestBets.json path — it stays empty (correctly inert, not an error)
-// until the backend starts generating picks for it, whether that's
-// because the sport is off-season or simply not modeled yet.
-['NFL','CFB','CBB','ATP','WTA','PWHL','KHL','SHL','LIIGA'].forEach(tag=>{
-  registerPickScanner(tag,_genericBestBetsScan(tag));
-  if(PROP_CACHE_KEYS[tag])registerPickScanner(tag,_genericPropCacheScan(tag));
-});
-
-// Scans every registered sport/league for today's slate and grades each
-// candidate market via tier() (PREMIUM/OPTIMAL/LEAN/SKIP — same
-// thresholds used everywhere else in the app). Shared by the Daily
-// Briefing panel (display only) and the Pick Queue (review + lock). Each
-// candidate carries the raw hA/awA/betType/ml/decOdds fields lockPick()
-// needs, plus — where a true multi-model ensemble exists (MLB: mc/bay/
-// elo, WNBA: mcP/bayP/eloP) — a `sigma` (model disagreement) and
-// `converged` flag. LEAN is the lowest-confidence tier and the one most
-// likely to be noise, so the Pick Queue only auto-surfaces LEAN
-// candidates where `converged` is true; sports without an ensemble
-// breakdown leave sigma null and are never auto-surfaced at LEAN (though
-// they still show at PREMIUM/OPTIMAL, and can always be locked manually).
-// Async because a few scanners (the club soccer leagues) fetch their
-// schedule on demand when no tab visit has cached it yet this session.
-// Sync scanners work unchanged — Promise.resolve() is a no-op on a plain array.
-async function _scanGradedCandidates(){
-  const candidates=[];
-  await Promise.all(PICK_SCANNERS.map(async({sport,scanFn})=>{
-    try{const res=await Promise.resolve(scanFn());if(Array.isArray(res))candidates.push(...res);}
-    catch(e){console.warn('[pickScan]',sport,'failed',e);}
-  }));
-  // Deduplicate by pick+sport
-  const seen=new Set();
-  const deduped=candidates.filter(c=>{const k=`${c.sport}|${c.pick}`;if(seen.has(k))return false;seen.add(k);return true;});
-  deduped.sort((a,b)=>{const gd=(b.tierN||0)-(a.tierN||0);return gd!==0?gd:(b.prob||0)-(a.prob||0);});
-  return deduped;
-}
-// ═══ TIER CALIBRATION ════════════════════════════════════════════════════
-// Answers the actual accuracy question behind the Pick Queue: does a
-// PREMIUM grade in MLB win at the same rate as a PREMIUM grade in soccer,
-// and does PREMIUM genuinely outperform OPTIMAL/LEAN in practice? Every
-// settled bet already carries the raw winProb/decOdds/betType tier()
-// needs, so the grade doesn't have to be stored at lock time — it's
-// recomputed here with today's tier()/calibration logic against real
-// outcomes, which is the correct backtest: "if this grading rule had been
-// applied, how would it actually have performed?" Buckets under MIN_N are
-// flagged low-confidence rather than hidden, so a thin sample is visible
-// instead of silently missing.
-const CAL_MIN_N=5;
-// sourceFilter: 'all' (default), 'queue', or 'manual'. Picks locked before
-// lockPick() started tagging `source` have no field at all — treat those
-// as 'manual' since every lock path was manual before the Pick Queue existed.
-function _computeTierCalibration(sourceFilter){
-  let settled=getP().filter(p=>(p.outcome==='win'||p.outcome==='loss')&&p.winProb!=null);
-  if(sourceFilter==='queue')settled=settled.filter(p=>p.source==='queue');
-  else if(sourceFilter==='manual')settled=settled.filter(p=>p.source!=='queue');
-  const buckets={}; // key: sport|grade
-  settled.forEach(p=>{
-    const sport=(typeof _normSport==='function'?_normSport(p):null)||p.sport||'MISC';
-    const dec=parseFloat(p.decOdds)||(p.ml?ml2d(p.ml):2);
-    const evVal=ev(p.winProb,dec);
-    const t=tier(p.winProb,evVal,p.betType||'ML');
-    const grade=['SKIP','LEAN','OPTIMAL','PREMIUM'][t]||'SKIP';
-    const key=sport+'|'+grade;
-    if(!buckets[key])buckets[key]={sport,grade,n:0,wins:0,sumPredicted:0,sumUnits:0};
-    const b=buckets[key];
-    b.n++;
-    if(p.outcome==='win')b.wins++;
-    b.sumPredicted+=p.winProb;
-    b.sumUnits+=p.outcome==='win'?dec-1:-1;
-  });
-  const rows=Object.values(buckets).map(b=>{
-    const actualWinRate=b.wins/b.n;
-    const avgPredicted=b.sumPredicted/b.n;
-    // Positive gap = the grade over-predicts (real accuracy is lower than
-    // claimed); negative = under-predicts (the model is sandbagging).
-    const gap=avgPredicted-actualWinRate;
-    return{sport:b.sport,grade:b.grade,n:b.n,wins:b.wins,losses:b.n-b.wins,
-      actualWinRate,avgPredicted,gap,units:b.sumUnits,reliable:b.n>=CAL_MIN_N};
-  });
-  const gradeOrder={PREMIUM:3,OPTIMAL:2,LEAN:1,SKIP:0};
-  rows.sort((a,b)=>{const gd=gradeOrder[b.grade]-gradeOrder[a.grade];return gd!==0?gd:b.n-a.n;});
-  return rows;
-}
-async function renderDailyBriefing(){
-  const el=document.getElementById('home-daily-briefing');if(!el)return;
-  const D=window.__CV_DATA||{};
-  const now=Date.now();
-  const nowD=getMSTNow();
-  const todayStr=today();
-  const allBets=getP();
-  const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
-  const td=allBets.filter(p=>p.date===todayStr);
-  const tdSettled=td.filter(p=>p.outcome==='win'||p.outcome==='loss');
-  const tdW=tdSettled.filter(p=>p.outcome==='win').length;
-  const tdL=tdSettled.filter(p=>p.outcome==='loss').length;
-  const tdPending=td.filter(p=>p.outcome==='pending').length;
-
-  // ── Performance calcs ───────────────────────────────────────────────────
-  const cP=bets=>{const s=bets.filter(p=>p.outcome==='win'||p.outcome==='loss');const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;const u=s.reduce((a,p)=>p.outcome==='win'?a+(parseFloat(p.decOdds)||2)-1:a-1,0);return{w,l,n:s.length,pct:s.length?w/s.length:null,u};};
-  const wk7ts=now-7*86400000;
-  const moTs=mstFirstOfMonth(nowD).getTime();
-  const wk7P=cP(settled.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts));
-  const moP=cP(settled.filter(p=>p.lockedAt&&p.lockedAt>=moTs));
-  const allP=cP(settled);
-
-  // ── Streak from most recent bets ────────────────────────────────────────
-  const recent=[...settled].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0)).slice(0,10);
-  let streak=0,streakType='';
-  for(const b of recent){if(!streakType)streakType=b.outcome;if(b.outcome===streakType)streak++;else break;}
-  const streakCol=streakType==='win'?'var(--nc)':'var(--hc)';
-  const streakLabel=streak>1?`${streak}${streakType==='win'?'W':'L'} STREAK`:'';
-
-  // ── Hot sport (best win% in rolling 7d with ≥2 bets) ───────────────────
-  const sports=['MLB','NHL','NBA','NFL','TEN','SOC'];
-  let hotSport='',hotPct=0;
-  sports.forEach(sp=>{const sb=settled.filter(p=>p.sport===sp&&p.lockedAt&&p.lockedAt>=wk7ts);if(sb.length>=2){const wp=sb.filter(p=>p.outcome==='win').length/sb.length;if(wp>hotPct){hotPct=wp;hotSport=sp;}}});
-
-  // ── Game counts by sport ────────────────────────────────────────────────
-  const sportCounts={MLB:0,NHL:0,NBA:0,WNBA:0,WC:0,TEN:0};
-  try{sportCounts.MLB=(window.ESPN_GAMES||window._mlbGames||[]).filter(g=>g.hA&&g.awA).length;}catch(e){}
-  try{sportCounts.NHL=(D.nhl?.today||[]).length;}catch(e){}
-  try{sportCounts.NBA=(D.nba?.today||[]).length;}catch(e){}
-  try{sportCounts.WNBA=(window._wnbaGameData||[]).length;}catch(e){}
-  try{sportCounts.WC=(window.WC26_SCHEDULE||[]).filter(g=>g.date===todayStr).length;}catch(e){}
-  const gameCount=Object.values(sportCounts).reduce((a,v)=>a+v,0);
-  const sportCountStr=Object.entries(sportCounts).filter(([,v])=>v>0).map(([k,v])=>`${v} ${k}`).join(' · ');
-
-  // ── Top pick candidates ─────────────────────────────────────────────────
-  const gradeColor={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
-  const deduped=await _scanGradedCandidates();
-  const top=deduped.slice(0,8);
-  const nPremium=deduped.filter(c=>c.grade==='PREMIUM').length;
-  const nOptimal=deduped.filter(c=>c.grade==='OPTIMAL').length;
-  const nLean=deduped.filter(c=>c.grade==='LEAN').length;
-
-  // ── Engine-voice blurb ──────────────────────────────────────────────────
-  let blurb;
-  const gradeCountStr=(nPremium||nOptimal||nLean)?[nPremium?`<span style="color:var(--gc);font-weight:700">${nPremium} PREMIUM</span>`:'',nOptimal?`<span style="color:var(--pc);font-weight:700">${nOptimal} OPTIMAL</span>`:'',nLean?`<span style="color:var(--nc);font-weight:700">${nLean} LEAN</span>`:''].filter(Boolean).join(' · '):'';
-  if(gameCount===0){
-    blurb='No games detected yet — slate will populate once schedules load. Engine standing by.';
-  }else if(top.length){
-    const best=top[0];
-    blurb=`Engine scanning <strong>${gameCount} game${gameCount===1?'':'s'}</strong> today across all tracked slates.${gradeCountStr?' Qualified signals: '+gradeCountStr+'.':' No elite-tier signals flagged yet — model still processing.'} Top move: <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.pick||best.matchup}</span> rated <span style="color:${gradeColor[best.grade]||'var(--pc)'};font-weight:700">${best.grade}</span>${best.prob?' ('+( best.prob*100).toFixed(0)+'% confidence)':''}.`;
-  }else{
-    blurb=`Engine scanning <strong>${gameCount} game${gameCount===1?'':'s'}</strong> across all tracked slates.${gradeCountStr?' '+gradeCountStr+' signals qualified for today\'s slate.':' No standout edge flagged yet — model still processing.'}`;
-  }
-  if(tdPending>0)blurb+=` <span style="color:var(--nc)">${tdPending} bet${tdPending===1?'':'s'} live and riding.</span>`;
-  if(tdSettled.length>0)blurb+=` Today so far: <span style="color:${tdW>tdL?'var(--nc)':'var(--hc)'}">${tdW}W-${tdL}L</span>.`;
-
-  // ── Stat pill helper ───────────────────────────────────────────────────
-  const pill=(label,val,col='var(--t2)',sub='')=>`<div style="background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.07);border-radius:4px;padding:9px 13px;text-align:center;min-width:72px">
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">${label}</div>
-    <div style="font-family:var(--orb);font-size:22px;font-weight:800;color:${col};text-shadow:0 0 12px ${col}40">${val}</div>
-    ${sub?`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:3px">${sub}</div>`:''}
-  </div>`;
-
-  const fmtPct=p=>p===null?'—':(p*100).toFixed(1)+'%';
-  const fmtU=u=>(u>=0?'+':'')+u.toFixed(1)+'u';
-  const pCol=p=>p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';
-  const uCol=u=>u>=0?'var(--nc)':'var(--hc)';
-
-  el.innerHTML=`
-  <div style="position:relative;border:1px solid rgba(240,0,255,.3);border-radius:6px;overflow:hidden;background:linear-gradient(145deg,rgba(10,0,24,.95),rgba(20,0,46,.9));box-shadow:0 0 40px rgba(240,0,255,.1),0 0 80px rgba(77,121,255,.06),inset 0 1px 0 rgba(240,0,255,.15)">
-    <!-- animated scan line -->
-    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--pc),var(--nc),var(--pc),transparent);animation:cvbScan 3.5s linear infinite"></div>
-    <!-- corner accents -->
-    <div style="position:absolute;top:0;left:0;width:18px;height:18px;border-top:2px solid var(--pc);border-left:2px solid var(--pc);border-radius:6px 0 0 0;opacity:.7"></div>
-    <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-top:2px solid var(--nc);border-right:2px solid var(--nc);border-radius:0 6px 0 0;opacity:.7"></div>
-    <div style="position:absolute;bottom:0;left:0;width:18px;height:18px;border-bottom:2px solid var(--pc);border-left:2px solid var(--pc);border-radius:0 0 0 6px;opacity:.4"></div>
-    <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-bottom:2px solid var(--nc);border-right:2px solid var(--nc);border-radius:0 0 6px 0;opacity:.4"></div>
-
-    <div style="padding:16px 18px 18px">
-
-      <!-- header row -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--pc);box-shadow:0 0 14px var(--pc),0 0 28px rgba(240,0,255,.4);animation:blink 1.6s infinite;flex-shrink:0"></span>
-        <span style="font-family:var(--orb);font-size:18px;font-weight:900;letter-spacing:4px;color:var(--pc);text-shadow:0 0 10px rgba(240,0,255,.95),0 0 22px rgba(240,0,255,.6),0 0 45px rgba(240,0,255,.3)">DAILY BRIEFING</span>
-        ${streakLabel?`<span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${streakCol};background:${streakType==='win'?'rgba(0,240,255,.1)':'rgba(255,32,144,.1)'};border:1px solid ${streakCol};border-radius:3px;padding:2px 7px;letter-spacing:1px">${streakLabel}</span>`:''}
-        ${hotSport?`<span style="font-family:var(--mono);font-size:14px;color:var(--gc);background:rgba(255,221,0,.08);border:1px solid rgba(255,221,0,.3);border-radius:3px;padding:2px 7px;letter-spacing:1px">🔥 ${hotSport} HOT</span>`:''}
-        <span style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-left:auto;letter-spacing:1px">${nowD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase()}</span>
-      </div>
-
-      <!-- engine voice blurb -->
-      <div style="font-family:var(--ex);font-size:18px;line-height:1.6;color:var(--t2);padding:10px 13px;background:rgba(240,0,255,.04);border-left:3px solid rgba(240,0,255,.4);border-radius:0 4px 4px 0;margin-bottom:16px">${blurb}</div>
-
-      <!-- stat pills row -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${pill('7-DAY',wk7P.n?`${wk7P.w}W-${wk7P.l}L`:' — ',pCol(wk7P.pct),wk7P.n?fmtPct(wk7P.pct):'')}
-        ${pill('THIS MO',moP.n?`${moP.w}W-${moP.l}L`:' — ',pCol(moP.pct),moP.n?fmtPct(moP.pct):'')}
-        ${pill('ALL TIME',allP.n?`${allP.w}W-${allP.l}L`:' — ',pCol(allP.pct),allP.n?fmtPct(allP.pct):'')}
-        ${pill('7D UNITS',wk7P.n?fmtU(wk7P.u):' — ',uCol(wk7P.u),'')}
-        ${pill('ALL UNITS',allP.n?fmtU(allP.u):' — ',uCol(allP.u),'')}
-        ${gameCount?pill('GAMES TODAY',gameCount,'var(--ic)','ON SLATE'):pill('GAMES TODAY','—','var(--t3)','')}
-        ${nPremium?pill('PREMIUM',nPremium,'var(--gc)','≥67%+EV5%'):''}
-        ${nOptimal?pill('OPTIMAL',nOptimal,'var(--pc)','≥62%+EV3%'):''}
-        ${nLean?pill('LEAN',nLean,'var(--nc)','55-62%'):''}
-      </div>
-
-      <!-- sport slate breakdown -->
-      ${gameCount?`
-      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:7px 10px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:4px">
-        <span style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-right:4px">SLATE:</span>
-        ${Object.entries(sportCounts).filter(([,v])=>v>0).map(([k,v])=>`<span style="font-family:var(--mono);font-size:14px;color:var(--t2);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 8px">${v} ${k}</span>`).join('')}
-        <span style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-left:auto">${nPremium+nOptimal+nLean} qualified signal${nPremium+nOptimal+nLean===1?'':'s'} of ${gameCount} game${gameCount===1?'':'s'}</span>
-      </div>`:''}
-
-      <!-- top moves grid -->
-      ${top.length?`
-      <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:14px">
-        <div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:10px">▸ TOP MOVES TODAY — HIGHEST PROBABILITY SIGNALS ACROSS ALL SPORTS</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
-          ${top.map((m,i)=>{
-            const gc=gradeColor[m.grade]||'var(--pc)';
-            const isPrem=m.grade==='PREMIUM';
-            const isOpt=m.grade==='OPTIMAL';
-            const bgGrad=isPrem?'rgba(255,221,0,.06)':isOpt?'rgba(240,0,255,.05)':'rgba(0,255,136,.03)';
-            const borderCol=isPrem?'rgba(255,221,0,.3)':isOpt?'rgba(240,0,255,.25)':'rgba(0,255,136,.18)';
-            const confBar=m.prob?Math.round(m.prob*100):0;
-            const evDisp=m.ev!=null?(m.ev*100).toFixed(1):null;
-            return`<div style="position:relative;background:linear-gradient(145deg,rgba(0,0,0,.55),${bgGrad});border:1px solid ${borderCol};border-left:3px solid ${gc};border-radius:4px;padding:11px 13px;overflow:hidden">
-              <div style="position:absolute;top:-8px;right:-8px;width:60px;height:60px;background:radial-gradient(circle,${gc}18,transparent 70%);pointer-events:none"></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-                <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t3);background:rgba(255,255,255,.07);padding:2px 7px;border-radius:2px;letter-spacing:1px">${m.sport}</span>
-                <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${gc};background:${gc}15;border:1px solid ${gc}44;padding:2px 8px;border-radius:3px;letter-spacing:1px">${m.grade}</span>
-              </div>
-              <div style="font-family:var(--mono);font-size:16px;color:var(--t);font-weight:700;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(m.pick||'').replace(/"/g,"'")}">${m.pick||'—'}</div>
-              <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.matchup||''}</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                ${m.prob?`<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:${gc}">${confBar}%</span>`:''}
-                ${evDisp!=null?`<span style="font-family:var(--mono);font-size:14px;color:${parseFloat(evDisp)>=0?'var(--nc)':'var(--hc)'}">EV ${parseFloat(evDisp)>=0?'+':''}${evDisp}%</span>`:''}
-              </div>
-              ${m.prob?`<div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.min(100,confBar)}%;background:${gc};border-radius:2px;transition:width .4s"></div></div>`:''}
-            </div>`;}).join('')}
-        </div>
-      </div>`:
-      gameCount?`<div style="border-top:1px solid rgba(255,255,255,.06);padding-top:12px;font-family:var(--mono);font-size:15px;color:var(--t3);text-align:center">${gameCount} game${gameCount===1?'':'s'} on slate — engine computing grades, visit sport tabs to load picks.</div>`:''
-      }
-
-    </div>
-  </div>`;
-}
-// ── Cross-sport ticker scanner ────────────────────────────────────────────
-// Generic scanner over ANY per-sport `.today` feed in data.json that carries
-// moneyline odds (homeML/awayML). Currently mlb/nba/nhl/wnba/pwhl
-// all share this shape, so adding a league here is just adding its key below —
-// no per-sport special-casing. Computes no-vig win probability + EV from the
-// book moneylines (source of truth is the odds themselves, not a model), and
-// grades PREMIUM/OPTIMAL/SLEEPER the same way the rest of the ticker does.
-// Sports without an odds feed in data.json (CFB/CBB/NFL/KHL/SHL/LIIGA/soccer
-// club leagues/tennis) are structurally supported the moment their feed gains
-// homeML/awayML fields — nothing here needs to change for them to appear.
 function _scanCrossSportPicks(){
   const D=window.__CV_DATA;if(!D)return[];
   const todayStr=today();
@@ -12255,7 +11700,6 @@ function _scanCrossSportPicks(){
   return out;
 }
 function renderHomePage(){
-  try{renderDailyBriefing();}catch(e){console.error('renderDailyBriefing',e);}
   const allBets=getP();
   const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
   const pending=allBets.filter(p=>p.outcome==='pending');
@@ -12358,6 +11802,7 @@ function renderHomePage(){
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
               <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
               <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
+              ${_gradeChipHtml(p)}
             </div>
             <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
             <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}${conf?' · '+conf:''}</div>
@@ -17407,175 +16852,6 @@ function showBetJournalModal(lockFn,pickLabel){
   window._selectedReason='';
 }
 
-// ═══ PICK QUEUE — automated candidate scan + manual review/approve ══════════
-// Scans every tracked sport (_scanGradedCandidates), buckets by PREMIUM /
-// OPTIMAL / LEAN, and lets the user check off which ones actually get
-// locked. Nothing is ever auto-locked without a click here — this is a
-// review queue, not a bot. No cap on how many can be shown or selected.
-function _pickQueueShell(innerHtml){
-  return`<div style="background:rgba(8,2,22,.98);border:1px solid rgba(240,0,255,.5);border-radius:4px;padding:18px;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(240,0,255,.25)">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">PICK QUEUE</div>
-      <button onclick="document.getElementById('pick-queue-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
-    </div>
-    ${innerHtml}
-  </div>`;
-}
-async function showPickQueueModal(){
-  if(document.getElementById('pick-queue-modal'))document.getElementById('pick-queue-modal').remove();
-  const modal=document.createElement('div');
-  modal.id='pick-queue-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
-  // Scanning every sport (a few — the club soccer leagues — fetch live on
-  // demand) takes a moment; show a placeholder rather than an empty modal.
-  modal.innerHTML=_pickQueueShell(`<div style="font-family:var(--mono);color:var(--t3);padding:40px 20px;text-align:center">
-    <div style="font-size:14px;letter-spacing:2px;margin-bottom:8px">// SCANNING ALL SPORTS…</div>
-    <div style="font-size:12px">MLB · NHL · NBA · WNBA · World Cup-style tournaments · Champions League · Premier League · La Liga · Bundesliga · MLS · and every other tracked league</div>
-  </div>`);
-  document.body.appendChild(modal);
-  let cands=[];
-  try{cands=await _scanGradedCandidates();}catch(e){console.warn('[pickQueue] scan failed',e);}
-  if(!document.getElementById('pick-queue-modal'))return; // closed while scanning
-  // LEAN is the lowest-confidence tier — only auto-surface it here when a
-  // genuine multi-model ensemble backed the number and those models agreed
-  // (converged). PREMIUM/OPTIMAL are shown regardless, same as everywhere
-  // else in the app.
-  const queueable=cands.filter(c=>c.grade!=='LEAN'||c.converged);
-  window._pickQueueItems=queueable;
-  const already=new Set((typeof getP==='function'?getP():[]).filter(p=>p.date===today()).map(p=>(p.betOn||'')+'|'+(p.hA||'')));
-  const rowHtml=(c,i,col)=>{
-    const isLocked=already.has((c.betOn||'')+'|'+(c.hA||''));
-    return`<label style="display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid ${col}33;border-radius:3px;margin-bottom:5px;background:rgba(255,255,255,.02);cursor:${isLocked?'default':'pointer'};opacity:${isLocked?.5:1}">
-      <input type="checkbox" class="pq-cb-${c.category}-${c.grade}" data-idx="${i}" ${isLocked?'disabled':''} style="width:16px;height:16px;flex-shrink:0;accent-color:${col}">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <span style="font-family:var(--mono);font-size:12px;padding:0 4px;border:1px solid ${col}66;color:${col};border-radius:2px">${c.sport}</span>
-          <span style="font-family:var(--mono);font-size:14px;color:var(--t2)">${c.matchup}</span>
-          ${c.sigma!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)" title="model disagreement">σ${c.sigma.toFixed(3)}</span>`:''}
-          ${isLocked?`<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">· ALREADY LOCKED TODAY</span>`:''}
-        </div>
-        <div style="font-family:var(--mono);font-size:15px;color:var(--t);font-weight:700">${c.pick}</div>
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${c.prob?(c.prob*100).toFixed(1)+'%':''}${c.ev!=null?' · EV '+(c.ev*100>=0?'+':'')+(c.ev*100).toFixed(1)+'%':''}${c.ml?' · '+c.ml:''}</div>
-      </div>
-    </label>`;
-  };
-  const tierRows=(rowsAll,grade,col,label)=>{
-    const rows=rowsAll.filter(({c})=>c.grade===grade);
-    if(!rows.length)return'';
-    return`<div style="margin-bottom:12px">
-      <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:${col};margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-        <span>${label} · ${rows.length}</span>
-        <button onclick="document.querySelectorAll('.pq-cb-${rows[0].c.category}-${grade}').forEach(cb=>{if(!cb.disabled)cb.checked=true})" style="font-family:var(--mono);font-size:12px;padding:2px 8px;background:transparent;border:1px solid ${col}66;color:${col};border-radius:2px;cursor:pointer">SELECT ALL</button>
-      </div>
-      ${rows.map(({c,i})=>rowHtml(c,i,col)).join('')}
-    </div>`;
-  };
-  // Game markets (ML/spread/O·U) get their own section, always shown above
-  // props — props naturally outnumber games (many players per matchup vs.
-  // ~3 markets per game), so without this split they'd bury the game picks.
-  const indexed=queueable.map((c,i)=>({c,i}));
-  const gameRows=indexed.filter(({c})=>c.category!=='PROP');
-  const propRows=indexed.filter(({c})=>c.category==='PROP');
-  const section=(title,rows)=>{
-    if(!rows.length)return'';
-    return`<div style="margin-bottom:16px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:2px;color:var(--t2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.1)">${title} · ${rows.length}</div>
-      ${tierRows(rows,'PREMIUM','var(--gc)','◆ PREMIUM')}${tierRows(rows,'OPTIMAL','var(--pc)','// OPTIMAL')}${tierRows(rows,'LEAN','var(--nc)','// LEAN (converged only)')}
-    </div>`;
-  };
-  const body=queueable.length
-    ? section('🎯 GAME MARKETS — ML / SPREAD / O·U',gameRows)+section('📊 PLAYER PROPS',propRows)
-    : `<div style="font-family:var(--mono);color:var(--t3);padding:20px;text-align:center">NO QUALIFYING CANDIDATES ON TODAY'S SLATE YET — CHECK BACK AS GAMES/LINES LOAD.</div>`;
-  const leanSkipped=cands.filter(c=>c.grade==='LEAN'&&!c.converged).length;
-  if(!document.getElementById('pick-queue-modal'))return;
-  document.getElementById('pick-queue-modal').innerHTML=_pickQueueShell(`
-    <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:12px">Review today's auto-graded candidates and check off what you want locked. Nothing locks until you confirm.${leanSkipped?` <span style="color:var(--t3)">(${leanSkipped} LEAN candidate${leanSkipped===1?'':'s'} hidden — model disagreement too high.)</span>`:''}</div>
-    <div style="overflow-y:auto;flex:1;padding-right:2px">${body}</div>
-    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
-      <button onclick="document.getElementById('pick-queue-modal').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(220,190,255,.7);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">CLOSE</button>
-      <button onclick="_confirmPickQueue()" style="flex:2;padding:10px;background:rgba(240,0,255,.15);border:1px solid rgba(240,0,255,.5);color:#f000ff;font-family:var(--mono);font-size:15px;font-weight:700;border-radius:2px;cursor:pointer">LOCK SELECTED</button>
-    </div>
-  `);
-}
-window.showPickQueueModal=showPickQueueModal;
-
-// Backtests today's tier()/calibration rules against real settled history,
-// broken out by sport + grade, so you can see whether PREMIUM/OPTIMAL/LEAN
-// actually predict consistently across sports rather than just trusting
-// the labels. Read-only — this doesn't change any grading, it just shows
-// the gap between what a grade claims and what it's actually delivered.
-function showCalibrationReport(sourceFilter){
-  sourceFilter=sourceFilter||'all';
-  if(document.getElementById('cal-report-modal'))document.getElementById('cal-report-modal').remove();
-  let rows=[];
-  try{rows=_computeTierCalibration(sourceFilter);}catch(e){console.warn('[calibration] failed',e);}
-  const allPreds=(typeof getP==='function'?getP():[]).filter(p=>p.outcome==='win'||p.outcome==='loss');
-  const nQueue=allPreds.filter(p=>p.source==='queue').length;
-  const nManual=allPreds.length-nQueue;
-  const filterBtn=(val,label,count)=>{
-    const active=sourceFilter===val;
-    return`<button onclick="showCalibrationReport('${val}')" style="font-family:var(--mono);font-size:12px;padding:3px 9px;background:${active?'rgba(240,0,255,.18)':'transparent'};border:1px solid ${active?'rgba(240,0,255,.6)':'rgba(255,255,255,.2)'};color:${active?'#f000ff':'rgba(220,190,255,.6)'};border-radius:2px;cursor:pointer">${label} (${count})</button>`;
-  };
-  const gradeCol={PREMIUM:'var(--gc)',OPTIMAL:'var(--pc)',LEAN:'var(--nc)',SKIP:'var(--t3)'};
-  const fmtPct=v=>(v*100).toFixed(1)+'%';
-  const gapCol=g=>Math.abs(g)<.05?'var(--nc)':Math.abs(g)<.12?'var(--gc)':'var(--hc)';
-  const rowsHtml=rows.length?rows.map(r=>{
-    const col=gradeCol[r.grade]||'var(--t3)';
-    return`<tr style="border-bottom:1px solid rgba(255,255,255,.06);opacity:${r.reliable?1:.55}">
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t2)">${r.sport}</td>
-      <td style="padding:6px 8px"><span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid ${col}66;color:${col};border-radius:2px">${r.grade}</span></td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t2);text-align:center">${r.wins}-${r.losses}${r.reliable?'':' ⚠'}</td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t);text-align:center;font-weight:700">${fmtPct(r.actualWinRate)}</td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:var(--t3);text-align:center">${fmtPct(r.avgPredicted)}</td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:${gapCol(r.gap)};text-align:center;font-weight:700">${r.gap>=0?'+':''}${(r.gap*100).toFixed(1)}pp</td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:14px;color:${r.units>=0?'var(--nc)':'var(--hc)'};text-align:right">${r.units>=0?'+':''}${r.units.toFixed(1)}u</td>
-    </tr>`;
-  }).join(''):`<tr><td colspan="7" style="padding:24px;text-align:center;font-family:var(--mono);color:var(--t3)">NOT ENOUGH SETTLED HISTORY YET</td></tr>`;
-  const modal=document.createElement('div');
-  modal.id='cal-report-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
-  modal.innerHTML=`<div style="background:rgba(8,2,22,.98);border:1px solid rgba(240,0,255,.5);border-radius:4px;padding:18px;width:100%;max-width:720px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(240,0,255,.25)">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-      <div style="font-family:'Orbitron',sans-serif;font-size:19px;color:#f000ff;text-shadow:0 0 8px #f000ff">TIER CALIBRATION</div>
-      <button onclick="document.getElementById('cal-report-modal').remove()" style="background:transparent;border:none;color:var(--t3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>
-    </div>
-    <div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.7);margin-bottom:8px">Real settled results, graded by today's tier() rule. <span style="color:var(--t2)">GAP</span> = predicted win% minus actual win% (positive = grade is over-confident, negative = under-confident). Rows marked ⚠ have fewer than ${CAL_MIN_N} bets — noisy, not yet trustworthy.</div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">${filterBtn('all','ALL',allPreds.length)}${filterBtn('queue','QUEUE ONLY',nQueue)}${filterBtn('manual','MANUAL ONLY',nManual)}</div>
-    <div style="overflow:auto;flex:1">
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
-          <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:12px;color:var(--t3)">SPORT</th>
-          <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:12px;color:var(--t3)">GRADE</th>
-          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">RECORD</th>
-          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">ACTUAL</th>
-          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">PREDICTED</th>
-          <th style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">GAP</th>
-          <th style="padding:6px 8px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--t3)">UNITS</th>
-        </tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
-      <button onclick="document.getElementById('cal-report-modal').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(220,190,255,.7);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">CLOSE</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-}
-window.showCalibrationReport=showCalibrationReport;
-async function _confirmPickQueue(){
-  const items=window._pickQueueItems||[];
-  const checked=[...document.querySelectorAll('#pick-queue-modal input[type=checkbox]:checked')];
-  if(!checked.length){toast('// NO PICKS SELECTED');return;}
-  let n=0;
-  for(const cb of checked){
-    const c=items[+cb.dataset.idx];if(!c||!c.hA)continue;
-    try{await lockPick(c.hA,c.awA,c.betType,c.betOn,c.prob,c.ml,c.decOdds,c.date||today(),'queue');n++;}catch(e){console.warn('[pickQueue] lock failed',c,e);}
-  }
-  document.getElementById('pick-queue-modal')?.remove();
-  toast(`// ${n} PICK${n===1?'':'S'} LOCKED`);
-  try{renderHomePage();}catch(e){}
-}
-window._confirmPickQueue=_confirmPickQueue;
 
 function analyzeJournalReasons(){
   const bets=getP().filter(p=>p.outcome!=='pending'&&p.reason);
@@ -24171,16 +23447,14 @@ async function _fetchLeagueScoreboard(leagueKey){
   var cfg=_LEAGUE_CFG[leagueKey];if(!cfg)return[];
   try{
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},10000);
-    // ESPN's scoreboard endpoint defaults to "today only" with no params —
-    // same bug found in the World Cup matches tab. Club competitions often
-    // have no fixture on the exact day a user opens the tab, so a bare
-    // "today" query frequently returned zero games even mid-season. Request
-    // a rolling window (3 weeks back through 3 weeks ahead) so recent
-    // results and upcoming fixtures both show, not just an empty tab.
-    var _d0=new Date();_d0.setDate(_d0.getDate()-21);
-    var _d1=new Date();_d1.setDate(_d1.getDate()+21);
+    // Restricted to today's date only — a 3-week rolling window meant this
+    // could return dozens of fixtures at once, each getting a fresh 25k-
+    // iteration Monte Carlo simulation synchronously on render, which was a
+    // real source of multi-second main-thread blocking ("page
+    // unresponsive"). Same convention as MLS's schedule fetch: only the
+    // current day's matches load.
     var _fmtESPN=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard?dates='+_fmtESPN(_d0)+'-'+_fmtESPN(_d1)+'&limit=200',{signal:ctrl.signal});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard?dates='+_fmtESPN(new Date())+'&limit=50',{signal:ctrl.signal});
     var d=await r.json();
     var games=[];
     (d.events||[]).forEach(function(ev){
@@ -24422,39 +23696,30 @@ async function _fetchMLSScheduleReal(){
   }catch(e){console.warn('[CV] MLS real schedule offline, falling back to ESPN:',e.message);return null;}
 }
 
-var _leagueWeekActiveDate={};
-async function renderLeagueMatches(key,filterDate){
-  if(filterDate!==undefined)_leagueWeekActiveDate[key]=filterDate;
-  var activeDate=_leagueWeekActiveDate[key]||null;
+async function renderLeagueMatches(key){
   var el=document.getElementById(key+'-matches-list');if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
   var games=key==='mls'?await _fetchMLSScheduleReal():null;
   if(!games)games=await _fetchLeagueScoreboard(key);
   if(!games.length){
-    var _emptyMsg=key==='mls'?'NO MLS MATCHES TODAY':'NO MATCHES IN THE PAST/NEXT 3 WEEKS';
-    el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">'+_emptyMsg+'<br><span style="font-size:15px;color:var(--t3)">'+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' · CHECK BACK ON MATCH DAYS</span></div>';
+    el.innerHTML='<div style="font-family:var(--orb);font-size:19px;color:var(--t3);text-align:center;padding:30px">NO '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES TODAY<br><span style="font-size:15px;color:var(--t3)">CHECK BACK ON MATCH DAYS</span></div>';
     return;
   }
   window['_'+key+'Games']=games;
-  // Day-grouped + date-filterable, same UX as MLB/WNBA's 7-day windows —
-  // shared across all non-MLS leagues here since renderLeagueMatches()
-  // already handles cl/pl/liga/bl generically. MLS is restricted to
-  // today-only by _fetchMLSScheduleReal() itself, so it never has more
-  // than one date bucket and skips the (otherwise pointless) week-filter bar.
+  // Every league (not just MLS) is now restricted to today's matches only
+  // by its own fetch (_fetchMLSScheduleReal / _fetchLeagueScoreboard), so
+  // there's never more than one date bucket here and no need for the old
+  // multi-week filter bar — that 3-week window could load dozens of
+  // fixtures at once, each running a fresh 25k-iteration simulation
+  // synchronously, which was a real source of main-thread blocking.
   var byDate={};
   games.forEach(function(g){
     var iso=(g.date||'').slice(0,10);if(!iso)return;
     if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);
   });
-  var days=_filterDays(byDate);
   var dates=Object.keys(byDate).sort();
-  if(activeDate)dates=dates.filter(function(d){return d===activeDate;});
   var todayIso=today();
-  var callExpr="renderLeagueMatches('"+key+"',{DATE})";
-  var html=key==='mls'
-    ?'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCH'+(games.length===1?'':'ES')+' TODAY · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
-    :'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCHES (7-DAY WINDOW) · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>'
-    +_weekFilterBar(key,activeDate,days,callExpr);
+  var html='<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">'+games.length+' MATCH'+(games.length===1?'':'ES')+' TODAY · '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name)+'</div>';
   if(!dates.length)html+='<div class="empty">NO MATCHES ON THIS DATE</div>';
   dates.forEach(function(d){
     var isTod=d===todayIso;
