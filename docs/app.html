@@ -4729,6 +4729,13 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   else if(type==='SHL')sportTag='SHL';
   else if(type==='LIIGA')sportTag='LIIGA';
   else if(type==='CH')sportTag='CH';
+  // Club soccer leagues — distinct sportTags so they don't collapse into
+  // the World Cup bucket (stats/calibration) or collide with 'PL' already
+  // meaning NHL puck-line above (hence 'PL_SOC', not 'PL', for Premier League).
+  else if(type==='PL_SOC')sportTag='PL';
+  else if(type==='LIGA')sportTag='LIGA';
+  else if(type==='BL')sportTag='BL';
+  else if(type==='MLS')sportTag='MLS';
   else if(type==='SOC'||type==='WORLDCUP')sportTag='SOC';
   else if(type==='ATP')sportTag='ATP';
   else if(type==='WTA')sportTag='WTA';
@@ -4752,7 +4759,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   }
   // ── Derive league tag from sport ────────────────────────────────
   const _leagueMap={MLB:'MLB',NBA:'NBA',WNBA:'WNBA',NFL:'NFL',CFB:'CFB',NHL:'NHL',PWHL:'PWHL',
-    KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CH:'CH',SOC:'WORLD_CUP',
+    KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CH:'CH',PL:'PL',LIGA:'LIGA',BL:'BL',MLS:'MLS',SOC:'WORLD_CUP',
     ATP:(typeof ATP_DB!=='undefined'&&ATP_DB[hA])?'ATP':(typeof WTA_DB!=='undefined'&&WTA_DB[hA])?'WTA':'ATP',
     WTA:'WTA',TEN:(typeof ATP_DB!=='undefined'&&ATP_DB[hA]?'ATP':typeof WTA_DB!=='undefined'&&WTA_DB[hA]?'WTA':'ATP')};
   const leagueTag=_leagueMap[sportTag]||sportTag;
@@ -23583,7 +23590,22 @@ function _renderSocMatchCard(g,leagueKey){
   // it to the wrong day. today() itself always resolves in America/Denver,
   // so the match date has to be converted into that same zone (not UTC) to
   // land on the day the game actually happened locally.
-  var hc=g.hAbbr||g.home,ac=g.aAbbr||g.away;
+  // Always the full team name, never the 3-letter code — _TEAM_NAMES.SOC
+  // (used for World Cup country codes) and various league abbreviation
+  // tables share short codes across completely unrelated entities (e.g.
+  // MLS's Portland Timbers = 'POR', which is also Portugal's World Cup
+  // code), so locking with an abbreviation risks it resolving to the wrong
+  // team's name anywhere downstream (history, cards, calibration).
+  var hc=g.home,ac=g.away;
+  // lockPick's `type` argument doubles as a bet-type shorthand for some
+  // sports (NHL's puck-line locks already use the literal string 'PL'),
+  // so passing the naive league code here would silently misclassify e.g.
+  // every Premier League pick as NHL. _lockType maps each club league to a
+  // dedicated, collision-free type string that lockPick's classifier
+  // resolves to the correct sport — every club-league pick was previously
+  // hardcoded to 'SOC' (World Cup) regardless of which league it was in,
+  // which corrupted stats/calibration for all 5 leagues, not just MLS.
+  var _lockType={cl:'CH',pl:'PL_SOC',liga:'LIGA',bl:'BL',mls:'MLS'}[leagueKey]||'SOC';
   var dateStr=isNaN(gDate)?today():gDate.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
   return '<div class="gc" style="border-left:2px solid rgba(255,200,0,.4)">'
     +'<div class="gch"><div>'
@@ -23598,21 +23620,21 @@ function _renderSocMatchCard(g,leagueKey){
     +'</div>'
     +scoreHtml
     +'<div class="brow">'
-    +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\''+g.home+'\','+hP.toFixed(3)+',\''+hML+'\','+ml2d(hML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\''+g.home+'\','+hP.toFixed(3)+',\''+hML+'\','+ml2d(hML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">'+hc+'</div><div class="cho">'+hML+'</div><div class="chp">'+Math.round(hP*100)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
-    +'<div class="'+dCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\'DRAW\','+dP.toFixed(3)+',\''+dML+'\','+ml2d(dML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="'+dCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\'DRAW\','+dP.toFixed(3)+',\''+dML+'\','+ml2d(dML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">DRAW</div><div class="cho">'+dML+'</div><div class="chp">'+Math.round(dP*100)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+dCS.pl+'">'+dCS.lb+'</span></div></div>'
-    +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\'SOC\',\''+g.away+'\','+aP.toFixed(3)+',\''+aML+'\','+ml2d(aML).toFixed(3)+',\''+dateStr+'\')">'
+    +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\''+g.away+'\','+aP.toFixed(3)+',\''+aML+'\','+ml2d(aML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">'+ac+'</div><div class="cho">'+aML+'</div><div class="chp">'+Math.round(aP*100)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
     +'<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
     +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
     +'<div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV(\''+ouId+'\',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>'+'<input type="number" step="0.5" value="'+ouL+'" id="'+ouId+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center">'+'<button onclick="event.stopPropagation();_adjV(\''+ouId+'\',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div>'
     +'<div style="display:flex;gap:3px">'
-    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
-    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\',\'SOC\')" style="font-size:13px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'OVER\',\''+_lockType+'\')" style="font-size:13px;padding:2px 5px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVR</button>'
+    +'<button onclick="event.stopPropagation();_ouLockDir(\''+hc+'\',\''+ac+'\',\''+dateStr+'\','+ouP.toFixed(3)+',\''+ouL+'\',\''+ouId+'\',\'UNDER\',\''+_lockType+'\')" style="font-size:13px;padding:2px 5px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UND</button>'
     +'</div></div>'
     +'</div>'
     +'<div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">'
