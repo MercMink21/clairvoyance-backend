@@ -4073,7 +4073,7 @@ function _ouParlayDir(hA,awA,date,baseOverP,baseL,inputId,dir,sport){
   if(typeof cvParlayAddLeg==='function')cvParlayAddLeg(sport||'xp',(sport?sport.toUpperCase()+' ':'')+dir+' '+nl.toFixed(1),'-110',lockP,matchup,'GAME');
   else lockPick(hA,awA,'OU',dir+' '+nl.toFixed(1),lockP,'-110',1.91,date||today());
 }
-function _spreadLockDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir){
+function _spreadLockDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport){
   var inp=document.getElementById(inputId);
   var ns=inp?parseFloat(inp.value):parseFloat(baseSprd);
   if(isNaN(ns))ns=parseFloat(baseSprd);
@@ -4087,7 +4087,12 @@ function _spreadLockDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir){
   // silently disappeared from the locked bet label (e.g. "TEAM 2.5"
   // instead of "TEAM -2.5").
   var label=dir==='FAV'?favN+' -'+(Math.abs(ns)).toFixed(1):dogN+' +'+(Math.abs(ns)).toFixed(1);
-  lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
+  // Without an explicit sport, lockPick falls back to guessing by team-code
+  // membership across MLB/NHL/NBA/WNBA — several real teams share the same
+  // 3-letter code across those sports (e.g. 'BOS' is the Red Sox, Bruins,
+  // AND Celtics), so every caller here needs to pass its real sport instead
+  // of relying on the guesser to sort it out.
+  lockPick(hA,awA,sport||'SPREAD',label,sp,'-115',1.87,date||today());
 }
 function _ahLockDir(hc,ac,date,favN,dogN,baseFavP,baseAH,inputId,dir){
   var inp=document.getElementById(inputId);
@@ -4110,19 +4115,25 @@ function _spreadParlayDir(favN,dogN,hA,awA,date,baseP,baseSprd,inputId,dir,sport
   if(typeof cvParlayAddLeg==='function')cvParlayAddLeg(sport||'xp',label,'-115',sp,matchup,'GAME');
   else lockPick(hA,awA,'SPREAD',label,sp,'-115',1.87,date||today());
 }
-// MLB O/U fallback line — used whenever there's no real market total to
-// display (g.ou / espnGame.ou missing), so the app has to fall back to the
-// Monte Carlo projection (mc.avgT) instead. Real MLB totals are always
-// priced at a half-run (8.5, 9.5, ...) to avoid a push; a plain
-// Math.round(avgT*2)/2 can legitimately land on a whole number by chance
-// (e.g. avgT=9.02 rounds to 9.0), which then displays as a non-standard
-// "10.0"-style default line. Flooring to the nearest half-below instead
-// guarantees the fallback always ends in .5 — genuine market lines (g.ou)
-// are left untouched since those come from the real book, not a guess.
-function _mlbOuDefault(avgT){
-  const a=avgT!=null&&!isNaN(avgT)?parseFloat(avgT):8.5;
+// Universal O/U fallback line — used whenever there's no real market total
+// to display, across every sport (MLB/NBA/WNBA/soccer/...), so the app has
+// to fall back to a model projection or a flat constant instead. Real
+// sportsbook totals are always priced at a half-point (8.5, 220.5, 2.5...)
+// to avoid a push; a plain Math.round(avgT*2)/2 can legitimately land on a
+// whole number by chance (e.g. avgT=9.02 rounds to 9.0, or NBA's avgT=221
+// rounds to 221.0), which then displays as a non-standard whole-number
+// line no real book would ever post. Flooring to the nearest half-below
+// instead guarantees the fallback always ends in .5. `fallback` is the
+// last-resort constant used when there's no model projection at all —
+// callers should pass a realistic sport-specific average, not a bare
+// round number (e.g. 220.5 for NBA, not 220). Genuine market lines (g.ou)
+// are never passed through here — those come from the real book, not a guess.
+function _ouDefaultLine(avgT,fallback){
+  const a=avgT!=null&&!isNaN(avgT)?parseFloat(avgT):(fallback!=null?fallback:8.5);
   return(Math.floor(a)+0.5).toFixed(1);
 }
+// Back-compat alias — MLB call sites already use this name.
+function _mlbOuDefault(avgT){return _ouDefaultLine(avgT,8.5);}
 function mlbEns(hA,awA,espnGame){
   const ouLine=parseFloat(espnGame?.ou||8.5);
   const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
@@ -7216,7 +7227,7 @@ function nbaTeamScore(abbr){
 }
 
 // ═══ NBA SIMULATION ENGINES ══════════════════════════════════
-function nbaMC(hA,awA,n=25000,ouLine=220){
+function nbaMC(hA,awA,n=25000,ouLine=220.5){
   // AUDIT FIX: NBA_TEAMS/NBA_BBREF are both hardcoded to the same 4 teams
   // from a single past Finals matchup (OKC/SA/NY/CLE) — for any of the
   // other 26 teams, this used to hard-return null (a flat 50/50 coinflip
@@ -7276,7 +7287,7 @@ function nbaGetBayes(abbr){
 }
 function nbaEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
 function nbaEns(hA,awA,espnGame){
-  const nbaOUL=parseFloat(espnGame?.ou||espnGame?.overUnder||220);
+  const nbaOUL=parseFloat(espnGame?.ou||espnGame?.overUnder||220.5);
   const mc=nbaMC(hA,awA,5000,nbaOUL);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
   const hfa=.028; // NBA home court ~2.8%
   const hBay=nbaGetBayes(hA).m,aBay=nbaGetBayes(awA).m;
@@ -8607,7 +8618,7 @@ function renderNBAParlayG(){
   el.innerHTML=NBA_TONIGHT.map(g=>{
     const ens=nbaEns(g.h,g.a,g);const mc=ens.mcD;
     const hML=g.hL||p2ml(ens.p);const awML=g.aL||p2ml(1-ens.p);
-    const ouL=g.ou||mc?.avgT||220;const ouP=mc&&mc.avgT>ouL?.53:.47;
+    const ouL=g.ou||_ouDefaultLine(mc?.avgT,220.5);const ouP=mc&&mc.avgT>ouL?.53:.47;
     return`<div class="card cp" style="margin-bottom:5px;padding:9px">
       <div style="font-family:var(--orb);font-size:19px;font-weight:700;letter-spacing:1px;margin-bottom:6px;color:var(--ic)">${g.h} vs ${g.a} · ${g.ctx||'NBA'}</div>
       <div style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-bottom:5px">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}% · Proj:${mc?mc.avgH+'-'+mc.avgA:'--'}</div>
@@ -16270,7 +16281,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-07-24 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-07-25 23:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -16350,7 +16361,7 @@ function patchNBATonight(games){
     games.forEach(g=>{
       NBA_TONIGHT.push({h:g.home,a:g.away,
         hML:g.homeML||-110,aML:g.awayML||110,
-        ou:g.ou||220,hL:g.spread||-1.5,
+        ou:g.ou||220.5,hL:g.spread||-1.5,
         ctx:g.seriesNote||g.away+' @ '+g.home,
         state:g.state||'pre',id:g.id,
         hScore:g.homeScore,aScore:g.awayScore});
@@ -21066,14 +21077,14 @@ function wnbaOUProb(mcResult,ouLine){
   // Uses projected team scores from wnbaMC to compute over probability via normal distribution
   // WNBA combined score SD ≈ 14 points
   if(!mcResult||!mcResult.totalProj)return 0.52;
-  var diff=mcResult.totalProj-parseFloat(ouLine||163);
+  var diff=mcResult.totalProj-parseFloat(ouLine||163.5);
   return Math.min(0.82,Math.max(0.18,normalCDF(diff/14)));
 }
 function wnbaOUProbMC(mcResult,ouLine){
   // Use MC simulation totalProj with normal approximation
   if(!mcResult||!mcResult.totalProj)return 0.50;
   var totProj=mcResult.totalProj;
-  var ouL=parseFloat(ouLine)||163;
+  var ouL=parseFloat(ouLine)||163.5;
   // WNBA combined score SD ≈ 13-15 points
   var sdEst=Math.sqrt(totProj*0.09); // empirical: ~9% variance relative to total
   return Math.min(0.82,Math.max(0.18,normalCDF((totProj-ouL)/Math.max(10,sdEst))));
@@ -21156,7 +21167,7 @@ function _wnbaWeekCard(g){
   var dogSprdP=Math.max(.18,1-sprdP);
   var sprdCS=_socGC(sprdP);
   // O/U chip — MC-projected total vs a model-derived line
-  var ouL=(mc&&mc.totalProj?Math.round(mc.totalProj*2)/2:163).toFixed(1);
+  var ouL=_ouDefaultLine(mc&&mc.totalProj,163.5);
   var ouP=mc?wnbaOUProbMC(mc,ouL):0.5;
   var unP=1-ouP;
   var ouCS=_socGC(ouP),unCS=_socGC(unP);
@@ -23610,7 +23621,7 @@ function _renderSocMatchCard(g,leagueKey){
   // projected total (nearest half) instead means the O/U grade reflects
   // whether the match is unusual for itself, not whether it's unusual
   // relative to an arbitrary constant every match was being measured against.
-  var ouL=g.ou||(Math.round(mc.avgT*2)/2).toFixed(1);
+  var ouL=g.ou||_ouDefaultLine(mc.avgT,2.5);
   var ouId='ouinp_lg_'+leagueKey+'_'+(g.hAbbr||g.home)+'_'+(g.aAbbr||g.away);
   var ouP=_poissonOverProb(hxg+axg,parseFloat(ouL));
   var unP=1-ouP;
