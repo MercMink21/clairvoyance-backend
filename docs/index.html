@@ -3437,6 +3437,31 @@ function _gradeChipHtml(p){
   const col=g==='PREMIUM'?'var(--gc)':g==='OPTIMAL'?'var(--pc)':'var(--nc)';
   return`<span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${col}66;color:${col};border-radius:2px;letter-spacing:1px">${g}</span>`;
 }
+// Club soccer sport tags (MLS/PL/LIGA/BL/CH) are internal shorthand, fine
+// for grouping/filtering, but too generic on their own for a user-facing
+// badge — 'PL' reads as nothing in particular next to 'MLB'/'NHL'. This
+// gives every soccer league its full name plus a SOCCER sub-label, so
+// history/analytics/performance views can show both "which league" and
+// "which broad sport" at a glance, matching how the Overall dashboard's
+// LEAGUE breakdown table already labels these (Champions League/Premier
+// League/La Liga/Bundesliga/MLS) — just applied everywhere a raw sport
+// badge gets rendered, not only that one table.
+const _SOC_LEAGUE_NAMES={MLS:'MLS',PL:'Premier League',LIGA:'La Liga',BL:'Bundesliga',CH:'Champions League',SOC:'World Cup',WC:'World Cup'};
+function _leagueDisplayLabel(sportTag){
+  const t=(sportTag||'').toUpperCase();
+  const name=_SOC_LEAGUE_NAMES[t];
+  if(!name)return{sub:null,label:t};
+  return{sub:'SOCCER',label:name};
+}
+function _sportBadgeHtml(sportTag,sc){
+  const d=_leagueDisplayLabel(sportTag);
+  const col=sc(sportTag);
+  if(!d.sub)return`<span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${col};color:${col};border-radius:2px">${d.label}</span>`;
+  return`<span style="display:inline-flex;align-items:center;gap:4px">`
+    +`<span style="font-family:var(--mono);font-size:11px;padding:1px 4px;border:1px solid ${col}55;color:${col}99;border-radius:2px;letter-spacing:1px">${d.sub}</span>`
+    +`<span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${col};color:${col};border-radius:2px">${d.label}</span>`
+    +`</span>`;
+}
 // MLB-specific tier: tighter thresholds + ensemble convergence requirement
 function _mlbTier(p,e,sigmaV){
   // sigmaV = std-dev across [mc,bay,elo] — high sigma = models disagree, cap grade
@@ -10017,7 +10042,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
       return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
-            <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+            ${_sportBadgeHtml(p.sport,()=>sc)}
             <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
             ${_gradeChipHtml(p)}
             <span style="font-family:var(--mono);font-size:15px;color:var(--t3)">${p.date||''}</span>
@@ -11807,7 +11832,7 @@ function renderHomePage(){
         return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
-              <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
+              ${_sportBadgeHtml(p.sport,sc)}
               <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
               ${_gradeChipHtml(p)}
             </div>
@@ -23420,6 +23445,39 @@ function _socXG(name,leagueKey){
   return null;
 }
 
+// Expected goals for a fixture, blending each side's own attack rate with
+// the opponent's defensive rate — every call site previously used a team's
+// raw hxg/axg (its own scoring average) alone, with no adjustment for how
+// stingy or leaky the opponent actually is. Since most teams' raw home/away
+// scoring rates sum to something above 2.5 on their own, that meant nearly
+// every match's combined expected goals landed above the O/U 2.5 line
+// almost regardless of matchup, systematically over-recommending OVER and
+// starving out ML/Draw and UNDER picks. Standard Poisson-model convention:
+// average a team's own attacking rate with the opponent's goals-conceded
+// rate, so a strong defense actually pulls the total down and a leaky one
+// pulls it up, instead of defense never entering the calculation at all.
+function _socExpectedGoals(homeXG,awayXG){
+  const hxg=homeXG?((homeXG.hxg||homeXG.xg)+((awayXG&&awayXG.axga)??(homeXG.hxg||homeXG.xg)))/2:1.35;
+  const axg=awayXG?((awayXG.axg||awayXG.xg)+((homeXG&&homeXG.hxga)??(awayXG.axg||awayXG.xg)))/2:1.15;
+  return{hxg,axg};
+}
+// Exact P(total goals > line) for a Poisson(hxg+axg) total-goals
+// distribution — the sum of two independent Poisson processes is itself
+// Poisson with the combined rate, so this is analytically exact, not a
+// simulation approximation. Replaces the old two-bucket over25/over35
+// Monte Carlo shortcut, which only supported checking against exactly 2.5
+// or 3.5 and silently mis-graded any other line (including the real
+// market line, and the match-specific fallback line above) by rounding to
+// whichever bucket was closest instead of computing the actual line asked for.
+function _poissonOverProb(lambda,line){
+  const k=Math.floor(line);
+  let cdf=0,term=Math.exp(-lambda);
+  for(let i=0;i<=k;i++){
+    if(i>0)term*=lambda/i;
+    cdf+=term;
+  }
+  return Math.max(0,Math.min(1,1-cdf));
+}
 function _soccerMC(hxg,axg,n){
   if(!n)n=25000;
   var hW=0,draw=0,aW=0,hG=0,aG=0,over25=0,over35=0,btts=0;
@@ -23518,8 +23576,8 @@ function _renderSocMatchCard(g,leagueKey){
   // _soccerMC() Monte Carlo engine (25k sims) instead of WC's ELO model,
   // since league matches source real xG from FBref/ESPN/mlssoccer.com.
   var hXG=_socXG(g.home,leagueKey),aXG=_socXG(g.away,leagueKey);
-  var hxg=hXG?(hXG.hxg||hXG.xg):1.4;
-  var axg=aXG?(aXG.axg||aXG.xg):1.1;
+  var _eg=_socExpectedGoals(hXG,aXG);
+  var hxg=_eg.hxg,axg=_eg.axg;
   // Injury adjustment — real roster data only exists for MLS today (see
   // buildInjuryRoster()'s soccer section), so this safely no-ops (0
   // penalty) for the other 4 leagues rather than needing a leagueKey check
@@ -23535,9 +23593,19 @@ function _renderSocMatchCard(g,leagueKey){
   var hP=mc.hWin,dP=mc.draw,aP=mc.aWin;
   var hML=p2ml(hP),dML=p2ml(dP),aML=p2ml(aP);
   var hCS=_socGC(hP),dCS=_socGC(dP),aCS=_socGC(aP);
-  var ouL=g.ou||2.5;
+  // Without a real market line, comparing every match against a flat 2.5
+  // systematically favors OVER — the model's own average combined total
+  // across the league tables is closer to 2.9 than 2.5 (modern top-flight
+  // football, not a modeling error), so a fixed universal line meant most
+  // matches cleared it regardless of the actual matchup, starving out
+  // UNDER and leaving ML/Draw rarely competitive against an OU market that
+  // was almost always inflated. Falling back to THIS match's own model-
+  // projected total (nearest half) instead means the O/U grade reflects
+  // whether the match is unusual for itself, not whether it's unusual
+  // relative to an arbitrary constant every match was being measured against.
+  var ouL=g.ou||(Math.round(mc.avgT*2)/2).toFixed(1);
   var ouId='ouinp_lg_'+leagueKey+'_'+(g.hAbbr||g.home)+'_'+(g.aAbbr||g.away);
-  var ouP=ouL<=2.5?mc.over25:ouL<=3.5?mc.over35:(mc.over35*0.65);
+  var ouP=_poissonOverProb(hxg+axg,parseFloat(ouL));
   var unP=1-ouP;
   var ouTier=tier(ouP,ev(ouP,1.909)),unTier=tier(unP,ev(unP,1.909));
   var gCol=function(t){return t===3?'var(--gc)':t===2?'var(--nc)':t===1?'var(--ic)':'var(--t3)';};
@@ -23736,7 +23804,14 @@ async function renderLeagueMatches(key){
   // synchronously, which was a real source of main-thread blocking.
   var byDate={};
   games.forEach(function(g){
-    var iso=(g.date||'').slice(0,10);if(!iso)return;
+    // Same UTC-vs-Denver bug already fixed for the fetch filter and the
+    // lock date: g.date is a UTC kickoff timestamp, and naively slicing its
+    // first 10 chars reads the UTC calendar date — an evening kickoff
+    // (already past midnight UTC) would group under tomorrow's date header
+    // instead of today's, even though the game is genuinely today locally.
+    var gd=new Date(g.date);
+    var iso=isNaN(gd)?(g.date||'').slice(0,10):gd.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    if(!iso)return;
     if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);
   });
   var dates=Object.keys(byDate).sort();
@@ -23811,7 +23886,8 @@ async function renderLeagueProps(key){
       var sotMC=propMC(sot,Math.max(1,sot*0.35),sotLine,5000);
       if(sotMC.overP>=0.57){var st=_socTier(sotMC.overP);if(st.g!=='SKIP')props.push({label:t.abbr+' OVER '+sotLine+' SHOTS ON TARGET',sublabel:matchLabel,prob:sotMC.overP,conf:sotMC.hitRate,grade:st.g,color:st.c,basis:t.team+' · '+sot.toFixed(1)+' SoT/G est. ('+t.xg.toFixed(2)+' xG) · MC: '+sotMC.hitRate+'% over '+sotLine});}
     });
-    var mc=_soccerMC(hXG?(hXG.hxg||hXG.xg):1.4,aXG?(aXG.axg||aXG.xg):1.1,25000);
+    var _eg2=_socExpectedGoals(hXG,aXG);
+    var mc=_soccerMC(_eg2.hxg,_eg2.axg,25000);
     var btT=_socTier(mc.btts);
     if(btT.g!=='SKIP')props.push({label:'BOTH TEAMS TO SCORE',sublabel:matchLabel,prob:mc.btts,conf:Math.round(mc.btts*100),grade:btT.g,color:btT.c,basis:g.home+' '+mc.hxg.toFixed(2)+'xG · '+g.away+' '+mc.axg.toFixed(2)+'xG · MC btts: '+(mc.btts*100).toFixed(0)+'%'});
   });
@@ -26531,8 +26607,8 @@ function _simRun(sport,home,away,N,flags){
       // already falls back gracefully to the static table for teams
       // without live coverage, same as the real cards.
       var hXG=_socXG(home,sport),aXG=_socXG(away,sport);
-      var hxg=hXG?(hXG.hxg||hXG.xg):1.4,axg=aXG?(aXG.axg||aXG.xg):1.1;
-      var socMC=_soccerMC(hxg,axg,2000);
+      var _eg3=_socExpectedGoals(hXG,aXG);
+      var socMC=_soccerMC(_eg3.hxg,_eg3.axg,2000);
       baseHP=Math.min(.88,Math.max(.12,socMC.hWin/(socMC.hWin+socMC.aWin||1)));
     }
     // NFL/CFB/CBB have no team-rating dataset (see _genericGameCard's
