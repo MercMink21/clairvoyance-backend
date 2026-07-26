@@ -1582,6 +1582,7 @@ body{line-height:1.5}
         <button class="btn btn-sm" style="font-size:15px;padding:2px 8px;border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.55)" onclick="renderAnalyticsBetHistory('HOCKEY')">HOCKEY</button>
         <button class="btn btn-sm" style="font-size:15px;padding:2px 8px;border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.55)" onclick="renderAnalyticsBetHistory('TENNIS')">TENNIS</button>
         <button class="btn btn-sm" style="font-size:15px;padding:2px 8px;border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.55)" onclick="renderAnalyticsBetHistory('FOOTBALL')">FOOTBALL</button>
+        <button class="btn btn-sm" style="font-size:15px;padding:2px 8px;border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.55)" onclick="renderAnalyticsBetHistory('SOCCER')">SOCCER</button>
       </div>
       <!-- League sub-row -->
       <div id="bethistory-league-row" style="display:none;gap:3px;flex-wrap:wrap;margin-bottom:5px;padding:4px 8px;background:rgba(4,0,12,.7);border-radius:2px;border:1px solid rgba(255,255,255,.05)"></div>
@@ -3437,21 +3438,23 @@ function _gradeChipHtml(p){
   const col=g==='PREMIUM'?'var(--gc)':g==='OPTIMAL'?'var(--pc)':'var(--nc)';
   return`<span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${col}66;color:${col};border-radius:2px;letter-spacing:1px">${g}</span>`;
 }
-// Club soccer sport tags (MLS/PL/LIGA/BL/CH) are internal shorthand, fine
-// for grouping/filtering, but too generic on their own for a user-facing
-// badge — 'PL' reads as nothing in particular next to 'MLB'/'NHL'. This
-// gives every soccer league its full name plus a SOCCER sub-label, so
-// history/analytics/performance views can show both "which league" and
-// "which broad sport" at a glance, matching how the Overall dashboard's
-// LEAGUE breakdown table already labels these (Champions League/Premier
-// League/La Liga/Bundesliga/MLS) — just applied everywhere a raw sport
-// badge gets rendered, not only that one table.
-const _SOC_LEAGUE_NAMES={MLS:'MLS',PL:'Premier League',LIGA:'La Liga',BL:'Bundesliga',CH:'Champions League',SOC:'World Cup',WC:'World Cup'};
+// Universal league-label + sport-sub-label pair for every pick, across
+// every sport — not just soccer. Label = the specific league (MLB, NFL,
+// Bundesliga, ...); sub-label = the broad sport it belongs to (BASEBALL,
+// FOOTBALL, SOCCER, ...), reusing _broadSportOf() so this stays in sync
+// with every other sport-grouping table in the app rather than
+// maintaining a second, divergent copy of the same mapping. Most leagues'
+// internal tag already reads fine as a label on its own (MLB, NFL, NHL,
+// NBA); only the ones whose raw tag is genuinely unclear out of context
+// (club soccer leagues, where 'PL'/'LIGA'/'BL'/'CH' mean nothing next to
+// 'MLB'/'NHL') get an explicit full-name override here.
+const _LEAGUE_LABEL_OVERRIDES={PL:'Premier League',LIGA:'La Liga',BL:'Bundesliga',CH:'Champions League',SOC:'World Cup',WC:'World Cup',WORLD_CUP:'World Cup',NCAAB:'CBB',NCAAH:'NHL',WORLDCUP:'World Cup'};
 function _leagueDisplayLabel(sportTag){
-  const t=(sportTag||'').toUpperCase();
-  const name=_SOC_LEAGUE_NAMES[t];
-  if(!name)return{sub:null,label:t};
-  return{sub:'SOCCER',label:name};
+  const t=(sportTag||'').toUpperCase().trim();
+  if(!t)return{sub:null,label:'—'};
+  const sub=_broadSportOf(t);
+  const label=_LEAGUE_LABEL_OVERRIDES[t]||t;
+  return{sub,label};
 }
 function _sportBadgeHtml(sportTag,sc){
   const d=_leagueDisplayLabel(sportTag);
@@ -10211,7 +10214,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
-            <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+            ${_sportBadgeHtml(p.sport,()=>sc)}
             <span style="font-family:var(--mono);font-size:15px;color:var(--t2)">${parlayHeader||mu}</span>
           </div>
           <div style="margin-bottom:2px">${legHtml}</div>
@@ -10619,7 +10622,7 @@ function renderOverallTrends(){
       const sc=sportCol[p.sport]||'var(--t3)';
       return`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-          <span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+          ${_sportBadgeHtml(p.sport,()=>sc)}
           <span style="font-family:var(--mono);font-size:15px;color:var(--t2)">${mu}</span>
           <span style="font-family:var(--mono);font-size:15px;color:var(--vc)">${_expandBetOn(p.betOn||'',p.sport)}</span>
         </div>
@@ -10696,7 +10699,7 @@ function renderOverallTrends(){
       <div style="font-family:var(--mono);font-size:15px;color:var(--nc);letter-spacing:2px;margin-bottom:8px">// WIN ANALYSIS — LAST ${winAnalysis.length}</div>
       ${winAnalysis.map(({p,factors})=>{const sc=sportCol[p.sport]||'var(--t3)';const mu=_gameTitle(p.hA,p.awA,p.sport);return`<div style="padding:6px 0;border-bottom:1px solid rgba(0,240,255,.07)">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
-          <span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+          ${_sportBadgeHtml(p.sport,()=>sc)}
           <span style="font-family:var(--mono);font-size:15px;color:var(--t)">${_expandBetOn(p.betOn||'',p.sport)}</span>
           <span style="font-family:var(--mono);font-size:14px;color:var(--nc)">WIN</span>
         </div>
@@ -10712,7 +10715,7 @@ function renderOverallTrends(){
       <div style="font-family:var(--mono);font-size:15px;color:var(--hc);letter-spacing:2px;margin-bottom:8px">// LOSS ANALYSIS — LAST ${lossAnalysis.length}</div>
       ${lossAnalysis.map(({p,factors})=>{const sc=sportCol[p.sport]||'var(--t3)';const mu=_gameTitle(p.hA,p.awA,p.sport);return`<div style="padding:6px 0;border-bottom:1px solid rgba(255,32,144,.07)">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px">
-          <span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid ${sc};color:${sc};border-radius:2px">${p.sport}</span>
+          ${_sportBadgeHtml(p.sport,()=>sc)}
           <span style="font-family:var(--mono);font-size:15px;color:var(--t)">${_expandBetOn(p.betOn||'',p.sport)}</span>
           <span style="font-family:var(--mono);font-size:14px;color:var(--hc)">LOSS</span>
         </div>
@@ -11936,7 +11939,7 @@ function renderHomePage(){
         const reasonText=reasonParts.join(' · ').slice(0,110);
         return`<div style="flex-shrink:0;width:272px;background:rgba(4,0,12,.85);border:1px solid ${col}${isSleeper?'66':'44'};border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;cursor:default;transition:border-color .2s${isSleeper?';box-shadow:0 0 8px '+col+'22':''}" onmouseenter="this.style.borderColor='${col}99'" onmouseleave="this.style.borderColor='${col}${isSleeper?'66':'44'}'">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-            <span style="font-family:var(--mono);font-size:13px;padding:1px 5px;border:1px solid ${sc(p.sport)};color:${sc(p.sport)};border-radius:2px">${p.sport}</span>
+            ${_sportBadgeHtml(p.sport,sc)}
             ${isSleeper
               ?`<span style="font-family:var(--mono);font-size:11px;padding:1px 6px;background:${col}22;border:1px solid ${col};color:${col};border-radius:2px;letter-spacing:1px;display:flex;align-items:center;gap:3px"><span style="font-size:14px">⚡</span>SLEEPER</span>`
               :`<span style="font-family:var(--mono);font-size:11px;padding:1px 5px;background:${col}22;border:1px solid ${col};color:${col};border-radius:2px;letter-spacing:1px">◆ PREMIUM</span>`
@@ -16464,7 +16467,7 @@ function renderBestBetsFromRemote(bets){
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:4px">
           <span style="font-family:var(--mono);font-size:16px;padding:1px 5px;border:1px solid ${gradeCol};color:${gradeCol};border-radius:2px">${b.grade}</span>
           ${b.evGrade?`<span style="font-family:var(--mono);font-size:16px;padding:1px 5px;border:1px solid ${evCol};color:${evCol};border-radius:2px">EV ${b.evGrade}</span>`:''}
-          <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">${b.sport}</span>
+          <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">${_leagueDisplayLabel(b.sport).label}</span>
           ${b.confidence!=null?`<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">CONF ${b.confidence}%</span>`:''}
         </div>
         <div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--ic);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.pick}</div>
@@ -17200,6 +17203,7 @@ function _broadSportOf(tag){
   if(t==='ATP'||t==='WTA'||t==='TEN'||t==='TENNIS')return'TENNIS';
   return null; // unrecognized league — excluded from the sport-level card rather than guessed
 }
+window._broadSportOf=_broadSportOf;
 // Sport normalization — infers correct sport from pick metadata
 function _normSport(p){
   // Explicit sport field always wins
@@ -25051,9 +25055,10 @@ function renderAnalyticsBetHistory(filter){
     HOCKEY:     {codes:['NHL','PWHL','KHL','SHL','LIIGA'], color:'var(--ic)', leagues:[{k:'NHL',label:'NHL'},{k:'PWHL',label:'PWHL'},{k:'KHL',label:'KHL'},{k:'SHL',label:'SHL'},{k:'LIIGA',label:'LIIGA'}]},
     TENNIS:     {codes:['TEN','ATP','WTA'],                  color:'var(--mc)', leagues:[{k:'ATP',label:'ATP'},{k:'WTA',label:'WTA'}]},
     FOOTBALL:   {codes:['NFL','CFB','FB'],                 color:'var(--hc)', leagues:[{k:'NFL',label:'NFL'},{k:'CFB',label:'COLLEGE'}]},
+    SOCCER:     {codes:['MLS','PL','LIGA','BL','CH','SOC','WC'], color:'var(--nc)', leagues:[{k:'MLS',label:'MLS'},{k:'PL',label:'Premier League'},{k:'LIGA',label:'La Liga'},{k:'BL',label:'Bundesliga'},{k:'CH',label:'Champions League'}]},
   };
   const OUTCOME_FILTERS=['ALL','WIN','LOSS','PROP'];
-  const LEAGUE_CODES=['MLB','NBA','WNBA','NHL','PWHL','KHL','SHL','LIIGA','TEN','ATP','WTA','NFL','CFB','FB'];
+  const LEAGUE_CODES=['MLB','NBA','WNBA','NHL','PWHL','KHL','SHL','LIIGA','TEN','ATP','WTA','NFL','CFB','FB','MLS','PL','LIGA','BL','CH'];
 
   // Resolve filter type
   let filterType='outcome'; // outcome | sport | league
