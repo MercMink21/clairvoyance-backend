@@ -101,11 +101,21 @@
       document.getElementById('headline-range').textContent = range || '';
       const container = document.getElementById('rows');
       container.innerHTML = '';
+      // Long league lists (SOCCER's 6) wrap mid-name if left to natural
+      // CSS reflow (e.g. "Serie" / "A" splitting apart). Force a clean
+      // break at the halfway comma instead — same logic as _splitLeagues
+      // in docs/app.html's canvas card generator.
+      const _splitSub = s => {
+        const parts = s.split(', ');
+        if (parts.length < 4) return s;
+        const mid = Math.ceil(parts.length / 2);
+        return parts.slice(0, mid).join(', ') + '<br>' + parts.slice(mid).join(', ');
+      };
       rows.forEach((r, i) => {
         const div = document.createElement('div');
         div.className = 'row' + (r.isTotal ? ' total' : '');
         const unitsColor = r.isTotal ? '' : (String(r.units).trim().startsWith('-') ? 'color:#ff2090' : 'color:#00da88');
-        const subHtml = r.sub ? `<span class="sub">${r.sub}</span>` : '';
+        const subHtml = r.sub ? `<span class="sub">${_splitSub(r.sub)}</span>` : '';
         div.innerHTML = `<span class="label-col"><span class="label">${r.label}</span>${subHtml}</span><span class="val"><span class="rec">${r.record}</span><span class="pct">${r.pct}</span><span class="units" style="${unitsColor}">${r.units || ''}</span></span>`;
         div.style.animation = `rowIn .55s ease-out ${0.5 + i * 0.4}s forwards`;
         container.appendChild(div);
