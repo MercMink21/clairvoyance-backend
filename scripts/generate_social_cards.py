@@ -107,7 +107,7 @@ EVENTS: list[dict] = [
 # every 5 calendar days, deterministically (days-since-epoch // 5), so it
 # never needs stored state and can't double-fire or drift out of sync.
 ROTATION_EPOCH = datetime(2026, 7, 1, tzinfo=timezone.utc)
-ROTATION_CONTENT = ["how-it-works", "data-to-decision", "grading", "subscription", "covers"]
+ROTATION_CONTENT = ["grading", "subscription"]
 # Static "what Clairvoyance covers" asset — a real pre-made card (not
 # generated), attached as-is rather than turned into a video.
 COVERS_CARD_PATH = ROOT / "scripts" / "assets" / "covers_card.png"
