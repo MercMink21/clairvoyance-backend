@@ -162,7 +162,7 @@ SPORT_LEAGUES = {
     "BASKETBALL": "NBA, WNBA, CBB",
     "FOOTBALL": "NFL, CFB",
     "HOCKEY": "NHL, PWHL, KHL, SHL, LIIGA",
-    "SOCCER": "World Cup, UCL, EPL, La Liga, Bundesliga, MLS",
+    "SOCCER": "Bundesliga, Champions League, La Liga, MLS, Premier League, Serie A",
     "TENNIS": "ATP, WTA",
 }
 
