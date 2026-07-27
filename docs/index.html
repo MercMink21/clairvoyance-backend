@@ -179,6 +179,16 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   html .par-leg{flex-direction:column!important}
   /* ── Modals ── */
   #bet-popup-inner{max-width:calc(100vw - 16px)!important;margin:0 8px;border-radius:4px}
+  /* ── Lock/Win/Loss confirmation popup — box and text both too large
+     on mobile ── */
+  #bet-popup-inner>div[style*="padding:22px 20px 18px"]{padding:12px 12px 10px!important}
+  #bet-popup-title{font-size:14px!important}
+  #bet-popup-bet{font-size:11px!important}
+  #bet-popup-meta{font-size:10px!important;line-height:1.6!important}
+  #bet-popup-result{padding:6px 10px!important}
+  #bet-popup-result-text{font-size:16px!important;letter-spacing:2px!important}
+  #bet-popup-result-sub{font-size:9px!important}
+  #bet-popup [onclick="closeBetPopup()"]{font-size:18px!important}
   /* ── Card widths ── */
   html .sg{padding:10px!important}
   html .social-card-wrap{width:100%!important;max-width:100%!important}
@@ -552,8 +562,8 @@ body{line-height:1.5}
     <div id="mlb-tab-picks" style="display:none"><div id="pd"></div><div id="mlb-injury-news"></div><div id="mlb-engine-picks"></div><div id="picks-l"></div></div>
     <div id="mlb-tab-games" class="tab act">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="sh" style="margin:0"><span class="p"></span> 7-DAY MATCHES <span id="mlb-games-date" style="font-family:var(--mono);font-size:18px;color:var(--t3);font-weight:400;margin-left:8px"></span></div>
-        <button class="btn btn-p btn-sm" onclick="loadGames().then(()=>renderMLBWeek(null))">↻ ESPN</button>
+        <div class="sh" style="margin:0"><span class="p"></span> TODAY'S MATCHES <span id="mlb-games-date" style="font-family:var(--mono);font-size:18px;color:var(--t3);font-weight:400;margin-left:8px"></span></div>
+        <button class="btn btn-p btn-sm" onclick="loadGames().then(()=>renderMLBWeek())">↻ ESPN</button>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:8px;font-family:var(--mono);font-size:16px">
         <span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span>
@@ -3911,24 +3921,24 @@ async function loadGames(dateStr){
   if(isToday)autoSettleFromESPN(games);
 }
 
-// ═══ MLB 7-DAY MATCHES WINDOW + DATE FILTER ════════════════════════════════
+// ═══ MLB TODAY'S MATCHES ════════════════════════════════════════════════
 // loadGames() above stays untouched (it drives the picks engine, parlay
 // rows, opening-line tracking, auto-settle — all today-only side effects
 // that must keep working exactly as before). This is purely a display
-// layer: fetches a 7-day ESPN scoreboard range and re-renders #games-l as
-// a day-grouped, date-filterable list using the existing mlbCard() template,
-// so every game keeps its full pick-locking/EV/chip functionality — it just
-// shows a week at a time instead of only today.
+// layer using the existing mlbCard() template, so every game keeps its
+// full pick-locking/EV/chip functionality. Was previously a 7-day
+// rolling window (dozens of fixtures fetched and rendered at once, each
+// getting a full mlbCard() render) — restricted to today only, same
+// convention as the club soccer leagues' _fetchLeagueScoreboard.
 var _mlbWeekCache=null,_mlbWeekCacheTs=0;
 async function _fetchMLBWeekGames(){
-  var d0=new Date(),d1=new Date();d1.setDate(d1.getDate()+6);
   var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates='+fmt(d0)+'-'+fmt(d1)+'&limit=300',{mode:'cors',cache:'no-cache'});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates='+fmt(new Date())+'&limit=300',{mode:'cors',cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
     return (d.events||[]).map(parseESPNGame).filter(Boolean);
-  }catch(e){console.warn('[CV] MLB week fetch:',e.message);return[];}
+  }catch(e){console.warn('[CV] MLB today fetch:',e.message);return[];}
 }
 // Filter-bar day buttons should reflect when games actually are, not
 // blindly "today + next 6 calendar days" — a schedule gap (e.g. MLS
@@ -3958,28 +3968,20 @@ function _weekFilterBar(sport,activeDate,days,callExpr){
   html+='</div>';
   return html;
 }
-async function renderMLBWeek(filterDate){
+async function renderMLBWeek(){
   var el=document.getElementById('games-l');if(!el)return;
-  el.innerHTML='<div class="loading"><span class="spi"></span> LOADING 7-DAY WINDOW…</div>';
+  el.innerHTML='<div class="loading"><span class="spi"></span> LOADING TODAY\'S GAMES…</div>';
   var now=Date.now();
   if(!_mlbWeekCache||now-_mlbWeekCacheTs>5*60*1000){_mlbWeekCache=await _fetchMLBWeekGames();_mlbWeekCacheTs=now;}
   var games=_mlbWeekCache||[];
   games.forEach(function(g){try{_augmentWithLiveOdds(g,'MLB');}catch(e){}});
-  var byDate={};
-  games.forEach(function(g){var iso=(g.date||'').slice(0,10);if(!iso)return;if(!byDate[iso])byDate[iso]=[];byDate[iso].push(g);});
-  var days=_filterDays(byDate);
-  var dates=Object.keys(byDate).sort();
-  if(filterDate)dates=dates.filter(function(d){return d===filterDate;});
   var todayIso=today();
-  var html=_weekFilterBar('MLB',filterDate,days);
-  if(!dates.length)html+='<div class="empty">NO GAMES ON THIS DATE</div>';
-  dates.forEach(function(d){
-    var isTod=d===todayIso;
-    html+='<div style="font-family:var(--mono);font-size:16px;color:'+(isTod?'var(--hc)':'var(--nc)')+';letter-spacing:2px;padding:10px 4px 6px;border-top:1px solid rgba(255,255,255,.08)">'+new Date(d+'T00:00:00').toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+(isTod?' · TODAY':'')+'</div>';
-    byDate[d].forEach(function(g){
-      if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])return;
-      html+=mlbCard(g.hA,g.awA,g.gt,g.date,g);
-    });
+  games=games.filter(function(g){return (g.date||'').slice(0,10)===todayIso;});
+  var html='';
+  if(!games.length)html+='<div class="empty">NO GAMES TODAY</div>';
+  games.forEach(function(g){
+    if(!g.hA||!g.awA||!TEAMS[g.hA]||!TEAMS[g.awA])return;
+    html+=mlbCard(g.hA,g.awA,g.gt,g.date,g);
   });
   el.innerHTML=html;
 }
@@ -12693,7 +12695,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   document.getElementById(`${sport}-tab-${tabId}`)?.classList.add('act');
   const cls=(sport==='nhl'||sport==='nba'||sport==='wnba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
-  if(sport==='mlb'){if(tabId==='games'){try{(ESPN_GAMES.length?Promise.resolve():loadGames()).then(()=>renderMLBWeek(null));}catch(e){}}if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');if(tabId==='parlay')try{cvParlayInit('mlb');}catch(e){}}
+  if(sport==='mlb'){if(tabId==='games'){try{(ESPN_GAMES.length?Promise.resolve():loadGames()).then(()=>renderMLBWeek());}catch(e){}}if(tabId==='ranks')renderR();if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='props')renderMLBProps('all');if(tabId==='parlay')try{cvParlayInit('mlb');}catch(e){}}
   if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games'){renderNHLTonight();renderNHLGames();};if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props'){renderProps();renderNHLSCFProps();setTimeout(()=>renderNHLPropsLive(window._nhlPropFilter||'all'),50);}if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){
   startNHLLive();renderNHLLiveBets();
   const liveEl=document.getElementById('nhl-live-scores-main');
