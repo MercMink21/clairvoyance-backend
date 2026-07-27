@@ -4552,23 +4552,37 @@ function mlbCard(hA,awA,gt,date,espnGame){
 // the ceiling, so coverage is complete across every tab and sub-tab
 // without needing to touch each render function individually.
 const _MOBILE_FONT_CEILING=14; // px — home page's own time-frame record text size
+const _MOBILE_BUTTON_FONT_CEILING=10; // buttons read smaller than the ceiling above
+const _MOBILE_BUTTON_PAD_CEILING=6; // px, per side — caps oversized inline button padding
 function _isMobileViewport(){return window.matchMedia&&window.matchMedia('(max-width:768px)').matches;}
+function _isMobileBtn(el){return el.tagName==='BUTTON'||el.classList.contains('btn')||el.classList.contains('btn-n')||el.classList.contains('btn-p')||el.classList.contains('btn-o')||el.classList.contains('btn-g')||el.classList.contains('btn-h')||el.classList.contains('btn-i')||el.classList.contains('btn-sm');}
 function capMobileFontSizes(root){
   if(!_isMobileViewport())return;
   const scope=(root&&root.querySelectorAll)?root:document;
+  // Buttons get their own (smaller) ceiling below — skip them here so
+  // this pass's larger ceiling can never win the inline-style
+  // specificity fight against the button-specific pass.
   scope.querySelectorAll('[style*="font-size"]').forEach(el=>{
+    if(_isMobileBtn(el))return;
     const fs=parseFloat(el.style.fontSize);
     if(fs&&fs>_MOBILE_FONT_CEILING&&el.tagName!=='INPUT'&&el.tagName!=='SELECT'&&el.tagName!=='TEXTAREA'){
       el.style.setProperty('font-size',_MOBILE_FONT_CEILING+'px','important');
     }
   });
-  // Buttons: cap font-size and visually shrink padding, wherever they
-  // live (matchup card actions, remove/win/loss buttons, refresh
-  // buttons, etc.) — most also carry inline padding, not just font-size.
+  // Buttons: smaller font ceiling than body text, plus cap any inline
+  // padding — wherever they live (matchup card actions, remove/win/loss
+  // buttons, refresh buttons, etc.), most carry inline padding too, not
+  // just font-size, so shrinking font alone still leaves an oversized box.
   scope.querySelectorAll('button,.btn,.btn-n,.btn-p,.btn-o,.btn-g,.btn-h,.btn-i,.btn-sm').forEach(el=>{
     const cs=getComputedStyle(el);
-    if(parseFloat(cs.fontSize)>_MOBILE_FONT_CEILING){
-      el.style.setProperty('font-size',_MOBILE_FONT_CEILING+'px','important');
+    if(parseFloat(cs.fontSize)>_MOBILE_BUTTON_FONT_CEILING){
+      el.style.setProperty('font-size',_MOBILE_BUTTON_FONT_CEILING+'px','important');
+    }
+    if(el.style.padding||el.getAttribute('style')?.includes('padding')){
+      const pv=parseFloat(cs.paddingTop),ph=parseFloat(cs.paddingLeft);
+      if(pv>_MOBILE_BUTTON_PAD_CEILING||ph>_MOBILE_BUTTON_PAD_CEILING+4){
+        el.style.setProperty('padding',Math.min(pv,_MOBILE_BUTTON_PAD_CEILING)+'px '+Math.min(ph,_MOBILE_BUTTON_PAD_CEILING+4)+'px','important');
+      }
     }
   });
 }
@@ -4904,6 +4918,14 @@ async function syncPicksFromSupabase(){
       try{renderOverallHistory();}catch(e){}
       console.log(`[CV] Supabase pull: +${added} new, ${updated} settled, ${removed} removed from other device(s)`);
     }
+    // _dedupeStalePendingPicks() previously only ran once at boot — but
+    // this function runs repeatedly (90s interval, manual SYNC button),
+    // and each pull can in principle introduce a fresh stale-pending
+    // duplicate of an already-settled bet. Running the cleanup after
+    // every pull (not just once at boot) means a duplicate never
+    // survives longer than one sync cycle, on a device that stays open
+    // for a long time rather than only self-healing on next full reload.
+    try{_dedupeStalePendingPicks();}catch(e){}
   }catch(e){console.warn('[CV] Supabase pull failed (offline?):',e.message);}
 }
 async function syncPicksFromBackend(){
