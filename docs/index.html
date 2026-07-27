@@ -11,8 +11,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CLAIRVOYANCE">
 <meta name="theme-color" content="#020008">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-1080.png">
+<link rel="manifest" href="manifest.json?v=2">
+<!-- ?v=2 cache-busts iOS's home-screen-icon cache, which is keyed off
+     this exact URL and won't pick up a same-URL file change otherwise
+     — bump this whenever icon-1080.png's content changes again. -->
+<link rel="apple-touch-icon" sizes="1080x1080" href="icon-1080.png?v=2">
 <title>CLAIRVOYANCE ENGINE v5.1 — App</title>
 <script src="config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700;800&display=swap" rel="stylesheet">
@@ -111,9 +114,16 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .mb:active{background:rgba(240,0,255,.06)}.mb.act{color:var(--nc)}.mb.ai{color:var(--ic)}.mb.ap{color:var(--pc)}.mbi{font-size:26px;line-height:1}
 @media(max-width:768px){
   /* ── Core layout ── */
-  #mn{display:flex}.inav{display:none}
+  /* Bottom tab nav removed on mobile entirely — expands usable screen
+     coverage. Top sport-bar (#sbar) + in-page sub-tabs already provide
+     full navigation, so this was pure duplicate/redundant chrome. */
+  #mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{display:none!important}
+  .inav{display:none}
   body{font-size:11px}
-  #hdr{flex:0 0 calc(58px + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) 6px 0}
+  /* Shrink header to hug its content (title+time row is ~34px tall) —
+     shifts everything up and puts the glow line (bottom:0 of #hdr)
+     right under the time row instead of leaving a visible gap. */
+  #hdr{flex:0 0 calc(38px + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) 6px 0}
   .ub{font-size:9px;padding:2px 5px;letter-spacing:.5px}
   .logo{font-size:clamp(8px,2.5vw,12px);letter-spacing:clamp(1px,.6vw,3px)}
   .tab{padding:10px 8px 90px}
@@ -202,6 +212,42 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   .perf-card-hdr{white-space:normal!important;line-height:1.3}
   .perf-card-row{flex-wrap:wrap!important;gap:5px!important}
   .perf-card-rec{font-size:14px!important}
+  /* ── Blanket inline font-size cap ──────────────────────────────
+     The vast majority of this app's text (pending-bet cards, sub-tab
+     headers, dropdown menus, history/"recents" rows, remove buttons,
+     etc.) is set via one-off inline style="font-size:Npx" in render
+     functions, not shared classes — so the class-based rules above
+     never touch most of the app's actual text. Rather than editing
+     thousands of individual call sites, cap every common inline size
+     directly via attribute selector so nothing on mobile renders
+     larger than the home page's own time-frame record text (14px).
+     input/select/textarea excluded — they need to stay >=16px or iOS
+     auto-zooms on focus (see the tag-selector rule above). ── */
+  [style*="font-size:37px"]:not(input):not(select):not(textarea),
+  [style*="font-size:35px"]:not(input):not(select):not(textarea),
+  [style*="font-size:32px"]:not(input):not(select):not(textarea){font-size:13px!important}
+  [style*="font-size:30px"]:not(input):not(select):not(textarea),
+  [style*="font-size:27px"]:not(input):not(select):not(textarea),
+  [style*="font-size:26px"]:not(input):not(select):not(textarea),
+  [style*="font-size:25px"]:not(input):not(select):not(textarea){font-size:12px!important}
+  [style*="font-size:24px"]:not(input):not(select):not(textarea),
+  [style*="font-size:23px"]:not(input):not(select):not(textarea),
+  [style*="font-size:22px"]:not(input):not(select):not(textarea){font-size:11px!important}
+  [style*="font-size:20px"]:not(input):not(select):not(textarea),
+  [style*="font-size:19px"]:not(input):not(select):not(textarea),
+  [style*="font-size:18px"]:not(input):not(select):not(textarea){font-size:10px!important}
+  [style*="font-size:17px"]:not(input):not(select):not(textarea),
+  [style*="font-size:16px"]:not(input):not(select):not(textarea),
+  [style*="font-size:15px"]:not(input):not(select):not(textarea){font-size:9px!important}
+  [style*="font-size:14px"]:not(input):not(select):not(textarea),
+  [style*="font-size:13px"]:not(input):not(select):not(textarea),
+  [style*="font-size:12px"]:not(input):not(select):not(textarea){font-size:8px!important}
+  /* ── Dropdown nav menus (league pickers) — same fix, class-based ── */
+  .nav-drop-fixed button,.nav-drop button{font-size:10px!important;padding:6px 10px!important}
+  /* ── Bottom mobile tab nav removed entirely to expand screen
+     coverage — see #mn rule below. Reclaim the space it used to
+     reserve at the bottom of every tab. ── */
+  .tab{padding:10px 8px 14px!important}
 }
 @media(max-width:480px){
   /* ── Extra-narrow phones (SE, older Android) ── */
@@ -229,7 +275,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   .gtm{font-size:11px}
   .g4{grid-template-columns:1fr!important}
   .g3{grid-template-columns:1fr!important}
-  #hdr{flex:0 0 calc(54px + env(safe-area-inset-top,0px))}
+  #hdr{flex:0 0 calc(36px + env(safe-area-inset-top,0px))}
   .logo{letter-spacing:1px}
 }
 /* NAV ITEM DROPDOWNS */
