@@ -1784,7 +1784,7 @@ body{line-height:1.5}
       <!-- Sport picker -->
       <div>
         <div style="font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px;margin-bottom:4px">SPORT</div>
-        <select id="sim-sport" class="fi" style="width:100%" onchange="simUpdateTeams()">
+        <select id="sim-sport" class="fi" style="width:100%" onchange="simSportChanged()">
           <option value="mlb">MLB</option>
           <option value="nba">NBA</option>
           <option value="nhl">NHL</option>
@@ -1793,12 +1793,15 @@ body{line-height:1.5}
           <option value="cfb">COLLEGE FOOTBALL</option>
           <option value="cbb">COLLEGE BASKETBALL</option>
           <option value="tennis">TENNIS</option>
+          <option value="soccer">SOCCER</option>
+        </select>
+        <select id="sim-league" class="fi" style="width:100%;margin-top:4px;display:none" onchange="simUpdateTeams()">
           <option value="wc">WORLD CUP</option>
-          <option value="mls">MLS</option>
-          <option value="cl">CHAMPIONS LEAGUE</option>
-          <option value="pl">PREMIER LEAGUE</option>
-          <option value="liga">LA LIGA</option>
           <option value="bl">BUNDESLIGA</option>
+          <option value="cl">CHAMPIONS LEAGUE</option>
+          <option value="liga">LA LIGA</option>
+          <option value="mls">MLS</option>
+          <option value="pl">PREMIER LEAGUE</option>
           <option value="seriea">SERIE A</option>
         </select>
       </div>
@@ -27093,6 +27096,9 @@ var SIM_FB = {
   bl:['Bayern Munich','Bayer Leverkusen','Borussia Dortmund','RB Leipzig','Eintracht Frankfurt','VfB Stuttgart','Borussia Monchengladbach','Wolfsburg','Freiburg','Union Berlin'],
   ita:['Inter Milan','Napoli','Juventus','AC Milan','Atalanta','Roma','Lazio','Fiorentina','Bologna','Torino','Udinese','Genoa','Hellas Verona','Cagliari','Parma','Como','Lecce','Venezia','Empoli','Monza']
 };
+// seriea (the dropdown/ESPN-path key) aliases ita's real 20-team list -
+// same key mismatch class of bug found and fixed across this session.
+SIM_FB.seriea=SIM_FB.ita;
 
 /* ── simUpdateTeams ──────────────────────────────────────────────── */
 // ESPN team-list endpoints for the sports/leagues that don't have any
@@ -27119,16 +27125,39 @@ async function _simFetchTeams(sport){
     return list;
   }catch(e){console.warn('[CV] Sim team list fetch failed for',sport,e.message);return[];}
 }
+// Called on #sim-sport change — toggles the league dropdown (soccer only)
+// and re-resolves the effective sport/league for the team lists.
+function simSportChanged(){
+  var sel=document.getElementById('sim-sport');
+  var lg=document.getElementById('sim-league');
+  if(lg)lg.style.display=(sel&&sel.value==='soccer')?'block':'none';
+  simUpdateTeams();
+}
+// Resolves the #sim-sport / #sim-league pair down to the single league
+// code every other sim function (fetch, run, history) expects — soccer
+// is one SPORT entry with its 7 real values living in the LEAGUE select.
+function _simEffectiveSport(){
+  var sel=document.getElementById('sim-sport');
+  var sport=(sel&&sel.value)||'mlb';
+  if(sport==='soccer'){
+    var lgSel=document.getElementById('sim-league');
+    return(lgSel&&lgSel.value)||'wc';
+  }
+  return sport;
+}
 function simUpdateTeams() {
   var sel  = document.getElementById('sim-sport');
   var hSel = document.getElementById('sim-home');
   var aSel = document.getElementById('sim-away');
   if (!sel || !hSel || !aSel) return;
-  var sport = sel.value || 'mlb';
+  // Soccer is one SPORT entry with a separate LEAGUE dropdown for the
+  // 6 club leagues + World Cup — resolve to the actual league code the
+  // rest of this function (and runSimulator/_simRun) expect.
+  var sport = _simEffectiveSport();
   if(SIM_ESPN_TEAM_PATHS[sport]){
     hSel.innerHTML='<option>Loading…</option>';aSel.innerHTML='<option>Loading…</option>';
     _simFetchTeams(sport).then(function(teams){
-      if((document.getElementById('sim-sport')||{}).value!==sport)return; // sport changed again before this resolved
+      if(_simEffectiveSport()!==sport)return; // sport/league changed again before this resolved
       if(!teams.length)teams=SIM_FB[sport]||SIM_FB.mlb;
       teams=teams.slice().sort();
       var opts=teams.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('');
@@ -27176,7 +27205,7 @@ function simUpdateTeams() {
 
 /* ── runSimulator ───────────────────────────────────────────────── */
 function runSimulator() {
-  var sport = (document.getElementById('sim-sport')||{}).value || 'mlb';
+  var sport = _simEffectiveSport();
   var home  = (document.getElementById('sim-home') ||{}).value;
   var away  = (document.getElementById('sim-away') ||{}).value;
   var N     = parseInt((document.getElementById('sim-count')||{}).value||'25000');
