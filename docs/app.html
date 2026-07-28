@@ -1776,6 +1776,7 @@ body{line-height:1.5}
           <option value="pl">PREMIER LEAGUE</option>
           <option value="liga">LA LIGA</option>
           <option value="bl">BUNDESLIGA</option>
+          <option value="seriea">SERIE A</option>
         </select>
       </div>
       <!-- Home / P1 -->
@@ -10476,7 +10477,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     FOOTBALL:  ['NFL','CFB','FB'],
     HOCKEY:    ['NHL','PWHL','NCAAH','COLLEGE HOCKEY','KHL','SHL','LIIGA'],
     TENNIS:    ['WTA','ATP','TEN'],
-    SOCCER:    ['SOC','WC','PL','LIGA','BL','MLS'],
+    SOCCER:    ['SOC','WC','PL','LIGA','BL','BUND','CL','SERIEA','MLS'],
   };
   // Normalize sport tags in bets to canonical league codes for matching
   const _normSport=s=>{
@@ -10500,7 +10501,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
   // Derive a sortable ISO date for each pick (prefer p.date, fall back to lockedAt)
   const pickDate=p=>p.date||(p.lockedAt?new Date(p.lockedAt).toLocaleDateString('sv-SE',{timeZone:'America/Denver'}):'');
 
-  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',CBB:'var(--pc)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',FB:'var(--hc)',PROP:'var(--gc)',SOC:'var(--nc)',WC:'var(--nc)',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b',PWHL:'var(--ic)',KHL:'var(--ic)',SHL:'var(--ic)',LIIGA:'var(--ic)',NCAAH:'var(--ic)',default:'var(--t3)'};
+  const sportColor={MLB:'var(--vc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--ic)',CBB:'var(--pc)',TEN:'var(--mc)',ATP:'var(--mc)',WTA:'var(--mc)',F1:'var(--mc)',NFL:'var(--hc)',CFB:'var(--hc)',FB:'var(--hc)',PROP:'var(--gc)',SOC:'var(--nc)',WC:'var(--nc)',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',BUND:'#e00000',CL:'#0033a0',SERIEA:'#008fd7',MLS:'#00c14b',PWHL:'var(--ic)',KHL:'var(--ic)',SHL:'var(--ic)',LIIGA:'var(--ic)',NCAAH:'var(--ic)',default:'var(--t3)'};
   // Build filter controls
   const btnAct='border-color:var(--pc);color:var(--pc)';
   const noAct='';
@@ -10510,7 +10511,7 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     {key:'BASKETBALL',label:'BASKETBALL',color:'var(--pc)', leagues:[{key:'NBA',label:'NBA'},{key:'WNBA',label:'WNBA'},{key:'CBB',label:'CBB'}]},
     {key:'FOOTBALL',  label:'FOOTBALL',  color:'var(--hc)', leagues:[{key:'NFL',label:'NFL'},{key:'CFB',label:'CFB'}]},
     {key:'HOCKEY',    label:'HOCKEY',    color:'var(--ic)', leagues:[{key:'NHL',label:'NHL'},{key:'NCAAH',label:'COLLEGE'},{key:'SHL',label:'SHL'},{key:'LIIGA',label:'LIIGA'},{key:'KHL',label:'KHL'},{key:'PWHL',label:'PWHL'}]},
-    {key:'SOCCER',    label:'SOCCER',    color:'var(--nc)', leagues:[{key:'SOC',label:'WORLD CUP'},{key:'PL',label:'PREMIER'},{key:'LIGA',label:'LA LIGA'},{key:'BL',label:'BUNDESLIGA'},{key:'MLS',label:'MLS'}]},
+    {key:'SOCCER',    label:'SOCCER',    color:'var(--nc)', leagues:[{key:'BUND',label:'BUNDESLIGA'},{key:'CL',label:'CHAMPIONS LEAGUE'},{key:'LIGA',label:'LA LIGA'},{key:'MLS',label:'MLS'},{key:'PL',label:'PREMIER'},{key:'SERIEA',label:'SERIE A'},{key:'SOC',label:'WORLD CUP'}]},
     {key:'TENNIS',    label:'TENNIS',    color:'var(--mc)', leagues:[{key:'ATP',label:'ATP'},{key:'WTA',label:'WTA'}]},
   ];
   // Determine active sport group (for sub-row display)
@@ -26909,7 +26910,7 @@ var SIM_FB = {
 // hand-maintained list that goes stale.
 var SIM_ESPN_TEAM_PATHS={
   nfl:'football/nfl', cfb:'football/college-football', cbb:'basketball/mens-college-basketball',
-  mls:'soccer/usa.1', cl:'soccer/UEFA.champions', pl:'soccer/eng.1', liga:'soccer/esp.1', bl:'soccer/ger.1'
+  mls:'soccer/usa.1', cl:'soccer/UEFA.champions', pl:'soccer/eng.1', liga:'soccer/esp.1', bl:'soccer/ger.1', seriea:'soccer/ita.1'
 };
 var _simTeamCache={};
 async function _simFetchTeams(sport){
@@ -27016,6 +27017,11 @@ function _simSaveToHistory(sport,home,away,N,r){
   _simRenderHistory();
 }
 function _simClearHistory(){try{localStorage.removeItem('sim_history');}catch(e){}_simRenderHistory();}
+function _simRemoveHistoryEntry(ts){
+  var h=_simGetHistory().filter(function(s){return s.ts!==ts;});
+  try{localStorage.setItem('sim_history',JSON.stringify(h));}catch(e){}
+  _simRenderHistory();
+}
 function _simRenderHistory(){
   var el=document.getElementById('sim-history-list');if(!el)return;
   var h=_simGetHistory();
@@ -27034,6 +27040,7 @@ function _simRenderHistory(){
       +'<span style="color:'+aCol+'">'+Math.round(s.aP*100)+'% ('+aML+')</span>'
       +'<span style="color:'+aCol+';font-weight:700;flex:1;text-align:right">'+s.away+'</span>'
       +'<span style="color:var(--t3);min-width:58px;text-align:right">'+ts+'</span>'
+      +'<button class="btn btn-sm" style="color:var(--t3);border-color:var(--t3);padding:2px 6px;font-size:14px" onclick="_simRemoveHistoryEntry('+s.ts+')" title="Remove this run">✕</button>'
       +'</div>';
   }).join('');
 }
