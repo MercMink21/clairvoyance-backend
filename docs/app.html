@@ -17160,7 +17160,21 @@ function _cvForceFreshReload(){
   window.location.href=window.location.pathname+'?_cvfresh='+Date.now();
 }
 // ── Version freshness: if version.json is newer than cached, hard reload ────
-(async function cvVersionCheck(){
+// version.json's "built" timestamp is rewritten to the current minute on
+// EVERY background data-refresh bot run (every 2-3 minutes, all day),
+// completely independent of whether the app's actual code changed — it
+// was never meant to track "real deploy" at that granularity. Running
+// this check immediately on load raced directly against the splash
+// screen's ~6-8s animation: any reopen of the app more than ~2-3 minutes
+// after the previous one had a good chance of finding a "mismatch" and
+// force-reloading mid-splash, which is exactly what a glitchy/skipped
+// splash looks like. Mobile hits this far more than desktop simply
+// because phones get closed and reopened throughout the day, while a
+// desktop tab tends to stay open in one continuous session. Deferred
+// until 9s after load — safely past the splash's own 8s hard-escape-
+// hatch — so a version bump can still eventually get picked up, just
+// never while the splash is actually on screen.
+setTimeout(()=>{(async function cvVersionCheck(){
   try{
     const r=await fetch('./version.json?_='+Date.now(),{cache:'no-store'});
     if(!r.ok)return;
@@ -17176,7 +17190,7 @@ function _cvForceFreshReload(){
     }
     localStorage.setItem('cv_app_built',built);
   }catch(e){}
-})();
+})();},9000);
 // ── Mobile freshness: reload if app returns from background after >10min ────
 (function(){
   let hiddenAt=0;
