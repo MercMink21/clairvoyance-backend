@@ -11453,10 +11453,39 @@ function renderAdaptiveLearning(){
 }
 
 // ── ENGINE OPS ───────────────────────────────────────────────────────────────
+// Real sport tabs — clicking one hides every other sport's controls
+// instead of showing all ~25 buttons per category at once. Soccer gets
+// its own league sub-tab row since it's 6 leagues + World Cup.
+const _OPS_SPORT_TABS=[
+  {k:'MLB',label:'MLB',color:'var(--vc)'},
+  {k:'NBA',label:'NBA',color:'var(--pc)'},
+  {k:'WNBA',label:'WNBA',color:'var(--pc)'},
+  {k:'NHL',label:'NHL',color:'var(--ic)'},
+  {k:'NFL',label:'NFL',color:'var(--hc)'},
+  {k:'TEN',label:'TENNIS',color:'var(--mc)'},
+  {k:'SOCCER',label:'SOCCER',color:'var(--nc)'},
+  {k:'WC',label:'WORLD CUP',color:'var(--gc)'},
+];
+const _OPS_SOCCER_LEAGUES=[
+  {k:'BUND',label:'BUNDESLIGA'},{k:'CL',label:'CHAMPIONS LG'},{k:'LIGA',label:'LA LIGA'},
+  {k:'MLS',label:'MLS'},{k:'PL',label:'PREMIER LG'},{k:'SERIEA',label:'SERIE A'},
+];
+function _opsSetTab(sport){
+  window._opsActiveSport=sport;
+  if(sport!=='SOCCER')window._opsActiveLeague=null;
+  else if(!window._opsActiveLeague)window._opsActiveLeague='BUND';
+  renderEngineOps();
+}
+function _opsSetLeague(lk){window._opsActiveLeague=lk;renderEngineOps();}
+
 function renderEngineOps(){
   const el=document.getElementById('ovr-ops-content');if(!el)return;
-  const _log=[];
   const opsLog=JSON.parse(localStorage.getItem('ops_log')||'[]');
+  const activeSport=window._opsActiveSport||'MLB';
+  const activeLeague=window._opsActiveLeague||'BUND';
+  // Effective code passed to opsRunProps/Stats/Sched — soccer uses the
+  // selected club league's own code instead of the generic sport key.
+  const code=activeSport==='SOCCER'?activeLeague:activeSport;
 
   const sec=(title,color,id,body)=>`
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;border-top:2px solid ${color}">
@@ -11469,62 +11498,51 @@ function renderEngineOps(){
         <div id="${id}-log-lines" style="font-family:var(--mono);font-size:15px;line-height:1.7;color:var(--t2)"></div>
       </div>
     </div>`;
-
   const btnRow=(...btns)=>`<div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div>`;
   const btn=(label,onclick,style='btn-p')=>`<button class="btn ${style} btn-sm" onclick="${onclick}">${label}</button>`;
 
+  // ── SPORT TAB BAR ────────────────────────────────────────────────────────
+  const tabBar=`<div class="card" style="margin-bottom:10px;padding:8px;display:flex;gap:5px;flex-wrap:wrap">
+    ${_OPS_SPORT_TABS.map(t=>`<button class="btn btn-sm" style="border:1px solid ${activeSport===t.k?t.color:'rgba(255,255,255,.18)'};color:${activeSport===t.k?t.color:'rgba(255,255,255,.55)'};background:${activeSport===t.k?'rgba(0,0,0,.3)':'transparent'}" onclick="_opsSetTab('${t.k}')">${t.label}</button>`).join('')}
+  </div>` +
+  (activeSport==='SOCCER'?`<div class="card" style="margin-bottom:10px;padding:6px 8px;display:flex;gap:4px;flex-wrap:wrap;background:rgba(4,0,12,.5)">
+    ${_OPS_SOCCER_LEAGUES.map(l=>`<button class="btn btn-sm" style="border:1px solid ${activeLeague===l.k?'var(--nc)':'rgba(255,255,255,.14)'};color:${activeLeague===l.k?'var(--nc)':'rgba(255,255,255,.5)'};background:transparent;font-size:14px;padding:2px 8px" onclick="_opsSetLeague('${l.k}')">${l.label}</button>`).join('')}
+  </div>`:'');
+
+  const NO_PROPS=new Set(['NFL','TEN','BUND','CL','LIGA','MLS','PL','SERIEA']);
+  const NO_STATS=new Set(['NFL','TEN']);
+  const NO_SCHED=new Set(['TEN']);
+  const label=activeSport==='SOCCER'?(_OPS_SOCCER_LEAGUES.find(l=>l.k===activeLeague)||{}).label:(_OPS_SPORT_TABS.find(t=>t.k===activeSport)||{}).label;
+
   // ── PROP REFRESH ──────────────────────────────────────────────────────────
-  const propSection=sec('PLAYER PROP REFRESH','var(--nc)','ops-props',`
-    <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Re-fetch player prop lines and settle pending props via ESPN box scores.</div>
-    ${btnRow(
-      btn('MLB PROPS','opsRunProps(\'MLB\',this)','btn-p'),
-      btn('NBA PROPS','opsRunProps(\'NBA\',this)','btn-p'),
-      btn('WNBA PROPS','opsRunProps(\'WNBA\',this)','btn-p'),
-      btn('NHL PROPS','opsRunProps(\'NHL\',this)','btn-p'),
-      btn('WC PROPS','opsRunProps(\'WC\',this)','btn-p')
-    )}
+  const propSection=sec('PLAYER PROP REFRESH','var(--nc)','ops-props',
+    NO_PROPS.has(code)
+      ?`<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${label} — no prop data source wired yet.</div>`
+      :`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Re-fetch ${label} player prop lines and settle pending props via ESPN box scores.</div>
+    ${btnRow(btn(label.toUpperCase()+' PROPS',`opsRunProps('${code}',this)`,'btn-p'))}
     <div style="margin-top:8px">
-      ${btn('RUN ALL PROPS','opsRunProps(\'ALL\',this)','btn-n')}
-      ${btn('AUTO-SETTLE PROPS','autoSettlePropsESPN().then(()=>{opsLog(\'ops-props\',\'✓ props settled\');renderOverallHistory()})','btn-o')}
+      ${btn('AUTO-SETTLE PROPS','autoSettlePropsESPN().then(()=>{renderOverallHistory()})','btn-o')}
     </div>`);
 
   // ── STAT REINTEGRATION ───────────────────────────────────────────────────
-  const statSection=sec('STAT REINTEGRATION','var(--pc)','ops-stats',`
-    <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Pull latest player stats into engine model layers for each sport.</div>
-    ${btnRow(
-      btn('NBA STATS','opsRunStats(\'NBA\',this)','btn-p'),
-      btn('WNBA STATS','opsRunStats(\'WNBA\',this)','btn-p'),
-      btn('MLB STATS','opsRunStats(\'MLB\',this)','btn-p'),
-      btn('NHL STATS','opsRunStats(\'NHL\',this)','btn-p'),
-      btn('WC STATS','opsRunStats(\'WC\',this)','btn-p')
-    )}
-    <div style="margin-top:8px">
-      ${btn('↻ REFRESH ALL STATS','opsRunStats(\'ALL\',this)','btn-n')}
-    </div>`);
+  const statSection=sec('STAT REINTEGRATION','var(--pc)','ops-stats',
+    NO_STATS.has(code)
+      ?`<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${label} — no stat source wired yet${code==='NFL'?' (model not active)':''}.</div>`
+      :`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Pull latest ${label} player/team stats into the engine model layer.</div>
+    ${btnRow(btn(label.toUpperCase()+' STATS',`opsRunStats('${code}',this)`,'btn-p'))}`);
 
   // ── SCHEDULE CHECK ────────────────────────────────────────────────────────
-  const schedSection=sec('SCHEDULE CHECK / REFRESH','var(--gc)','ops-sched',`
-    <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Verify and reload today\'s game schedules for each sport/league from ESPN.</div>
-    ${btnRow(
-      btn('MLB','opsRunSched(\'MLB\',this)','btn-p'),
-      btn('NBA','opsRunSched(\'NBA\',this)','btn-p'),
-      btn('WNBA','opsRunSched(\'WNBA\',this)','btn-p'),
-      btn('NHL','opsRunSched(\'NHL\',this)','btn-p'),
-      btn('NFL','opsRunSched(\'NFL\',this)','btn-o'),
-      btn('WORLD CUP','opsRunSched(\'WC\',this)','btn-p')
-    )}
-    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SOCCER — BY LEAGUE</div>
-    ${btnRow(
-      btn('BUNDESLIGA','opsRunSched(\'BUND\',this)','btn-p'),
-      btn('CHAMPIONS LG','opsRunSched(\'CL\',this)','btn-p'),
-      btn('LA LIGA','opsRunSched(\'LIGA\',this)','btn-p'),
-      btn('MLS','opsRunSched(\'MLS\',this)','btn-p'),
-      btn('PREMIER LG','opsRunSched(\'PL\',this)','btn-p'),
-      btn('SERIE A','opsRunSched(\'SERIEA\',this)','btn-p')
-    )}
-    <div style="margin-top:8px">
-      ${btn('↻ REFRESH ALL SCHEDULES','opsRunSched(\'ALL\',this)','btn-n')}
-    </div>`);
+  const schedSection=sec('SCHEDULE CHECK / REFRESH','var(--gc)','ops-sched',
+    NO_SCHED.has(code)
+      ?`<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${label} — no schedule source wired yet.</div>`
+      :`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Verify and reload today\'s ${label} schedule.</div>
+    ${btnRow(btn(label.toUpperCase()+' SCHEDULE',`opsRunSched('${code}',this)`,'btn-p'))}`);
+
+  const runAll=`<div class="card" style="margin-bottom:10px;padding:10px;display:flex;gap:6px;flex-wrap:wrap">
+    ${btn('↻ RUN ALL PROPS (EVERY SPORT)',"opsRunProps('ALL',this)",'btn-n')}
+    ${btn('↻ RUN ALL STATS (EVERY SPORT)',"opsRunStats('ALL',this)",'btn-n')}
+    ${btn('↻ RUN ALL SCHEDULES (EVERY SPORT)',"opsRunSched('ALL',this)",'btn-n')}
+  </div>`;
 
   // ── OPS LOG ───────────────────────────────────────────────────────────────
   const logRows=opsLog.slice(-20).reverse().map(e=>{
@@ -11577,7 +11595,7 @@ function renderEngineOps(){
       ${['Bundesliga','Champions League','La Liga','MLS','Premier League','Serie A','World Cup'].join(' · ')}
     </div>
   </div>`;
-  el.innerHTML=swSection+propSection+statSection+schedSection+histSection;
+  el.innerHTML=tabBar+propSection+statSection+schedSection+runAll+swSection+histSection;
 }
 
 // ── OPS HELPERS ───────────────────────────────────────────────────────────────
@@ -11604,10 +11622,12 @@ async function opsRunProps(sport,btn){
   const orig=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='⏳...';}
   const sectionId='ops-props';
-  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','WC']:[sport];
+  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','NFL','WC','BUND','CL','LIGA','MLS','PL','SERIEA']:[sport];
+  const _NO_PROP_SOURCE=new Set(['NFL','BUND','CL','LIGA','MLS','PL','SERIEA']);
   _opsLog(sectionId,`▶ PROP REFRESH — ${sport}`);
   for(const s of sports){
     try{
+      if(_NO_PROP_SOURCE.has(s)){_opsLog(sectionId,`  · ${s}: — no prop data source wired yet`,'err');continue;}
       _opsLog(sectionId,`  · ${s}: fetching props...`);
       if(s==='NBA'){await Promise.resolve(renderNBAProps&&renderNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
       else if(s==='WNBA'){await Promise.resolve(renderWNBAProps&&renderWNBAProps());_opsLog(sectionId,`  · ${s}: ✓ props rendered`);}
@@ -11629,7 +11649,8 @@ async function opsRunStats(sport,btn){
   const orig=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='⏳...';}
   const sectionId='ops-stats';
-  const sports=sport==='ALL'?['NBA','WNBA','MLB','NHL','WC']:[sport];
+  const sports=sport==='ALL'?['NBA','WNBA','MLB','NHL','NFL','WC','BUND','CL','LIGA','MLS','PL','SERIEA']:[sport];
+  const _CLUB_LEAGUES_ST={BUND:'bl',CL:'cl',LIGA:'liga',PL:'pl',SERIEA:'ita',MLS:'mls'};
   _opsLog(sectionId,`▶ STAT UPDATE — ${sport}`);
   for(const s of sports){
     try{
@@ -11638,7 +11659,14 @@ async function opsRunStats(sport,btn){
       else if(s==='WNBA'){renderWNBAProps&&renderWNBAProps();_opsLog(sectionId,`  · ${s}: ✓ WNBA stats refreshed`);}
       else if(s==='MLB'){renderMLBEnginePicks&&renderMLBEnginePicks();_opsLog(sectionId,`  · ${s}: ✓ MLB model picks refreshed`);}
       else if(s==='NHL'){renderNHLPropsLive&&renderNHLPropsLive();_opsLog(sectionId,`  · ${s}: ✓ NHL stats refreshed`);}
+      else if(s==='NFL'){_opsLog(sectionId,'  · NFL: — no stat source wired yet (model not active)','err');}
       else if(s==='WC'){typeof renderWCMatches==='function'&&renderWCMatches();typeof renderWCProps==='function'&&renderWCProps();_opsLog(sectionId,`  · ${s}: ✓ WC schedule + props refreshed`);}
+      else if(_CLUB_LEAGUES_ST[s]){
+        const lk=_CLUB_LEAGUES_ST[s];
+        const standings=await _fetchLeagueStandings(lk);
+        typeof renderLeagueMatches==='function'&&renderLeagueMatches(lk);
+        _opsLog(sectionId,`  · ${s}: ✓ standings + xG-based matches refreshed${standings&&standings.length?` (${standings.length} teams)`:''}`);
+      }
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   _opsLog(sectionId,'✓ STAT UPDATE COMPLETE');
