@@ -2845,6 +2845,13 @@ let _rankFilter='all';
 let ENS={mc:.50,bay:.20,elo:.30};
 let NHL_ENS={mc:.50,bay:.20,elo:.30,hv:.00};
 let NBA_ENS={mc:.50,bay:.20,elo:.30};
+// Tennis's own 5-component ensemble (elo/mc/form/serve/fat) — previously
+// hardcoded literals inside tennisMatchWinProbFull(), never adaptively
+// tuned from real settled-bet performance the way MLB/NHL/NBA/WNBA are.
+// Elo is the most fundamental long-run signal (real per-surface ratings
+// already in ATP_DB/WTA_DB), so it's the anchor component adaptiveTick()
+// nudges based on measured tennis accuracy.
+let TEN_ENS={elo:.22,mc:.50,form:.15,serve:.08,fat:.05};
 // ── Sport calibration constants (Platt-scaling, logit-space bias) ──────────
 // Derived from 155-bet sample: MLB 44 bets 70.5% actual vs 59.5% model avg;
 // NHL 46 bets 82.6% vs 58.4%; NBA 45 bets 86.7% vs 62.0%; TEN 20 bets 100% vs 74.0%
@@ -11259,7 +11266,7 @@ function renderAdaptiveLearning(){
   // ── WHAT CHANGED THIS CYCLE ──────────────────────────────────────────────
   if(prevState&&prevState.weights){
     const changes=[];
-    for(const sport of ['MLB','NHL','NBA','WNBA']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=0.8)changes.push({sport,key:key.toUpperCase(),delta});}}
+    for(const sport of ['MLB','NHL','NBA','WNBA','TEN']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo','form','serve','fat']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=0.8)changes.push({sport,key:key.toUpperCase(),delta});}}
     const accDelta=((state.overallAcc||0)-(prevState.overallAcc||0))*100;
     const betsDelta=(state.totalBets||0)-(prevState.totalBets||0);
     html+=`<div class="card" style="margin-bottom:12px;padding:12px;border-left:3px solid var(--pc)">
@@ -11291,7 +11298,7 @@ function renderAdaptiveLearning(){
   // ── IMPLEMENTED THIS CYCLE ────────────────────────────────────────────────
   const implItems=[];
   if(prevState?.weights){
-    for(const sp of['MLB','NHL','NBA','WNBA']){const cw=state.weights?.[sp],pw=prevState.weights?.[sp];if(!cw||!pw)continue;for(const k of['mc','bay','elo']){const d=((cw[k]||0)-(pw[k]||0))*100;if(Math.abs(d)>=0.5)implItems.push(`${sp} ${k.toUpperCase()} weight ${d>0?'increased':'decreased'} by ${Math.abs(d).toFixed(1)}%`);}}
+    for(const sp of['MLB','NHL','NBA','WNBA','TEN']){const cw=state.weights?.[sp],pw=prevState.weights?.[sp];if(!cw||!pw)continue;for(const k of['mc','bay','elo','form','serve','fat']){const d=((cw[k]||0)-(pw[k]||0))*100;if(Math.abs(d)>=0.5)implItems.push(`${sp} ${k.toUpperCase()} weight ${d>0?'increased':'decreased'} by ${Math.abs(d).toFixed(1)}%`);}}
   }
   if(state.evThreshold&&prevState?.evThreshold&&Math.abs(state.evThreshold-prevState.evThreshold)>=0.1)
     implItems.push(`EV threshold adjusted from ${prevState.evThreshold.toFixed(1)}% to ${state.evThreshold.toFixed(1)}%`);
@@ -11570,17 +11577,29 @@ function renderEngineOps(){
   </div>`;
 
   // ── SPORT WEIGHTS DISPLAY ────────────────────────────────────────────────
-  // MLB/NHL/NBA/WNBA each have real, independently-tuned MC/Bayesian/ELO
-  // ensemble weights. NFL/CFB/TEN don't have their own tuned models yet -
-  // they were quietly reusing MLB's ENS object with no indication of
-  // that, which reads as if they had real independent weights. Labeled
-  // honestly instead of hidden.
+  // MLB/NHL/NBA/WNBA/TEN each have real, independently-tuned ensemble
+  // weights (tennis's own 5-component elo/mc/form/serve/fat blend, tuned
+  // in adaptiveTick() from real ATP/WTA settled-bet accuracy — previously
+  // hardcoded literals, never adaptive). NFL/CFB still don't have their
+  // own tuned models - quietly reusing MLB's ENS object with no
+  // indication of that, which reads as if they had real independent
+  // weights. Labeled honestly instead of hidden.
   const _weightRow=r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
       <span style="font-family:var(--mono);font-size:15px;color:${r.col}">${r.lbl}</span>
       <div style="display:flex;gap:10px;font-family:var(--mono);font-size:15px">
         <span>MC <span style="color:var(--nc)">${((r.ens.mc||0)*100).toFixed(0)}%</span></span>
         <span>BAY <span style="color:var(--vc)">${((r.ens.bay||0)*100).toFixed(0)}%</span></span>
         <span>ELO <span style="color:var(--pc)">${((r.ens.elo||0)*100).toFixed(0)}%</span></span>
+      </div>
+    </div>`;
+  const _tenWeightRow=`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);flex-wrap:wrap;gap:4px">
+      <span style="font-family:var(--mono);font-size:15px;color:var(--mc)">TEN (ATP/WTA)</span>
+      <div style="display:flex;gap:8px;font-family:var(--mono);font-size:14px">
+        <span>ELO <span style="color:var(--pc)">${(TEN_ENS.elo*100).toFixed(0)}%</span></span>
+        <span>MC <span style="color:var(--nc)">${(TEN_ENS.mc*100).toFixed(0)}%</span></span>
+        <span>FORM <span style="color:var(--vc)">${(TEN_ENS.form*100).toFixed(0)}%</span></span>
+        <span>SERVE <span style="color:var(--gc)">${(TEN_ENS.serve*100).toFixed(0)}%</span></span>
+        <span>FAT <span style="color:var(--t3)">${(TEN_ENS.fat*100).toFixed(0)}%</span></span>
       </div>
     </div>`;
   const swSection=`<div class="card" style="margin-bottom:10px;padding:10px;border-top:2px solid var(--vc)">
@@ -11592,11 +11611,11 @@ function renderEngineOps(){
       {lbl:'NBA',ens:NBA_ENS,col:'var(--pc)'},
       {lbl:'WNBA',ens:WNBA_ENS||ENS,col:'var(--pc)'},
     ].map(_weightRow).join('')}
+    ${_tenWeightRow}
     <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SHARING MLB'S BASELINE (NO DEDICATED MODEL YET)</div>
     ${[
       {lbl:'NFL',ens:ENS,col:'var(--hc)'},
       {lbl:'CFB',ens:ENS,col:'var(--hc)'},
-      {lbl:'TEN (ATP/WTA)',ens:ENS,col:'var(--mc)'},
     ].map(_weightRow).join('')}
     <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SOCCER — POISSON/xG MODEL (not MC/Bayesian/ELO — same model shared across all 6 leagues + World Cup)</div>
     <div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">
@@ -14052,7 +14071,7 @@ function tennisMatchWinProbFull(p1,p2,surface,bo5=false){
   // Fatigue (more matches = slight penalty)
   const fatAdj=Math.max(0.94,Math.min(1.06,(p2.fat-p1.fat)*0.01));
   // Weighted blend — MC carries all W/UFE + MCP stats via tennisServeWinRateAdv
-  let raw=0.22*eloP+0.50*mcP+0.15*formP+0.08*serveP+0.05*fatAdj;
+  let raw=TEN_ENS.elo*eloP+TEN_ENS.mc*mcP+TEN_ENS.form*formP+TEN_ENS.serve*serveP+TEN_ENS.fat*fatAdj;
   // MCP/W-UFE surface tactical overlay on all surfaces (5% weight)
   const mcpE=mcpSurfaceEdge(p1,p2,surface);
   if(mcpE!==0.5)raw=0.95*raw+0.05*mcpE;
@@ -16574,6 +16593,28 @@ function adaptiveTick(){
     WNBA_ENS=updateWeights(WNBA_ENS,adj,baySignal,eloSignal);
     S.s('wnba_ens',WNBA_ENS);
   }
+  // Tennis: real picks are tagged ATP/WTA (not the generic legacy 'TEN'
+  // tag), so aggregate all three the same way soccer's club leagues are
+  // aggregated above. Nudges TEN_ENS.elo specifically - when tennis is
+  // performing well, lean more on the fundamental long-run signal (real
+  // per-surface Elo from ATP_DB/WTA_DB); when underperforming, current
+  // rankings may be stale, so lean back toward the more reactive Monte
+  // Carlo serve/return sim and recent-form components instead.
+  // Tennis is lower-volume than MLB/NHL/NBA, so intersecting with the
+  // shared cross-sport W30 window (last 30 bets of ANY sport) would
+  // almost never see 5 tennis bets even with 100+ real ones in history -
+  // uses its own last-30-tennis-bets window instead.
+  const tenBets=allPreds.filter(p=>['ATP','WTA','TEN'].includes((p.sport||'').toUpperCase())).slice(-30);
+  if(tenBets.length>=5){
+    const tenAcc=tenBets.filter(p=>p.outcome==='win').length/tenBets.length;
+    const eloAdj=tenAcc>0.58?1.08:tenAcc<0.47?0.90:1.0;
+    const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+    const rElo=clamp(TEN_ENS.elo*(1-LR)+TEN_ENS.elo*eloAdj*LR,0.10,0.45);
+    const restSum=TEN_ENS.mc+TEN_ENS.form+TEN_ENS.serve+TEN_ENS.fat;
+    const scale=restSum>0?(1-rElo)/restSum:0;
+    TEN_ENS={elo:rElo,mc:TEN_ENS.mc*scale,form:TEN_ENS.form*scale,serve:TEN_ENS.serve*scale,fat:TEN_ENS.fat*scale};
+    S.s('ten_ens',TEN_ENS);
+  }
   if(sportPerf.NFL?.n>=5){
     const adj=sportPerf.NFL.acc>0.58?1.04:sportPerf.NFL.acc<0.47?0.93:1.0;
     ENS=updateWeights({mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},adj,baySignal,eloSignal);
@@ -16704,7 +16745,7 @@ function adaptiveTick(){
   const state={
     lastRun:Date.now(),betsAnalyzed:W30.length,totalBets:allPreds.length,
     overallAcc,recentAcc,sportPerf,typePerf,calErrors,
-    weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo},WNBA:{mc:WNBA_ENS.mc,bay:WNBA_ENS.bay,elo:WNBA_ENS.elo}},
+    weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo},WNBA:{mc:WNBA_ENS.mc,bay:WNBA_ENS.bay,elo:WNBA_ENS.elo},TEN:{elo:TEN_ENS.elo,mc:TEN_ENS.mc,form:TEN_ENS.form,serve:TEN_ENS.serve,fat:TEN_ENS.fat}},
     findings,weaknesses,recommendations,history,evThreshold:+(S.g('evt')||2),status:'OK'
   };
   S.s('adaptive_state',state);
@@ -19989,6 +20030,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
   try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
   try{const be=S.g('nba_ens');if(be)NBA_ENS=be;}catch{}
+  try{const te=S.g('ten_ens');if(te)TEN_ENS=te;}catch{}
   try{resetTodayIncorrectSettlements();}catch(e){console.error('resetSettlements',e);}
   try{buildMLB();}catch(e){console.error('buildMLB',e);}
   try{initELO();}catch(e){console.error('initELO',e);}
