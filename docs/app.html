@@ -11504,14 +11504,23 @@ function renderEngineOps(){
 
   // ── SCHEDULE CHECK ────────────────────────────────────────────────────────
   const schedSection=sec('SCHEDULE CHECK / REFRESH','var(--gc)','ops-sched',`
-    <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Verify and reload today\'s game schedules for each sport from ESPN.</div>
+    <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Verify and reload today\'s game schedules for each sport/league from ESPN.</div>
     ${btnRow(
       btn('MLB','opsRunSched(\'MLB\',this)','btn-p'),
       btn('NBA','opsRunSched(\'NBA\',this)','btn-p'),
       btn('WNBA','opsRunSched(\'WNBA\',this)','btn-p'),
       btn('NHL','opsRunSched(\'NHL\',this)','btn-p'),
-      btn('SOCCER','opsRunSched(\'SOC\',this)','btn-p'),
+      btn('NFL','opsRunSched(\'NFL\',this)','btn-o'),
       btn('WORLD CUP','opsRunSched(\'WC\',this)','btn-p')
+    )}
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SOCCER — BY LEAGUE</div>
+    ${btnRow(
+      btn('BUNDESLIGA','opsRunSched(\'BUND\',this)','btn-p'),
+      btn('CHAMPIONS LG','opsRunSched(\'CL\',this)','btn-p'),
+      btn('LA LIGA','opsRunSched(\'LIGA\',this)','btn-p'),
+      btn('MLS','opsRunSched(\'MLS\',this)','btn-p'),
+      btn('PREMIER LG','opsRunSched(\'PL\',this)','btn-p'),
+      btn('SERIE A','opsRunSched(\'SERIEA\',this)','btn-p')
     )}
     <div style="margin-top:8px">
       ${btn('↻ REFRESH ALL SCHEDULES','opsRunSched(\'ALL\',this)','btn-n')}
@@ -11535,26 +11544,38 @@ function renderEngineOps(){
   </div>`;
 
   // ── SPORT WEIGHTS DISPLAY ────────────────────────────────────────────────
-  const swSection=`<div class="card" style="margin-bottom:10px;padding:10px;border-top:2px solid var(--vc)">
-    <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--vc);margin-bottom:8px">// ENSEMBLE WEIGHTS BY SPORT</div>
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:6px">Current model weights (MC / Bayesian / ELO)</div>
-    ${[
-      {lbl:'MLB (BASE)',ens:ENS,col:'var(--vc)'},
-      {lbl:'NHL',ens:NHL_ENS,col:'var(--ic)'},
-      {lbl:'NBA',ens:NBA_ENS,col:'var(--pc)'},
-      {lbl:'WNBA',ens:WNBA_ENS||ENS,col:'var(--pc)'},
-      {lbl:'NFL',ens:ENS,col:'var(--hc)'},
-      {lbl:'CFB',ens:ENS,col:'var(--hc)'},
-      {lbl:'SOC/WC',ens:ENS,col:'var(--gc)'},
-      {lbl:'TEN',ens:ENS,col:'var(--mc)'},
-    ].map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+  // MLB/NHL/NBA/WNBA each have real, independently-tuned MC/Bayesian/ELO
+  // ensemble weights. NFL/CFB/TEN don't have their own tuned models yet -
+  // they were quietly reusing MLB's ENS object with no indication of
+  // that, which reads as if they had real independent weights. Labeled
+  // honestly instead of hidden.
+  const _weightRow=r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
       <span style="font-family:var(--mono);font-size:15px;color:${r.col}">${r.lbl}</span>
       <div style="display:flex;gap:10px;font-family:var(--mono);font-size:15px">
         <span>MC <span style="color:var(--nc)">${((r.ens.mc||0)*100).toFixed(0)}%</span></span>
         <span>BAY <span style="color:var(--vc)">${((r.ens.bay||0)*100).toFixed(0)}%</span></span>
         <span>ELO <span style="color:var(--pc)">${((r.ens.elo||0)*100).toFixed(0)}%</span></span>
       </div>
-    </div>`).join('')}
+    </div>`;
+  const swSection=`<div class="card" style="margin-bottom:10px;padding:10px;border-top:2px solid var(--vc)">
+    <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--vc);margin-bottom:8px">// ENSEMBLE WEIGHTS BY SPORT</div>
+    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:6px">Independently-tuned model weights (MC / Bayesian / ELO)</div>
+    ${[
+      {lbl:'MLB',ens:ENS,col:'var(--vc)'},
+      {lbl:'NHL',ens:NHL_ENS,col:'var(--ic)'},
+      {lbl:'NBA',ens:NBA_ENS,col:'var(--pc)'},
+      {lbl:'WNBA',ens:WNBA_ENS||ENS,col:'var(--pc)'},
+    ].map(_weightRow).join('')}
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SHARING MLB'S BASELINE (NO DEDICATED MODEL YET)</div>
+    ${[
+      {lbl:'NFL',ens:ENS,col:'var(--hc)'},
+      {lbl:'CFB',ens:ENS,col:'var(--hc)'},
+      {lbl:'TEN (ATP/WTA)',ens:ENS,col:'var(--mc)'},
+    ].map(_weightRow).join('')}
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:10px 0 4px">SOCCER — POISSON/xG MODEL (not MC/Bayesian/ELO — same model shared across all 6 leagues + World Cup)</div>
+    <div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">
+      ${['Bundesliga','Champions League','La Liga','MLS','Premier League','Serie A','World Cup'].join(' · ')}
+    </div>
   </div>`;
   el.innerHTML=swSection+propSection+statSection+schedSection+histSection;
 }
@@ -11628,8 +11649,9 @@ async function opsRunSched(sport,btn){
   const orig=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='⏳...';}
   const sectionId='ops-sched';
-  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','SOC','WC']:[sport];
+  const sports=sport==='ALL'?['MLB','NBA','WNBA','NHL','NFL','WC','BUND','CL','LIGA','MLS','PL','SERIEA']:[sport];
   _opsLog(sectionId,`▶ SCHEDULE REFRESH — ${sport}`);
+  const _CLUB_LEAGUES={BUND:'bl',CL:'cl',LIGA:'liga',PL:'pl',SERIEA:'ita'};
   for(const s of sports){
     try{
       _opsLog(sectionId,`  · ${s}: checking schedule...`);
@@ -11637,8 +11659,15 @@ async function opsRunSched(sport,btn){
       else if(s==='NBA'){renderNBAGames&&renderNBAGames();_opsLog(sectionId,'  · NBA: ✓ schedule refreshed');}
       else if(s==='WNBA'){renderWNBAGames&&renderWNBAGames(true);_opsLog(sectionId,'  · WNBA: ✓ schedule refreshed');}
       else if(s==='NHL'){renderNHLGames&&renderNHLGames();_opsLog(sectionId,'  · NHL: ✓ schedule refreshed');}
-      else if(s==='SOC'){renderWCMatches&&renderWCMatches();_opsLog(sectionId,'  · SOC: ✓ soccer schedule refreshed');}
+      else if(s==='NFL'){_opsLog(sectionId,'  · NFL: — model not active yet (season starts September; button wired and ready for kickoff)','err');}
       else if(s==='WC'){renderWCMatches&&renderWCMatches();_opsLog(sectionId,'  · WC: ✓ World Cup matches refreshed');}
+      else if(s==='MLS'){await _fetchMLSScheduleReal();typeof renderLeagueMatches==='function'&&renderLeagueMatches('mls');_opsLog(sectionId,'  · MLS: ✓ schedule refreshed');}
+      else if(_CLUB_LEAGUES[s]){
+        const lk=_CLUB_LEAGUES[s];
+        const games=await _fetchLeagueScoreboard(lk);
+        typeof renderLeagueMatches==='function'&&renderLeagueMatches(lk);
+        _opsLog(sectionId,`  · ${s}: ✓ ${games.length} match(es) today${games.length?'':' (off-season/no fixtures today)'}`);
+      }
     }catch(e){_opsLog(sectionId,`  · ${s}: ✗ ${e.message}`,'err');}
   }
   _opsLog(sectionId,'✓ SCHEDULE REFRESH COMPLETE');
