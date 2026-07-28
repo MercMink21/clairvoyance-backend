@@ -119,7 +119,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
      full navigation, so this was pure duplicate/redundant chrome. */
   #mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{display:none!important}
   html .inav{display:none}
-  body{font-size:11px!important}
+  body{font-size:10px!important}
   /* Shrink header to hug its content (title+time row is ~34px tall) —
      shifts everything up and puts the glow line (bottom:0 of #hdr)
      right under the time row instead of leaving a visible gap. */
@@ -134,9 +134,9 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   html .fr{grid-template-columns:1fr}
   /* ── Typography ── */
   html .sh{font-size:11px!important;letter-spacing:.5px}
-  html .gtm{font-size:12px!important;letter-spacing:.2px;white-space:normal;word-break:break-word}
+  html .gtm{font-size:10px!important;letter-spacing:.2px;white-space:normal;word-break:break-word}
   html .gsp{font-size:10px!important;line-height:1.4}
-  html .cho{font-size:11px!important}
+  html .cho{font-size:10px!important}
   html .cht{font-size:9px!important}
   html .chp{font-size:9px!important}
   html .ct{font-size:11px!important}
@@ -169,8 +169,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   /* ── Tables ── */
   html .sa{overflow-x:hidden}
   html .dt{display:block;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .dt th{font-size:9px!important;padding:4px 4px!important}
-  .dt td{font-size:11px!important;padding:4px 4px!important}
+  .dt th{font-size:8px!important;padding:3px 3px!important}
+  .dt td{font-size:9px!important;padding:3px 3px!important}
   /* ── Inputs: prevent iOS zoom (requires 16px+) ── */
   input,select,textarea{font-size:16px!important}
   /* ── Overflow safety ── */
@@ -219,9 +219,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
      2026" down to "JUL 202"), and the record/bets row had no wrap
      control so long win-loss numbers split mid-number on narrow
      2-col cards. Let the label wrap and shrink the record row. ── */
-  html .perf-card-hdr{white-space:normal!important;line-height:1.3}
-  html .perf-card-row{flex-wrap:wrap!important;gap:5px!important}
-  html .perf-card-rec{font-size:14px!important}
+  html .perf-card-hdr{white-space:normal!important;line-height:1.3;font-size:9px!important;margin-bottom:4px!important}
+  html .perf-card-row{flex-wrap:wrap!important;gap:5px!important;margin-bottom:3px!important}
+  html .perf-card-rec{font-size:11px!important}
+  /* ── Shrink the time-frame boxes themselves (TODAY/YESTERDAY/ROLLING
+     7D/etc.) — not just their text — they were taking up far more
+     screen space than needed. ── */
+  html .perf-card{padding:6px 7px!important}
   /* ── Blanket inline font-size cap ──────────────────────────────
      The vast majority of this app's text (pending-bet cards, sub-tab
      headers, dropdown menus, history/"recents" rows, remove buttons,
@@ -279,10 +283,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   /* ── Extra-narrow phones (SE, older Android) ── */
   html .g4{grid-template-columns:1fr!important}
   html .g3{grid-template-columns:1fr!important}
-  html .gtm{font-size:11px!important}
+  html .gtm{font-size:10px!important}
   /* ── Narrow phones (SE/older Android): 3-digit W-L records
      ("264W-120L") still clip the perf cards' 20px record font. ── */
-  html .perf-card-rec{font-size:11px!important}
+  html .perf-card-rec{font-size:10px!important}
+  html .perf-card{padding:5px 6px!important}
   /* ── Bet chips: two per row on very narrow screens ── */
   .brow>.chip,.brow>[class*="chip-"]{flex:1 1 calc(50% - 4px);min-width:68px}
   /* ── WC chip rows: home/draw/away as 3-col, AH+OU full width ── */
@@ -298,7 +303,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   html .btn-sm{min-height:20px!important;font-size:8px!important;padding:2px 4px!important}
 }
 @media(max-width:390px){
-  html .gtm{font-size:11px!important}
+  html .gtm{font-size:10px!important}
   html .g4{grid-template-columns:1fr!important}
   html .g3{grid-template-columns:1fr!important}
   #hdr{flex:0 0 calc(36px + env(safe-area-inset-top,0px))}
@@ -4551,7 +4556,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
 // caps ANY inline font-size (and oversized button padding) that exceeds
 // the ceiling, so coverage is complete across every tab and sub-tab
 // without needing to touch each render function individually.
-const _MOBILE_FONT_CEILING=14; // px — home page's own time-frame record text size
+const _MOBILE_FONT_CEILING=10; // px — general body text ceiling on mobile
 const _MOBILE_BUTTON_FONT_CEILING=8; // buttons read smaller than the ceiling above
 const _MOBILE_BUTTON_PAD_CEILING=2; // px, vertical — caps oversized inline button padding
 const _MOBILE_BUTTON_PAD_H_CEILING=5; // px, horizontal
@@ -17141,6 +17146,19 @@ function renderFloatingLivePanel(bets){
 
 // ═══ INIT ════════════════════════════════════════════════════
 if('serviceWorker' in navigator){/* SW disabled */}
+// location.reload(true)'s legacy "force bypass cache" argument was
+// dropped by modern browsers (including Safari/WebKit) — a plain
+// reload(true) today behaves identically to reload() and can still be
+// served from the browser's HTTP cache, which defeats the entire
+// point of these freshness checks (this was very likely why stale,
+// pre-fix app.html kept running on some phones — including old
+// pending/settled duplicate picks the current code no longer creates
+// — well past when a fix was actually deployed and live). Navigating
+// to a URL with a fresh query string instead can never be served from
+// cache, since the cached entry is keyed by the exact URL.
+function _cvForceFreshReload(){
+  window.location.href=window.location.pathname+'?_cvfresh='+Date.now();
+}
 // ── Version freshness: if version.json is newer than cached, hard reload ────
 (async function cvVersionCheck(){
   try{
@@ -17153,7 +17171,7 @@ if('serviceWorker' in navigator){/* SW disabled */}
     // First visit: just store. Subsequent: reload if newer build deployed.
     if(stored&&stored!==built){
       localStorage.setItem('cv_app_built',built);
-      window.location.reload(true);
+      _cvForceFreshReload();
       return;
     }
     localStorage.setItem('cv_app_built',built);
@@ -17166,12 +17184,12 @@ if('serviceWorker' in navigator){/* SW disabled */}
     if(document.hidden){hiddenAt=Date.now();}
     else if(hiddenAt&&(Date.now()-hiddenAt)>10*60*1000){
       // Stale — reload to get latest data.json + any HTML updates
-      window.location.reload(true);
+      _cvForceFreshReload();
     }
   });
   // iOS back-navigation bfcache bypass
   window.addEventListener('pageshow',e=>{
-    if(e.persisted)window.location.reload(true);
+    if(e.persisted)_cvForceFreshReload();
   });
 })();
 (async function INIT(){
