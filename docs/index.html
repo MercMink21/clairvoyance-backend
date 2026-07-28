@@ -11251,7 +11251,7 @@ function renderAdaptiveLearning(){
   // ── WHAT CHANGED THIS CYCLE ──────────────────────────────────────────────
   if(prevState&&prevState.weights){
     const changes=[];
-    for(const sport of ['MLB','NHL','NBA','WNBA','NFL','CFB','SOC','TEN']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=0.8)changes.push({sport,key:key.toUpperCase(),delta});}}
+    for(const sport of ['MLB','NHL','NBA','WNBA']){const cw=state.weights?.[sport],pw=prevState.weights?.[sport];if(!cw||!pw)continue;for(const key of ['mc','bay','elo']){const delta=((cw[key]||0)-(pw[key]||0))*100;if(Math.abs(delta)>=0.8)changes.push({sport,key:key.toUpperCase(),delta});}}
     const accDelta=((state.overallAcc||0)-(prevState.overallAcc||0))*100;
     const betsDelta=(state.totalBets||0)-(prevState.totalBets||0);
     html+=`<div class="card" style="margin-bottom:12px;padding:12px;border-left:3px solid var(--pc)">
@@ -11283,7 +11283,7 @@ function renderAdaptiveLearning(){
   // ── IMPLEMENTED THIS CYCLE ────────────────────────────────────────────────
   const implItems=[];
   if(prevState?.weights){
-    for(const sp of['MLB','NHL','NBA']){const cw=state.weights?.[sp],pw=prevState.weights?.[sp];if(!cw||!pw)continue;for(const k of['mc','bay','elo']){const d=((cw[k]||0)-(pw[k]||0))*100;if(Math.abs(d)>=0.5)implItems.push(`${sp} ${k.toUpperCase()} weight ${d>0?'increased':'decreased'} by ${Math.abs(d).toFixed(1)}%`);}}
+    for(const sp of['MLB','NHL','NBA','WNBA']){const cw=state.weights?.[sp],pw=prevState.weights?.[sp];if(!cw||!pw)continue;for(const k of['mc','bay','elo']){const d=((cw[k]||0)-(pw[k]||0))*100;if(Math.abs(d)>=0.5)implItems.push(`${sp} ${k.toUpperCase()} weight ${d>0?'increased':'decreased'} by ${Math.abs(d).toFixed(1)}%`);}}
   }
   if(state.evThreshold&&prevState?.evThreshold&&Math.abs(state.evThreshold-prevState.evThreshold)>=0.1)
     implItems.push(`EV threshold adjusted from ${prevState.evThreshold.toFixed(1)}% to ${state.evThreshold.toFixed(1)}%`);
@@ -16493,10 +16493,11 @@ function adaptiveTick(){
 
   // Per-sport performance
   const sportPerf={};
-  for(const sport of['MLB','NHL','NBA','WNBA','NFL','CFB','TEN','SOC']){
-    // SOC aggregates all soccer leagues
+  for(const sport of['MLB','NHL','PWHL','NBA','WNBA','CBB','NFL','CFB','ATP','WTA','TEN','SOC']){
+    // SOC aggregates all soccer leagues; TEN/ATP/WTA can overlap (legacy
+    // 'TEN' tag vs current ATP/WTA split) — both counted where present.
     const sp=sport==='SOC'
-      ?W30.filter(p=>['SOC','WC','PL','LIGA','BL','MLS'].includes((p.sport||'').toUpperCase()))
+      ?W30.filter(p=>['SOC','WC','PL','LIGA','BL','BUND','CL','SERIEA','MLS'].includes((p.sport||'').toUpperCase()))
       :W30.filter(p=>p.sport===sport);
     if(!sp.length)continue;
     const w=sp.filter(p=>p.outcome==='win').length;
@@ -16695,7 +16696,7 @@ function adaptiveTick(){
   const state={
     lastRun:Date.now(),betsAnalyzed:W30.length,totalBets:allPreds.length,
     overallAcc,recentAcc,sportPerf,typePerf,calErrors,
-    weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo}},
+    weights:{MLB:{mc:ENS.mc,bay:ENS.bay,elo:ENS.elo},NHL:{mc:NHL_ENS.mc,bay:NHL_ENS.bay,elo:NHL_ENS.elo},NBA:{mc:NBA_ENS.mc,bay:NBA_ENS.bay,elo:NBA_ENS.elo},WNBA:{mc:WNBA_ENS.mc,bay:WNBA_ENS.bay,elo:WNBA_ENS.elo}},
     findings,weaknesses,recommendations,history,evThreshold:+(S.g('evt')||2),status:'OK'
   };
   S.s('adaptive_state',state);
