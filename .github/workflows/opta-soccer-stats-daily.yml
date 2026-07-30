@@ -1,0 +1,46 @@
+name: Daily Opta Soccer Stats Refresh
+
+# Keeps the Bundesliga/Premier League/Serie A/MLS team-stats reference data
+# and the _SOC_XG win-probability fallback table in docs/app.html current —
+# without this, the model's xG numbers and rosters freeze at whatever was
+# last scraped (exactly what had happened before this workflow existed:
+# relegated/promoted clubs like Ipswich, Venezia, and VfL Bochum were still
+# in the table months after they left their leagues).
+
+on:
+  schedule:
+    # 6:00 AM MT = 12:00 UTC (MDT) / 13:00 UTC (MST) — well after Opta's own
+    # nightly data update, off-peak minute to avoid GitHub's scheduled-
+    # workflow queue congestion at round cron minutes.
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-opta-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright
+          playwright install chromium --with-deps
+
+      - name: Scrape and push
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/scrape_opta_stats.py --push
