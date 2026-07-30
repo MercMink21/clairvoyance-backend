@@ -16767,6 +16767,7 @@ async function loadRemoteData(force=false){
       'NHL:',(d.nhl?.today||[]).length);
   }catch(e){console.warn('[CV] data.json offline:',e.message);}
   loadSoccerFBref();
+  loadMLSOptaStats();
 }
 
 window.__CV_FBREF = null;
@@ -23967,6 +23968,61 @@ function _socXG(name,leagueKey){
   return null;
 }
 
+// ── MLS Opta style factors (passing/pressing/sequences) ──────────────────
+// The MC engine used to run on xG/xGA alone — real, but only one slice of
+// what a team's actual match data says. daily-scraped (scripts/
+// scrape_opta_stats.py) possession/pass-accuracy, PPDA press intensity,
+// and build-up/direct-attack sequence goals give a fuller picture of HOW
+// a team creates threat, not just its historical shot quality. Scoped to
+// MLS only for now (that's the league with this data loaded) — same
+// pattern extends to BL/PL/Serie A once their passing/pressing/sequences
+// JSON is wired in the same way.
+var _mlsOptaLoading=null;
+function loadMLSOptaStats(){
+  if(window.__CV_MLS_OPTA)return Promise.resolve(window.__CV_MLS_OPTA);
+  if(_mlsOptaLoading)return _mlsOptaLoading;
+  _mlsOptaLoading=fetch('mls_opta_stats.json',{cache:'no-cache'})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){window.__CV_MLS_OPTA=d;return d;})
+    .catch(function(e){console.warn('[CV] MLS Opta stats load failed:',e.message);return null;});
+  return _mlsOptaLoading;
+}
+var _MLS_OPTA_AVG=null;
+function _mlsLeagueAverages(){
+  if(_MLS_OPTA_AVG)return _MLS_OPTA_AVG;
+  var d=window.__CV_MLS_OPTA;if(!d)return null;
+  var pass=d.passing||[],press=d.pressing||[],seq=d.sequences||[];
+  function avg(arr,f){var v=arr.map(function(t){return t[f]||0;}).filter(function(x){return x>0;});return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:0;}
+  _MLS_OPTA_AVG={
+    posPerc:avg(pass,'pos_perc'),
+    ppda:avg(press,'ppda'),
+    seqGoals:avg(seq,'direct_attack_goals')+avg(seq,'build_up_goals'),
+  };
+  return _MLS_OPTA_AVG;
+}
+// Composite style multiplier from real passing/pressing/sequences data —
+// possession share (sustained control creates shot VOLUME xG alone doesn't
+// price in), PPDA (lower = more aggressive/disruptive press, inverted so
+// a better-pressing team scores >1), and actual build-up + direct-attack
+// goal output (rewards a repeatable scoring pattern over one-off shot
+// quality). Weighted blend, clipped to +/-15% so it nudges the xG-based
+// estimate rather than overriding it — MC still runs on real xG/xGA at
+// its core, this just accounts for more of what a team's data actually says.
+function _mlsStyleFactor(name){
+  var d=window.__CV_MLS_OPTA;if(!d||!name)return 1;
+  var avgS=_mlsLeagueAverages();if(!avgS)return 1;
+  var k=name.toLowerCase().trim();
+  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  var p=find(d.passing),pr=find(d.pressing),sq=find(d.sequences);
+  if(!p||!pr||!sq)return 1;
+  var possFactor=avgS.posPerc>0?(p.pos_perc/avgS.posPerc):1;
+  var pressFactor=(pr.ppda>0&&avgS.ppda>0)?(avgS.ppda/pr.ppda):1;
+  var seqGoals=(sq.direct_attack_goals||0)+(sq.build_up_goals||0);
+  var transFactor=avgS.seqGoals>0?(1+(seqGoals-avgS.seqGoals)/Math.max(1,avgS.seqGoals)*0.3):1;
+  var raw=(possFactor*0.35+pressFactor*0.35+transFactor*0.30);
+  return Math.max(0.85,Math.min(1.15,raw));
+}
+
 // Expected goals for a fixture, blending each side's own attack rate with
 // the opponent's defensive rate — every call site previously used a team's
 // raw hxg/axg (its own scoring average) alone, with no adjustment for how
@@ -23978,9 +24034,16 @@ function _socXG(name,leagueKey){
 // average a team's own attacking rate with the opponent's goals-conceded
 // rate, so a strong defense actually pulls the total down and a leaky one
 // pulls it up, instead of defense never entering the calculation at all.
-function _socExpectedGoals(homeXG,awayXG){
-  const hxg=homeXG?((homeXG.hxg||homeXG.xg)+((awayXG&&awayXG.axga)??(homeXG.hxg||homeXG.xg)))/2:1.35;
-  const axg=awayXG?((awayXG.axg||awayXG.xg)+((homeXG&&homeXG.hxga)??(awayXG.axg||awayXG.xg)))/2:1.15;
+// leagueKey/homeName/awayName are optional — when leagueKey==='mls' and
+// names are given, applies _mlsStyleFactor() on top of the xG blend so
+// picks aren't driven by xG/xGA alone.
+function _socExpectedGoals(homeXG,awayXG,leagueKey,homeName,awayName){
+  let hxg=homeXG?((homeXG.hxg||homeXG.xg)+((awayXG&&awayXG.axga)??(homeXG.hxg||homeXG.xg)))/2:1.35;
+  let axg=awayXG?((awayXG.axg||awayXG.xg)+((homeXG&&homeXG.hxga)??(awayXG.axg||awayXG.xg)))/2:1.15;
+  if(leagueKey==='mls'&&homeName&&awayName&&window.__CV_MLS_OPTA){
+    hxg*=_mlsStyleFactor(homeName);
+    axg*=_mlsStyleFactor(awayName);
+  }
   return{hxg,axg};
 }
 // Exact P(total goals > line) for a Poisson(hxg+axg) total-goals
@@ -24098,7 +24161,7 @@ function _renderSocMatchCard(g,leagueKey){
   // _soccerMC() Monte Carlo engine (25k sims) instead of WC's ELO model,
   // since league matches source real xG from FBref/ESPN/mlssoccer.com.
   var hXG=_socXG(g.home,leagueKey),aXG=_socXG(g.away,leagueKey);
-  var _eg=_socExpectedGoals(hXG,aXG);
+  var _eg=_socExpectedGoals(hXG,aXG,leagueKey,g.home,g.away);
   var hxg=_eg.hxg,axg=_eg.axg;
   // Injury adjustment — real roster data only exists for MLS today (see
   // buildInjuryRoster()'s soccer section), so this safely no-ops (0
@@ -24408,7 +24471,7 @@ async function renderLeagueProps(key){
       var sotMC=propMC(sot,Math.max(1,sot*0.35),sotLine,5000);
       if(sotMC.overP>=0.57){var st=_socTier(sotMC.overP);if(st.g!=='SKIP')props.push({label:t.abbr+' OVER '+sotLine+' SHOTS ON TARGET',sublabel:matchLabel,prob:sotMC.overP,conf:sotMC.hitRate,grade:st.g,color:st.c,basis:t.team+' · '+sot.toFixed(1)+' SoT/G est. ('+t.xg.toFixed(2)+' xG) · MC: '+sotMC.hitRate+'% over '+sotLine});}
     });
-    var _eg2=_socExpectedGoals(hXG,aXG);
+    var _eg2=_socExpectedGoals(hXG,aXG,key,g.home,g.away);
     var mc=_soccerMC(_eg2.hxg,_eg2.axg,25000);
     var btT=_socTier(mc.btts);
     if(btT.g!=='SKIP')props.push({label:'BOTH TEAMS TO SCORE',sublabel:matchLabel,prob:mc.btts,conf:Math.round(mc.btts*100),grade:btT.g,color:btT.c,basis:g.home+' '+mc.hxg.toFixed(2)+'xG · '+g.away+' '+mc.axg.toFixed(2)+'xG · MC btts: '+(mc.btts*100).toFixed(0)+'%'});
@@ -26328,7 +26391,7 @@ function _epGatherSoccerLegLegs(leagueKey,sportTag){
     if(!g.home||!g.away||g.status==='post')return;
     try{
       var hXG=_socXG(g.home,leagueKey),aXG=_socXG(g.away,leagueKey);
-      var eg=_socExpectedGoals(hXG,aXG);
+      var eg=_socExpectedGoals(hXG,aXG,leagueKey,g.home,g.away);
       var mc=_soccerMC(eg.hxg,eg.axg,10000);
       var hP=mc.hWin,aP=mc.aWin;
       var hML=p2ml(hP),aML=p2ml(aP);
@@ -26715,7 +26778,7 @@ function _xpNormalizeGames(s){
     if(typeof _socXG!=='function'||typeof _soccerMC!=='function')return[];
     return games.filter(function(g){return g.home&&g.away&&g.status!=='post';}).map(function(g){
       try{
-        var eg=_socExpectedGoals(_socXG(g.home,key),_socXG(g.away,key));
+        var eg=_socExpectedGoals(_socXG(g.home,key),_socXG(g.away,key),key,g.home,g.away);
         var mc=_soccerMC(eg.hxg,eg.axg,10000);
         return{hA:g.home,awA:g.away,homeML:p2ml(mc.hWin),awayML:p2ml(mc.aWin),winProb:mc.hWin,total:mc.avgT};
       }catch(e){return null;}
@@ -27537,7 +27600,7 @@ function _simRun(sport,home,away,N,flags){
       // already falls back gracefully to the static table for teams
       // without live coverage, same as the real cards.
       var hXG=_socXG(home,sport),aXG=_socXG(away,sport);
-      var _eg3=_socExpectedGoals(hXG,aXG);
+      var _eg3=_socExpectedGoals(hXG,aXG,sport,home,away);
       var socMC=_soccerMC(_eg3.hxg,_eg3.axg,2000);
       baseHP=Math.min(.88,Math.max(.12,socMC.hWin/(socMC.hWin+socMC.aWin||1)));
     }

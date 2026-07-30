@@ -238,6 +238,15 @@ def main() -> None:
             else:
                 out_path.write_text(json.dumps(slim, indent=2), encoding="utf-8")
                 print(f"[INFO] wrote {out_path} ({len(slim['attacking'])} teams)")
+                # MLS is also served straight to the browser (docs/ is the
+                # GitHub Pages root) — loadMLSOptaStats() in app.html fetches
+                # this exact copy to feed _mlsStyleFactor()'s passing/
+                # pressing/sequences adjustment into the MC engine.
+                if lg_key == "mls":
+                    (ROOT / "docs" / "mls_opta_stats.json").write_text(
+                        json.dumps(slim, indent=2), encoding="utf-8"
+                    )
+                    print("[INFO] synced docs/mls_opta_stats.json")
 
             if cfg["name_map"]:
                 new_lines = build_soc_xg_lines(slim, cfg["name_map"])
@@ -268,7 +277,8 @@ def main() -> None:
 
     if args.push and any_changes and not args.dry_run:
         msg = "chore: refresh BL/PL/Serie A team xG stats (Opta scrape)"
-        subprocess.run(["git", "add", "docs/app.html", "docs/index.html", "data/opta_reference"],
+        subprocess.run(["git", "add", "docs/app.html", "docs/index.html", "docs/mls_opta_stats.json",
+                        "data/opta_reference"],
                         cwd=ROOT, check=True)
         r = subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, capture_output=True, text=True)
         if r.returncode == 0:
