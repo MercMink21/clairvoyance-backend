@@ -2,8 +2,15 @@ name: Daily Social Cards Email
 
 on:
   schedule:
-    # 9:30 MT = 15:30 UTC (MDT) / 16:30 UTC (MST)
-    - cron: '30 15 * * *'
+    # Target 9:30 MT = 15:30 UTC (MDT) / 16:30 UTC (MST), but offset to :22
+    # rather than the exact :30 mark — GitHub's scheduled-workflow queue is
+    # heavily congested at round minutes (every repo on the platform cron'd
+    # for :00/:15/:30/:45 piles in at once), which is why this run has
+    # consistently landed 55-95 min late for the past 9+ days despite never
+    # actually failing. An off-peak minute is a known, low-risk way to cut
+    # that queueing delay — GitHub still doesn't guarantee exact timing on
+    # shared runners, but this should land noticeably closer to 9:30 MT.
+    - cron: '22 15 * * *'
   workflow_dispatch:
 
 permissions:
@@ -52,4 +59,21 @@ jobs:
             git commit -m "social-cards: milestone state update"
             git pull --rebase origin main
             git push
+          fi
+
+      # GitHub's scheduled-workflow queue routinely delays this run by
+      # 30-90+ minutes past the nominal 9:30 MT cron time (observed
+      # consistently — not a bug in this file, just how shared-runner
+      # scheduling works), so a late email is normal. A genuinely failed
+      # run is not — this is the one case worth an explicit page, same
+      # alerting pattern scheduled-refresh.yml already uses.
+      - name: Alert on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"content\":\"🔴 **Clairvoyance — Daily Social Cards Email FAILED**\\nScheduled 9:30 MT run did not complete. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
           fi
