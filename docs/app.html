@@ -23955,7 +23955,40 @@ function _socXGFromFBref(name,leagueKey){
   return null;
 }
 
+// Real per-game xg/xga from the daily Opta MLS scrape (attacking/defending
+// categories — same JSON _mlsStyleFactor() already reads passing/pressing/
+// sequences from). Returns null if that team/data isn't available, letting
+// callers fall back to whatever base xG they already had.
+function _mlsOptaBaseXG(name){
+  var d=window.__CV_MLS_OPTA;if(!d||!name)return null;
+  var k=name.toLowerCase().trim();
+  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  var a=find(d.attacking),def=find(d.defending);
+  if(!a||!def||!a.played)return null;
+  return{xg:a.xg/a.played,xga:def.xg_against/a.played};
+}
+// Blends whatever base xG a source already produced (FBref-live or the
+// static fallback table) with the Opta scrape's own attacking/defending
+// numbers — two independent real sources averaged, rather than picking
+// one over the other. Only applies for MLS (the league with Opta
+// attacking/defending data loaded); every other league's _socXG() result
+// passes through unchanged.
+function _blendMLSOpta(name,base){
+  if(!base)return base;
+  var opta=_mlsOptaBaseXG(name);
+  if(!opta)return base;
+  var xg=(base.xg+opta.xg)/2, xga=(base.xga+opta.xga)/2;
+  return{xg:xg,xga:xga,hxg:+(xg*1.10).toFixed(3),hxga:+(xga*0.90).toFixed(3),
+         axg:+(xg*0.90).toFixed(3),axga:+(xga*1.10).toFixed(3),
+         gf:base.gf,ga:base.ga,mp:base.mp,src:(base.src||'')+'+opta-blend'};
+}
 function _socXG(name,leagueKey){
+  if(!name)return null;
+  var result=_socXGRaw(name,leagueKey);
+  if(leagueKey==='mls')result=_blendMLSOpta(name,result);
+  return result;
+}
+function _socXGRaw(name,leagueKey){
   if(!name)return null;
   var live=_socXGFromFBref(name,leagueKey);
   if(live)return live;
