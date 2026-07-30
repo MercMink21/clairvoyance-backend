@@ -292,7 +292,7 @@ def _trunc(text: str, limit: int = 280) -> str:
         return text
     return text[:limit - 1].rstrip() + "…"
 
-_IG_TAGS = ["SportsBetting", "SportsAnalytics", "ModelOutput", "DataDriven", "ExpectedValue"]
+_IG_TAGS = ["foryou", "sportsbetting", "bettingtips", "bettingpicks"]
 
 
 # ── Slot builders ─────────────────────────────────────────────────────────────
