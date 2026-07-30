@@ -633,7 +633,24 @@ def main() -> None:
             if push.returncode == 0:
                 log("Pushed to origin/main.")
             else:
-                log(f"Push failed: {push.stderr}", "WARN")
+                # Remote almost always diverges here because other daily
+                # jobs (data.json auto-refresh, live scores) push their own
+                # commits throughout the day. A bare push failure used to
+                # just log a warning and abandon the commit locally — the
+                # live GitHub Pages site would then keep serving yesterday's
+                # (or older) props indefinitely, since nothing ever retried.
+                # Rebase onto whatever's new on origin and retry once.
+                log(f"Push rejected, retrying with rebase: {push.stderr.strip()[:200]}", "WARN")
+                pull = subprocess.run(["git", "pull", "--rebase", "origin", "main"],
+                                      cwd=ROOT, capture_output=True, text=True)
+                if pull.returncode != 0:
+                    log(f"Rebase failed — commit left local, needs manual fix: {pull.stderr.strip()[:300]}", "ERROR")
+                else:
+                    push2 = subprocess.run(["git", "push", "origin", "main"], cwd=ROOT, capture_output=True, text=True)
+                    if push2.returncode == 0:
+                        log("Pushed to origin/main (after rebase retry).")
+                    else:
+                        log(f"Push still failed after rebase — commit left local, needs manual fix: {push2.stderr.strip()[:300]}", "ERROR")
         elif "nothing to commit" in r.stdout + r.stderr:
             log("Nothing changed — skipping commit.")
         else:

@@ -2669,6 +2669,7 @@ FBREF_LEAGUES: dict[str, dict] = {
     "liga": {"name": "La Liga",          "url": "https://fbref.com/en/comps/12/La-Liga-Stats"},
     "bl":   {"name": "Bundesliga",       "url": "https://fbref.com/en/comps/20/Bundesliga-Stats"},
     "mls":  {"name": "MLS",              "url": "https://fbref.com/en/comps/22/Major-League-Soccer-Stats"},
+    "ita":  {"name": "Serie A",          "url": "https://fbref.com/en/comps/11/Serie-A-Stats"},
 }
 
 def _fbref_num(v: str, default: float = 0.0) -> float:
@@ -2784,6 +2785,7 @@ ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "liga": {"name": "La Liga",          "espn": "esp.1"},
     "bl":   {"name": "Bundesliga",       "espn": "ger.1"},
     "mls":  {"name": "MLS",              "espn": "usa.1"},
+    "ita":  {"name": "Serie A",          "espn": "ita.1"},
 }
 
 def fetch_espn_soccer_league(key: str) -> dict:
@@ -3525,6 +3527,7 @@ ESPN_LEAGUE_PATHS: dict[str, str] = {
     "pl":       "soccer/eng.1",
     "liga":     "soccer/esp.1",
     "bl":       "soccer/ger.1",
+    "ita":      "soccer/ita.1",
 }
 
 def fetch_sports_news() -> dict:

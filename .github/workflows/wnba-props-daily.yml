@@ -1,0 +1,44 @@
+name: Daily WNBA Player Props Refresh
+
+# Runs update_wnba_props.py on GitHub's schedule instead of relying solely on
+# the local Mac's cron (0 10 * * * in crontab) being awake at 10:00 MT. The
+# local job was silently failing to reach the live site for days at a time
+# whenever it ran into a diverged remote (see update_wnba_props.py's push
+# retry logic) or the machine was asleep — this workflow gives the refresh a
+# path that doesn't depend on either.
+
+on:
+  schedule:
+    # 10:00 MT = 16:00 UTC (MDT) / 17:00 UTC (MST)
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-wnba-props:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests beautifulsoup4 lxml
+
+      - name: Refresh WNBA props and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/update_wnba_props.py --push

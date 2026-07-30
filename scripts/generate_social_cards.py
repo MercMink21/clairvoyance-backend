@@ -161,7 +161,7 @@ SPORT_LEAGUES = {
     "BASEBALL": "MLB",
     "BASKETBALL": "NBA, WNBA, CBB",
     "FOOTBALL": "NFL, CFB",
-    "HOCKEY": "NHL, PWHL, KHL, SHL, LIIGA",
+    "HOCKEY": "NHL, KHL, SHL, LIIGA",
     "SOCCER": "Bundesliga, Champions League, La Liga, MLS, Premier League, Serie A",
     "TENNIS": "ATP, WTA",
 }
@@ -352,7 +352,7 @@ def get_year_stats(page, year: int) -> dict:
             if (t === 'MLB') return 'BASEBALL';
             if (['NBA','WNBA','CBB','NCAAB'].includes(t)) return 'BASKETBALL';
             if (['NFL','CFB'].includes(t)) return 'FOOTBALL';
-            if (['NHL','PWHL','KHL','SHL','LIIGA','NCAAH'].includes(t)) return 'HOCKEY';
+            if (['NHL','KHL','SHL','LIIGA','NCAAH'].includes(t)) return 'HOCKEY';
             if (['SOC','WC','WORLD_CUP','WORLDCUP','PL','LIGA','BL','MLS','CH'].includes(t)) return 'SOCCER';
             if (['ATP','WTA','TEN','TENNIS'].includes(t)) return 'TENNIS';
             return null;
