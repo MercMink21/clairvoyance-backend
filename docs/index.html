@@ -4292,9 +4292,9 @@ function _ouDefaultLine(avgT,fallback){
 }
 // Back-compat alias — MLB call sites already use this name.
 function _mlbOuDefault(avgT){return _ouDefaultLine(avgT,8.5);}
-function mlbEns(hA,awA,espnGame){
+function mlbEns(hA,awA,espnGame,simN){
   const ouLine=parseFloat(espnGame?.ou||8.5);
-  const mc=mlbMC(hA,awA,5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
+  const mc=mlbMC(hA,awA,simN||5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
   const hfa=(+document.getElementById('s-hfa')?.value||4)/100;
   const bay=Math.min(.92,Math.max(.08,getBayes(hA).m/(getBayes(hA).m+getBayes(awA).m)+.04));
   const eloP=Math.min(.92,Math.max(.08,eloWP(ELO[hA]||1500,ELO[awA]||1500)+hfa));
@@ -26410,6 +26410,17 @@ function _epGatherLegs(){
   var _val=function(ml,p,ev){return parseFloat(ml)>0&&p>=0.35&&ev>=0.08;};
 
   /* ── MLB TODAY (ESPN_GAMES — live API data) ────────────────── */
+  // Odds-only, on purpose — this function also drives the live Parlay
+  // tab's "engine recommended" slates (renderEngineParlays), so it has
+  // to stay fast for every user, every time. A Monte Carlo fallback for
+  // days the odds feed comes back empty exists, but only in the daily
+  // Pick of Day picker (generate_social_cards.py's get_free_pick, via a
+  // dedicated one-off page.evaluate) — that path runs once a day, headless,
+  // with no user waiting on it, so it can afford real simulation cost.
+  // Do not add mlbEns()/Monte Carlo calls here: a single call measured
+  // ~3s+ against live team data, and multiplying that across a slate
+  // inside a function called on every Parlay tab open/refresh froze the
+  // page during testing.
   var mlbGames=(window.ESPN_GAMES||window._mlbGames||[])
     .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F';});
   mlbGames.forEach(function(g){
