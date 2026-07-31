@@ -559,6 +559,9 @@ def get_free_pick(page) -> dict | None:
           if (!(window.ESPN_GAMES && window.ESPN_GAMES.length) && typeof loadGames === 'function') {
             warmups.push(loadGames().catch(() => {}));
           }
+          if (typeof renderWNBAWeek === 'function') {
+            try { renderWNBAWeek(); } catch (e) {}
+          }
           await Promise.allSettled(warmups);
           if (typeof _epGatherLegs !== 'function') return null;
           // MLB GAME legs are excluded from _epGatherLegs()'s result here
@@ -597,6 +600,32 @@ def get_free_pick(page) -> dict | None:
                 legs.push({ name: 'MLB ML ' + g.hA, ml: hmlRaw, prob: hP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(hP) });
               } else if (aP >= 0.58 && aP > hP) {
                 legs.push({ name: 'MLB ML ' + g.awA, ml: amlRaw, prob: aP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(aP) });
+              }
+            });
+          }
+          // WNBA GAME legs, same principle as MLB above: rebuilt from
+          // window._wnbaGameData's already-computed wnbaEns() fields
+          // (hP/aP) instead of _epGatherLegs()'s own re-derivation via
+          // _epImp(g.hML) — g.hML there is itself already synthesized
+          // from hP when no live odds exist (see WPAR push in
+          // renderWNBAWeek), so this isn't fixing a missing-data gap the
+          // way MLB needed; it just uses the model probability directly
+          // rather than round-tripping it through a synthesized American-
+          // odds price and back. No extra simulation cost — hP/aP are
+          // already computed by the renderWNBAWeek() warmup call above.
+          const wnbaLegs = legs.filter(l => l.sport === 'WNBA');
+          if (window._wnbaGameData && window._wnbaGameData.length) {
+            const _gradeW = p => p >= 0.67 ? 'PREMIUM' : p >= 0.62 ? 'OPTIMAL' : p >= 0.55 ? 'LEAN' : 'SKIP';
+            const seen = new Set(wnbaLegs.map(l => l.matchup));
+            window._wnbaGameData.forEach(g => {
+              const matchup = g.aab + '@' + g.hab;
+              if (seen.has(matchup)) return;
+              const hP = g.hP, aP = g.aP != null ? g.aP : 1 - hP;
+              if (hP == null) return;
+              if (hP >= 0.58 && hP >= aP) {
+                legs.push({ name: 'WNBA ML ' + g.hab, ml: g.hML, prob: hP, matchup, sport: 'WNBA', type: 'GAME', grade: _gradeW(hP) });
+              } else if (aP >= 0.58 && aP > hP) {
+                legs.push({ name: 'WNBA ML ' + g.aab, ml: g.aML, prob: aP, matchup, sport: 'WNBA', type: 'GAME', grade: _gradeW(aP) });
               }
             });
           }

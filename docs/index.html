@@ -5176,7 +5176,14 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   // locked/settled match get relocked under a new id, creating a phantom
   // "pending" duplicate sitting next to its own already-settled original.
   const _dup=preds.find(x=>x.id===id)||preds.find(x=>x.date===dateKey&&x.hA===hA&&x.awA===awA&&x.betOn===betOn);
-  if(!_dup){preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,source:_lockSource});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now(),hA,awA);}catch(e){}}
+  // A duplicate lock click used to fall through to the exact same "LOCKED"
+  // toast/popup as a real new lock, with no indication nothing was added —
+  // someone clicking the button again (thinking a prior click didn't take)
+  // would see an identical success message every time and have no way to
+  // tell whether they now had 1 pending bet or several. Bail out early
+  // with an explicit "already locked" toast instead.
+  if(_dup){toast(`// ALREADY LOCKED: ${betOn} ${ml} (${_dup.outcome==='pending'?'still pending':_dup.outcome.toUpperCase()})`);return;}
+  preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,source:_lockSource});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now(),hA,awA);}catch(e){}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
   const rec=log[dateKey].recs.find(r=>r.ha===hA&&r.awa===awA&&r.lb===betOn);if(rec)rec.locked=true;
