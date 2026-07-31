@@ -269,6 +269,29 @@ def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: 
     return _record_template("educational_reveal.html", setup_js, out_path, duration_s)
 
 
+def record_free_pick_reveal(sport_tag: str, matchup: str, pick: str, grade: str,
+                             out_path: Path, duration_s: float = 9.5) -> Path:
+    """Single highest-probability pick of the day (ML, spread, or O/U —
+    whichever leg the engine's own gathering logic ranks highest across
+    every sport), glitch-reveal aesthetic matching the daily stats video's
+    'glitch' variant. Shows the engine's own PREMIUM/OPTIMAL/LEAN grade
+    under the pick instead of raw odds/probability — since this is
+    already the single best-ranked leg of the day, the grade will almost
+    always read PREMIUM or OPTIMAL."""
+    grade_class = {"PREMIUM": "grade-premium", "OPTIMAL": "grade-optimal"}.get(grade, "grade-lean")
+    setup_js = f"""
+    () => {{
+      document.getElementById('sport-tag').textContent = {json.dumps('// ' + sport_tag)};
+      document.getElementById('matchup').textContent = {json.dumps(matchup)};
+      document.getElementById('pick').textContent = {json.dumps(pick)};
+      var g = document.getElementById('v-grade');
+      g.textContent = {json.dumps(grade)};
+      g.className = 'grade-val ' + {json.dumps(grade_class)};
+    }}
+    """
+    return _record_template("free_pick_reveal.html", setup_js, out_path, duration_s)
+
+
 def record_grading_tiers_reveal(out_path: Path, duration_s: float = 10.0) -> Path:
     """Dedicated Pick Grading System video - static content (no live
     stats), matches the site's public PREMIUM/OPTIMAL/LEAN/SKIP tiers but
@@ -316,6 +339,13 @@ def main() -> None:
     p_sub = sub.add_parser("subscription")
     p_sub.add_argument("--out", default="/tmp/cv_subscription.mp4")
 
+    p_pick = sub.add_parser("freepick")
+    p_pick.add_argument("--sport", default="NBA")
+    p_pick.add_argument("--matchup", default="LAL @ BOS")
+    p_pick.add_argument("--pick", default="BOSTON CELTICS ML")
+    p_pick.add_argument("--grade", default="PREMIUM", choices=["PREMIUM", "OPTIMAL", "LEAN"])
+    p_pick.add_argument("--out", default="/tmp/cv_freepick.mp4")
+
     args = parser.parse_args()
 
     if args.kind == "stats":
@@ -339,6 +369,8 @@ def main() -> None:
         out = record_grading_tiers_reveal(Path(args.out))
     elif args.kind == "subscription":
         out = record_subscription_tiers_reveal(Path(args.out))
+    elif args.kind == "freepick":
+        out = record_free_pick_reveal(args.sport, args.matchup, args.pick, args.grade, Path(args.out))
     print(f"Saved {out} ({out.stat().st_size/1024:.0f} KB)")
 
 

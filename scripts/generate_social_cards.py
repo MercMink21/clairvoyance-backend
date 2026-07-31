@@ -86,6 +86,24 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 ROOT = Path(__file__).resolve().parent.parent
 MILESTONE_STATE_PATH = ROOT / "data" / "social_milestones.json"
+# Lives under docs/ (not data/) so the live app can fetch it directly the
+# same way it fetches docs/mls_opta_stats.json — this is both the git-
+# committed source of truth and the file the home page's "PICK OF DAY"
+# tile reads over HTTP.
+PICK_OF_DAY_PATH = ROOT / "docs" / "pick_of_day.json"
+
+# ESPN scoreboard path per sport/league tag, keyed exactly the way
+# _epGatherLegs() tags its legs (see docs/app.html) — used to auto-settle
+# yesterday's pick against the real final score. Tags with no entry here
+# (ATP/WTA — different API entirely; WC26 — one-off schedule, not a
+# scoreboard feed) simply can't be auto-settled and stay pending.
+ESPN_SPORT_PATHS = {
+    "MLB": "baseball/mlb", "NBA": "basketball/nba", "WNBA": "basketball/wnba",
+    "NHL": "hockey/nhl", "NFL": "football/nfl", "CFB": "football/college-football",
+    "CBB": "basketball/mens-college-basketball", "NCAAH": "hockey/mens-college-hockey",
+    "BL": "soccer/ger.1", "LIGA": "soccer/esp.1", "MLS": "soccer/usa.1",
+    "PL": "soccer/eng.1", "SERIEA": "soccer/ita.1", "CL": "soccer/UEFA.champions",
+}
 
 # Known tournament/season windows to auto-post an Event Performance card
 # for, the day after they end. Add entries as they're known — each is
@@ -153,6 +171,97 @@ def load_milestone_state() -> dict:
 def save_milestone_state(state: dict) -> None:
     MILESTONE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     MILESTONE_STATE_PATH.write_text(json.dumps(state, indent=2))
+
+
+def load_pick_of_day_ledger() -> list[dict]:
+    if PICK_OF_DAY_PATH.exists():
+        try:
+            return json.loads(PICK_OF_DAY_PATH.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def save_pick_of_day_ledger(ledger: list[dict]) -> None:
+    PICK_OF_DAY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PICK_OF_DAY_PATH.write_text(json.dumps(ledger, indent=2))
+
+
+def _ml_to_dec(ml) -> float:
+    m = float(str(ml).replace("+", ""))
+    return m / 100 + 1 if m > 0 else 100 / abs(m) + 1
+
+
+def _espn_scoreboard_result(entry: dict) -> str | None:
+    """Looks up entry's matchup in ESPN's scoreboard for its sport+date and
+    returns 'win'/'loss' if the game is final and the picked side is
+    unambiguously identifiable, else None (left pending — never guess)."""
+    path = ESPN_SPORT_PATHS.get(entry["sport"])
+    if not path:
+        return None
+    date_str = entry["date"].replace("-", "")
+    try:
+        resp = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard",
+            params={"dates": date_str}, timeout=15,
+        )
+        resp.raise_for_status()
+        events = resp.json().get("events", [])
+    except Exception as exc:
+        log(f"  ESPN scoreboard lookup failed for {entry['sport']} {entry['date']}: {exc}")
+        return None
+
+    picked_abbr = entry.get("pickedAbbr", "")
+    for ev in events:
+        comp = (ev.get("competitions") or [{}])[0]
+        state = ((comp.get("status") or {}).get("type") or {}).get("state")
+        if state != "post":
+            continue
+        competitors = comp.get("competitors") or []
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+        h_abbr = ((home.get("team") or {}).get("abbreviation") or "").upper()
+        a_abbr = ((away.get("team") or {}).get("abbreviation") or "").upper()
+        if picked_abbr.upper() not in (h_abbr, a_abbr):
+            continue
+        picked_team = home if picked_abbr.upper() == h_abbr else away
+        other_team = away if picked_team is home else home
+        if picked_team.get("winner") is True:
+            return "win"
+        if other_team.get("winner") is True:
+            return "loss"
+        # Final but neither side flagged a winner — a genuine tie/push,
+        # not something to force into win/loss.
+        return None
+    return None
+
+
+def settle_pending_picks(ledger: list[dict]) -> list[dict]:
+    """Checks every still-pending ledger entry against the real final
+    score and updates it in place. Entries whose sport has no ESPN
+    scoreboard mapping (tennis, one-off tournaments) or whose game hasn't
+    gone final yet are left untouched — settlement only ever writes a
+    result it can verify, never a guess."""
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    for entry in ledger:
+        if entry.get("outcome") != "pending":
+            continue
+        result = _espn_scoreboard_result(entry)
+        if result:
+            entry["outcome"] = result
+            entry["settledAt"] = now_ms
+            log(f"  Settled pick-of-day {entry['date']} {entry['pick']}: {result.upper()}")
+    return ledger
+
+
+def pick_of_day_stats(ledger: list[dict]) -> dict:
+    settled = [e for e in ledger if e.get("outcome") in ("win", "loss")]
+    w = sum(1 for e in settled if e["outcome"] == "win")
+    l = len(settled) - w
+    units = sum((_ml_to_dec(e["ml"]) - 1 if e["outcome"] == "win" else -1) for e in settled)
+    return {"w": w, "l": l, "pct": (w / len(settled) if settled else None), "units": units}
 
 
 # Matches SPORT_LEAGUES in docs/app.html's Sport Performance card exactly
@@ -317,6 +426,89 @@ def get_milestone_data(page) -> dict:
     )
 
 
+# Mirrors ESPN_SPORT_PATHS' keys — only sports/leagues with a real
+# scoreboard feed to auto-settle against are eligible to become the
+# tracked Pick of the Day. (Tennis/WC26 legs can still appear in the
+# Parlay tab's own pools — they're just not selected here, since an
+# unsettleable pick would sit "pending" on the home-page tracker forever.)
+_ELIGIBLE_POTD_SPORTS = [
+    "MLB", "NBA", "WNBA", "NHL", "NFL", "CFB", "CBB", "NCAAH",
+    "BL", "LIGA", "MLS", "PL", "SERIEA", "CL",
+]
+_POTD_BROAD_SPORT = {
+    "MLB": "BASEBALL", "NBA": "BASKETBALL", "WNBA": "BASKETBALL", "CBB": "BASKETBALL",
+    "NHL": "HOCKEY", "NCAAH": "HOCKEY", "NFL": "FOOTBALL", "CFB": "FOOTBALL",
+    "BL": "SOCCER", "LIGA": "SOCCER", "MLS": "SOCCER", "PL": "SOCCER", "SERIEA": "SOCCER", "CL": "SOCCER",
+}
+
+
+def get_free_pick(page) -> dict | None:
+    """The single highest-probability *auto-gradable* pick across every
+    sport/league for today — the engine's own leg-gathering logic
+    (_epGatherLegs, the same function that feeds the Parlay tab's "engine
+    recommended" slates) ranks every ML/spread/O-U leg it finds by win
+    probability; this takes the top one, restricted to GAME/ML legs whose
+    sport has a real ESPN scoreboard feed (_ELIGIBLE_POTD_SPORTS) so the
+    home-page Pick of Day tracker can always auto-settle it the next day
+    — an unsettleable pick would just sit "pending" forever, which
+    defeats the point of "accumulating" record/win%/units. Player-prop
+    O/U legs are still gathered/ranked by the engine elsewhere (Parlay
+    tab), just not eligible for this specific tracked slot. Warms every
+    league's game/odds cache first (the exact same warmup
+    renderEngineParlays() itself runs) so the pool spans all sports, not
+    just whatever this headless session happened to touch already.
+    Returns None if nothing eligible clears the engine's own probability
+    floor for that day — no fake "pick of the day" gets sent."""
+    return page.evaluate(
+        """
+        async (eligibleSports) => {
+          const warmups = [];
+          if (typeof renderGenericWeek === 'function') {
+            warmups.push(renderGenericWeek('cfb-week-list', 'football/college-football', 'CFB').catch(() => {}));
+            warmups.push(renderGenericWeek('nfl-week-list', 'football/nfl', 'NFL').catch(() => {}));
+            warmups.push(renderGenericWeek('cbb-week-list', 'basketball/mens-college-basketball', 'CBB').catch(() => {}));
+            warmups.push(renderGenericWeek('ncaah-matches-list', 'hockey/mens-college-hockey', 'NCAAH').catch(() => {}));
+          }
+          if (typeof renderLeagueMatches === 'function') {
+            ['bl', 'liga', 'mls', 'pl', 'ita', 'cl'].forEach(k => warmups.push(renderLeagueMatches(k).catch(() => {})));
+          }
+          if (!(window.ESPN_GAMES && window.ESPN_GAMES.length) && typeof loadGames === 'function') {
+            warmups.push(loadGames().catch(() => {}));
+          }
+          await Promise.allSettled(warmups);
+          if (typeof _epGatherLegs !== 'function') return null;
+          const legs = _epGatherLegs().filter(l => l.type === 'GAME' && eligibleSports.includes(l.sport));
+          if (!legs.length) return null;
+          const best = legs.reduce((a, b) => (b.prob > a.prob ? b : a));
+          const pickedAbbr = best.name.trim().split(' ').pop();
+          return {
+            name: best.name, matchup: best.matchup, sport: best.sport,
+            type: best.type, prob: best.prob, ml: best.ml, grade: best.grade,
+            pickedAbbr,
+          };
+        }
+        """,
+        _ELIGIBLE_POTD_SPORTS,
+    )
+
+
+def build_free_pick_caption(pick: dict) -> dict[str, str]:
+    ig = (
+        f"FREE PICK OF THE DAY\n\n{pick['matchup']}\n\n{pick['name']}\n\n"
+        f"Engine grade: {pick['grade']}\n\n"
+        f"This one's on the house — every pick graded, every result public, no cherry-picking.\n\n"
+        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
+        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
+        f"#foryou #sportsbetting #bettingtips #bettingpicks #freepick"
+    )
+    x = (
+        f"FREE PICK: {pick['name']}\n\n{pick['matchup']}\n\n"
+        f"Engine grade: {pick['grade']}\n\n"
+        f"clairvoyanceengine.info\n\n#sportsbetting #freepick"
+    )
+    return {"instagram": ig, "x": x}
+
+
 def get_year_stats(page, year: int) -> dict:
     """Win/loss/pct/units for a full calendar year, computed directly from
     the real ledger's date field. The underlying app has no "calendar
@@ -445,6 +637,11 @@ def run(out_dir: Path) -> dict:
         # Daily (always)
         cards, stats = generate_cards(page, out_dir, "YESTERDAY")
         result["daily"] = {"cards": cards, "stats": stats}
+
+        # Free pick of the day — highest win-probability leg across every
+        # sport/league, from the same engine gathering logic behind the
+        # Parlay tab's recommended slates.
+        result["free_pick"] = get_free_pick(page)
 
         # Weekly (Sundays)
         if is_sunday:
@@ -740,7 +937,8 @@ def _caption_block(title: str, text: str) -> str:
     )
 
 
-def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro: str = "") -> None:
+def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro: str = "",
+                extra_captions: list[tuple[str, dict[str, str]]] | None = None) -> None:
     if not RESEND_API_KEY or not SOCIAL_CARD_EMAIL_TO:
         log(f"Email creds not set — skipping send for: {subject}")
         return
@@ -749,12 +947,20 @@ def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro:
         for p in cards
     ]
     filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
+    extra_html = ""
+    for label, extra in (extra_captions or []):
+        extra_html += (
+            f"<p><b>{label}</b> — separate post, own captions below:</p>"
+            f"{_caption_block(f'{label} — Instagram caption', extra['instagram'])}"
+            f"{_caption_block(f'{label} — X caption', extra['x'])}"
+        )
     body_html = (
         f"<p>{intro}</p>"
         f"<p>Cards attached:</p><ul>{filename_list_html}</ul>"
         f"<p>Captions below, ready to copy-paste:</p>"
         f"{_caption_block('Instagram caption', captions['instagram'])}"
         f"{_caption_block('X caption', captions['x'])}"
+        f"{extra_html}"
     )
     resp = requests.post(
         "https://api.resend.com/emails",
@@ -827,11 +1033,71 @@ def main() -> None:
             # actually matters every day.
             log(f"Video reveal generation failed (non-fatal, skipping): {exc}")
 
+    # Pick of the Day — highest win-probability ML leg across every
+    # settleable sport/league, same reveal aesthetic as the other daily
+    # videos. Sent as its own attachment/caption pair inside the same
+    # daily email rather than a separate email, since it's still part of
+    # "today's post batch." Skipped entirely (not a fake/weak pick) if no
+    # leg cleared the engine's own probability floor today.
+    #
+    # Before picking today's, settle any still-pending entries from
+    # previous days against the real final score (docs/pick_of_day.json
+    # is git-committed by the workflow, same durability pattern as the
+    # milestone state file — living under docs/ rather than data/ since
+    # the live app also fetches it directly over HTTP) — this is what
+    # makes the home page's PICK OF DAY tile's record/win%/units actually
+    # accumulate day over day.
+    pod_ledger = load_pick_of_day_ledger()
+    pod_ledger = settle_pending_picks(pod_ledger)
+    save_pick_of_day_ledger(pod_ledger)
+
+    free_pick_extra = None
+    free_pick = result.get("free_pick")
+    if free_pick:
+        try:
+            from generate_video_reveal import record_free_pick_reveal
+            pick_video_path = out_dir / f"cv-freepick-{yesterday_mt.strftime('%Y%m%d')}.mp4"
+            record_free_pick_reveal(
+                sport_tag=free_pick["sport"],
+                matchup=free_pick["matchup"],
+                pick=free_pick["name"],
+                grade=free_pick["grade"],
+                out_path=pick_video_path,
+            )
+            daily_attachments.append(pick_video_path)
+            free_pick_extra = ("Free Pick of the Day", build_free_pick_caption(free_pick))
+
+            # Record today's pick in the ledger as pending — tomorrow's
+            # run will settle it against the real score before picking
+            # the next one.
+            pod_ledger.append({
+                "date": now_mt.strftime("%Y-%m-%d"),
+                "sport": _POTD_BROAD_SPORT.get(free_pick["sport"], free_pick["sport"]),
+                "league": free_pick["sport"],
+                "type": free_pick["type"],
+                "betType": "ML",
+                "pick": free_pick["name"],
+                "matchup": free_pick["matchup"],
+                "prob": free_pick["prob"],
+                "ml": free_pick["ml"],
+                "grade": free_pick["grade"],
+                "pickedAbbr": free_pick["pickedAbbr"],
+                "outcome": "pending",
+                "settledAt": None,
+            })
+            save_pick_of_day_ledger(pod_ledger)
+            log(f"Free pick video generated: {pick_video_path} ({free_pick['name']} @ {free_pick['prob']*100:.0f}%)")
+        except Exception as exc:
+            log(f"Free pick video generation failed (non-fatal, skipping): {exc}")
+    else:
+        log("No free pick today — no leg cleared the engine's probability floor.")
+
     if not args.no_email:
         send_email(
             f"Clairvoyance — Daily Social Cards ({yesterday_mt.strftime('%B %d, %Y')})",
             daily_attachments, captions,
             intro="Today's social cards are attached, ready to post:",
+            extra_captions=[free_pick_extra] if free_pick_extra else None,
         )
 
     # Weekly
