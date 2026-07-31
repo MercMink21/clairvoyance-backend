@@ -238,17 +238,94 @@ def _espn_scoreboard_result(entry: dict) -> str | None:
     return None
 
 
+# Only the stat categories _mlbGenerateDailyProps() actually deals in
+# real props for (see docs/app.html's addSP/hitter blocks) map to a
+# boxscore field here — anything else (a stat this pipeline never
+# generates) is left pending rather than guessed at.
+_MLB_STAT_FIELDS = {"K": ("pitching", "strikeOuts"), "HR": ("batting", "homeRuns"), "H": ("batting", "hits")}
+
+
+def _mlb_prop_result(entry: dict) -> str | None:
+    """Grades an MLB O/U player-prop pick against the real MLB Stats API
+    boxscore for that date. Looks up the game by matching both team
+    abbreviations from the pick's matchup, then finds the named player in
+    either team's boxscore and compares their actual stat line to the
+    posted line. Returns None (left pending) if the game isn't found,
+    hasn't gone final, the player isn't in the boxscore, or the stat
+    category isn't one this pipeline knows how to read — never a guess."""
+    stat_field = _MLB_STAT_FIELDS.get(entry.get("stat", ""))
+    if not stat_field:
+        return None
+    try:
+        away_abbr, home_abbr = [t.strip() for t in entry["matchup"].split("@")]
+    except Exception:
+        return None
+    try:
+        resp = requests.get(
+            "https://statsapi.mlb.com/api/v1/schedule",
+            params={"sportId": 1, "date": entry["date"]}, timeout=15,
+        )
+        resp.raise_for_status()
+        dates = resp.json().get("dates", [])
+    except Exception as exc:
+        log(f"  MLB schedule lookup failed for {entry['date']}: {exc}")
+        return None
+
+    game_pk = None
+    for d in dates:
+        for g in d.get("games", []):
+            if (g.get("status") or {}).get("abstractGameState") != "Final":
+                continue
+            teams = g.get("teams") or {}
+            h_abbr = ((teams.get("home") or {}).get("team") or {}).get("abbreviation", "")
+            a_abbr = ((teams.get("away") or {}).get("team") or {}).get("abbreviation", "")
+            if h_abbr == home_abbr and a_abbr == away_abbr:
+                game_pk = g.get("gamePk")
+                break
+        if game_pk:
+            break
+    if not game_pk:
+        return None
+
+    try:
+        box_resp = requests.get(f"https://statsapi.mlb.com/api/v1/game/{game_pk}/boxscore", timeout=15)
+        box_resp.raise_for_status()
+        box = box_resp.json()
+    except Exception as exc:
+        log(f"  MLB boxscore lookup failed for game {game_pk}: {exc}")
+        return None
+
+    cat, field = stat_field
+    player_lower = entry["player"].lower()
+    for side in ("home", "away"):
+        players = ((box.get("teams") or {}).get(side) or {}).get("players", {})
+        for pdata in players.values():
+            name = ((pdata.get("person") or {}).get("fullName") or "")
+            if name.lower() != player_lower:
+                continue
+            stats = ((pdata.get("stats") or {}).get(cat) or {})
+            if field not in stats:
+                return None
+            val = stats[field]
+            line = entry["line"]
+            if val == line:
+                return "push"
+            cleared = val > line if entry.get("over") else val < line
+            return "win" if cleared else "loss"
+    return None
+
+
 def settle_pending_picks(ledger: list[dict]) -> list[dict]:
     """Checks every still-pending ledger entry against the real final
-    score and updates it in place. Entries whose sport has no ESPN
-    scoreboard mapping (tennis, one-off tournaments) or whose game hasn't
-    gone final yet are left untouched — settlement only ever writes a
-    result it can verify, never a guess."""
+    score/boxscore and updates it in place. Entries whose sport/type has
+    no verifiable data source (tennis, one-off tournaments, unrecognized
+    prop stat) or whose game hasn't gone final yet are left untouched —
+    settlement only ever writes a result it can verify, never a guess."""
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     for entry in ledger:
         if entry.get("outcome") != "pending":
             continue
-        result = _espn_scoreboard_result(entry)
+        result = _mlb_prop_result(entry) if entry.get("type") == "PROP" else _espn_scoreboard_result(entry)
         if result:
             entry["outcome"] = result
             entry["settledAt"] = now_ms
@@ -442,24 +519,31 @@ _POTD_BROAD_SPORT = {
 }
 
 
+# MLB player-prop legs (the only PROP-type legs _epGatherLegs produces)
+# encode player/stat/line/over only inside their display name, e.g.
+# "MLB Aaron Judge O1.5 HR" — parsed back out here so the ledger entry
+# has structured fields _mlb_prop_result() can grade against a real
+# boxscore. Matches _mlbGenerateDailyProps()'s "MLB "+player+' '+O/U+line+' '+stat format exactly.
+_MLB_PROP_RE = re.compile(r"^MLB (.+) ([OU])([\d.]+) (\S+)$")
+
+
 def get_free_pick(page) -> dict | None:
     """The single highest-probability *auto-gradable* pick across every
-    sport/league for today — the engine's own leg-gathering logic
-    (_epGatherLegs, the same function that feeds the Parlay tab's "engine
-    recommended" slates) ranks every ML/spread/O-U leg it finds by win
-    probability; this takes the top one, restricted to GAME/ML legs whose
-    sport has a real ESPN scoreboard feed (_ELIGIBLE_POTD_SPORTS) so the
-    home-page Pick of Day tracker can always auto-settle it the next day
-    — an unsettleable pick would just sit "pending" forever, which
-    defeats the point of "accumulating" record/win%/units. Player-prop
-    O/U legs are still gathered/ranked by the engine elsewhere (Parlay
-    tab), just not eligible for this specific tracked slot. Warms every
-    league's game/odds cache first (the exact same warmup
-    renderEngineParlays() itself runs) so the pool spans all sports, not
-    just whatever this headless session happened to touch already.
-    Returns None if nothing eligible clears the engine's own probability
-    floor for that day — no fake "pick of the day" gets sent."""
-    return page.evaluate(
+    sport/league for today — ML/game legs or MLB O/U player-prop legs,
+    whichever the engine's own leg-gathering logic (_epGatherLegs, the
+    same function that feeds the Parlay tab's "engine recommended"
+    slates) ranks highest by win probability. Restricted to sports/leg
+    types this pipeline can actually verify the next day: GAME/ML legs
+    whose sport has a real ESPN scoreboard feed (_ELIGIBLE_POTD_SPORTS),
+    or MLB PROP legs (auto-settled against the MLB Stats API boxscore) —
+    an unsettleable pick would just sit "pending" forever, which defeats
+    the point of "accumulating" record/win%/units. Warms every league's
+    game/odds cache first (the exact same warmup renderEngineParlays()
+    itself runs) so the pool spans all sports, not just whatever this
+    headless session happened to touch already. Returns None if nothing
+    eligible clears the engine's own probability floor for that day — no
+    fake "pick of the day" gets sent."""
+    result = page.evaluate(
         """
         async (eligibleSports) => {
           const warmups = [];
@@ -477,19 +561,35 @@ def get_free_pick(page) -> dict | None:
           }
           await Promise.allSettled(warmups);
           if (typeof _epGatherLegs !== 'function') return null;
-          const legs = _epGatherLegs().filter(l => l.type === 'GAME' && eligibleSports.includes(l.sport));
+          const legs = _epGatherLegs().filter(l =>
+            (l.type === 'GAME' && eligibleSports.includes(l.sport)) ||
+            (l.type === 'PROP' && l.sport === 'MLB')
+          );
           if (!legs.length) return null;
           const best = legs.reduce((a, b) => (b.prob > a.prob ? b : a));
-          const pickedAbbr = best.name.trim().split(' ').pop();
-          return {
+          const out = {
             name: best.name, matchup: best.matchup, sport: best.sport,
             type: best.type, prob: best.prob, ml: best.ml, grade: best.grade,
-            pickedAbbr,
           };
+          if (best.type === 'GAME') out.pickedAbbr = best.name.trim().split(' ').pop();
+          return out;
         }
         """,
         _ELIGIBLE_POTD_SPORTS,
     )
+    if result and result["type"] == "PROP":
+        m = _MLB_PROP_RE.match(result["name"])
+        if m:
+            result["player"] = m.group(1)
+            result["over"] = m.group(2) == "O"
+            result["line"] = float(m.group(3))
+            result["stat"] = m.group(4)
+        else:
+            # Couldn't parse the structured fields needed to grade this
+            # prop — don't silently track an unsettleable pick.
+            log(f"  Free pick was a PROP leg but didn't match expected format, skipping: {result['name']}")
+            return None
+    return result
 
 
 def build_free_pick_caption(pick: dict) -> dict[str, str]:
