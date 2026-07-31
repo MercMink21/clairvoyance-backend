@@ -561,35 +561,42 @@ def get_free_pick(page) -> dict | None:
           }
           await Promise.allSettled(warmups);
           if (typeof _epGatherLegs !== 'function') return null;
-          const legs = _epGatherLegs().filter(l =>
+          // MLB GAME legs are excluded from _epGatherLegs()'s result here
+          // and rebuilt below straight from mlbEns() (the Monte
+          // Carlo/Bayesian/ELO ensemble) as the default probability
+          // source for every MLB game, live odds or not — not just a
+          // fallback for when the odds feed is empty. mlbEns() already
+          // blends in live market odds at 30% weight when present, so
+          // this doesn't discard real odds data when it exists, it just
+          // stops being fully dependent on that feed ever being
+          // populated. Every other sport/league (and MLB PROP legs)
+          // still come from _epGatherLegs() unchanged. This is safe ONLY
+          // here, never in _epGatherLegs() itself — that function also
+          // drives the live Parlay tab on every user's page load, and a
+          // single mlbEns() call measured 3s+ against live team data;
+          // looping that across a full slate there froze the page during
+          // testing. This picker runs once a day, headless, with nobody
+          // waiting on it, so it can afford the cost — capped at 15
+          // games and a reduced 600-sim pass (vs the normal 5000) to
+          // keep total runtime bounded (~6s worst case).
+          const legs = _epGatherLegs().filter(l => !(l.sport === 'MLB' && l.type === 'GAME')).filter(l =>
             (l.type === 'GAME' && eligibleSports.includes(l.sport)) ||
             (l.type === 'PROP' && l.sport === 'MLB')
           );
-          // MLB Monte Carlo fallback — ONLY here, never in _epGatherLegs
-          // itself (that function also drives the live Parlay tab on
-          // every user's page load, and mlbEns()'s MC sim is too slow —
-          // measured 3s+/game — to run there without freezing the UI).
-          // This picker runs once a day, headless, with nobody waiting
-          // on it, so it can afford real simulation cost when the live
-          // odds feed comes back empty for a game (a real, observed
-          // failure mode — an OddsAPI match miss/rate-limit can zero out
-          // every MLB leg above even though the model has an opinion on
-          // every game regardless of whether a market price posted).
-          // Capped at 10 games and a reduced 600-sim pass (vs the normal
-          // 5000) to keep total runtime bounded even on a full outage.
           if (typeof mlbEns === 'function' && typeof p2ml === 'function') {
             const mlbGames = (window.ESPN_GAMES || window._mlbGames || [])
-              .filter(g => { const s = (g.status || '').toUpperCase(); return g.hA && g.awA && s !== 'FINAL' && s !== 'F' && !g.hML && !g.aML; })
-              .slice(0, 10);
+              .filter(g => { const s = (g.status || '').toUpperCase(); return g.hA && g.awA && s !== 'FINAL' && s !== 'F'; })
+              .slice(0, 15);
             const _grade = p => p >= 0.67 ? 'PREMIUM' : p >= 0.62 ? 'OPTIMAL' : p >= 0.55 ? 'LEAN' : 'SKIP';
             mlbGames.forEach(g => {
               const ens = mlbEns(g.hA, g.awA, g, 600);
               const hP = ens.p, aP = 1 - hP;
+              const hmlRaw = g.hML || p2ml(hP), amlRaw = g.aML || p2ml(aP);
               const matchup = g.awA + ' @ ' + g.hA;
               if (hP >= 0.58 && hP >= aP) {
-                legs.push({ name: 'MLB ML ' + g.hA, ml: p2ml(hP), prob: hP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(hP) });
+                legs.push({ name: 'MLB ML ' + g.hA, ml: hmlRaw, prob: hP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(hP) });
               } else if (aP >= 0.58 && aP > hP) {
-                legs.push({ name: 'MLB ML ' + g.awA, ml: p2ml(aP), prob: aP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(aP) });
+                legs.push({ name: 'MLB ML ' + g.awA, ml: amlRaw, prob: aP, matchup, sport: 'MLB', type: 'GAME', grade: _grade(aP) });
               }
             });
           }
