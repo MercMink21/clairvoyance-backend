@@ -114,6 +114,30 @@ def _record_template_sized(template_name: str, setup_js: str, out_path: Path,
     return out_path
 
 
+def _screenshot_settled(template_name: str, setup_js: str, out_path: Path, settle_s: float,
+                         width: int = 1080, height: int = 1350) -> Path:
+    """Loads a template, populates it via setup_js (same convention as
+    _record_template), waits for every reveal animation to finish playing
+    out, then takes a single PNG screenshot instead of recording video —
+    an X-ready still of the exact same content the IG video shows.
+    settle_s should be the same duration value the video version of this
+    template waits for, so the still is captured in its fully-revealed
+    state rather than mid-animation."""
+    from playwright.sync_api import sync_playwright
+
+    template = TEMPLATES / template_name
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": height})
+        page.goto(f"file://{template}")
+        page.evaluate(setup_js)
+        page.wait_for_timeout(int(settle_s * 1000))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(out_path))
+        browser.close()
+    return out_path
+
+
 def record_image_glitch_reveal(image_path: Path, out_path: Path, duration_s: float = 11.5,
                                 width: int = 1080, height: int = 1080) -> Path:
     """Turns a static card image (any size — the full image, text and all,
@@ -172,6 +196,26 @@ def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_pa
     return _record_template(template_name, setup_js, out_path, duration_s or default_duration)
 
 
+def record_stats_still(headline: str, record: str, pct: str, units: str, out_path: Path,
+                        variant: str = "fade", locked: str | None = None, date_str: str | None = None) -> Path:
+    """X-ready still image of record_stats_reveal's fully-settled state
+    (record/win%/units/picks locked) — same content, no animation."""
+    template_name, default_duration = STATS_VARIANTS[variant]
+    setup_js = f"""
+    () => {{
+      document.getElementById('headline').textContent = {json.dumps(headline)};
+      document.getElementById('v-record').textContent = {json.dumps(record)};
+      document.getElementById('v-pct').textContent = {json.dumps(pct)};
+      document.getElementById('v-units').textContent = {json.dumps(units)};
+      var lockedEl = document.getElementById('v-locked');
+      if (lockedEl) lockedEl.textContent = {json.dumps(locked or "—")};
+      var dateEl = document.getElementById('headline-date');
+      if (dateEl) dateEl.textContent = {json.dumps(date_str or "")};
+    }}
+    """
+    return _screenshot_settled(template_name, setup_js, out_path, default_duration)
+
+
 # Kept for backwards compat with the existing call site in generate_social_cards.py
 record_and_convert = record_stats_reveal
 
@@ -187,6 +231,16 @@ def record_breakdown_reveal(headline: str, rows: list[dict], out_path: Path,
         duration_s = 8.0
     setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)}, {json.dumps(date_range or '')})"
     return _record_template("breakdown_reveal.html", setup_js, out_path, duration_s)
+
+
+def record_breakdown_still(headline: str, rows: list[dict], out_path: Path,
+                            duration_s: float | None = None, date_range: str | None = None) -> Path:
+    """X-ready still of record_breakdown_reveal's fully-settled state —
+    every sport's record/win%/units row, no animation."""
+    if duration_s is None:
+        duration_s = 8.0
+    setup_js = f"window.populateRows({json.dumps(headline)}, {json.dumps(rows)}, {json.dumps(date_range or '')})"
+    return _screenshot_settled("breakdown_reveal.html", setup_js, out_path, duration_s)
 
 
 def record_big_recap_reveal(tag: str, date_range: str, record: str, pct: str, units: str,
@@ -206,6 +260,24 @@ def record_big_recap_reveal(tag: str, date_range: str, record: str, pct: str, un
     }}
     """
     return _record_template("big_recap_reveal.html", setup_js, out_path, duration_s)
+
+
+def record_big_recap_still(tag: str, date_range: str, record: str, pct: str, units: str,
+                            extra_val: str, extra_lbl: str, out_path: Path, duration_s: float = 8.0) -> Path:
+    """X-ready still of record_big_recap_reveal's fully-settled state —
+    used for weekly/monthly/yearly recaps."""
+    setup_js = f"""
+    () => {{
+      document.getElementById('tag').textContent = {json.dumps(tag)};
+      document.getElementById('range').textContent = {json.dumps(date_range)};
+      document.getElementById('v-record').textContent = {json.dumps(record)};
+      document.getElementById('v-pct').textContent = {json.dumps(pct)};
+      document.getElementById('v-units').textContent = {json.dumps(units)};
+      document.getElementById('v-extra').textContent = {json.dumps(extra_val)};
+      document.getElementById('v-extra-lbl').textContent = {json.dumps(extra_lbl)};
+    }}
+    """
+    return _screenshot_settled("big_recap_reveal.html", setup_js, out_path, duration_s)
 
 
 # Two milestone styles to rotate between so back-to-back milestones (e.g.
@@ -293,6 +365,26 @@ def record_free_pick_reveal(sport_tag: str, matchup: str, pick: str, grade: str,
     }}
     """
     return _record_template("free_pick_reveal.html", setup_js, out_path, duration_s)
+
+
+def record_free_pick_still(sport_tag: str, matchup: str, pick: str, grade: str,
+                            out_path: Path, duration_s: float = 9.5, date_str: str | None = None) -> Path:
+    """X-ready still of record_free_pick_reveal's fully-settled state —
+    matchup, pick, grade, and date all visible, no animation."""
+    grade_class = {"PREMIUM": "grade-premium", "OPTIMAL": "grade-optimal"}.get(grade, "grade-lean")
+    setup_js = f"""
+    () => {{
+      document.getElementById('sport-tag').textContent = {json.dumps('// ' + sport_tag)};
+      document.getElementById('matchup').textContent = {json.dumps(matchup)};
+      document.getElementById('pick').textContent = {json.dumps(pick)};
+      var dateEl = document.getElementById('headline-date');
+      if (dateEl) dateEl.textContent = {json.dumps(date_str or "")};
+      var g = document.getElementById('v-grade');
+      g.textContent = {json.dumps(grade)};
+      g.className = 'grade-val ' + {json.dumps(grade_class)};
+    }}
+    """
+    return _screenshot_settled("free_pick_reveal.html", setup_js, out_path, duration_s)
 
 
 def record_grading_tiers_reveal(out_path: Path, duration_s: float = 10.0) -> Path:

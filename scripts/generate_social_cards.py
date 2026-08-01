@@ -1193,11 +1193,14 @@ def main() -> None:
     captions = build_daily_caption(daily["stats"], yesterday_mt)
     log("Daily captions:\n--- IG ---\n" + captions["instagram"] + "\n--- X ---\n" + captions["x"])
 
-    daily_attachments = list(daily["cards"])
+    # IG gets the video, X gets a still of the same fully-settled content —
+    # Track Record/Sport Perf/League Perf PNG cards are no longer attached
+    # at all (superseded by the video+still pair).
+    daily_attachments = []
     stats = daily["stats"] or {}
     if stats.get("w") is not None:
         try:
-            from generate_video_reveal import record_stats_reveal, record_breakdown_reveal, STATS_VARIANT_NAMES
+            from generate_video_reveal import record_stats_reveal, record_stats_still, record_breakdown_reveal, record_breakdown_still, STATS_VARIANT_NAMES
             # Rotate the visual style by weekday (same index basis as the
             # caption hook rotation) so consecutive daily videos don't all
             # look identical.
@@ -1217,12 +1220,31 @@ def main() -> None:
             daily_attachments.append(video_path)
             log(f"Video reveal generated: {video_path}")
 
+            still_path = out_dir / f"cv-reveal-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+            record_stats_still(
+                headline="YESTERDAY'S PERFORMANCE",
+                record=f"{stats['w']}W-{stats['l']}L",
+                pct=_fmt_pct(stats.get("pct")),
+                units=_fmt_units(stats.get("units")),
+                locked=str(stats.get("lockedCount", "—")),
+                out_path=still_path,
+                variant=variant,
+                date_str=yesterday_mt.strftime("%B %-d, %Y"),
+            )
+            daily_attachments.append(still_path)
+            log(f"Stats still generated: {still_path}")
+
             if stats.get("bySport"):
                 rows = _breakdown_rows(stats)
                 breakdown_path = out_dir / f"cv-breakdown-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_breakdown_reveal("SPORT PERFORMANCE", rows, breakdown_path)
                 daily_attachments.append(breakdown_path)
                 log(f"Breakdown video generated: {breakdown_path}")
+
+                breakdown_still_path = out_dir / f"cv-breakdown-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+                record_breakdown_still("SPORT PERFORMANCE", rows, breakdown_still_path)
+                daily_attachments.append(breakdown_still_path)
+                log(f"Breakdown still generated: {breakdown_still_path}")
         except Exception as exc:
             # Video is a bonus on top of the cards, not a hard requirement
             # for the daily post — don't let a video-pipeline hiccup (e.g.
@@ -1252,17 +1274,35 @@ def main() -> None:
     free_pick = result.get("free_pick")
     if free_pick:
         try:
-            from generate_video_reveal import record_free_pick_reveal
+            from generate_video_reveal import record_free_pick_reveal, record_free_pick_still
+            # Video/still layout is league (sport-tag) / matchup / pick,
+            # each on its own line -- the league is already shown
+            # separately above, so strip that leading "<SPORT> " prefix
+            # from the raw leg name ("MLB ML LAD" -> "ML LAD") rather
+            # than showing the league twice.
+            sport_prefix = free_pick["sport"] + " "
+            pick_label = free_pick["name"][len(sport_prefix):] if free_pick["name"].startswith(sport_prefix) else free_pick["name"]
             pick_video_path = out_dir / f"cv-freepick-{yesterday_mt.strftime('%Y%m%d')}.mp4"
             record_free_pick_reveal(
                 sport_tag=free_pick["sport"],
                 matchup=free_pick["matchup"],
-                pick=free_pick["name"],
+                pick=pick_label,
                 grade=free_pick["grade"],
                 out_path=pick_video_path,
                 date_str=now_mt.strftime("%B %-d, %Y").upper(),
             )
             daily_attachments.append(pick_video_path)
+
+            pick_still_path = out_dir / f"cv-freepick-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+            record_free_pick_still(
+                sport_tag=free_pick["sport"],
+                matchup=free_pick["matchup"],
+                pick=pick_label,
+                grade=free_pick["grade"],
+                out_path=pick_still_path,
+                date_str=now_mt.strftime("%B %-d, %Y").upper(),
+            )
+            daily_attachments.append(pick_still_path)
             free_pick_extra = ("Free Pick of the Day", build_free_pick_caption(free_pick))
 
             # Record today's pick in the ledger as pending — tomorrow's
@@ -1302,11 +1342,11 @@ def main() -> None:
     if result["weekly"]:
         captions = build_weekly_caption(result["weekly"]["stats"], yesterday_mt)
         log("Weekly captions:\n--- IG ---\n" + captions["instagram"])
-        weekly_attachments = list(result["weekly"]["cards"])
+        weekly_attachments = []
         w_stats = result["weekly"]["stats"] or {}
         if w_stats.get("w") is not None:
             try:
-                from generate_video_reveal import record_big_recap_reveal
+                from generate_video_reveal import record_big_recap_reveal, record_big_recap_still
                 week_start = yesterday_mt - timedelta(days=6)
                 range_str = f"{week_start.strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}"
                 recap_path = out_dir / f"cv-weekly-recap-{yesterday_mt.strftime('%Y%m%d')}.mp4"
@@ -1318,17 +1358,32 @@ def main() -> None:
                 )
                 weekly_attachments.append(recap_path)
                 log(f"Weekly recap video generated: {recap_path}")
+
+                w_still_path = out_dir / f"cv-weekly-recap-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+                record_big_recap_still(
+                    tag="WEEKLY RECAP", date_range=range_str,
+                    record=f"{w_stats['w']}W-{w_stats['l']}L", pct=_fmt_pct(w_stats.get("pct")),
+                    units=_fmt_units(w_stats.get("units")), extra_val=str(w_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
+                    out_path=w_still_path,
+                )
+                weekly_attachments.append(w_still_path)
+                log(f"Weekly recap still generated: {w_still_path}")
             except Exception as exc:
                 log(f"Weekly recap video generation failed (non-fatal, skipping): {exc}")
             if w_stats.get("bySport"):
                 try:
-                    from generate_video_reveal import record_breakdown_reveal
+                    from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
                     rows = _breakdown_rows(w_stats)
                     w_breakdown_path = out_dir / f"cv-breakdown-weekly-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                     w_range_str = f"{(yesterday_mt - timedelta(days=6)).strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}".upper()
                     record_breakdown_reveal("SPORT PERFORMANCE — ROLLING 7D", rows, w_breakdown_path, date_range=w_range_str)
                     weekly_attachments.append(w_breakdown_path)
                     log(f"Weekly breakdown video generated: {w_breakdown_path}")
+
+                    w_bd_still_path = out_dir / f"cv-breakdown-weekly-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+                    record_breakdown_still("SPORT PERFORMANCE — ROLLING 7D", rows, w_bd_still_path, date_range=w_range_str)
+                    weekly_attachments.append(w_bd_still_path)
+                    log(f"Weekly breakdown still generated: {w_bd_still_path}")
                 except Exception as exc:
                     log(f"Weekly breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
@@ -1344,11 +1399,11 @@ def main() -> None:
         _strip_stale_hockey(m_stats)
         captions = build_monthly_caption(m_stats, now_mt)
         log("Monthly captions:\n--- IG ---\n" + captions["instagram"])
-        monthly_attachments = list(result["monthly"]["cards"])
+        monthly_attachments = []
         last_month_end = now_mt.replace(day=1) - timedelta(days=1)
         if m_stats.get("w") is not None:
             try:
-                from generate_video_reveal import record_big_recap_reveal
+                from generate_video_reveal import record_big_recap_reveal, record_big_recap_still
                 recap_path = out_dir / f"cv-monthly-recap-{last_month_end.strftime('%Y%m')}.mp4"
                 record_big_recap_reveal(
                     tag="MONTHLY RECAP", date_range=last_month_end.strftime("%B %Y").upper(),
@@ -1358,17 +1413,33 @@ def main() -> None:
                 )
                 monthly_attachments.append(recap_path)
                 log(f"Monthly recap video generated: {recap_path}")
+
+                m_still_path = out_dir / f"cv-monthly-recap-still-{last_month_end.strftime('%Y%m')}.png"
+                record_big_recap_still(
+                    tag="MONTHLY RECAP", date_range=last_month_end.strftime("%B %Y").upper(),
+                    record=f"{m_stats['w']}W-{m_stats['l']}L", pct=_fmt_pct(m_stats.get("pct")),
+                    units=_fmt_units(m_stats.get("units")), extra_val=str(m_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
+                    out_path=m_still_path,
+                )
+                monthly_attachments.append(m_still_path)
+                log(f"Monthly recap still generated: {m_still_path}")
             except Exception as exc:
                 log(f"Monthly recap video generation failed (non-fatal, skipping): {exc}")
             if m_stats.get("bySport"):
                 try:
-                    from generate_video_reveal import record_breakdown_reveal
+                    from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
                     rows = _breakdown_rows(m_stats)
                     m_breakdown_path = out_dir / f"cv-breakdown-monthly-{last_month_end.strftime('%Y%m')}.mp4"
                     record_breakdown_reveal("SPORT PERFORMANCE — LAST MONTH", rows, m_breakdown_path,
                                              date_range=last_month_end.strftime("%B %Y").upper())
                     monthly_attachments.append(m_breakdown_path)
                     log(f"Monthly breakdown video generated: {m_breakdown_path}")
+
+                    m_bd_still_path = out_dir / f"cv-breakdown-monthly-still-{last_month_end.strftime('%Y%m')}.png"
+                    record_breakdown_still("SPORT PERFORMANCE — LAST MONTH", rows, m_bd_still_path,
+                                            date_range=last_month_end.strftime("%B %Y").upper())
+                    monthly_attachments.append(m_bd_still_path)
+                    log(f"Monthly breakdown still generated: {m_bd_still_path}")
                 except Exception as exc:
                     log(f"Monthly breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
@@ -1388,7 +1459,7 @@ def main() -> None:
         yearly_attachments = []
         if y_stats.get("w") is not None:
             try:
-                from generate_video_reveal import record_big_recap_reveal
+                from generate_video_reveal import record_big_recap_reveal, record_big_recap_still
                 recap_path = out_dir / f"cv-yearly-recap-{prior_year}.mp4"
                 record_big_recap_reveal(
                     tag="YEAR IN REVIEW", date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}",
@@ -1398,17 +1469,33 @@ def main() -> None:
                 )
                 yearly_attachments.append(recap_path)
                 log(f"Yearly recap video generated: {recap_path}")
+
+                y_still_path = out_dir / f"cv-yearly-recap-still-{prior_year}.png"
+                record_big_recap_still(
+                    tag="YEAR IN REVIEW", date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}",
+                    record=f"{y_stats['w']}W-{y_stats['l']}L", pct=_fmt_pct(y_stats.get("pct")),
+                    units=_fmt_units(y_stats.get("units")), extra_val=str(y_stats.get("lockedCount", "—")), extra_lbl="PICKS LOCKED",
+                    out_path=y_still_path, duration_s=8.0,
+                )
+                yearly_attachments.append(y_still_path)
+                log(f"Yearly recap still generated: {y_still_path}")
             except Exception as exc:
                 log(f"Yearly recap video generation failed (non-fatal, skipping): {exc}")
             if y_stats.get("bySport"):
                 try:
-                    from generate_video_reveal import record_breakdown_reveal
+                    from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
                     rows = _breakdown_rows(y_stats)
                     y_breakdown_path = out_dir / f"cv-breakdown-yearly-{prior_year}.mp4"
                     record_breakdown_reveal(f"SPORT PERFORMANCE — {prior_year}", rows, y_breakdown_path,
                                              date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}")
                     yearly_attachments.append(y_breakdown_path)
                     log(f"Yearly breakdown video generated: {y_breakdown_path}")
+
+                    y_bd_still_path = out_dir / f"cv-breakdown-yearly-still-{prior_year}.png"
+                    record_breakdown_still(f"SPORT PERFORMANCE — {prior_year}", rows, y_bd_still_path,
+                                            date_range=f"JANUARY 1 – DECEMBER 31, {prior_year}")
+                    yearly_attachments.append(y_bd_still_path)
+                    log(f"Yearly breakdown still generated: {y_bd_still_path}")
                 except Exception as exc:
                     log(f"Yearly breakdown video generation failed (non-fatal, skipping): {exc}")
         if yearly_attachments and not args.no_email:
@@ -1425,13 +1512,18 @@ def main() -> None:
         at_stats = result["alltime"]["stats"] or {}
         captions = build_alltime_caption(at_stats)
         log("All Time captions:\n--- IG ---\n" + captions["instagram"])
-        at_attachments = list(result["alltime"]["cards"])
+        at_attachments = []
         if at_stats.get("bySport"):
             try:
-                from generate_video_reveal import record_breakdown_reveal
+                from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
+                rows = _breakdown_rows(at_stats)
                 at_breakdown_path = out_dir / f"cv-breakdown-alltime-{now_mt.strftime('%Y%m%d')}.mp4"
-                record_breakdown_reveal("SPORT PERFORMANCE — ALL TIME", _breakdown_rows(at_stats), at_breakdown_path)
+                record_breakdown_reveal("SPORT PERFORMANCE — ALL TIME", rows, at_breakdown_path)
                 at_attachments.append(at_breakdown_path)
+
+                at_still_path = out_dir / f"cv-breakdown-alltime-still-{now_mt.strftime('%Y%m%d')}.png"
+                record_breakdown_still("SPORT PERFORMANCE — ALL TIME", rows, at_still_path)
+                at_attachments.append(at_still_path)
             except Exception as exc:
                 log(f"All Time breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
@@ -1445,13 +1537,18 @@ def main() -> None:
         sl_stats = result["sincelaunch"]["stats"] or {}
         captions = build_sincelaunch_caption(sl_stats)
         log("Since Launch captions:\n--- IG ---\n" + captions["instagram"])
-        sl_attachments = list(result["sincelaunch"]["cards"])
+        sl_attachments = []
         if sl_stats.get("bySport"):
             try:
-                from generate_video_reveal import record_breakdown_reveal
+                from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
+                rows = _breakdown_rows(sl_stats)
                 sl_breakdown_path = out_dir / f"cv-breakdown-sincelaunch-{now_mt.strftime('%Y%m%d')}.mp4"
-                record_breakdown_reveal("SPORT PERFORMANCE — SINCE LAUNCH", _breakdown_rows(sl_stats), sl_breakdown_path)
+                record_breakdown_reveal("SPORT PERFORMANCE — SINCE LAUNCH", rows, sl_breakdown_path)
                 sl_attachments.append(sl_breakdown_path)
+
+                sl_still_path = out_dir / f"cv-breakdown-sincelaunch-still-{now_mt.strftime('%Y%m%d')}.png"
+                record_breakdown_still("SPORT PERFORMANCE — SINCE LAUNCH", rows, sl_still_path)
+                sl_attachments.append(sl_still_path)
             except Exception as exc:
                 log(f"Since Launch breakdown video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
