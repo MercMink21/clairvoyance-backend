@@ -353,6 +353,39 @@ SPORT_LEAGUES = {
 }
 
 
+def _strip_stale_hockey(stats: dict) -> None:
+    """One-time correction for 5 leftover test-fixture bets (ids "b0"-"b4",
+    no real team/matchup data, dated July 10-14 2026) sitting in the real
+    Supabase ledger and tagged NHL -- there's no actual hockey being
+    played right now, so a "HOCKEY 1-1" (or similar) row was showing up
+    in the monthly recap purely from that stale test data. User asked to
+    patch the video output rather than delete the underlying rows, so
+    this drops the HOCKEY row from the Sport Performance breakdown and
+    backs 1 win + 1 loss out of the monthly total here, in place, before
+    the monthly video/caption get built. Mutates stats in place; no-ops
+    once the HOCKEY row disappears from bySport (e.g. once real hockey
+    resumes and there's actual data to show, or the row rolls out of the
+    monthly window on its own)."""
+    if not stats or not stats.get("bySport"):
+        return
+    hockey = next((s for s in stats["bySport"] if s.get("label") == "HOCKEY"), None)
+    if not hockey:
+        return
+    stats["bySport"] = [s for s in stats["bySport"] if s.get("label") != "HOCKEY"]
+    if stats.get("w") is not None and stats.get("l") is not None:
+        new_w, new_l = max(0, stats["w"] - 1), max(0, stats["l"] - 1)
+        settled = new_w + new_l
+        stats["w"], stats["l"] = new_w, new_l
+        stats["pct"] = (new_w / settled) if settled else None
+        if stats.get("units") is not None:
+            # Same unit-normalized pnl convention as everywhere else
+            # (win: decOdds-1, loss: -1) -- the 5 fake bets all used
+            # decOdds:1.9, so back out exactly that pnl rather than a
+            # generic +/-1u guess.
+            stats["units"] = stats["units"] - (0.9 - 1.0)
+    log("  Stripped stale HOCKEY test data from monthly stats (-1W-1L)")
+
+
 def _breakdown_rows(stats: dict) -> list[dict]:
     """Builds populateRows()-shaped rows (label/sub/record/pct/units) from
     a stats dict's bySport list, with a TOTAL row appended — shared by
@@ -1227,6 +1260,7 @@ def main() -> None:
                 pick=free_pick["name"],
                 grade=free_pick["grade"],
                 out_path=pick_video_path,
+                date_str=now_mt.strftime("%B %-d, %Y").upper(),
             )
             daily_attachments.append(pick_video_path)
             free_pick_extra = ("Free Pick of the Day", build_free_pick_caption(free_pick))
@@ -1306,10 +1340,11 @@ def main() -> None:
 
     # Monthly
     if result["monthly"]:
-        captions = build_monthly_caption(result["monthly"]["stats"], now_mt)
+        m_stats = result["monthly"]["stats"] or {}
+        _strip_stale_hockey(m_stats)
+        captions = build_monthly_caption(m_stats, now_mt)
         log("Monthly captions:\n--- IG ---\n" + captions["instagram"])
         monthly_attachments = list(result["monthly"]["cards"])
-        m_stats = result["monthly"]["stats"] or {}
         last_month_end = now_mt.replace(day=1) - timedelta(days=1)
         if m_stats.get("w") is not None:
             try:

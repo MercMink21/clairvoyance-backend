@@ -270,20 +270,23 @@ def record_educational_reveal(tag: str, title: str, lines: list[str], out_path: 
 
 
 def record_free_pick_reveal(sport_tag: str, matchup: str, pick: str, grade: str,
-                             out_path: Path, duration_s: float = 9.5) -> Path:
+                             out_path: Path, duration_s: float = 9.5, date_str: str | None = None) -> Path:
     """Single highest-probability pick of the day (ML, spread, or O/U —
     whichever leg the engine's own gathering logic ranks highest across
     every sport), glitch-reveal aesthetic matching the daily stats video's
     'glitch' variant. Shows the engine's own PREMIUM/OPTIMAL/LEAN grade
     under the pick instead of raw odds/probability — since this is
     already the single best-ranked leg of the day, the grade will almost
-    always read PREMIUM or OPTIMAL."""
+    always read PREMIUM or OPTIMAL. date_str labels which day's pick this
+    is (e.g. "JULY 30, 2026") so the video itself is unambiguous."""
     grade_class = {"PREMIUM": "grade-premium", "OPTIMAL": "grade-optimal"}.get(grade, "grade-lean")
     setup_js = f"""
     () => {{
       document.getElementById('sport-tag').textContent = {json.dumps('// ' + sport_tag)};
       document.getElementById('matchup').textContent = {json.dumps(matchup)};
       document.getElementById('pick').textContent = {json.dumps(pick)};
+      var dateEl = document.getElementById('headline-date');
+      if (dateEl) dateEl.textContent = {json.dumps(date_str or "")};
       var g = document.getElementById('v-grade');
       g.textContent = {json.dumps(grade)};
       g.className = 'grade-val ' + {json.dumps(grade_class)};
@@ -344,6 +347,7 @@ def main() -> None:
     p_pick.add_argument("--matchup", default="LAL @ BOS")
     p_pick.add_argument("--pick", default="BOSTON CELTICS ML")
     p_pick.add_argument("--grade", default="PREMIUM", choices=["PREMIUM", "OPTIMAL", "LEAN"])
+    p_pick.add_argument("--date", default="JULY 30, 2026")
     p_pick.add_argument("--out", default="/tmp/cv_freepick.mp4")
 
     args = parser.parse_args()
@@ -370,7 +374,7 @@ def main() -> None:
     elif args.kind == "subscription":
         out = record_subscription_tiers_reveal(Path(args.out))
     elif args.kind == "freepick":
-        out = record_free_pick_reveal(args.sport, args.matchup, args.pick, args.grade, Path(args.out))
+        out = record_free_pick_reveal(args.sport, args.matchup, args.pick, args.grade, Path(args.out), date_str=args.date)
     print(f"Saved {out} ({out.stat().st_size/1024:.0f} KB)")
 
 
