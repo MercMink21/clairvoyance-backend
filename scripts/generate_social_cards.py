@@ -55,10 +55,6 @@ rides along with the standard daily post:
                      drift or double-fire.
   - Configured event end dates (see EVENTS below): + an Event Performance
     card for that tournament/season, the day after it ends
-  - Any run:        a milestone check (win streak / round-number bet-count
-    triggers) — fires a bonus email the day a new one is crossed. State is
-    persisted in data/social_milestones.json (committed back to the repo
-    by the workflow) so a milestone only ever fires once.
 
 EVENTS is empty by default — Event Performance cards need a real
 tournament name/date window, and there's no way to auto-detect "this
@@ -85,7 +81,6 @@ APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 ROOT = Path(__file__).resolve().parent.parent
-MILESTONE_STATE_PATH = ROOT / "data" / "social_milestones.json"
 # Lives under docs/ (not data/) so the live app can fetch it directly the
 # same way it fetches docs/mls_opta_stats.json — this is both the git-
 # committed source of truth and the file the home page's "PICK OF DAY"
@@ -157,20 +152,6 @@ def _mt_now() -> datetime:
     # project's other scheduled workflows are all pinned to MDT (UTC-6)
     # rather than doing real DST-aware conversion, same convention here.
     return datetime.now(timezone.utc) - timedelta(hours=6)
-
-
-def load_milestone_state() -> dict:
-    if MILESTONE_STATE_PATH.exists():
-        try:
-            return json.loads(MILESTONE_STATE_PATH.read_text())
-        except Exception:
-            pass
-    return {"lastStreak": 0, "lastCountMilestone": 0}
-
-
-def save_milestone_state(state: dict) -> None:
-    MILESTONE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MILESTONE_STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
 def load_pick_of_day_ledger() -> list[dict]:
@@ -513,29 +494,6 @@ def get_event_stats(page) -> dict | None:
     )
 
 
-def get_milestone_data(page) -> dict:
-    """All-time settled-bet count and current win/loss streak, computed
-    from the real ledger already loaded into this page's localStorage."""
-    return page.evaluate(
-        """
-        () => {
-          const all = getP();
-          const settled = all
-            .filter(p => p.outcome === 'win' || p.outcome === 'loss')
-            .sort((a, b) => (a.settledAt || a.lockedAt || 0) - (b.settledAt || b.lockedAt || 0));
-          let streak = 0, dir = null;
-          for (let i = settled.length - 1; i >= 0; i--) {
-            const d = settled[i].outcome === 'win' ? 'W' : 'L';
-            if (dir === null) { dir = d; streak = 1; }
-            else if (d === dir) { streak++; }
-            else break;
-          }
-          return { totalSettled: settled.length, streak, streakDir: dir };
-        }
-        """
-    )
-
-
 # Mirrors ESPN_SPORT_PATHS' keys — only sports/leagues with a real
 # scoreboard feed to auto-settle against are eligible to become the
 # tracked Pick of the Day. (Tennis/WC26 legs can still appear in the
@@ -787,8 +745,7 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
     # get_rotation_item) — no stored state, can't drift or double-fire.
     is_biweekly = (now_mt.date() - ROTATION_EPOCH.date()).days % 14 == 0 or "alltime" in force
 
-    result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "milestone": None,
-              "alltime": None, "sincelaunch": None}
+    result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "alltime": None}
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -861,14 +818,13 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
             year_stats = get_year_stats(page, now_mt.year - 1)
             result["yearly"] = {"stats": year_stats}
 
-        # All Time / Since Launch (every 14 days) — both are real periods
-        # the app itself already supports (renderTrackRecord._sportPeriod),
-        # generated the exact same way as weekly/monthly.
+        # All Time (every 14 days) — a real period the app itself already
+        # supports (renderTrackRecord._sportPeriod), generated the exact
+        # same way as weekly/monthly. Since Launch retired (redundant
+        # with All Time for this app's purposes).
         if is_biweekly:
             cards, stats = generate_cards(page, out_dir, "ALL TIME", prefix_extra="alltime-")
             result["alltime"] = {"cards": cards, "stats": stats}
-            cards, stats = generate_cards(page, out_dir, "SINCE LAUNCH", prefix_extra="sincelaunch-")
-            result["sincelaunch"] = {"cards": cards, "stats": stats}
 
         # Events — the day after a configured window ends
         for event in EVENTS:
@@ -878,10 +834,6 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
                 if path:
                     event_stats = get_event_stats(page)
                     result["events"].append({"event": event, "card": path, "stats": event_stats})
-
-        # Milestones
-        milestone_data = get_milestone_data(page)
-        result["milestone_data"] = milestone_data
 
         browser.close()
 
@@ -954,28 +906,6 @@ def build_alltime_caption(stats: dict | None) -> dict[str, str]:
     x = (
         f"All Time — Every Pick, Every Result\n\nThis is Clairvoyance.\n\n{tally_line}"
         f"The full track record, public from day one.\n\n"
-        f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
-    )
-    return {"instagram": ig, "x": x}
-
-
-def build_sincelaunch_caption(stats: dict | None) -> dict[str, str]:
-    tally_line = ""
-    if stats and stats.get("w") is not None:
-        tally_line = (
-            f"Final tally: {stats['w']}W-{stats['l']}L · {_fmt_pct(stats.get('pct'))} win rate · "
-            f"{_fmt_units(stats.get('units'))}\n\n"
-        )
-    ig = (
-        f"Since Launch\n\nThis is Clairvoyance.\n\n{tally_line}"
-        f"Everything tracked since day one — every pick graded, every result public.\n\n"
-        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
-        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#foryou #sportsbetting #bettingtips #bettingpicks"
-    )
-    x = (
-        f"Since Launch\n\nThis is Clairvoyance.\n\n{tally_line}"
-        f"Everything tracked since day one.\n\n"
         f"clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     )
     return {"instagram": ig, "x": x}
@@ -1106,28 +1036,6 @@ def build_covers_caption() -> dict[str, str]:
         "One engine. Every sport that matters.\n\n20 leagues, 6 sports, every pick graded.\n\n"
         "clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     )
-    return {"instagram": ig, "x": x}
-
-
-def build_milestone_caption(milestone_data: dict, trigger: str, threshold: int) -> dict[str, str]:
-    if trigger == "streak":
-        # threshold here is the round streak number just crossed (e.g. 10),
-        # not necessarily the live streak count — announce the milestone
-        # that was hit, not whatever the streak has ticked up to by the
-        # time this caption gets built.
-        dir_word = "WIN" if milestone_data["streakDir"] == "W" else "LOSS"
-        headline = f"{threshold}-{dir_word} STREAK"
-        body = f"{threshold} straight {'wins' if dir_word=='WIN' else 'losses'}. The model doesn't flinch either way — every pick graded the same, win or lose."
-    else:
-        headline = f"{threshold} BETS TRACKED"
-        body = f"{threshold} graded picks, settled and public. Every single one — no cherry-picking, no deleted losses."
-    ig = (
-        f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n"
-        f"Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
-        f"clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
-        f"#foryou #sportsbetting #bettingtips #bettingpicks"
-    )
-    x = f"MILESTONE: {headline}\n\nThis is Clairvoyance.\n\n{body}\n\n#sportsbetting #bettingpicks"
     return {"instagram": ig, "x": x}
 
 
@@ -1517,7 +1425,7 @@ def main() -> None:
         elif not yearly_attachments:
             log(f"Year-end recap skipped: no settled bets found for {prior_year}")
 
-    # All Time / Since Launch (every 14 days)
+    # All Time (every 14 days)
     if result["alltime"]:
         at_stats = result["alltime"]["stats"] or {}
         captions = build_alltime_caption(at_stats)
@@ -1543,31 +1451,6 @@ def main() -> None:
                 intro="Full all-time track record, good pinned-post material:",
             )
 
-    if result["sincelaunch"]:
-        sl_stats = result["sincelaunch"]["stats"] or {}
-        captions = build_sincelaunch_caption(sl_stats)
-        log("Since Launch captions:\n--- IG ---\n" + captions["instagram"])
-        sl_attachments = []
-        if sl_stats.get("bySport"):
-            try:
-                from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
-                rows = _breakdown_rows(sl_stats)
-                sl_breakdown_path = out_dir / f"cv-breakdown-sincelaunch-{now_mt.strftime('%Y%m%d')}.mp4"
-                record_breakdown_reveal("SPORT PERFORMANCE — SINCE LAUNCH", rows, sl_breakdown_path)
-                sl_attachments.append(sl_breakdown_path)
-
-                sl_still_path = out_dir / f"cv-breakdown-sincelaunch-still-{now_mt.strftime('%Y%m%d')}.png"
-                record_breakdown_still("SPORT PERFORMANCE — SINCE LAUNCH", rows, sl_still_path)
-                sl_attachments.append(sl_still_path)
-            except Exception as exc:
-                log(f"Since Launch breakdown video generation failed (non-fatal, skipping): {exc}")
-        if not args.no_email:
-            send_email(
-                "Clairvoyance — Since Launch Track Record",
-                sl_attachments, captions,
-                intro="Since-launch track record, ready to post:",
-            )
-
     # Events
     for ev in result["events"]:
         captions = build_event_caption(ev["event"], ev.get("stats"))
@@ -1576,7 +1459,7 @@ def main() -> None:
         ev_stats = ev.get("stats") or {}
         if ev_stats.get("w") is not None:
             try:
-                from generate_video_reveal import record_stats_reveal
+                from generate_video_reveal import record_stats_reveal, record_stats_still
                 slug = re.sub(r"[^a-z0-9]+", "-", ev["event"]["name"].lower()).strip("-")
                 event_video_path = out_dir / f"cv-event-{slug}-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_stats_reveal(
@@ -1590,6 +1473,19 @@ def main() -> None:
                 )
                 event_attachments.append(event_video_path)
                 log(f"Event glitch video generated: {event_video_path}")
+
+                event_still_path = out_dir / f"cv-event-{slug}-still-{yesterday_mt.strftime('%Y%m%d')}.png"
+                record_stats_still(
+                    headline=ev["event"]["name"].title(),
+                    record=f"{ev_stats['w']}W-{ev_stats['l']}L",
+                    pct=_fmt_pct(ev_stats.get("pct")),
+                    units=_fmt_units(ev_stats.get("units")),
+                    locked=str(ev_stats.get("n", "—")),
+                    out_path=event_still_path,
+                    variant="glitch",
+                )
+                event_attachments.append(event_still_path)
+                log(f"Event still generated: {event_still_path}")
             except Exception as exc:
                 log(f"Event video generation failed (non-fatal, skipping): {exc}")
         if not args.no_email:
@@ -1598,93 +1494,6 @@ def main() -> None:
                 event_attachments, captions,
                 intro=f"{ev['event']['name']} just wrapped — final performance card is ready:",
             )
-
-    # Milestones
-    milestone_data = result.get("milestone_data") or {}
-    state = load_milestone_state()
-    new_state = dict(state)
-    triggered = None
-
-    triggered_threshold = None
-    streak = milestone_data.get("streak", 0)
-    streak_thresholds = [5, 10, 15, 20, 25, 30]
-    for t in streak_thresholds:
-        if streak >= t > state.get("lastStreak", 0):
-            triggered = "streak"
-            triggered_threshold = t
-            new_state["lastStreak"] = t
-            break
-    if streak < state.get("lastStreak", 0):
-        # streak broke — reset so the next run up can re-trigger at the same threshold later
-        new_state["lastStreak"] = 0
-
-    total = milestone_data.get("totalSettled", 0)
-    count_thresholds = [100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000]
-    if triggered is None:
-        for t in count_thresholds:
-            if total >= t > state.get("lastCountMilestone", 0):
-                triggered = "count"
-                triggered_threshold = t
-                new_state["lastCountMilestone"] = t
-                break
-
-    # --force milestone (review-only): nothing new actually crossed a
-    # threshold, so replay the most recently-hit one (whichever of
-    # streak/count fired last, preferring streak) instead of fabricating
-    # a fake milestone. is_replay skips the state-file write at the end —
-    # a review resend isn't a real new trigger and shouldn't touch the
-    # dedupe state.
-    is_replay = False
-    if not triggered and "milestone" in force:
-        if state.get("lastStreak", 0) > 0:
-            triggered, triggered_threshold = "streak", state["lastStreak"]
-        elif state.get("lastCountMilestone", 0) > 0:
-            triggered, triggered_threshold = "count", state["lastCountMilestone"]
-        if triggered:
-            is_replay = True
-            log(f"Replaying last milestone for review: {triggered} @ {triggered_threshold}")
-
-    if triggered:
-        log(f"Milestone triggered: {triggered} @ {triggered_threshold} ({milestone_data})")
-        captions = build_milestone_caption(milestone_data, triggered, triggered_threshold)
-        log("Milestone captions:\n--- IG ---\n" + captions["instagram"])
-
-        milestone_attachments = []
-        try:
-            from generate_video_reveal import record_milestone_reveal
-            # Two milestone styles rotate by trigger type so a streak
-            # milestone and a bet-count milestone never look the same —
-            # streaks get the more kinetic "pulse" (expanding rings, fits
-            # a live-momentum feel), round-number counts get the punchier
-            # "flash" (fits a single big-number headline moment).
-            if triggered == "streak":
-                dir_word = "WIN" if milestone_data.get("streakDir") == "W" else "LOSS"
-                m_headline = f"{triggered_threshold}-{dir_word} STREAK"
-                m_body = f"{triggered_threshold} straight {'wins' if dir_word=='WIN' else 'losses'}. The model doesn't flinch either way."
-                m_variant = "pulse"
-            else:
-                m_headline = f"{triggered_threshold} BETS TRACKED"
-                m_body = f"{triggered_threshold} graded picks, settled and public. Every single one."
-                m_variant = "flash"
-            milestone_video_path = out_dir / f"cv-milestone-{yesterday_mt.strftime('%Y%m%d')}.mp4"
-            record_milestone_reveal(m_headline, m_body, milestone_video_path, variant=m_variant)
-            milestone_attachments.append(milestone_video_path)
-            log(f"Milestone video generated: {milestone_video_path}")
-        except Exception as exc:
-            log(f"Milestone video generation failed (non-fatal, skipping): {exc}")
-
-        if not args.no_email:
-            send_email(
-                "Clairvoyance — 🎯 New Milestone!" + (" (replay)" if is_replay else ""),
-                milestone_attachments,
-                captions,
-                intro="A milestone just hit — good spike-engagement post, don't sit on this one:"
-                if not is_replay else "Replaying the most recent milestone for review — no new threshold was crossed:",
-            )
-        if not is_replay:
-            save_milestone_state(new_state)
-    else:
-        log(f"No new milestone (streak={streak}, total={total}, state={state})")
 
     # Rotation content (grading system, subscription tiers, educational
     # series) — every 5th day since launch, deterministic from the date.

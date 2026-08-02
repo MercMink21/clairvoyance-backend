@@ -49,21 +49,21 @@ jobs:
         run: |
           python scripts/generate_social_cards.py --force "${{ github.event.inputs.force }}"
 
-      # Milestone state (data/social_milestones.json) and the Pick of Day
-      # ledger (docs/pick_of_day.json — the home page's PICK OF DAY tile
-      # fetches this directly) both have to persist across runs so a
-      # milestone only ever fires once and yesterday's pick gets settled
-      # before today's is picked. GitHub Actions runners are ephemeral, so
-      # the repo itself is the only place that can hold this state.
-      - name: Commit milestone + pick-of-day state
+      # Pick of Day ledger (docs/pick_of_day.json — the home page's PICK OF
+      # DAY tile fetches this directly) has to persist across runs so
+      # yesterday's pick gets settled before today's is picked. GitHub
+      # Actions runners are ephemeral, so the repo itself is the only
+      # place that can hold this state. (Milestone emails retired —
+      # data/social_milestones.json is no longer written.)
+      - name: Commit pick-of-day state
         run: |
           git config user.name  "Clairvoyance Bot"
           git config user.email "bot@clairvoyance"
-          git add data/social_milestones.json docs/pick_of_day.json
+          git add docs/pick_of_day.json
           if git diff --cached --quiet; then
             echo "No state change"
           else
-            git commit -m "social-cards: milestone + pick-of-day state update"
+            git commit -m "social-cards: pick-of-day state update"
             git pull --rebase origin main
             git push
           fi
