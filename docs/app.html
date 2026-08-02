@@ -118,7 +118,19 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
      coverage. Top sport-bar (#sbar) + in-page sub-tabs already provide
      full navigation, so this was pure duplicate/redundant chrome. */
   #mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{display:none!important}
-  html .inav{display:none}
+  /* ── Sub-tab bar (.inav/.nb — used by Overall/Baseball/Basketball/
+     Hockey/Soccer/News/Live/etc, 20 tabs total) used to be hidden
+     entirely on mobile on the assumption a dropdown covered switching
+     between sub-tabs; it didn't, leaving no visible way to move between
+     a tab's sub-sections without hunting for a menu. The Analytics tab's
+     own sub-nav (.snav/.sb2) was never hidden this way and already gives
+     exactly the "row of sub-tabs sitting under the main tabs" behavior
+     wanted everywhere — same horizontal-scroll pill-tab pattern, just
+     under a different class name. Keeping it visible (shrunk to match
+     .sb2's mobile size) replicates that behavior across every tab
+     instead of rebuilding the nav markup per tab. ── */
+  html .inav{display:flex!important;font-size:10px!important}
+  html .nb{font-size:10px!important;padding:5px 8px!important}
   body{font-size:10px!important}
   /* Shrink header to hug its content (title+time row is ~34px tall) —
      shifts everything up and puts the glow line (bottom:0 of #hdr)
@@ -24393,6 +24405,18 @@ function _poissonOverProb(lambda,line){
 }
 function _soccerMC(hxg,axg,n){
   if(!n)n=25000;
+  // Every other sport's MC function clamps its input (mlbMC's ERA-based
+  // lambda, nhlMC's Math.max(.4,...), nbaMC/wnbaMC's Math.max(70/55,...))
+  // so a bad/missing team lookup upstream can never simulate a literal
+  // zero-goal team. This one didn't — a NaN or 0 hxg/axg (e.g.
+  // _socExpectedGoals fed a team object with missing xg fields, or an
+  // unrecognized team name) simulated every match at 0 goals for that
+  // side, showing "0.0 - 0.0" under the game card instead of a real
+  // projection. Poisson(NaN) is a real failure mode too: exp(-NaN) is
+  // NaN, and `p > NaN` is always false, so poissonSample returns 0 on
+  // its very first iteration every time.
+  hxg=(hxg!=null&&!isNaN(hxg)&&hxg>0)?hxg:0.9;
+  axg=(axg!=null&&!isNaN(axg)&&axg>0)?axg:0.9;
   var hW=0,draw=0,aW=0,hG=0,aG=0,over25=0,over35=0,btts=0;
   var poissonSample=function(lam){
     var L=Math.exp(-lam),k=0,p=1;
@@ -26947,6 +26971,24 @@ function renderEngineParlays(){
         desc:'6-8 legs — high hit probability + big payout potential',
         color:'#ff9500',legs:moonLegs.slice(0,8)});
     })();
+
+    /* 9. FALLBACK BEST AVAILABLE — every slate above has its own specific
+       shape requirement (exact leg counts from specific sub-pools: elite-
+       only, props-only, cross-sport-diverse, etc), so a light slate can
+       have real qualifying legs in allLegs and still leave every single
+       named slate empty — none of the shapes happened to fit, not
+       because there was no data. Guarantee at least one recommendation
+       exists whenever there are 2+ real legs anywhere, built from the
+       simplest possible criterion (top graded/prob, no shape
+       constraints) so "engine recommended parlays" never goes empty
+       just because today's pool didn't happen to match one of the
+       specialty shapes above. */
+    if(!slates.length){
+      var fbLegs=pick(byProb,Math.min(3,byProb.length));
+      if(fbLegs.length>=2)slates.push({name:'BEST AVAILABLE',emoji:'',
+        desc:fbLegs.length+'-leg parlay — engine\'s highest-graded picks today',
+        color:'var(--nc)',legs:fbLegs});
+    }
 
     if(!slates.length){
       el.innerHTML='<div class="empty" style="padding:14px">Not enough data for recommendations — sync more picks.</div>';
