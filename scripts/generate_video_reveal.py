@@ -172,9 +172,10 @@ STATS_VARIANTS = {
     "glitch": ("glitch_reveal.html", 8.0),   # each stat glitches in individually, then settles
     "split":  ("split_reveal.html", 8.0),    # fast alternating slide-in, punchier — kept for ad-hoc use, not in daily rotation
 }
-# Daily rotation alternates strictly between fade and glitch (split
-# available but excluded per explicit feedback).
-STATS_VARIANT_NAMES = ["fade", "glitch"]
+# All video templates standardized on the glitch aesthetic (explicit
+# feedback: "have all videos be in glitch function") -- fade/split still
+# exist for ad-hoc use but are no longer in the daily rotation.
+STATS_VARIANT_NAMES = ["glitch"]
 
 
 def record_stats_reveal(headline: str, record: str, pct: str, units: str, out_path: Path,

@@ -11,41 +11,53 @@
     background:transparent;
     display:flex; flex-direction:column; align-items:center; padding-top:70px;
   }
-  .logo {
+  .logo-wrap { position:relative; width:560px; height:64px; }
+  .logo, .logo-r, .logo-c {
     font-family:'Orbitron',sans-serif; font-weight:900; font-size:54px; letter-spacing:6px;
-    color:#f000ff; text-shadow:0 0 11px #f000ff,0 0 22px rgba(240,0,255,.55);
-    opacity:0; animation: reveal .7s ease-out forwards;
+    position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap;
   }
+  .logo { color:#f000ff; text-shadow:0 0 11px #f000ff,0 0 22px rgba(240,0,255,.55); opacity:0; animation: settle .01s linear .5s forwards; }
+  .logo-r { color:#ff2090; opacity:.8; animation: glitchR .4s steps(2) forwards, hide .01s linear .5s forwards; }
+  .logo-c { color:#00f0ff; opacity:.8; animation: glitchC .4s steps(2) forwards, hide .01s linear .5s forwards; }
   .headline {
     font-family:'Orbitron',sans-serif; font-weight:700; font-size:28px; letter-spacing:3px;
     color:#00f0ff; text-shadow:0 0 12px #00f0ff,0 0 28px rgba(0,240,255,.6);
-    margin-top:14px; opacity:0; animation: reveal .7s ease-out .3s forwards;
+    margin-top:14px; opacity:0; animation: reveal .01s linear .55s forwards;
   }
   .headline-range {
     font-family:'Share Tech Mono',monospace; font-size:20px; letter-spacing:2px;
     color:#f000ff; text-shadow:0 0 8px rgba(240,0,255,.5);
-    margin-top:8px; opacity:0; animation: reveal .7s ease-out .45s forwards;
+    margin-top:8px; opacity:0; animation: reveal .01s linear .65s forwards;
   }
-  .rows { width:940px; margin-top:40px; display:flex; flex-direction:column; gap:20px; }
+  /* Sizing is driven by CSS custom properties, set from JS in
+     populateRows() based on how many rows there actually are (tiered
+     by row count — see _ROW_TIERS below). Values here are the tier-0
+     (<=4 rows) defaults; every other tier scales padding/gap/font-size
+     down together so a full 6-sport + TOTAL slate (7 rows, the real
+     ceiling — SPORT_ORDER only ever has 6 broad-sport buckets) always
+     fits above the footer instead of overflowing off the bottom of the
+     1350px frame. Rows are never dropped/truncated to make room — only
+     shrunk. */
+  .rows { width:940px; margin-top:40px; display:flex; flex-direction:column; gap:var(--row-gap, 20px); }
   .row {
     display:flex; justify-content:space-between; align-items:center; gap:16px;
     background:rgba(20,10,40,.55); border:1px solid rgba(240,0,255,.2); border-radius:6px;
-    padding:26px 32px; opacity:0; transform:translateX(-24px);
+    padding:var(--row-pad, 26px 32px); opacity:0; transform:translateX(-24px);
   }
   /* label-col is capped and allowed to wrap — a long league list (e.g.
      SOCCER's) previously had no width limit and would push horizontally
      into the record/pct/units column, overlapping it. val is flex-shrink:0
      so the numbers never compress either. */
   .row .label-col { display:flex; flex-direction:column; max-width:520px; flex-shrink:1; min-width:0; }
-  .row .label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:34px; color:#e6eaff; }
+  .row .label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:var(--label-size, 34px); color:#e6eaff; }
   .row .sub {
-    font-family:'Share Tech Mono',monospace; font-size:16px; color:#00f0ff; margin-top:4px;
-    letter-spacing:.3px; white-space:normal; line-height:1.4;
+    font-family:'Share Tech Mono',monospace; font-size:var(--sub-size, 16px); color:#00f0ff; margin-top:4px;
+    letter-spacing:.3px; white-space:normal; line-height:1.35;
   }
-  .row .val { font-family:'Share Tech Mono',monospace; font-size:30px; display:flex; gap:22px; flex-shrink:0; }
-  .row .rec { color:#e6eaff; min-width:104px; text-align:right; }
-  .row .pct { color:#00f0ff; min-width:88px; text-align:right; }
-  .row .units { min-width:104px; text-align:right; }
+  .row .val { font-family:'Share Tech Mono',monospace; font-size:var(--val-size, 30px); display:flex; gap:var(--val-gap, 22px); flex-shrink:0; }
+  .row .rec { color:#e6eaff; min-width:var(--val-w, 104px); text-align:right; }
+  .row .pct { color:#00f0ff; min-width:calc(var(--val-w, 104px) - 16px); text-align:right; }
+  .row .units { min-width:var(--val-w, 104px); text-align:right; }
   .row.total {
     border-color:rgba(0,218,136,.5); background:rgba(0,218,136,.08); margin-top:8px;
   }
@@ -53,10 +65,22 @@
   .footer {
     position:absolute; bottom:60px; left:0; right:0; text-align:center;
     font-family:'Share Tech Mono',monospace; font-size:23px; letter-spacing:0.5px; color:#f000ff; text-shadow:0 0 8px rgba(240,0,255,.5); white-space:nowrap;
-    opacity:0; animation: reveal .8s ease-out forwards;
+    opacity:0; animation: reveal .01s linear forwards;
   }
   @keyframes reveal { to { opacity:1; } }
-  @keyframes rowIn { to { opacity:1; transform:translateX(0); } }
+  @keyframes rowIn { to { opacity:1; transform:translate(0,0); } }
+  @keyframes glitchR { 0%{transform:translate(calc(-50% - 6px),-4px)} 25%{transform:translate(calc(-50% + 5px),3px)} 50%{transform:translate(calc(-50% - 3px),-2px)} 75%{transform:translate(calc(-50% + 6px),4px)} 100%{transform:translate(calc(-50% - 6px),-4px)} }
+  @keyframes glitchC { 0%{transform:translate(calc(-50% + 6px),3px)} 25%{transform:translate(calc(-50% - 5px),-4px)} 50%{transform:translate(calc(-50% + 3px),2px)} 75%{transform:translate(calc(-50% - 6px),-3px)} 100%{transform:translate(calc(-50% + 6px),3px)} }
+  @keyframes hide { to { opacity:0; } }
+  @keyframes settle { to { opacity:1; } }
+  @keyframes rowGlitch {
+    0%   { filter:hue-rotate(0deg) saturate(1); }
+    20%  { filter:hue-rotate(110deg) saturate(4) brightness(1.3); }
+    40%  { filter:hue-rotate(-110deg) saturate(4) brightness(1.3); }
+    60%  { filter:hue-rotate(70deg) saturate(3); }
+    80%  { filter:hue-rotate(-70deg) saturate(3); }
+    100% { filter:hue-rotate(0deg) saturate(1); }
+  }
 </style>
 </head>
 <body>
@@ -83,7 +107,11 @@
     })();
   </script>
   <div class="stage">
-    <div class="logo">CLAIRVOYANCE</div>
+    <div class="logo-wrap">
+      <div class="logo-r">CLAIRVOYANCE</div>
+      <div class="logo-c">CLAIRVOYANCE</div>
+      <div class="logo">CLAIRVOYANCE</div>
+    </div>
     <div class="headline" id="headline">SPORT PERFORMANCE</div>
     <div class="headline-range" id="headline-range"></div>
     <div class="rows" id="rows"></div>
@@ -101,6 +129,22 @@
       document.getElementById('headline-range').textContent = range || '';
       const container = document.getElementById('rows');
       container.innerHTML = '';
+      // Tiered sizing by row count, via the CSS custom properties .row
+      // reads (--row-gap/--row-pad/--label-size/--sub-size/--val-size/
+      // --val-gap/--val-w). Every real slate tops out at 7 rows (6 broad
+      // sports + TOTAL — see SPORT_ORDER in generate_social_cards.py),
+      // so these tiers are calibrated against that known ceiling rather
+      // than an arbitrary guess. Rows are always shrunk to fit, never
+      // dropped, so a busy multi-sport day never loses a row off the
+      // bottom of the frame.
+      const _ROW_TIERS = [
+        { max: 4, vars: { '--row-gap': '20px', '--row-pad': '26px 32px', '--label-size': '34px', '--sub-size': '16px', '--val-size': '30px', '--val-gap': '22px', '--val-w': '104px' } },
+        { max: 5, vars: { '--row-gap': '16px', '--row-pad': '21px 28px', '--label-size': '29px', '--sub-size': '15px', '--val-size': '26px', '--val-gap': '19px', '--val-w': '94px' } },
+        { max: 6, vars: { '--row-gap': '13px', '--row-pad': '17px 26px', '--label-size': '25px', '--sub-size': '14px', '--val-size': '23px', '--val-gap': '17px', '--val-w': '86px' } },
+        { max: Infinity, vars: { '--row-gap': '10px', '--row-pad': '13px 22px', '--label-size': '21px', '--sub-size': '13px', '--val-size': '20px', '--val-gap': '15px', '--val-w': '78px' } },
+      ];
+      const tier = _ROW_TIERS.find(t => rows.length <= t.max);
+      Object.entries(tier.vars).forEach(([k, v]) => container.style.setProperty(k, v));
       // Long league lists (SOCCER's 6) wrap mid-name if left to natural
       // CSS reflow (e.g. "Serie" / "A" splitting apart). Force a clean
       // break at the halfway comma instead — same logic as _splitLeagues
@@ -117,11 +161,12 @@
         const unitsColor = r.isTotal ? '' : (String(r.units).trim().startsWith('-') ? 'color:#ff2090' : 'color:#00da88');
         const subHtml = r.sub ? `<span class="sub">${_splitSub(r.sub)}</span>` : '';
         div.innerHTML = `<span class="label-col"><span class="label">${r.label}</span>${subHtml}</span><span class="val"><span class="rec">${r.record}</span><span class="pct">${r.pct}</span><span class="units" style="${unitsColor}">${r.units || ''}</span></span>`;
-        div.style.animation = `rowIn .55s ease-out ${0.5 + i * 0.4}s forwards`;
+        const rowDelay = 0.7 + i * 0.4;
+        div.style.animation = `rowIn .4s ease-out ${rowDelay}s forwards, rowGlitch .35s steps(4) ${rowDelay}s forwards`;
         container.appendChild(div);
       });
-      const footerDelay = 0.5 + rows.length * 0.4 + 0.3;
-      document.getElementById('footer').style.animation = `reveal .7s ease-out ${footerDelay}s forwards`;
+      const footerDelay = 0.7 + rows.length * 0.4 + 0.3;
+      document.getElementById('footer').style.animation = `reveal .01s linear ${footerDelay}s forwards`;
     };
   </script>
 </body>
