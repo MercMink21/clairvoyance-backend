@@ -783,7 +783,15 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
               let offset = 0;
               const page_size = 1000;
               while (true) {
-                const r = await fetch(SUPABASE_URL + '/rest/v1/bets?select=raw&order=date.desc', {
+                // outcome=neq._removed excludes soft-deleted rows (real
+                // DELETEs are blocked by RLS, see _deleteBetsFromSupabase
+                // in docs/app.html -- removal is a PATCH to outcome:
+                // '_removed' on the row's own column, not inside raw,
+                // which this headless pull never touched before, so a
+                // "removed" test/bad bet kept showing up in every daily
+                // video/breakdown indefinitely even after being wiped in
+                // the live app.
+                const r = await fetch(SUPABASE_URL + '/rest/v1/bets?select=raw&order=date.desc&outcome=neq._removed', {
                   headers: {
                     apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY,
                     Range: offset + '-' + (offset + page_size - 1),

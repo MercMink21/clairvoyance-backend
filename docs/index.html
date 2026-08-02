@@ -9860,8 +9860,6 @@ function renderOverall(){
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:${curStreakType==='win'?'var(--nc)':'var(--hc)'}">${curStreak>0?curStreak+(curStreakType==='win'?'W':'L'):'--'}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">CURRENT STREAK</div></div>
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--nc)">${maxWin}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">LONGEST WIN STREAK</div></div>
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${maxLoss}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">LONGEST LOSS STREAK</div></div>
-      <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${curDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">CURRENT DRAWDOWN</div></div>
-      <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${maxDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">MAX DRAWDOWN</div></div>
     </div>
   </div>`;
 
@@ -12418,7 +12416,7 @@ function renderPickOfDayTile(){
   var pc=pCol(perf.pct),uc=uCol(perf.units);
   var barW=perf.n?Math.round((perf.pct||0)*100):0;
   var todayHtml=today?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-family:var(--mono);font-size:14px;color:var(--t3)">
-      TODAY: <span style="color:var(--t1)">${today.pick}</span>
+      TODAY (${today.date}): <span style="color:var(--t1)">${today.pick}</span>
       <span style="color:var(--t3)">(${today.matchup})</span>
       · <span style="color:${gCol(today.grade)}">${today.grade}</span>
       · <span style="color:var(--t3)">${today.sport}${today.league&&today.league!==today.sport?' / '+today.league:''}</span>
@@ -12532,24 +12530,27 @@ function renderHomePage(){
     loadPickOfDay().then(renderPickOfDayTile);
   }
 
-  // ── TODAY'S PENDING BETS ────────────────────────────────────────────────────
+  // ── TODAY'S PENDING PICKS ────────────────────────────────────────────────────
   const pendEl=document.getElementById('home-pending-bets');
   if(pendEl){
+    if(!window.__CV_POTD){loadPickOfDay().then(renderHomePage);}
     const todayPending=pending.filter(p=>p.date===todayStr);
     if(!todayPending.length){
-      pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// TODAY'S BETS</div>
-      <div class="empty" style="font-size:17px">NO BETS LOCKED FOR TODAY</div>`;
+      pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// TODAY'S PICKS</div>
+      <div class="empty" style="font-size:17px">NO PICKS LOCKED FOR TODAY</div>`;
     } else {
       const sc=s=>sportColor[s]||sportColor.default;
       const rows=todayPending.map(p=>{
         const mu=_gameTitle(p.hA,p.awA,p.sport)||p.betOn||'';
         const conf=p.winProb?`${(p.winProb*100).toFixed(0)}%`:'';
+        const potdBadge=_potdTagFor(p)?`<span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid rgba(0,218,136,.6);color:rgba(0,218,136,.9);border-radius:2px;letter-spacing:1px;white-space:nowrap">FREE PICK</span>`:'';
         return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
               ${_sportBadgeHtml(p.sport,sc)}
               <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
               ${_gradeChipHtml(p)}
+              ${potdBadge}
             </div>
             <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
             <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}${conf?' · '+conf:''}</div>
@@ -12562,7 +12563,7 @@ function renderHomePage(){
         </div>`;
       }).join('');
       pendEl.innerHTML=`
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// TODAY'S BETS — ${todayPending.length} PENDING</div>
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// TODAY'S PICKS — ${todayPending.length} PENDING</div>
       <div style="border:1px solid rgba(0,240,255,.2);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6)">
         ${rows}
       </div>`;
