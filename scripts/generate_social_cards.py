@@ -1628,12 +1628,28 @@ def main() -> None:
                 new_state["lastCountMilestone"] = t
                 break
 
+    # --force milestone (review-only): nothing new actually crossed a
+    # threshold, so replay the most recently-hit one (whichever of
+    # streak/count fired last, preferring streak) instead of fabricating
+    # a fake milestone. is_replay skips the state-file write at the end —
+    # a review resend isn't a real new trigger and shouldn't touch the
+    # dedupe state.
+    is_replay = False
+    if not triggered and "milestone" in force:
+        if state.get("lastStreak", 0) > 0:
+            triggered, triggered_threshold = "streak", state["lastStreak"]
+        elif state.get("lastCountMilestone", 0) > 0:
+            triggered, triggered_threshold = "count", state["lastCountMilestone"]
+        if triggered:
+            is_replay = True
+            log(f"Replaying last milestone for review: {triggered} @ {triggered_threshold}")
+
     if triggered:
         log(f"Milestone triggered: {triggered} @ {triggered_threshold} ({milestone_data})")
         captions = build_milestone_caption(milestone_data, triggered, triggered_threshold)
         log("Milestone captions:\n--- IG ---\n" + captions["instagram"])
 
-        milestone_attachments = [daily["cards"][0]]  # reuse the Track Record card already generated this run
+        milestone_attachments = []
         try:
             from generate_video_reveal import record_milestone_reveal
             # Two milestone styles rotate by trigger type so a streak
@@ -1659,12 +1675,14 @@ def main() -> None:
 
         if not args.no_email:
             send_email(
-                "Clairvoyance — 🎯 New Milestone!",
+                "Clairvoyance — 🎯 New Milestone!" + (" (replay)" if is_replay else ""),
                 milestone_attachments,
                 captions,
-                intro="A milestone just hit — good spike-engagement post, don't sit on this one:",
+                intro="A milestone just hit — good spike-engagement post, don't sit on this one:"
+                if not is_replay else "Replaying the most recent milestone for review — no new threshold was crossed:",
             )
-        save_milestone_state(new_state)
+        if not is_replay:
+            save_milestone_state(new_state)
     else:
         log(f"No new milestone (streak={streak}, total={total}, state={state})")
 
