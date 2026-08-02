@@ -10429,8 +10429,22 @@ function _potdTagFor(p){
   if(!ledger.length||!p.date)return null;
   return ledger.find(e=>{
     if(e.date!==p.date)return false;
-    if(e.pickedAbbr&&(p.hA===e.pickedAbbr||p.awA===e.pickedAbbr))return true;
-    if(e.player&&p.betOn&&p.betOn.toLowerCase().indexOf(e.player.toLowerCase())>=0)return true;
+    // Must match the exact selection that was the free pick, not just
+    // any bet from the same game — a same-game spread or O/U bet on the
+    // picked team used to get tagged FREE PICK too, since this only
+    // checked whether the team appeared in the matchup at all.
+    if(e.pickedAbbr){
+      return (p.betType||'').toUpperCase()==='ML'
+        && (p.betOn||'').trim().toUpperCase()===e.pickedAbbr.toUpperCase();
+    }
+    if(e.player){
+      const betOnL=(p.betOn||'').toLowerCase();
+      if((p.betType||'').toUpperCase()!=='PROP')return false;
+      if(betOnL.indexOf(e.player.toLowerCase())<0)return false;
+      if(e.stat&&betOnL.indexOf(String(e.stat).toLowerCase())<0)return false;
+      if(e.line!=null&&betOnL.indexOf(String(e.line))<0)return false;
+      return true;
+    }
     return false;
   })||null;
 }
@@ -12262,7 +12276,7 @@ function renderPickOfDayTile(){
     ${perf.n?`
     <div class="perf-card-row" style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
       <span class="perf-card-rec" style="font-family:var(--orb);font-size:24px;font-weight:900;color:var(--t1);white-space:nowrap">${perf.w}W<span style="color:var(--t3);font-size:18px">-</span>${perf.l}L</span>
-      <span style="font-family:var(--mono);font-size:14px;color:var(--t3);white-space:nowrap">${perf.n} pick${perf.n===1?'':'s'}</span>
+      <span style="font-family:var(--mono);font-size:14px;color:var(--t3);white-space:nowrap">${ledger.length} picks locked</span>
     </div>
     <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
       <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px"></div>

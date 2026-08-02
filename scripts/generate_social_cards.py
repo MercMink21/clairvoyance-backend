@@ -383,6 +383,21 @@ def _breakdown_rows(stats: dict) -> list[dict]:
     return rows
 
 
+def _fmt_date_range(start: datetime, end: datetime) -> str:
+    """"July 26 – August 1, 2026" style range, correct whether the span
+    stays inside one month or crosses a month/year boundary. The old
+    inline version always used the start date's month for both ends
+    (f"{start:%B %-d}–{end:%-d, %Y}"), which reads fine for a same-month
+    week ("July 26–31, 2026") but silently mangled any week spanning two
+    months into something like "July 26 – 1, 2026" (missing "August"
+    entirely) instead of "July 26 – August 1, 2026"."""
+    if start.year != end.year:
+        return f"{start.strftime('%B %-d, %Y')} – {end.strftime('%B %-d, %Y')}"
+    if start.month != end.month:
+        return f"{start.strftime('%B %-d')} – {end.strftime('%B %-d, %Y')}"
+    return f"{start.strftime('%B %-d')}–{end.strftime('%-d, %Y')}"
+
+
 def _fmt_units(units: float | None) -> str:
     if units is None:
         return "N/A"
@@ -867,7 +882,7 @@ def build_daily_caption(stats: dict | None, date_ref: datetime) -> dict[str, str
 
 def build_weekly_caption(stats: dict | None, week_end: datetime) -> dict[str, str]:
     week_start = week_end - timedelta(days=6)
-    range_str = f"{week_start.strftime('%B %-d')}–{week_end.strftime('%-d, %Y')}"
+    range_str = _fmt_date_range(week_start, week_end)
     tally_line = ""
     if stats and stats.get("w") is not None:
         tally_line = (
@@ -1266,7 +1281,7 @@ def main() -> None:
             try:
                 from generate_video_reveal import record_big_recap_reveal, record_big_recap_still
                 week_start = yesterday_mt - timedelta(days=6)
-                range_str = f"{week_start.strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}"
+                range_str = _fmt_date_range(week_start, yesterday_mt)
                 recap_path = out_dir / f"cv-weekly-recap-{yesterday_mt.strftime('%Y%m%d')}.mp4"
                 record_big_recap_reveal(
                     tag="WEEKLY RECAP", date_range=range_str,
@@ -1293,7 +1308,7 @@ def main() -> None:
                     from generate_video_reveal import record_breakdown_reveal, record_breakdown_still
                     rows = _breakdown_rows(w_stats)
                     w_breakdown_path = out_dir / f"cv-breakdown-weekly-{yesterday_mt.strftime('%Y%m%d')}.mp4"
-                    w_range_str = f"{(yesterday_mt - timedelta(days=6)).strftime('%B %-d')} – {yesterday_mt.strftime('%-d, %Y')}".upper()
+                    w_range_str = _fmt_date_range(yesterday_mt - timedelta(days=6), yesterday_mt).upper()
                     record_breakdown_reveal("SPORT PERFORMANCE — ROLLING 7D", rows, w_breakdown_path, date_range=w_range_str)
                     weekly_attachments.append(w_breakdown_path)
                     log(f"Weekly breakdown video generated: {w_breakdown_path}")
