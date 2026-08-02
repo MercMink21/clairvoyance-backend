@@ -768,18 +768,24 @@ def get_year_stats(page, year: int) -> dict:
     )
 
 
-def run(out_dir: Path) -> dict:
+def run(out_dir: Path, force: set[str] | None = None) -> dict:
     from playwright.sync_api import sync_playwright
 
+    force = force or set()
     out_dir.mkdir(parents=True, exist_ok=True)
     now_mt = _mt_now()
     yesterday_mt = now_mt - timedelta(days=1)
-    is_sunday = now_mt.weekday() == 6
-    is_first_of_month = now_mt.day == 1
-    is_new_year = now_mt.month == 1 and now_mt.day == 1
+    # `force` (from --force, review-only) bypasses the date gate for a
+    # given period without touching the real cadence for every other
+    # day — e.g. forcing "weekly" for a one-off review doesn't also
+    # force monthly/yearly, and doesn't change what fires on a normal
+    # unforced run.
+    is_sunday = now_mt.weekday() == 6 or "weekly" in force
+    is_first_of_month = now_mt.day == 1 or "monthly" in force
+    is_new_year = (now_mt.month == 1 and now_mt.day == 1) or "yearly" in force
     # Deterministic, days-since-epoch cadence (same pattern as
     # get_rotation_item) — no stored state, can't drift or double-fire.
-    is_biweekly = (now_mt.date() - ROTATION_EPOCH.date()).days % 14 == 0
+    is_biweekly = (now_mt.date() - ROTATION_EPOCH.date()).days % 14 == 0 or "alltime" in force
 
     result = {"daily": None, "weekly": None, "monthly": None, "yearly": None, "events": [], "milestone": None,
               "alltime": None, "sincelaunch": None}
@@ -1180,13 +1186,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-email", action="store_true", help="generate cards only, skip sending")
     parser.add_argument("--out-dir", default="/tmp/cv_social_cards")
+    parser.add_argument("--force", default="", help="comma-separated periods to force past today's date "
+                         "gate for review (weekly,monthly,yearly,alltime) — does not affect the real "
+                         "cadence for anything not explicitly listed")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
     now_mt = _mt_now()
     yesterday_mt = now_mt - timedelta(days=1)
+    force = {p.strip() for p in args.force.split(",") if p.strip()}
 
-    result = run(out_dir)
+    result = run(out_dir, force=force)
 
     # Daily
     daily = result["daily"]

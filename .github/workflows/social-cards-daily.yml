@@ -12,6 +12,11 @@ on:
     # shared runners, but this should land noticeably closer to 9:30 MT.
     - cron: '22 15 * * *'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Comma-separated periods to force past today''s date gate for review (weekly,monthly,yearly,alltime)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -42,7 +47,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
         run: |
-          python scripts/generate_social_cards.py
+          python scripts/generate_social_cards.py --force "${{ github.event.inputs.force }}"
 
       # Milestone state (data/social_milestones.json) and the Pick of Day
       # ledger (docs/pick_of_day.json — the home page's PICK OF DAY tile
