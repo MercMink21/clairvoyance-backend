@@ -230,6 +230,37 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
      7D/etc.) — not just their text — they were taking up far more
      screen space than needed. ── */
   html .perf-card{padding:6px 7px!important}
+  /* ── Overall tab dashboard's "period performance" boxes (TODAY/
+     YESTERDAY/ROLLING 7 DAYS/THIS MONTH/etc, distinct from the home
+     page's .perf-card above) — same clipped-text problem: long labels
+     like "SINCE LAUNCH (JUL 1, 2026)" next to "N LOCKED · M SETTLED"
+     on one nowrap row, and 3-digit records against a fixed 22px font,
+     both overflowed the card on narrow screens. ── */
+  html .period-card{padding:7px 8px!important}
+  html .period-card-hdr{margin-bottom:5px!important}
+  html .period-card-lbl{font-size:10px!important;white-space:normal!important;line-height:1.3}
+  html .period-card-locked{font-size:9px!important;white-space:normal!important}
+  html .period-card-stats{gap:5px!important}
+  html .period-card-val{font-size:14px!important}
+  /* ── Overall tab's BY MONTH / ALL TIME "SPORT / BET TYPE / LEAGUE"
+     3-column grids — cramming 3 columns of team-record rows into a
+     phone screen clipped the win%/units text. Drop to 1 column and
+     shrink the row font sizes specifically inside this container (its
+     rows come from the shared sportRow() helper used elsewhere too, so
+     the shrink is scoped to .ovr-sport-breakdown rather than global). ── */
+  html .ovr-sport-breakdown{grid-template-columns:1fr!important;gap:6px!important}
+  html .ovr-sport-breakdown [style*="font-size:16px"],
+  html .ovr-sport-breakdown [style*="font-size:15px"],
+  html .ovr-sport-breakdown [style*="font-size:14px"],
+  html .ovr-sport-breakdown [style*="font-size:13px"]{font-size:11px!important}
+  html .ovr-sport-breakdown [style*="font-size:11px"]{font-size:10px!important}
+  /* ── All Bets tab's "REMOVE PICKS BY DATE OR MONTH" box — a rarely-
+     used admin control that was taking up disproportionate vertical
+     space above the actual bet list on phones. Inputs stay >=16px
+     (iOS auto-zooms on focus below that), everything else shrinks. ── */
+  html .ovr-wipe-box{padding:6px 8px!important;margin-bottom:8px!important}
+  html .ovr-wipe-box>div:first-child{font-size:10px!important;margin-bottom:5px!important}
+  html .ovr-wipe-box [style*="font-size:16px"]:not(input){font-size:11px!important;padding:3px 8px!important}
   /* ── Blanket inline font-size cap ──────────────────────────────
      The vast majority of this app's text (pending-bet cards, sub-tab
      headers, dropdown menus, history/"recents" rows, remove buttons,
@@ -1525,7 +1556,7 @@ body{line-height:1.5}
           <button class="btn btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="clearAllPending()">CLEAR PENDING</button>
         </div>
       </div>
-      <div style="background:rgba(255,32,144,.05);border:1px solid rgba(255,32,144,.25);border-radius:3px;padding:10px 12px;margin-bottom:12px">
+      <div class="ovr-wipe-box" style="background:rgba(255,32,144,.05);border:1px solid rgba(255,32,144,.25);border-radius:3px;padding:10px 12px;margin-bottom:12px">
         <div style="font-family:var(--orb);font-size:14px;color:rgba(255,32,144,.7);letter-spacing:2px;margin-bottom:8px">// REMOVE PICKS BY DATE OR MONTH</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input id="ovr-wipe-date" type="date" style="font-family:var(--mono);font-size:16px;padding:4px 8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,32,144,.3);color:rgba(220,190,255,.85);border-radius:2px">
@@ -2822,9 +2853,26 @@ const SPORT_CAL={
   TEN:{B:0.76},  // avg model 74.0% → calibrated ~86%  (actual 100%)
 };
 function sportCalibrate(p,sport){
-  const cal=SPORT_CAL[sport];if(!cal)return p;
-  const lo=Math.log(Math.max(0.001,p)/Math.max(0.001,1-p));
-  return Math.min(0.94,Math.max(0.06,sigmoid(lo+cal.B)));
+  const cal=SPORT_CAL[sport];
+  let out=p;
+  if(cal){
+    const lo=Math.log(Math.max(0.001,out)/Math.max(0.001,1-out));
+    out=Math.min(0.94,Math.max(0.06,sigmoid(lo+cal.B)));
+  }
+  // Auto-apply the adaptive probability-band correction (_calAdjProb —
+  // computed from real settled-bet accuracy vs. predicted probability
+  // in renderOverall's calibration report, and reloaded from
+  // localStorage on every boot) directly into the live probability
+  // every caller of sportCalibrate() uses downstream (MC sims, EV,
+  // display, grading) — not just the tier()-only re-pricing this used
+  // to be limited to. A detected miscalibration now actually feeds
+  // back into future predictions automatically instead of sitting in
+  // a report someone has to notice and act on by hand.
+  if(typeof window._calAdjProb==='function'){
+    const adjP=window._calAdjProb(out);
+    if(adjP>0&&adjP<1)out=Math.min(0.94,Math.max(0.06,adjP));
+  }
+  return out;
 }
 let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props')||'[]');}catch{return[];}})();
 // ── Seed historical prop results (WCF G1 May 18 2026) + Finals G1 June 3 2026 ─────────
@@ -3894,7 +3942,7 @@ async function loadGames(dateStr){
     const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;
     const hML=g.hML||p2ml(ens.p),hD=ml2d(hML),hEV=ev(ens.p,hD);
     const awML=g.aML||p2ml(1-ens.p),awD=ml2d(awML),awEV=ev(1-ens.p,awD);
-    const ouL=g.ou!=null?(Math.round(parseFloat(g.ou)*2)/2).toFixed(1):_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
+    const ouL=g.ou!=null?_forceHalfLine(g.ou):_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);
     const evT=(+document.getElementById('s-evt')?.value||2)/100;
     [[ens.p,String(hML),hD,hEV,`ML ${g.hA}`,g.hA,g.awA],
      [1-ens.p,String(awML),awD,awEV,`ML ${g.awA}`,g.hA,g.awA],
@@ -4292,6 +4340,20 @@ function _ouDefaultLine(avgT,fallback){
 }
 // Back-compat alias — MLB call sites already use this name.
 function _mlbOuDefault(avgT){return _ouDefaultLine(avgT,8.5);}
+// Rounds a REAL market O/U line to the nearest half-point, guaranteed to
+// land on .5 — not a fallback guess like _ouDefaultLine above (which
+// only ever runs when there's no real line at all). The naive
+// Math.round(x*2)/2 idiom used at several call sites rounds a whole-
+// number market line (e.g. a 9-run MLB total) to itself, displaying
+// "OVER 9.0" instead of a proper half-point recommendation — every O/U
+// recommendation across every sport should end in .5, matching how a
+// real sportsbook total actually reads. Bumps up (never down) when the
+// naive round lands on a whole number, so the OVER side stays the more
+// conservative (harder-to-clear) direction.
+function _forceHalfLine(x){
+  const n=Math.round(parseFloat(x)*2)/2;
+  return(Number.isInteger(n)?n+0.5:n).toFixed(1);
+}
 function mlbEns(hA,awA,espnGame,simN){
   const ouLine=parseFloat(espnGame?.ou||8.5);
   const mc=mlbMC(hA,awA,simN||5000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
@@ -4353,7 +4415,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hML=espnGame?.hML||p2ml(hP),aML=espnGame?.aML||p2ml(aP);
   const hD=ml2d(hML),aD=ml2d(aML);
   const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
-  const ouL=espnGame?.ou!=null?(Math.round(parseFloat(espnGame.ou)*2)/2).toFixed(1):_mlbOuDefault(mc?mc.avgT:null);
+  const ouL=espnGame?.ou!=null?_forceHalfLine(espnGame.ou):_mlbOuDefault(mc?mc.avgT:null);
   const ouP=mc?.overP??( mc&&mc.avgT>parseFloat(ouL)?.52:.48);const ouCS=chipC(ouP,ev(ouP,1.91));
   const rlP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38);const rlCS=chipC(rlP,ev(rlP,1.87));
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
@@ -4732,6 +4794,26 @@ function _classifyTeamsSport(hA,awA){
   const _WNBAc=new Set(['ATL','CHI','CON','DAL','IND','LA','LAS','LV','LVA','MIN','NY','NYL','PDX','PHX','SEA','TOR','WSH','WAS','GS','GSV']);
   const _MLBc=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
   const h=(hA||'').toUpperCase(),a=(awA||'').toUpperCase();
+  // Prefer a REAL scheduled game over abbreviation-set scoring when one
+  // is available. City codes like SEA/MIN are valid members of 3+
+  // leagues at once (WNBA Storm/Lynx, MLB Mariners/Twins, NHL
+  // Kraken/Wild) — on a weekend where multiple of those leagues all
+  // play the same two cities, set-membership scoring ties 2-2-2 and
+  // silently falls back to fixed array order (always WNBA), regardless
+  // of which league's game this actually is. Checking the live
+  // schedules first removes the guesswork entirely whenever the data's
+  // available; the scoring heuristic below is now only a fallback for
+  // when none of the live caches have loaded yet.
+  const _liveMatch=games=>(games||[]).some(g=>{
+    const gH=((g.hA||g.home||g.hab||'')+'').toUpperCase();
+    const gA=((g.awA||g.away||g.aab||'')+'').toUpperCase();
+    return(gH===h&&gA===a)||(gH===a&&gA===h);
+  });
+  if(_liveMatch(window.ESPN_GAMES||window._mlbGames))return'MLB';
+  if(_liveMatch(window._wnbaGameData))return'WNBA';
+  const _D=window.__CV_DATA||{};
+  if(_liveMatch(_D.nhl&&_D.nhl.today))return'NHL';
+  if(_liveMatch(_D.nba&&_D.nba.today))return'NBA';
   const _sc=s=>(s.has(h)?1:0)+(s.has(a)?1:0);
   const _cand=[['WNBA',_sc(_WNBAc)],['MLB',_sc(_MLBc)],['NHL',_sc(_NHLc)],['NBA',_sc(_NBAc)]];
   let best=null,bestScore=0;
@@ -5089,11 +5171,6 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   // leagueTag inside the API branch threw a TDZ ReferenceError on every
   // single lock attempt whenever a backend was configured, silently
   // dropping every locked bet before it could be saved.) ───────────────
-  // Comprehensive team sets for sport detection
-  const _NHL=new Set(['ANA','ARI','UTA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','VAN','VGK','WPG','WSH']); // ARI kept for legacy bets (Coyotes relocated -> UTA, Utah Mammoth, 2024)
-  const _NBA=new Set(['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GS','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NOP','NY','NYK','OKC','ORL','PHI','PHX','POR','SAC','SA','SAS','TOR','UTA','WAS','WLA']);
-  const _WNBA=new Set(['ATL','CHI','CON','DAL','IND','LA','LAS','LV','LVA','MIN','NY','NYL','PDX','PHX','SEA','TOR','WSH','WAS','GS','GSV','WNBA-ATL','WNBA-CHI','WNBA-CON','WNBA-DAL','WNBA-IND','WNBA-LA','WNBA-LV','WNBA-MIN','WNBA-NY','WNBA-PHX','WNBA-SEA','WNBA-WSH']);
-  const _MLB=new Set(['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SEA','SF','STL','TB','TEX','TOR','WSN']);
   let sportTag;
   // ── Sport + League detection (ordered by specificity) ──────────
   // Explicit type → sport
@@ -5125,21 +5202,15 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   else if(type==='ATP')sportTag='ATP';
   else if(type==='WTA')sportTag='WTA';
   else if(type==='MLB')sportTag='MLB';
-  // Fallthrough: infer from team abbreviations via match SCORING (not an
-  // asymmetric &&/|| chain, which leaked MLB games sharing a city code with
-  // NHL — e.g. COL/BOS/TOR — into NHL). For each league count how many of the
-  // two teams are members (0/1/2); pick the highest score. Ties resolve by the
-  // priority order below (MLB before NHL/NBA), which biases shared-city games
-  // like BOS/TOR toward the in-season league instead of mislabeling them.
-  // Explicit `type` (handled above) always wins; this only runs as last resort.
+  // Fallthrough: infer from team abbreviations via _classifyTeamsSport()
+  // (the single shared classifier — checks real live schedules first,
+  // e.g. window.ESPN_GAMES/window._wnbaGameData, before falling back to
+  // abbreviation-set scoring; see its own comments for why pure scoring
+  // alone isn't safe for city codes shared across 3+ leagues like
+  // SEA/MIN). Explicit `type` (handled above) always wins; this only
+  // runs as last resort.
   else{
-    const _sc=s=>(s.has(hA)?1:0)+(s.has(awA)?1:0);
-    const _cand=[['WNBA',_sc(_WNBA)],['MLB',_sc(_MLB)],['NHL',_sc(_NHL)],['NBA',_sc(_NBA)]];
-    let _best=null,_bestScore=0;
-    _cand.forEach(function(c){if(c[1]>_bestScore){_bestScore=c[1];_best=c[0];}});
-    // Refuse to dump unmatched games into a real league — orphan as UNKNOWN so
-    // it never pollutes another sport's history/accuracy/social cards.
-    sportTag=_bestScore>0?_best:'UNKNOWN';
+    sportTag=_classifyTeamsSport(hA,awA);
     if(sportTag==='UNKNOWN'){try{console.warn('[lockPick] unclassified matchup — tagged UNKNOWN:',hA,'vs',awA,'type=',type);}catch(e){}}
   }
   // ── Derive league tag from sport ────────────────────────────────
@@ -8607,8 +8678,13 @@ function _mlbGenerateDailyProps(games,statsData){
         const oppAvg=hitters.length?hitters.slice(0,9).reduce((a,b)=>a+b.avg,0)/Math.min(9,hitters.length):0.250;
         const offAdj=oppAvg>0.270?-0.04:oppAvg<0.240?0.04:0;
         const homeAdj=isHome?0.025:-0.015;
-        // Line = round kPG to nearest 0.5
+        // Line = round kPG to nearest 0.5 — a real O/U recommendation
+        // should always end in .5 (matches how sportsbooks actually
+        // post totals), but rounding to the nearest 0.5 increment can
+        // still land exactly on a whole number (e.g. kPG=5.75 rounds
+        // to 6.0); bump those up half a point rather than display "6.0".
         kL=Math.round((pd.kPG+0.25)/0.5)*0.5;
+        if(Number.isInteger(kL))kL+=0.5;
         kL=Math.max(3.5,Math.min(10.5,kL));
         // P(K >= ceil(kL)) adjusted
         kP=Math.min(0.82,Math.max(0.42,pGte(pd.kPG,Math.ceil(kL))+homeAdj+offAdj));
@@ -9530,22 +9606,22 @@ function renderOverall(){
   const unitColor=u=>u>=0?'var(--nc)':'var(--hc)';
 
   const periodCard=(lbl,perf,col)=>{const empty=perf.n===0;return`
-    <div class="card" style="padding:10px;border-top:2px solid ${col}">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:7px">
-        <div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:${col}">${lbl}</div>
-        <div style="font-family:var(--mono);font-size:16px;color:var(--t3);white-space:nowrap">${perf.locked||0} LOCKED · ${perf.settledN||0} SETTLED</div>
+    <div class="card period-card" style="padding:10px;border-top:2px solid ${col}">
+      <div class="period-card-hdr" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:7px;flex-wrap:wrap">
+        <div class="period-card-lbl" style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:${col}">${lbl}</div>
+        <div class="period-card-locked" style="font-family:var(--mono);font-size:16px;color:var(--t3);white-space:nowrap">${perf.locked||0} LOCKED · ${perf.settledN||0} SETTLED</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div class="period-card-stats" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="text-align:center;min-width:44px">
-          <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':accColor(perf.acc)}">${empty?'N/A':perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
+          <div class="period-card-val" style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':accColor(perf.acc)}">${empty?'N/A':perf.acc!==null?(perf.acc*100).toFixed(0)+'%':'--'}</div>
           <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">WIN%</div>
         </div>
         <div style="text-align:center;min-width:60px">
-          <div style="font-family:var(--orb);font-size:22px;font-weight:700">${perf.w}W-${perf.l}L</div>
+          <div class="period-card-val" style="font-family:var(--orb);font-size:22px;font-weight:700;white-space:nowrap">${perf.w}W-${perf.l}L</div>
           <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">RECORD</div>
         </div>
         <div style="text-align:center;min-width:44px">
-          <div style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':unitColor(perf.units)}">${empty?'N/A':(perf.units>=0?'+':'')+perf.units.toFixed(1)}</div>
+          <div class="period-card-val" style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':unitColor(perf.units)}">${empty?'N/A':(perf.units>=0?'+':'')+perf.units.toFixed(1)}</div>
           <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">UNITS</div>
         </div>
       </div>
@@ -9678,7 +9754,7 @@ function renderOverall(){
     ${periodCard(selMoLbl,selMoPerf,'var(--pc)')}
   </div>
   <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--t3);margin-bottom:8px">${selMoLbl} — BY SPORT / BET TYPE / LEAGUE</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+  <div class="ovr-sport-breakdown" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
       ${bySportMo.length?bySportMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
@@ -9694,7 +9770,7 @@ function renderOverall(){
   </div>`;
 
   // By Sport + By Bet Type + By League
-  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+  h+=`<div class="ovr-sport-breakdown" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
       ${bySport.map(sportRow).join('')}
@@ -9777,7 +9853,6 @@ function renderOverall(){
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${maxLoss}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">LONGEST LOSS STREAK</div></div>
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${curDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">CURRENT DRAWDOWN</div></div>
       <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--hc)">${maxDD.toFixed(1)}u</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">MAX DRAWDOWN</div></div>
-      <div><div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--vc)">${roi!==null?(roi*100).toFixed(1)+'%':'--'}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3)">ALL-TIME ROI</div></div>
     </div>
   </div>`;
 
@@ -9867,6 +9942,47 @@ function renderOverall(){
   loadPickOfDay().then(renderOverallPickOfDayHistory);
 }
 
+// Manual Pick of Day settlement — the daily workflow auto-settles most
+// picks against the real score the next morning, but that's a once-a-
+// day check; a pick can sit shown as PENDING here for hours after it's
+// actually final. These write straight to docs/pick_of_day.json via the
+// same GitHub Contents API path savePicksToGitHub() already uses for
+// the real ledger (requires the same stored GH token), so a manual
+// settle here persists and won't get clobbered by tomorrow's run.
+async function _potdSaveToGitHub(ledger){
+  const tok=getGHToken();
+  if(!tok){toast('// SET A GITHUB TOKEN (SYNC SETTINGS) TO SAVE');return false;}
+  try{
+    if(!window._gh_potd_sha){
+      const cur=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/docs/pick_of_day.json',
+        {headers:{'Authorization':'token '+tok}});
+      if(cur.ok){const cd=await cur.json();window._gh_potd_sha=cd.sha;}
+    }
+    const body={message:'pick-of-day: manual settle '+new Date().toISOString().slice(0,16)+' UTC',
+      content:btoa(unescape(encodeURIComponent(JSON.stringify(ledger,null,2)))),branch:'main'};
+    if(window._gh_potd_sha)body.sha=window._gh_potd_sha;
+    const r=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/docs/pick_of_day.json',
+      {method:'PUT',headers:{'Authorization':'token '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){const d=await r.json();window._gh_potd_sha=d.content?.sha;toast('// PICK OF DAY SAVED');return true;}
+    toast('// SAVE FAILED — CHECK GITHUB TOKEN');return false;
+  }catch(e){console.warn('[CV] potd save:',e.message);toast('// SAVE FAILED');return false;}
+}
+function potdSettle(dateKey,outcome){
+  var ledger=window.__CV_POTD||[];
+  var e=ledger.find(function(x){return x.date===dateKey;});
+  if(!e)return;
+  e.outcome=outcome;e.settledAt=Date.now();
+  _potdSaveToGitHub(ledger);
+  renderOverallPickOfDayHistory();
+  try{renderPickOfDayTile();}catch(err){}
+}
+function potdRemove(dateKey){
+  if(typeof window.confirm==='function'&&!confirm('Remove this Pick of Day entry? This cannot be undone.'))return;
+  window.__CV_POTD=(window.__CV_POTD||[]).filter(function(x){return x.date!==dateKey;});
+  _potdSaveToGitHub(window.__CV_POTD);
+  renderOverallPickOfDayHistory();
+  try{renderPickOfDayTile();}catch(err){}
+}
 function renderOverallPickOfDayHistory(){
   var el=document.getElementById('ovr-pick-of-day');
   if(!el)return;
@@ -9874,7 +9990,17 @@ function renderOverallPickOfDayHistory(){
   if(!ledger.length){el.innerHTML='<div class="empty" style="font-size:15px">NO PICK OF DAY HISTORY YET</div>';return;}
   var gCol=function(g){return g==='PREMIUM'?'#ffcc00':g==='OPTIMAL'?'var(--ic)':g==='LEAN'?'var(--pc)':'var(--t3)';};
   var oCol=function(o){return o==='win'?'var(--nc)':o==='loss'?'var(--hc)':'var(--t3)';};
+  // Settled entries move out of the "needs action" view and just show
+  // their final outcome + a remove option — pending entries are the
+  // only ones that get WIN/LOSS buttons, so a settled pick's record
+  // shows up in _potdStats()'s win%/units/picks-locked instead of
+  // sitting here looking actionable.
   var rows=ledger.slice(0,30).map(function(e){
+    var actions=e.outcome==='pending'
+      ?`<button class="btn btn-n btn-sm" onclick="potdSettle('${e.date}','win')">WIN</button>
+        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="potdSettle('${e.date}','loss')">LOSS</button>
+        <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`
+      :`<button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`;
     return`<div style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:0">
         <div style="font-family:var(--mono);font-size:15px;color:var(--t1);font-weight:700">${e.pick}</div>
@@ -9882,6 +10008,7 @@ function renderOverallPickOfDayHistory(){
       </div>
       <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${gCol(e.grade)}">${e.grade}</span>
       <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${oCol(e.outcome)};min-width:60px;text-align:right">${e.outcome.toUpperCase()}</span>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">${actions}</div>
     </div>`;
   }).join('');
   el.innerHTML=rows;
@@ -11276,6 +11403,23 @@ function renderAdaptiveLearning(){
       html+=changes.map(c=>`<div style="font-family:var(--mono);font-size:16px;color:${c.delta>0?'var(--nc)':'var(--hc)'};margin-bottom:2px">${c.delta>0?'↑':'↓'} ${c.sport} ${c.key}: ${c.delta>0?'+':''}${c.delta.toFixed(1)}%</div>`).join('');
     }
     if(!changes.length&&Math.abs(accDelta)<0.3&&betsDelta===0)html+=`<div style="font-family:var(--mono);font-size:16px;color:var(--t3)">No significant changes — model stable.</div>`;
+    // Probability-band calibration adjustments — the correction layer
+    // sportCalibrate() now applies automatically to every live MLB/NHL/
+    // NBA/TEN prediction (window._calAdjProb, recomputed by the Overall
+    // tab's calibration report and reloaded from localStorage on every
+    // boot). This was previously invisible here even though it's the
+    // actual mechanism feeding detected miscalibration back into future
+    // picks — surfacing it so a cycle's real effect on live probability
+    // is visible, not just weight deltas.
+    try{
+      const _adj=JSON.parse(S.g('cv_cal_adj_v2','{}')||'{}');
+      const _bandLbls={0.50:'50-55%',0.55:'55-60%',0.60:'60-65%',0.65:'65-70%',0.70:'70-75%',0.75:'75%+'};
+      const _adjEntries=Object.entries(_adj).filter(([,v])=>Math.abs(v)>0.005);
+      if(_adjEntries.length){
+        html+=`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin:8px 0 3px">LIVE PROBABILITY CORRECTIONS (applied automatically to every new pick):</div>`;
+        html+=_adjEntries.map(([min,v])=>`<div style="font-family:var(--mono);font-size:16px;color:${v>0?'var(--nc)':'var(--hc)'};margin-bottom:2px">${v>0?'▲':'▼'} ${_bandLbls[min]||min+'%+'} band: ${v>0?'+':''}${(v*100).toFixed(1)}pp</div>`).join('');
+      }
+    }catch(e){}
     html+=`</div>`;
   }
 
