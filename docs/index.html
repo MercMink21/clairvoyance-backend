@@ -616,15 +616,10 @@ body{line-height:1.5}
     <div id="mlb-tab-nrfi" style="display:none"><div id="nrfi-list"></div></div>
     <div id="mlb-tab-parlay" class="tab">
       <div class="sh"><span class="p"></span> MLB PARLAY BUILDER</div>
-      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(240,0,255,.25);border-radius:2px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:15px;color:var(--t3)">MAX 8 LEGS &middot; GAME LINES + PLAYER PROPS &middot; GAME/PROP BADGE &middot; LIVE ODDS + EV% + GRADE</div>
+      <div style="background:rgba(10,0,24,.8);border:1px solid rgba(240,0,255,.25);border-radius:2px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:15px;color:var(--t3)">MAX 8 LEGS &middot; GAME LINES &middot; LIVE ODDS + EV% + GRADE</div>
       <div class="g2">
         <div>
-          <div style="display:flex;gap:5px;margin-bottom:8px">
-            <button id="mlb-par-games-btn" class="btn btn-p btn-sm" style="font-size:15px" onclick="cvParlayToggle('mlb','games')">GAME LINES</button>
-            <button id="mlb-par-props-btn" class="btn btn-o btn-sm" style="font-size:15px" onclick="cvParlayToggle('mlb','props')">PLAYER PROPS</button>
-          </div>
           <div id="mlb-par-games-panel"><div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">// GAME LINES — TAP TO ADD</div><div id="mlb-par-games-list"><div class="loading"><span class="spi"></span></div></div></div>
-          <div id="mlb-par-props-panel" style="display:none"><div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">// PLAYER PROPS — TAP TO ADD</div><div id="mlb-par-props-list"><div class="loading"><span class="spi"></span></div></div></div>
         </div>
         <div>
           <div style="font-family:var(--mono);font-size:17px;color:var(--t2);margin-bottom:7px">// MLB PARLAY <span id="mlb-par-count">(0)</span></div>
@@ -8509,481 +8504,6 @@ function renderNBAProps(){
 const NHL_PROPS_DATE='20260617';
 // NHL OFFSEASON — Stanley Cup concluded. No props available.
 const NHL_PROPS_DATA=[];
-// ═══ MLB PROPS DATA (Jun 17 2026) — Sources: Linemate/Rotowire/Covers/BetMGM/DraftKings/Engine ═══
-var MLB_PROPS_DATA=[
-  // Games today: NYM@CIN · KC@WSH · MIA@PHI · DET@HOU · SD@STL · TB@LAD · LAA@ARI · TOR@BOS · CHW@NYY · SF@ATL · CLE@MIL · COL@CHC · BAL@SEA · PIT@ATH
-  {player:'Carlos Rodon',t:'NYY',opp:'CHW',pos:'SP',stat:'K',line:5.5,over:true,ml:'-130',conf:71,hitRate:'4-of-6 OVER',basis:'33% whiff rate vs CHW · CHW rank 4th in MLB Ks · 4 of 6 starts cleared this line · elite swing-and-miss stuff',grade:'ELITE',src:'Sportsbookreview/Engine'},
-  {player:'James Wood',t:'WSH',opp:'KC',pos:'LF',stat:'TB',line:1.5,over:true,ml:'+115',conf:69,hitRate:'73% last 10G',basis:'.971 OPS · 20 HR · vs Avila 6.19 BB/9 severe command issues · elite matchup angle',grade:'ELITE',src:'BettorsInsider/Engine'},
-  {player:'Juan Soto',t:'NYM',opp:'CIN',pos:'RF',stat:'TB',line:1.5,over:true,ml:'+120',conf:68,hitRate:'82% last 11G',basis:'.938 OPS · 15 HR in 56G · vs Singer 5.32 ERA · Great American Ball Park hitter-friendly · multiple TB paths',grade:'OPTIMAL',src:'VSiN/Engine'},
-  {player:'Shane McClanahan',t:'TB',opp:'LAD',pos:'SP',stat:'K',line:4.5,over:false,ml:'-110',conf:67,hitRate:'3-of-4 UNDER',basis:'Career-low K rate · LAD 7th-fewest Ks per game (7.86) · disciplined contact-first lineup suppresses totals',grade:'OPTIMAL',src:'VSiN/Engine'},
-  {player:'Dillon Dingler',t:'DET',opp:'HOU',pos:'C',stat:'TB',line:1.5,over:true,ml:'+105',conf:65,hitRate:'68% last 12G',basis:'.922 OPS vs RHP · elite power catcher · vs Hunter Brown small-sample ERA likely regressing · +EV at these odds',grade:'OPTIMAL',src:'Covers/Engine'},
-  {player:'Jac Caglianone',t:'KC',opp:'WSH',pos:'1B',stat:'TB',line:1.5,over:true,ml:'+100',conf:63,hitRate:'hot June',basis:'Hot June form · vs Zack Littell who is vulnerable vs LHB · even money = positive EV on 63% confidence',grade:'LEAN',src:'FanDuel/Engine'},
-];
-// ═══ MLB DAILY PLAYER PROPS ═══════════════════════════════════════════════
-var _mlbDPData=[];
-var _mlbDPActiveFilter='all';
-
-function _mlbDPFilter(f){
-  _mlbDPActiveFilter=f;
-  document.querySelectorAll('#mlb-dp-filter button').forEach(b=>{
-    b.classList.remove('act');
-    const t=b.textContent.toLowerCase();
-    if(f==='all'&&t.includes('all'))b.classList.add('act');
-    else if(f==='K'&&t.includes('strik'))b.classList.add('act');
-    else if(f==='H'&&t.includes('hits'))b.classList.add('act');
-    else if(f==='HRR'&&t.includes('h+r'))b.classList.add('act');
-    else if(f==='HR'&&t.includes('homer'))b.classList.add('act');
-  });
-  _mlbDPRender();
-}
-
-function _mlbDPAdjust(idx,delta){
-  if(!_mlbDPData[idx])return;
-  _mlbDPData[idx].line=Math.max(0,+(_mlbDPData[idx].line+delta).toFixed(1));
-  _mlbDPRender();
-}
-
-function _mlbDPLock(idx){
-  const p=_mlbDPData[idx];if(!p)return;
-  const id='mlbdp_'+Date.now()+'_'+idx;
-  const lineStr=p.line+'+ '+p.stat;
-  const ev=((p.prob*(p.dec-1))-(1-p.prob))*100;
-  const pick={id,sport:'MLB',betType:'PROP',betOn:p.player+' '+p.over+'ER '+p.line+' '+p.stat,
-    hA:p.hA,awA:p.awA,winProb:p.prob,ml:p.ml,decOdds:p.dec,wager:100,outcome:'pending',
-    date:today(),lockedAt:Date.now(),ctx:p.hA+'v'+p.awA+' · '+p.stat+' '+p.line+' · '+p.basis.slice(0,80)};
-  const _dp=getP();if(!_dp.find(x=>x.id===pick.id)){_dp.push(pick);saveP(_dp);}
-  renderOverallHistory();
-  toast('// LOCKED: '+p.player+' '+p.stat+' '+p.over.toUpperCase()+' '+p.line);
-  try{window.showBetPopup({type:'lock',betOn:pick.betOn,sport:'MLB',league:'MLB',betType:'PROP',ml:p.ml,prob:p.prob,decOdds:p.dec});}catch(e){}
-}
-
-// MLB Stats API cache for player props
-var _mlbStatsCacheDate='';
-var _mlbStatsCache=null;
-
-async function _mlbFetchPlayerStats(){
-  const td=today();
-  if(_mlbStatsCacheDate===td&&_mlbStatsCache)return _mlbStatsCache;
-  try{
-    const season=td.slice(0,4);
-    const ctrl=new AbortController();
-    setTimeout(()=>ctrl.abort(),9000);
-    const [hitData,pitData]=await Promise.all([
-      fetch('https://statsapi.mlb.com/api/v1/stats?stats=season&group=hitting&season='+season+'&sportId=1&limit=350&sortStat=homeRuns',{signal:ctrl.signal}).then(r=>r.json()).catch(()=>null),
-      fetch('https://statsapi.mlb.com/api/v1/stats?stats=season&group=pitching&season='+season+'&sportId=1&limit=150&sortStat=strikeOuts',{signal:ctrl.signal}).then(r=>r.json()).catch(()=>null)
-    ]);
-    const hByTeam={};
-    for(const s of hitData?.stats?.[0]?.splits||[]){
-      const abbr=s.team?.abbreviation;const name=s.player?.fullName;
-      if(!abbr||!name)continue;
-      if(!hByTeam[abbr])hByTeam[abbr]=[];
-      const gp=Math.max(1,+(s.stat?.gamesPlayed||1));
-      hByTeam[abbr].push({name,gp,h:+(s.stat?.hits||0),hr:+(s.stat?.homeRuns||0),rbi:+(s.stat?.rbi||0),r:+(s.stat?.runs||0),avg:parseFloat(s.stat?.avg)||0,playerId:s.player?.id});
-    }
-    const pByName={};
-    for(const s of pitData?.stats?.[0]?.splits||[]){
-      const name=s.player?.fullName;if(!name)continue;
-      const gp=Math.max(1,+(s.stat?.gamesPlayed||1));
-      const gs=+(s.stat?.gamesStarted||0);
-      const k=+(s.stat?.strikeOuts||0);
-      const ip=parseFloat(s.stat?.inningsPitched)||1;
-      pByName[name.toLowerCase()]={name,gp,gs,k,ip,kPG:gs>0?k/gs:k/gp,k9:k/ip*9};
-    }
-    _mlbStatsCache={hByTeam,pByName};_mlbStatsCacheDate=td;
-    console.log('[CV] MLB stats loaded: '+Object.keys(hByTeam).length+' teams, '+Object.keys(pByName).length+' pitchers');
-    return _mlbStatsCache;
-  }catch(e){console.warn('[CV] MLB stats fetch failed:',e);return null;}
-}
-
-function _mlbGenerateDailyProps(games,statsData){
-  const props=[];
-  // Poisson P(X >= k) = 1 - Σ P(X=i) for i=0..k-1
-  const pGte=(lam,k)=>{if(lam<=0)return 0;if(k<=0)return 1;let c=0,pt=Math.exp(-lam);c+=pt;for(let i=1;i<k;i++){pt*=lam/i;c+=pt;}return Math.max(0,Math.min(1,1-c));};
-  const p2ml=(p)=>p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);
-  const mlStr=(ml)=>ml>0?'+'+ml:''+ml;
-  const p2dec=(p)=>+(1/Math.max(0.01,p)).toFixed(2);
-  const gradeP=(p)=>p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';
-  const gradeHR=(p)=>p>=.42?'PREMIUM':p>=.33?'OPTIMAL':p>=.25?'LEAN':'SKIP';
-  const eraAdj=(era)=>parseFloat(era)<3.75?-0.05:parseFloat(era)>4.75?0.05:parseFloat(era)>4.25?0.02:-0.01;
-  // ERA-based K fallback model
-  const kLineERA=(era)=>{const e=Math.max(3.5,Math.min(7.5,parseFloat(era)||4.5));return e<=3.5?6.5:e<=4.0?5.5:e<=4.75?5.0:4.5;};
-  const kProbERA=(era)=>{const e=Math.max(3.5,Math.min(7.5,parseFloat(era)||4.5));return e<=3.5?.72:e<=4.0?.68:e<=4.75?.62:.56;};
-  const hByTeam=statsData?.hByTeam||{};
-  const pByName=statsData?.pByName||{};
-
-  games.forEach(g=>{
-    const hA=g.hA,awA=g.awA,hPit=g.hPit||'',aPit=g.aPit||'';
-    const hERA=g.hPitERA||'4.20',aERA=g.aPitERA||'4.20';
-    const ouL=parseFloat(g.ou)||8.5;
-    const gameProps=[];
-
-    // ─── SP STRIKEOUTS ──────────────────────────────────────────────────────
-    const addSP=(pitName,era,batTeam,pitTeam,isHome)=>{
-      if(!pitName)return;
-      const pd=pByName[pitName.toLowerCase()];
-      let kL,kP,basis;
-      if(pd&&pd.kPG>=1){
-        const hitters=hByTeam[batTeam]||[];
-        const oppAvg=hitters.length?hitters.slice(0,9).reduce((a,b)=>a+b.avg,0)/Math.min(9,hitters.length):0.250;
-        const offAdj=oppAvg>0.270?-0.04:oppAvg<0.240?0.04:0;
-        const homeAdj=isHome?0.025:-0.015;
-        // Line = round kPG to nearest 0.5 — a real O/U recommendation
-        // should always end in .5 (matches how sportsbooks actually
-        // post totals), but rounding to the nearest 0.5 increment can
-        // still land exactly on a whole number (e.g. kPG=5.75 rounds
-        // to 6.0); bump those up half a point rather than display "6.0".
-        kL=Math.round((pd.kPG+0.25)/0.5)*0.5;
-        if(Number.isInteger(kL))kL+=0.5;
-        kL=Math.max(3.5,Math.min(10.5,kL));
-        // P(K >= ceil(kL)) adjusted
-        kP=Math.min(0.82,Math.max(0.42,pGte(pd.kPG,Math.ceil(kL))+homeAdj+offAdj));
-        basis=pitName+' · '+pd.k+' K / '+pd.gs+' starts ('+pd.kPG.toFixed(1)+'/GS, '+pd.k9.toFixed(1)+' K/9) · vs '+batTeam+(isHome?' · home':'  · road')+' · ERA '+era;
-      } else {
-        kL=kLineERA(era);kP=kProbERA(era);
-        basis=pitName+' · ERA '+era+' · vs '+batTeam+(isHome?' · home start':' · road start')+' · K rate model';
-      }
-      const ml=p2ml(kP),dec=p2dec(kP);
-      gameProps.push({player:pitName,team:pitTeam,opp:batTeam,hA,awA,pos:'SP',stat:'K',line:kL,over:true,ml:mlStr(ml),prob:kP,dec,grade:gradeP(kP),basis,hitRate:Math.round(kP*100)+'%'});
-    };
-    addSP(hPit,hERA,awA,hA,true);
-    // Only add away SP if ERA is good or home SP not added
-    if(aPit&&(kProbERA(aERA)>=.62||!hPit))addSP(aPit,aERA,hA,awA,false);
-
-    // ─── BATTER PROPS (real players from stats API) ─────────────────────────
-    const hHitters=(hByTeam[hA]||[]).filter(p=>p.gp>=15);
-    const aHitters=(hByTeam[awA]||[]).filter(p=>p.gp>=15);
-
-    // Home team: top HR threat
-    if(hHitters.length){
-      const hrH=hHitters.slice().sort((a,b)=>(b.hr/b.gp)-(a.hr/a.gp))[0];
-      if(hrH&&hrH.hr>=5){
-        const hrPG=hrH.hr/hrH.gp;
-        const adj=eraAdj(aERA);
-        const hrP=Math.min(0.58,Math.max(0.18,pGte(hrPG,1)+adj));
-        const grade=gradeHR(hrP);
-        const ml=p2ml(hrP),dec=p2dec(hrP);
-        gameProps.push({player:hrH.name,team:hA,opp:awA,hA,awA,pos:'Batter',stat:'HR',line:0.5,over:true,ml:mlStr(ml),prob:hrP,dec,grade,
-          basis:hrH.name+' · '+hrH.hr+' HR / '+hrH.gp+' G ('+((hrPG)*100).toFixed(1)+'%/G) · .'+Math.round(hrH.avg*1000).toString().padStart(3,'0')+' AVG · vs '+aERA+' ERA '+(aPit||awA+' SP'),hitRate:Math.round(hrP*100)+'%'});
-      }
-    }
-
-    // Away team: top HR threat
-    if(aHitters.length){
-      const hrH=aHitters.slice().sort((a,b)=>(b.hr/b.gp)-(a.hr/a.gp))[0];
-      if(hrH&&hrH.hr>=5){
-        const hrPG=hrH.hr/hrH.gp;
-        const adj=eraAdj(hERA)-0.02;
-        const hrP=Math.min(0.55,Math.max(0.16,pGte(hrPG,1)+adj));
-        const grade=gradeHR(hrP);
-        const ml=p2ml(hrP),dec=p2dec(hrP);
-        gameProps.push({player:hrH.name,team:awA,opp:hA,hA,awA,pos:'Batter',stat:'HR',line:0.5,over:true,ml:mlStr(ml),prob:hrP,dec,grade,
-          basis:hrH.name+' · '+hrH.hr+' HR / '+hrH.gp+' G ('+((hrPG)*100).toFixed(1)+'%/G) · .'+Math.round(hrH.avg*1000).toString().padStart(3,'0')+' AVG · vs '+hERA+' ERA '+(hPit||hA+' SP')+' · road game',hitRate:Math.round(hrP*100)+'%'});
-      }
-    }
-
-    // Home team: top Hits producer
-    if(hHitters.length){
-      const hitH=hHitters.slice().sort((a,b)=>(b.h/b.gp)-(a.h/a.gp))[0];
-      if(hitH&&hitH.h>0){
-        const hPG=hitH.h/hitH.gp;
-        const line=hPG>=1.8?1.5:0.5;
-        const adj=eraAdj(aERA);
-        const hitP=Math.min(0.83,Math.max(0.38,pGte(hPG,Math.ceil(line))+adj));
-        const ml=p2ml(hitP),dec=p2dec(hitP);
-        gameProps.push({player:hitH.name,team:hA,opp:awA,hA,awA,pos:'Batter',stat:'H',line,over:true,ml:mlStr(ml),prob:hitP,dec,grade:gradeP(hitP),
-          basis:hitH.name+' · '+hitH.h+' H / '+hitH.gp+' G ('+hPG.toFixed(2)+'/G) · .'+Math.round(hitH.avg*1000).toString().padStart(3,'0')+' AVG · vs '+aERA+' ERA '+(aPit||awA+' SP')+' · home',hitRate:Math.round(hitP*100)+'%'});
-      }
-    }
-
-    // Away team: top H+R+RBI producer
-    const allBatters=[...hHitters.map(h=>({...h,t:hA,oppERA:aERA,oppPit:aPit||awA+' SP'})),...aHitters.map(h=>({...h,t:awA,oppERA:hERA,oppPit:hPit||hA+' SP'}))];
-    if(allBatters.length){
-      const rrrH=allBatters.slice().sort((a,b)=>((b.h+b.r+b.rbi)/b.gp)-((a.h+a.r+a.rbi)/a.gp))[0];
-      if(rrrH){
-        const rate=(rrrH.h+rrrH.r+rrrH.rbi)/rrrH.gp;
-        const line=rate>=2.5?2.5:rate>=1.5?1.5:0.5;
-        const adj=eraAdj(rrrH.oppERA);
-        const rrP=Math.min(0.81,Math.max(0.38,pGte(rate,Math.ceil(line))+adj));
-        const oppTeam=rrrH.t===hA?awA:hA;
-        const ml=p2ml(rrP),dec=p2dec(rrP);
-        gameProps.push({player:rrrH.name,team:rrrH.t,opp:oppTeam,hA,awA,pos:'Batter',stat:'HRR',line,over:true,ml:mlStr(ml),prob:rrP,dec,grade:gradeP(rrP),
-          basis:rrrH.name+' · '+(rrrH.h+rrrH.r+rrrH.rbi)+' H+R+RBI / '+rrrH.gp+' G ('+rate.toFixed(2)+'/G) · vs '+rrrH.oppERA+' ERA '+rrrH.oppPit,hitRate:Math.round(rrP*100)+'%'});
-      }
-    }
-
-    // Keep top 3 from each game by probability (prefer variety across stat types)
-    const seen=new Set();
-    gameProps.sort((a,b)=>b.prob-a.prob);
-    const picked=[];
-    for(const p of gameProps){if(picked.length>=3)break;if(!seen.has(p.stat)){seen.add(p.stat);picked.push(p);}else if(picked.length<3)picked.push(p);}
-    props.push(...picked);
-  });
-  return props;
-}
-
-function _mlbDPRender(){
-  const el=document.getElementById('mlb-dp-list');if(!el)return;
-  const f=_mlbDPActiveFilter;
-  const data=f==='all'?_mlbDPData:_mlbDPData.filter(p=>p.stat===f);
-  if(!data.length){el.innerHTML='<div class="empty">NO PROPS AVAILABLE — LOAD GAMES FIRST</div>';return;}
-  const gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'};
-  const statLabel={K:'Strikeouts',H:'Hits',HRR:'H+R+RBI',HR:'Home Run'};
-  // group by matchup
-  const byGame={};
-  data.forEach((p,i)=>{const key=p.hA+'v'+p.awA;if(!byGame[key])byGame[key]=[];byGame[key].push({...p,_idx:_mlbDPData.indexOf(p)});});
-  el.innerHTML=Object.entries(byGame).map(([key,props])=>{
-    const p0=props[0];
-    return'<div style="margin-bottom:14px">'
-      +'<div style="font-family:var(--mono);font-size:15px;color:var(--t3);letter-spacing:1px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:6px">'+p0.awA+' @ '+p0.hA+'</div>'
-      +props.map(p=>{
-        const c=gradeC[p.grade]||'var(--t3)';
-        const ev=((p.prob*(p.dec-1))-(1-p.prob)*1)*100;
-        const evStr=(ev>=0?'+':'')+ev.toFixed(1)+'%';
-        const overStr=p.over?'OVER':'UNDER';
-        return'<div class="card" style="margin-bottom:6px;padding:9px 10px;border-left:2px solid '+c+'">'
-          +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:5px">'
-            +'<div style="flex:1">'
-              +'<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--t)">'+p.player+'</div>'
-              +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:1px">'+p.team+' · '+statLabel[p.stat]+' · '+overStr+'</div>'
-            +'</div>'
-            +'<span style="font-family:var(--mono);font-size:14px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
-          +'</div>'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            +'<button onclick="_mlbDPAdjust('+p._idx+',-0.5)" style="width:26px;height:26px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:var(--t2);font-size:18px;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>'
-            +'<div style="text-align:center;min-width:48px">'
-              +'<div style="font-family:var(--mono);font-size:24px;font-weight:700;color:var(--t)">'+p.line+'</div>'
-              +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3)">'+statLabel[p.stat]+'</div>'
-            +'</div>'
-            +'<button onclick="_mlbDPAdjust('+p._idx+',0.5)" style="width:26px;height:26px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:var(--t2);font-size:18px;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>'
-            +'<div style="flex:1;font-family:var(--mono);font-size:14px;color:var(--t3)">'
-              +'<span style="color:'+c+'">'+p.prob*100|0+'%</span>'
-              +' conf · <span style="color:rgba(187,255,0,.8)">'+evStr+'</span> EV'
-              +' · '+p.hitRate+' hit rate'
-            +'</div>'
-            +'<span style="font-family:var(--mono);font-size:15px;color:var(--t2)">'+p.ml+'</span>'
-          +'</div>'
-          +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:6px;line-height:1.5">'+p.basis+'</div>'
-          +'<button onclick="_mlbDPLock('+p._idx+')" style="width:100%;padding:5px;background:rgba(240,0,255,.1);border:1px solid rgba(240,0,255,.35);color:var(--pc);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">LOCK PROP</button>'
-        +'</div>';
-      }).join('')
-    +'</div>';
-  }).join('');
-}
-
-/* ── NBA player stats from ESPN + props generation ── */
-var _nbaStatsCache=null,_nbaStatsCacheDate='';
-async function _fetchNBAPlayerStats(){
-  var td=today();
-  if(_nbaStatsCacheDate===td&&_nbaStatsCache)return _nbaStatsCache;
-  try{
-    var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/statistics?limit=300',{signal:ctrl.signal});
-    var d=await r.json();
-    var byName={};
-    (d.athletes||[]).forEach(function(a){
-      var name=a.athlete&&a.athlete.displayName;if(!name)return;
-      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
-      var stats={};(a.categories||[]).forEach(function(cat){
-        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
-      });
-      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
-      byName[name.toLowerCase()]={name,team,gp,
-        ppg:+(( stats.points||stats.PTS||0)/gp).toFixed(1),
-        rpg:+((stats.totalRebounds||stats.REB||0)/gp).toFixed(1),
-        apg:+((stats.assists||stats.AST||0)/gp).toFixed(1),
-        tpg:+((stats.threePointFieldGoalsMade||stats.threePointersMade||0)/gp).toFixed(1),
-        bpg:+((stats.blockedShots||stats.blocks||0)/gp).toFixed(1),
-        spg:+((stats.steals||0)/gp).toFixed(1),
-        sigma:stats.pointsPerGame?Math.sqrt(stats.pointsPerGame)*1.2:5.0
-      };
-    });
-    _nbaStatsCache=byName;_nbaStatsCacheDate=td;
-    console.log('[CV] NBA stats loaded: '+Object.keys(byName).length+' players');
-    return byName;
-  }catch(e){console.warn('[CV] NBA stats fetch err:',e);return null;}
-}
-
-function _generateNBAProps(games,statsData){
-  if(!statsData)return[];
-  var props=[];
-  var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
-  var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
-  var gradeP=function(p){return p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';};
-  var players=Object.values(statsData);
-
-  (games||[]).forEach(function(g){
-    var hn=g.h||g.hA||g.home,an=g.a||g.awA||g.away;if(!hn||!an)return;
-    var gamePlayers=players.filter(function(p){
-      return(p.team===hn||p.team===an)&&p.gp>=10;
-    }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,6);
-    var seen=new Set();
-    gamePlayers.forEach(function(pl){
-      // Points prop
-      if(pl.ppg>=12&&!seen.has(pl.name+'_pts')){seen.add(pl.name+'_pts');
-        var line=parseFloat(_forceHalfLine(pl.ppg));
-        var sigma=Math.max(4,pl.ppg*0.38);
-        var mc=propMC(pl.ppg,sigma,line,5000);
-        var grade=gradeP(mc.overP);if(grade==='SKIP')return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Guard/Forward',stat:'PTS',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade,hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.ppg+'PPG / '+pl.gp+'G · MC sim: '+mc.hitRate+'% over '+line});
-      }
-      // Rebounds prop
-      if(pl.rpg>=6&&!seen.has(pl.name+'_reb')){seen.add(pl.name+'_reb');
-        var line=parseFloat(_forceHalfLine(pl.rpg));
-        var sigma=Math.max(2,pl.rpg*0.45);
-        var mc=propMC(pl.rpg,sigma,line,5000);
-        if(mc.overP<0.55)return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Forward/Center',stat:'REB',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.rpg+'RPG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
-      // Assists prop
-      if(pl.apg>=5&&!seen.has(pl.name+'_ast')){seen.add(pl.name+'_ast');
-        var line=parseFloat(_forceHalfLine(pl.apg));
-        var sigma=Math.max(1.5,pl.apg*0.50);
-        var mc=propMC(pl.apg,sigma,line,5000);
-        if(mc.overP<0.55)return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Guard',stat:'AST',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.apg+'APG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
-    });
-  });
-  return props.sort(function(a,b){return b.prob-a.prob;});
-}
-
-async function renderMLBDailyProps(){
-  const el=document.getElementById('mlb-dp-list');if(!el)return;
-  const dateEl=document.getElementById('mlb-dp-date');if(dateEl)dateEl.textContent=today();
-  let games=(ESPN_GAMES&&ESPN_GAMES.length?ESPN_GAMES:window._mlbGames||[]).filter(g=>g.hA&&g.awA);
-  if(!games.length){
-    el.innerHTML='<div style="text-align:center;padding:20px;font-family:var(--mono);font-size:16px;color:var(--t3)"><span class="spi"></span> LOADING TODAY\'S GAMES…</div>';
-    await loadGames().catch(()=>{});
-    games=(ESPN_GAMES||[]).filter(g=>g.hA&&g.awA);
-  }
-  if(!games.length){el.innerHTML='<div class="empty">NO MLB GAMES FOUND FOR TODAY<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="renderMLBDailyProps()">↻ RETRY</button></div>';return;}
-  el.innerHTML='<div style="text-align:center;padding:20px;font-family:var(--mono);font-size:16px;color:var(--t3)"><span class="spi"></span> FETCHING PLAYER STATS…</div>';
-  const statsData=await _mlbFetchPlayerStats();
-  _mlbDPData=_mlbGenerateDailyProps(games,statsData);
-  _mlbDPRender();
-  _mlbDPPopulateParlay();
-}
-
-var _nbaDPData=[];
-async function renderNBADailyProps(){
-  var el=document.getElementById('nba-dp-list');if(!el)return;
-  var dateEl=document.getElementById('nba-dp-date');if(dateEl)dateEl.textContent=today();
-  el.innerHTML='<div style="text-align:center;padding:20px;font-family:var(--mono);font-size:16px;color:var(--t3)"><span class="spi"></span> FETCHING NBA PLAYER STATS…</div>';
-  var statsData=await _fetchNBAPlayerStats();
-  if(!statsData){el.innerHTML='<div class="empty">NBA STATS UNAVAILABLE — RETRY</div>';return;}
-  var games=(window._nbaTodayGames||NBA_TONIGHT||[]);
-  _nbaDPData=_generateNBAProps(games,statsData);
-  if(!_nbaDPData.length){el.innerHTML='<div class="empty">NO NBA PROPS GENERATED — NO GAMES OR STATS</div>';return;}
-  var gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'};
-  el.innerHTML='<div style="margin-bottom:8px;font-family:var(--mono);font-size:14px;color:var(--t3)">'+_nbaDPData.length+' PROPS · MC-simulated vs season avg</div>'
-    +_nbaDPData.map(function(p,i){
-    var c=gradeC[p.grade]||'var(--t3)';
-    var mlStr=p.ml;
-    return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+c+'">'
-      +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">'
-      +'<div><span style="font-family:var(--orb);font-size:22px;font-weight:700">'+p.player+'</span>'
-      +'<span style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-left:5px">'+p.team+' vs '+p.opp+'</span></div>'
-      +'<div style="display:flex;gap:4px;align-items:center">'
-      +'<span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">MC:'+p.hitRate+'</span>'
-      +'<span style="font-family:var(--mono);font-size:16px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
-      +'</div></div>'
-      +'<div style="font-family:var(--mono);font-size:22px;color:var(--nc);margin-bottom:3px">▲ OVER '+p.line+' '+p.stat+' <span style="color:var(--t2);font-size:18px">· '+mlStr+' · '+(p.prob*100).toFixed(0)+'% MODEL</span></div>'
-      +'<div style="font-family:var(--mono);font-size:17px;color:var(--t2);margin-bottom:4px">'+p.basis+'</div>'
-      +'<div style="display:flex;justify-content:space-between;align-items:center">'
-      +'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ESPN Stats + MC Sim (5k)</span>'
-      +'<button class="btn btn-o btn-sm" onclick="lockMLBProp(\''+p.team+'\',\''+p.opp+'\',\''+p.player+'\',\''+p.stat+' O'+p.line+'\',true,'+p.prob.toFixed(2)+',\''+p.ml+'\')">LOCK</button>'
-      +'</div>'
-    +'</div>';
-  }).join('');
-}
-
-function _mlbDPPopulateParlay(){
-  const el=document.getElementById('mlb-par-props-list');if(!el)return;
-  if(!_mlbDPData.length){el.innerHTML='<div style="font-family:var(--mono);font-size:15px;color:var(--t3)">OPEN PROPS TAB FIRST</div>';return;}
-  const gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)'};
-  const statLabel={K:'K',H:'H',HRR:'HRR',HR:'HR'};
-  el.innerHTML=_mlbDPData.map((p,i)=>{
-    const c=gradeC[p.grade]||'var(--t3)';
-    const legLabel=p.player+' '+statLabel[p.stat]+' '+(p.over?'OVER':'UNDER')+' '+p.line;
-    return'<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">'
-      +'<button onclick="_mlbDPAdjust('+i+',-0.5);_mlbDPPopulateParlay()" style="padding:2px 6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--t2);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">−</button>'
-      +'<span style="font-family:var(--mono);font-size:14px;color:var(--t2);min-width:22px;text-align:center">'+p.line+'</span>'
-      +'<button onclick="_mlbDPAdjust('+i+',0.5);_mlbDPPopulateParlay()" style="padding:2px 6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--t2);font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer">+</button>'
-      +'<button onclick="cvParlayAdd(\'mlb\',\''+legLabel.replace(/'/g,'')+'\',\''+p.ml+'\','+p.prob.toFixed(3)+',\''+p.hA+'v'+p.awA+'\')" style="flex:1;padding:4px 6px;background:rgba(240,0,255,.07);border:1px solid rgba(240,0,255,.25);color:var(--t);font-family:var(--mono);font-size:14px;border-radius:2px;cursor:pointer;text-align:left">'
-        +'<span style="color:'+c+';margin-right:4px">'+p.grade+'</span>'+legLabel+'</button>'
-    +'</div>';
-  }).join('');
-}
-
-function renderMLBProps(filter){
-  const el=document.getElementById('mlb-props');if(!el)return;
-  const tracker=document.getElementById('mlb-props-tracker');
-  const gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',GOOD:'var(--ic)',FAIR:'var(--gc)',FADE:'var(--hc)'};
-  // Update filter button states
-  document.querySelectorAll('#mlb-props-filter button').forEach(b=>{b.classList.remove('act');if(b.textContent.toLowerCase().includes((filter||'all').slice(0,3)))b.classList.add('act');});
-  // Filter
-  let data=[...MLB_PROPS_DATA];
-  if(filter==='pitcher')data=data.filter(p=>p.pos==='SP');
-  else if(filter==='batter')data=data.filter(p=>p.pos!=='SP');
-  else if(filter==='hr')data=data.filter(p=>p.stat==='HR');
-  else if(filter==='top')data=data.filter(p=>p.grade==='PREMIUM'||p.grade==='OPTIMAL');
-  // Sort by grade then conf
-  const order={PREMIUM:0,OPTIMAL:1,GOOD:2,FAIR:3,FADE:4};
-  data.sort((a,b)=>(order[a.grade]||4)-(order[b.grade]||4)||b.conf-a.conf);
-  el.innerHTML=data.map(p=>{
-    const mlLabel=p.ml?(parseFloat(p.ml)>0?`+${p.ml}`:p.ml):'—';
-    const dirColor=p.over?'var(--nc)':'var(--hc)';
-    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gradeC[p.grade]||'var(--t3)'}">
-      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
-        <div>
-          <span style="font-family:var(--orb);font-size:22px;font-weight:700">${p.player}</span>
-          <span style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-left:5px">${p.t} vs ${p.opp}</span>
-          <span style="font-family:var(--mono);font-size:16px;margin-left:4px;padding:1px 4px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">${p.pos}</span>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center">
-          ${p.hitRate?`<span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">HIT:${p.hitRate}</span>`:''}
-          <span style="font-family:var(--mono);font-size:16px;padding:2px 6px;border:1px solid ${gradeC[p.grade]};color:${gradeC[p.grade]};border-radius:2px">${p.grade}</span>
-        </div>
-      </div>
-      <div style="font-family:var(--mono);font-size:22px;color:${dirColor};margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line} ${p.stat} <span style="color:var(--t2);font-size:18px">· ${mlLabel} · ${p.conf}% CONF</span></div>
-      <div style="font-family:var(--mono);font-size:17px;color:var(--t2);margin-bottom:4px">${p.basis}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ${p.src||'Model'}</span>
-        <button class="btn btn-o btn-sm" onclick="lockMLBProp('${p.t}','${p.opp}','${p.player}','${p.stat} ${p.over?'O':'U'}${p.line}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-115'}')">OPTIMAL</button>
-      </div>
-    </div>`;
-  }).join('')||'<div class="empty">NO PROPS MATCH FILTER</div>';
-  // Render locked MLB props tracker
-  if(tracker){
-    const mlbLocked=LOCKED_PROPS.filter(p=>p.sport==='MLB'||p.betType==='PROP'&&['CIN','PHI','CLE','DET','NYM','WSH','TOR','NYY','TB','STL','BAL','NYM','ATL','MIA','MIL','CHC','CWS','MIN'].includes(p.team));
-    if(!mlbLocked.length){tracker.innerHTML='<div class="empty">NO LOCKED MLB PROPS</div>';return;}
-    const oc_map={'win':'var(--nc)','loss':'var(--hc)','pending':'var(--gc)'};
-    tracker.innerHTML=mlbLocked.map((p,i)=>{const oc=oc_map[p.outcome]||'var(--gc)';return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:19px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:17px;color:var(--t2)">${p.betOn} · ${p.team}</div></div><span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${(p.outcome||'pending').toUpperCase()}</span></div></div>`;}).join('');
-  }
-}
-function lockMLBProp(team,opp,player,betOn,over,conf,ml){
-  const dec=ml?ml2d(ml):1.87;
-  const prop={id:`prop_mlb_${Date.now()}`,team,player,line:betOn,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
-    sport:'MLB',betType:'PROP',betOn:`${player} ${betOn}`,winProb:conf||0.60,
-    hA:team,awA:opp,decOdds:dec,wager:0};
-  LOCKED_PROPS.push(prop);
-  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
-  const preds=getP();preds.push(prop);saveP(preds);updHdr();
-  toast(`// MLB PROP LOCKED: ${player} ${betOn}`);try{window.showBetPopup({type:'lock',betOn:`${player} ${betOn}`,sport:'MLB',league:'MLB',betType:'PROP',ml,prob:conf||0.60,decOdds:dec});}catch(ex){}
-  renderMLBProps('all');
-}
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
 let NBA_PAR=[];
 function renderNBAParlayG(){
@@ -17248,7 +16768,6 @@ function applyServerSettlements(settled){
 function patchLinemateProps(linemate){
   window._linematePropCards=linemate;
   try{const np=document.getElementById('nba-tab-props');if(np&&np.classList.contains('act'))renderNBAProps();}catch(e){}
-  try{const mp=document.getElementById('mlb-tab-props');if(mp&&mp.classList.contains('act'))renderMLBProps('all');}catch(e){}
   // Also hydrate NHL props/trends from linemate bundle if not already set from nhl.*
   if(linemate?.nhl?.trends?.length&&!window._remoteNHLTrends?.length)window._remoteNHLTrends=linemate.nhl.trends;
   if(linemate?.nhl?.props?.length&&!window._remoteNHLProps?.length)window._remoteNHLProps=linemate.nhl.props;
@@ -18076,7 +17595,6 @@ function renderIntelCards(tier){
 
   // Props registry
   const _PROPS_REG=[
-    {sport:'MLB',  data:typeof MLB_PROPS_DATA !=='undefined'?MLB_PROPS_DATA :[]},
     {sport:'NBA',  data:typeof NBA_PROPS_DATA !=='undefined'?NBA_PROPS_DATA :[]},
     {sport:'WNBA', data:typeof WNBA_PROPS_DATA!=='undefined'?WNBA_PROPS_DATA:[]},
     {sport:'NHL',  data:typeof NHL_PROPS_DATA !=='undefined'?NHL_PROPS_DATA :[]},
@@ -20297,7 +19815,6 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderNBAPlayers();}catch(e){console.error('renderNBAPlayers',e);}
   try{renderNBAPicks();}catch(e){console.error('renderNBAPicks',e);}
   try{renderNBAProps();}catch(e){console.error('renderNBAProps',e);}
-  try{renderMLBProps('all');}catch(e){console.error('renderMLBProps',e);}
   try{renderNBAParlayG();}catch(e){console.error('renderNBAParlayG',e);}
   try{renderNHLHistory();}catch(e){console.error('renderNHLHistory',e);}
   try{renderNBAHistory();}catch(e){console.error('renderNBAHistory',e);}
@@ -21452,16 +20969,6 @@ NBA_ELO={SA:1634,NY:1617,OKC:1660,CLE:1540}; // Updated after Finals G2: NYK won
 // NBA OFFSEASON — Finals concluded. No props available.
 NBA_PROPS_DATA=[];
 
-// ═══ MLB PROPS DATA (Jun 17 2026) — Sources: Linemate/Rotowire/Covers/BetMGM/DraftKings/Engine ═══
-MLB_PROPS_DATA=[
-  // Games today: NYM@CIN · KC@WSH · MIA@PHI · DET@HOU · SD@STL · TB@LAD · LAA@ARI · TOR@BOS · CHW@NYY · SF@ATL · CLE@MIL · COL@CHC · BAL@SEA · PIT@ATH
-  {player:'Carlos Rodon',t:'NYY',opp:'CHW',pos:'SP',stat:'K',line:5.5,over:true,ml:'-130',conf:71,hitRate:'4-of-6 OVER',basis:'33% whiff rate vs CHW · CHW rank 4th in MLB Ks · 4 of 6 starts cleared this line · elite swing-and-miss stuff',grade:'ELITE',src:'Sportsbookreview/Engine'},
-  {player:'James Wood',t:'WSH',opp:'KC',pos:'LF',stat:'TB',line:1.5,over:true,ml:'+115',conf:69,hitRate:'73% last 10G',basis:'.971 OPS · 20 HR · vs Avila 6.19 BB/9 severe command issues · elite matchup angle',grade:'ELITE',src:'BettorsInsider/Engine'},
-  {player:'Juan Soto',t:'NYM',opp:'CIN',pos:'RF',stat:'TB',line:1.5,over:true,ml:'+120',conf:68,hitRate:'82% last 11G',basis:'.938 OPS · 15 HR in 56G · vs Singer 5.32 ERA · Great American Ball Park hitter-friendly · multiple TB paths',grade:'OPTIMAL',src:'VSiN/Engine'},
-  {player:'Shane McClanahan',t:'TB',opp:'LAD',pos:'SP',stat:'K',line:4.5,over:false,ml:'-110',conf:67,hitRate:'3-of-4 UNDER',basis:'Career-low K rate · LAD 7th-fewest Ks per game (7.86) · disciplined contact-first lineup suppresses totals',grade:'OPTIMAL',src:'VSiN/Engine'},
-  {player:'Dillon Dingler',t:'DET',opp:'HOU',pos:'C',stat:'TB',line:1.5,over:true,ml:'+105',conf:65,hitRate:'68% last 12G',basis:'.922 OPS vs RHP · elite power catcher · vs Hunter Brown small-sample ERA likely regressing · +EV at these odds',grade:'OPTIMAL',src:'Covers/Engine'},
-  {player:'Jac Caglianone',t:'KC',opp:'WSH',pos:'1B',stat:'TB',line:1.5,over:true,ml:'+100',conf:63,hitRate:'hot June',basis:'Hot June form · vs Zack Littell who is vulnerable vs LHB · even money = positive EV on 63% confidence',grade:'LEAN',src:'FanDuel/Engine'},
-];
 // ═══ NBA PARLAY BUILDER ══════════════════════════════════════
 NBA_PAR=[];
 
@@ -21496,7 +21003,6 @@ function _reRenderActive(sport, tabId){
     }
     safe(renderMLBGames);
     if(tabId.includes('ranks'))   safe(renderR);
-    if(tabId.includes('props'))   safe(renderMLBProps,'all');
     if(tabId.includes('nrfi'))    safe(renderNRFI);
     if(tabId.includes('history')) safe(renderHistory);
     if(tabId.includes('model'))   { safe(renderCal); safe(renderLrn); }
@@ -26657,13 +26163,8 @@ function _epGatherLegs(){
     if(o.a>=0.40&&aDec>1.1){var aEV=_epEV(o.a,aDec);legs.push({name:'WC26 ML '+m.away,ml:aML,prob:o.a,dec:aDec,ev:aEV,matchup:matchup,sport:'WC26',type:'GAME',grade:o.a>=0.55?'LEAN':'SKIP',value:_val(aML,o.a,aEV)});}
   });
 
-  /* ── MLB PROPS (real player data from today's _mlbDPData) ──── */
-  (window._mlbDPData||[]).filter(function(p){return p.grade&&p.grade!=='SKIP'&&p.prob>=0.55;}).slice(0,10).forEach(function(p){
-    var pDec=p.dec||_epDec(p.ml);var pEV=_epEV(p.prob,pDec);
-    legs.push({name:'MLB '+p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat,ml:p.ml,prob:p.prob,dec:pDec,ev:pEV,matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade,value:_val(p.ml,p.prob,pEV)});
-  });
-
-  /* NOTE: NHL_PROPS_DATA / NBA_PROPS_DATA are hardcoded stale slates — intentionally
+  /* NOTE: MLB player props were retired (no live source ever fed them);
+     NHL_PROPS_DATA / NBA_PROPS_DATA are hardcoded stale slates — intentionally
      excluded here so only live daily sources drive the recommended parlays. */
 
   /* ── CFB / NFL / CBB / NCAAH — market-priced legs from ESPN's own odds
@@ -26791,14 +26292,6 @@ function _epGatherMoonLegs(){
     // individual leg still clears a real favorite-level threshold.
     if(!seen.has(nH)&&hP>=0.55){var hEV=_epEV(hP,hDec);seen.add(nH);legs.push({name:nH,ml:hmlRaw,prob:hP,dec:hDec,ev:hEV,matchup:matchup,sport:'MLB',type:'GAME',grade:'LEAN',value:parseFloat(hmlRaw)>0&&hP>=0.35&&hEV>=0.06});}
     if(!seen.has(nA)&&aP>=0.55){var aEV=_epEV(aP,aDec);seen.add(nA);legs.push({name:nA,ml:amlRaw,prob:aP,dec:aDec,ev:aEV,matchup:matchup,sport:'MLB',type:'GAME',grade:'LEAN',value:parseFloat(amlRaw)>0&&aP>=0.35&&aEV>=0.06});}
-  });
-
-  /* MLB props — raised from .50 to .58 so the moon slate's extra legs are
-     still individually solid, not just numerous. */
-  (window._mlbDPData||[]).filter(function(p){return p.grade&&p.grade!=='SKIP'&&p.prob>=0.58;}).slice(0,12).forEach(function(p){
-    var n='MLB '+p.player+' '+(p.over?'O':'U')+p.line+' '+p.stat;
-    if(seen.has(n))return;seen.add(n);
-    var pDec=p.dec||_epDec(p.ml);legs.push({name:n,ml:p.ml,prob:p.prob,dec:pDec,ev:_epEV(p.prob,pDec),matchup:(p.awA||'')+' @ '+(p.hA||''),sport:'MLB',type:'PROP',grade:p.grade});
   });
 
   legs.forEach(function(l){var ml=parseFloat(l.ml)||0;if(ml>0&&l.prob>=0.45&&l.ev>=0.06)l.value=true;});
