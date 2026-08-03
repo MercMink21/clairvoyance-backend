@@ -5990,6 +5990,31 @@ function renderModelWeights(sport, containerId) {
   el.innerHTML = renderWeightsPanel(sport, factors);
 }
 
+// StatMuse insights (docs/statmuse_data.json — scraped narrative stat
+// blurbs, not structured numbers, so this sits alongside INJURY INTEL as
+// context rather than feeding any MC sim). Self-creates its own sibling
+// container after `anchorId` instead of assuming a dedicated container
+// already exists in markup, since several sports don't have one.
+let _STATMUSE = null;
+function loadStatMuse(){
+  if(_STATMUSE) return Promise.resolve(_STATMUSE);
+  return fetch('statmuse_data.json',{cache:'no-store'}).then(r=>r.ok?r.json():null)
+    .then(d=>{_STATMUSE=d||{sections:{}};return _STATMUSE;})
+    .catch(()=>{_STATMUSE={sections:{}};return _STATMUSE;});
+}
+function renderStatMuseInsights(section, anchorId, limit){
+  const anchor=document.getElementById(anchorId);if(!anchor)return;
+  const hostId=anchorId+'-statmuse';
+  let host=document.getElementById(hostId);
+  if(!host){anchor.insertAdjacentHTML('afterend','<div id="'+hostId+'"></div>');host=document.getElementById(hostId);}
+  const items=((_STATMUSE||{}).sections||{})[section]||[];
+  if(!items.length){host.innerHTML='';return;}
+  host.innerHTML=`<div class="sh" style="margin:8px 0 6px"><span style="color:var(--ic)">◆</span> STATMUSE INSIGHTS</div>`+
+    items.slice(0,limit||6).map(n=>`<div class="card" style="border-left:2px solid var(--ic);margin-bottom:5px;padding:8px 10px">
+      <div style="font-family:var(--mono);font-size:17px;color:var(--t1);line-height:1.5">${n.headline}</div>
+      ${n.detail?`<div style="font-size:15px;color:var(--t3);margin-top:3px;line-height:1.4">${n.detail}</div>`:''}
+    </div>`).join('');
+}
 function renderInjuryNews(sport, containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -6023,6 +6048,7 @@ function renderNHLPicks(){
   const el=document.getElementById('nhl-picks');if(!el)return;
   renderNHLCFCards();
   renderInjuryNews('nhl','nhl-injury-news');
+  loadStatMuse().then(()=>renderStatMuseInsights('nhl','nhl-picks'));
   try{
     if(!TONIGHT.length){
       el.innerHTML=`<div class="empty">STANLEY CUP FINALS — CAR at VGK · VGK LEADS 2-1<br><span style="font-size:18px;color:var(--nc);display:block;margin-top:6px">G4 · June 9 · T-Mobile Arena, Las Vegas · 8 PM ET TNT</span><span style="font-size:17px;color:var(--t3);display:block;margin-top:3px">G1 @ PNC: VGK WIN · G2 @ PNC: CAR WIN · G3 @ T-Mobile: VGK WIN · VGK leads 2-1</span></div>`;
@@ -8297,6 +8323,7 @@ function renderNBACFCards(){
 function renderNBAPicks(){
   renderNBAFinalsPreview(document.getElementById('nba-finals-preview'));
   renderNBAFinalsProps('nba-finals-props');
+  loadStatMuse().then(()=>renderStatMuseInsights('nba','nba-picks-list'));
   const el=document.getElementById('nba-picks-list');if(!el)return;
   const picks=NBA_TONIGHT.map(g=>{
     const ht=NBA_TEAMS[g.h]||{},at=NBA_TEAMS[g.a]||{};
@@ -12556,8 +12583,8 @@ function setSub(sport,sub){
   if(sport==='soc'&&['cl','pl','liga','bl','mls','ita'].includes(sub)){try{T(sub,'matches');renderLeagueMatches(sub);}catch(e){}}
   // NFL/CFB — same auto-trigger reasoning, generic card (see _genericGameCard)
   // since neither sport has a team-rating dataset for a full model yet.
-  if(sport==='fb'&&sub==='cfb'){try{renderGenericWeek('cfb-week-list','football/college-football','CFB');}catch(e){}}
-  if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');}catch(e){}}
+  if(sport==='fb'&&sub==='cfb'){try{renderGenericWeek('cfb-week-list','football/college-football','CFB');loadStatMuse().then(()=>renderStatMuseInsights('cfb','cfb-week-list'));}catch(e){}}
+  if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');loadStatMuse().then(()=>renderStatMuseInsights('nfl','nfl-week-list'));}catch(e){}}
 }
 function T(sport,tabId){const D=window.__CV_DATA||{};
   const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa',wnba:'wnba-sa',wc:'wc-sa',cbb:'cbb-sa',pl:'pl-sa',liga:'liga-sa',bl:'bl-sa',mls:'mls-sa',cl:'cl-sa',ita:'ita-sa',ncaah:'ncaah-sa',khl:'khl-sa',shl:'shl-sa',liiga:'liiga-sa'};
@@ -21000,6 +21027,7 @@ function _reRenderActive(sport, tabId){
     // Picks: use bestBets from data.json — no ESPN fetch
     if(tabId.includes('picks')){
       if(D.bestBets?.length) safe(renderBestBetsFromRemote,D.bestBets);
+      loadStatMuse().then(()=>renderStatMuseInsights('mlb','mlb-injury-news'));
     }
     safe(renderMLBGames);
     if(tabId.includes('ranks'))   safe(renderR);
@@ -21535,6 +21563,7 @@ async function renderWNBAGames(force){
   var el=document.getElementById('wnba-games-list');
   var dateEl=document.getElementById('wnba-games-date');
   if(!el){_wnbaRendering=false;return;}
+  loadStatMuse().then(()=>renderStatMuseInsights('wnba','wnba-games-list'));
   try{ await _renderWNBAGamesInner(el,dateEl,force); }catch(e){
     console.warn('WNBA render err',e);
     // Nuclear fallback: render directly from data.json without any computation
@@ -24211,6 +24240,10 @@ async function _fetchMLSScheduleReal(){
 
 async function renderLeagueMatches(key){
   var el=document.getElementById(key+'-matches-list');if(!el)return;
+  // Single combined StatMuse soccer feed (statmuse.com/fc covers all
+  // leagues at once) — attached once, to MLS's container, rather than
+  // duplicated identically across every league tab.
+  if(key==='mls')loadStatMuse().then(()=>renderStatMuseInsights('soccer','mls-matches-list'));
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
   var games=key==='mls'?await _fetchMLSScheduleReal():null;
   if(!games)games=await _fetchLeagueScoreboard(key);
