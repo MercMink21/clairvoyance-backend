@@ -7,12 +7,19 @@ names to hook a DOM scraper on), so this reads the page's rendered
 own consistent blank-line formatting, rather than depending on markup that
 will break on their next redesign. This means results are more like the
 existing injury/news "headline + summary" cards than a clean structured
-stat table — StatMuse's own content is narrative fun-facts, not raw numbers
-suited for feeding Monte Carlo sims. Treat this as an insights/context feed
-sitting alongside the existing injury-news panels, not as model input.
+stat table — StatMuse's own content is narrative fun-facts, not a raw
+numbers feed. Treat the blurbs themselves as an insights/context panel,
+not model input.
 
-Output: docs/statmuse_data.json, one key per section, each a list of
-{headline, detail} blurbs (headline = first line, detail = rest joined).
+A minority of blurbs do contain a usable numeric rate-stat (e.g. "23.5
+PPG · 5.8 APG"), which extract_player_stats() pulls out separately into
+a player-name-keyed lookup. docs/app.html uses that (only that — never
+the raw blurb text) as a small, clamped secondary cross-check against
+the MC sims' own player averages, never a primary input.
+
+Output: docs/statmuse_data.json — "sections" (one key per page, each a
+list of {headline, detail} blurbs) plus "player_stats" (lowercased player
+name -> {STAT_ABBR: value}).
 """
 from __future__ import annotations
 
@@ -177,6 +184,43 @@ def fetch_section(page, name: str, url: str) -> list[dict]:
     return blocks
 
 
+_PLAYER_NAME = re.compile(r"^[A-Z][a-zA-Z'.\-]+ [A-Z][a-zA-Z'.\-]+(?: Jr\.?| Sr\.?| III| II)?")
+# Recognized rate-stat tokens — deliberately narrow (season/recent-form
+# per-game or per-career rate numbers only), not every number StatMuse
+# prints (win counts, draft position, jersey numbers, etc. would be noise
+# or actively misleading if picked up here).
+_STAT_TOKEN = re.compile(
+    r"(\d+(?:,\d{3})*(?:\.\d+)?)\s*(PPG|RPG|APG|3PM|BPG|SPG|YPG|CMP%|PPG|"
+    r"PTS|REB|AST|YDS|TD|SO|K|REC|RBI|HR|AVG|ERA|K/9|MPG)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_player_stats(sections: dict[str, list[dict]]) -> dict[str, dict[str, float]]:
+    """Pull numeric rate-stats out of blurbs where they exist, keyed by
+    lowercased player name. Most blurbs are pure trivia with no usable
+    number for a specific stat ("8th QB in NFL history to win OROY") — this
+    only captures the minority that have one, and is meant as a light
+    secondary cross-check against the MC sims' own player averages
+    (docs/app.html's _statmuseFormNudge), not a data source of its own."""
+    out: dict[str, dict[str, float]] = {}
+    for blurbs in sections.values():
+        for b in blurbs:
+            headline = b.get("headline", "")
+            m = _PLAYER_NAME.match(headline)
+            if not m:
+                continue
+            name = m.group(0).strip().lower()
+            detail = b.get("detail", "")
+            for val, unit in _STAT_TOKEN.findall(detail):
+                try:
+                    num = float(val.replace(",", ""))
+                except ValueError:
+                    continue
+                out.setdefault(name, {})[unit.upper()] = num
+    return out
+
+
 def run() -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -189,10 +233,14 @@ def run() -> dict:
             time.sleep(1)
         browser.close()
 
+    player_stats = extract_player_stats(result)
+    _log(f"extracted numeric stats for {len(player_stats)} players")
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps({
         "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
         "sections": result,
+        "player_stats": player_stats,
     }, indent=2))
     _log(f"wrote {OUT_PATH}")
     return result
