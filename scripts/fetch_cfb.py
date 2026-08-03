@@ -337,8 +337,7 @@ def fetch_power_ratings() -> dict:
     return out
 
 
-if __name__ == "__main__":
-    run()
+def write_power(year: int = 2026) -> None:
     rankings = fetch_rankings()
     power = fetch_power_ratings()
     POWER_OUT_PATH.write_text(json.dumps({
@@ -347,3 +346,73 @@ if __name__ == "__main__":
         "power": power,
     }, indent=2))
     _log(f"wrote {POWER_OUT_PATH}")
+
+
+def write_schedule(year: int = 2026) -> None:
+    if not OUT_PATH.exists():
+        _log("No roster on disk yet (docs/cfb_teams.json) — run --mode roster first")
+        return
+    roster = json.loads(OUT_PATH.read_text())["conferences"]
+    schedule = fetch_full_schedule(year, roster)
+    sched_path = ROOT / "docs" / "cfb_schedule.json"
+    sched_path.write_text(json.dumps({
+        "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+        "year": year,
+        "weeks": schedule,
+    }, indent=2))
+    _log(f"wrote {sched_path}")
+
+
+def write_stats(year: int = 2025) -> None:
+    if not OUT_PATH.exists():
+        _log("No roster on disk yet (docs/cfb_teams.json) — run --mode roster first")
+        return
+    roster = json.loads(OUT_PATH.read_text())["conferences"]
+    stats = fetch_all_team_stats(roster, season=year)
+    stats_path = ROOT / "docs" / "cfb_team_stats.json"
+    stats_path.write_text(json.dumps({
+        "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+        "season": year,
+        "teams": stats,
+    }, indent=2))
+    _log(f"wrote {stats_path}")
+
+
+def git_push(paths: list[str], message: str) -> None:
+    import subprocess
+    subprocess.run(["git", "-C", str(ROOT), "add", *paths], check=False, capture_output=True)
+    diff = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--quiet"], capture_output=True)
+    if diff.returncode == 0:
+        _log("git: nothing to commit")
+        return
+    subprocess.run(["git", "-C", str(ROOT), "commit", "-m", message], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(ROOT), "pull", "--rebase", "origin", "main"], check=False, capture_output=True)
+    subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], check=True, capture_output=True)
+    _log("git push → main ✓")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["roster", "rankings", "stats", "schedule", "all"], default="all")
+    parser.add_argument("--push", action="store_true")
+    parser.add_argument("--stats-season", type=int, default=2025)
+    parser.add_argument("--schedule-year", type=int, default=2026)
+    args = parser.parse_args()
+
+    if args.mode in ("roster", "all"):
+        run()
+        if args.push:
+            git_push(["docs/cfb_teams.json"], "cfb: refresh conference roster")
+    if args.mode in ("rankings", "all"):
+        write_power()
+        if args.push:
+            git_push(["docs/cfb_power.json"], "cfb: refresh rankings/FPI/resume/efficiencies")
+    if args.mode in ("stats", "all"):
+        write_stats(args.stats_season)
+        if args.push:
+            git_push(["docs/cfb_team_stats.json"], "cfb: refresh team stats")
+    if args.mode in ("schedule", "all"):
+        write_schedule(args.schedule_year)
+        if args.push:
+            git_push(["docs/cfb_schedule.json"], "cfb: refresh schedule/lines")

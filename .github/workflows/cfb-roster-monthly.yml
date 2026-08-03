@@ -1,0 +1,39 @@
+name: CFB Roster Refresh
+
+# Conference membership essentially never changes mid-season, so this
+# doesn't need the weekly/daily cadence the other CFB data has -- monthly
+# is enough to catch realignment announcements. Slower than the other CFB
+# jobs (one API call per team, ~500 teams across all divisions) so it's
+# kept on its own infrequent schedule rather than folded into a faster job.
+
+on:
+  schedule:
+    # 1st of the month, 5:00 AM MT = 11:00 UTC (MDT) / 12:00 UTC (MST)
+    - cron: '0 11 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-cfb-roster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -q requests
+      - name: Refresh roster and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/fetch_cfb.py --mode roster --push

@@ -1,0 +1,41 @@
+name: CFB Team Stats Refresh
+
+# Offense/defense/special-teams stats for all 102 tracked teams, feeding
+# the MC sim's totals projection. Runs Sunday evening (after the week's
+# games are done) and again Monday morning (catches anything ESPN was
+# still finalizing Sunday night) -- both checks per the original spec,
+# not just one.
+
+on:
+  schedule:
+    # Sunday 8:00 PM MT = 02:00 UTC Monday (MDT) / 03:00 UTC (MST)
+    - cron: '0 2 * * 1'
+    # Monday 8:00 AM MT = 14:00 UTC (MDT) / 15:00 UTC (MST)
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-cfb-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -q requests
+      - name: Refresh team stats and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/fetch_cfb.py --mode stats --push

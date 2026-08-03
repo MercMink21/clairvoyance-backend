@@ -1,0 +1,42 @@
+name: CFB Rankings + FPI Refresh
+
+# AP Top 25 and FPI/Resume/Efficiencies update on ESPN's own schedule --
+# rankings drop Monday/Tuesday during the season (Sunday night for the
+# final regular-season poll, in-season polls Sunday evening/Monday
+# morning). Runs both days to not miss whichever one ESPN actually posts
+# on in a given week. FPI itself is described by ESPN as updating daily,
+# but rankings are the real weekly-cadence piece here.
+
+on:
+  schedule:
+    # Monday 7:00 AM MT = 13:00 UTC (MDT) / 14:00 UTC (MST)
+    - cron: '0 13 * * 1'
+    # Tuesday 7:00 AM MT = 13:00 UTC (MDT) / 14:00 UTC (MST)
+    - cron: '0 13 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-cfb-rankings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -q requests
+      - name: Refresh rankings + FPI and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/fetch_cfb.py --mode rankings --push

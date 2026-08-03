@@ -1,0 +1,38 @@
+name: CFB Schedule + Lines Refresh
+
+# Daily refresh of the full weekly schedule (all 16 weeks: Weeks 1-15 +
+# Bowls) — lines move daily as books adjust and games occasionally get
+# rescheduled (weather, TV), so this runs every day rather than weekly
+# like rankings/stats.
+
+on:
+  schedule:
+    # 6:00 AM MT = 12:00 UTC (MDT) / 13:00 UTC (MST)
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-cfb-schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -q requests
+      - name: Refresh schedule/lines and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/fetch_cfb.py --mode schedule --push
