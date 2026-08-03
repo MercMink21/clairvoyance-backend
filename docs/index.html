@@ -6040,6 +6040,93 @@ function loadStatMuse(){
 // already resolved, so _statmuseFormNudge has real data to work with
 // instead of always failing safe to "not loaded yet".
 loadStatMuse();
+
+// ═══ CFB DATA LOADER + MC SIM ENGINE ══════════════════════════════════
+// Three source files (scripts/fetch_cfb.py): cfb_teams.json (conference
+// rosters), cfb_power.json (AP Top 25 + FPI/Resume/Efficiencies),
+// cfb_team_stats.json (offense/defense/special-teams per team, 2025
+// season until 2026 games post real numbers). Loaded once, flattened by
+// team abbreviation for O(1) lookups in the sim.
+let _CFB_DATA = null;
+function loadCFBData(){
+  if(_CFB_DATA) return Promise.resolve(_CFB_DATA);
+  return Promise.all([
+    fetch('cfb_teams.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('cfb_power.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('cfb_team_stats.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+  ]).then(([teams,power,stats])=>{
+    const conferences=teams?.conferences||{};
+    const teamConf={};
+    Object.entries(conferences).forEach(([conf,list])=>{(list||[]).forEach(t=>{teamConf[t.abbr]=conf;});});
+    const fpiByAbbr={};
+    (power?.power?.fpi?.rows||[]).forEach(r=>{fpiByAbbr[r.abbr]=r.stats;});
+    const resumeByAbbr={};
+    (power?.power?.resume?.rows||[]).forEach(r=>{resumeByAbbr[r.abbr]=r.stats;});
+    const efficiencyByAbbr={};
+    (power?.power?.efficiencies?.rows||[]).forEach(r=>{efficiencyByAbbr[r.abbr]=r.stats;});
+    const rankByAbbr={};
+    (power?.rankings||[]).forEach(r=>{rankByAbbr[r.abbr]=r;});
+    _CFB_DATA={
+      conferences, teamConf,
+      fpi:fpiByAbbr, resume:resumeByAbbr, efficiency:efficiencyByAbbr,
+      rankings:power?.rankings||[], rankByAbbr,
+      stats:stats?.teams||{},
+      generatedAt:{teams:teams?.generated_at,power:power?.generated_at,stats:stats?.generated_at},
+    };
+    return _CFB_DATA;
+  });
+}
+loadCFBData();
+
+// League-average combined score, used as a fallback when a team's own
+// allowed-points figure isn't available yet (e.g. a team with no 2025
+// data). ~52 matches real FBS-wide scoring averages.
+const _CFB_LG_TOTAL=52;
+const _CFB_HFA=2.2; // typical college home-field edge, in points
+function _boxMullerZ(){
+  const u1=Math.random()||1e-10,u2=Math.random();
+  return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+}
+// FPI is already "expected point margin vs an average opponent on a
+// neutral field" — exactly the input a margin-based Monte Carlo needs,
+// so this drives the win-probability side directly rather than building
+// a separate from-scratch power rating. Total/O-U projection instead
+// uses both teams' own points-allowed (proxy for what a similarly-rated
+// opponent tends to score against them), which is independent of FPI on
+// purpose — it's a real, separate signal from actual defensive output.
+function cfbMC(hA,awA,n,ouLine){
+  const D=_CFB_DATA;if(!D)return null;
+  const fpiH=parseFloat(D.fpi[hA]?.fpi),fpiA=parseFloat(D.fpi[awA]?.fpi);
+  if(isNaN(fpiH)||isNaN(fpiA))return null;
+  const margin0=(fpiH-fpiA)+_CFB_HFA;
+  const hAllowed=parseFloat(D.stats[hA]?.defenseAllowed?.totalPointsPerGame);
+  const aAllowed=parseFloat(D.stats[awA]?.defenseAllowed?.totalPointsPerGame);
+  const baseTotal=(!isNaN(hAllowed)&&!isNaN(aAllowed))?(hAllowed+aAllowed):_CFB_LG_TOTAL;
+  const finalOU=ouLine!=null?parseFloat(ouLine):baseTotal;
+  const sigmaMargin=16.5,sigmaTotal=13.0; // CFB's real game-to-game variance is high
+  n=n||10000;
+  let hw=0,ov=0,marginSum=0,totalSum=0;
+  for(let i=0;i<n;i++){
+    const simMargin=margin0+_boxMullerZ()*sigmaMargin;
+    const simTotal=Math.max(20,baseTotal+_boxMullerZ()*sigmaTotal);
+    marginSum+=simMargin;totalSum+=simTotal;
+    if(simMargin>0)hw++;
+    if(simTotal>finalOU)ov++;
+  }
+  const avgMargin=marginSum/n,avgTotal=totalSum/n;
+  return{
+    hwP:hw/n,avgMargin:+avgMargin.toFixed(1),avgTotal:+avgTotal.toFixed(1),
+    avgH:+((avgTotal+avgMargin)/2).toFixed(1),avgA:+((avgTotal-avgMargin)/2).toFixed(1),
+    overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
+  };
+}
+function cfbEns(hA,awA,ouLine){
+  const mc=cfbMC(hA,awA,10000,ouLine);if(!mc)return{p:.5,mc:.5,mcD:null};
+  let p=Math.min(.92,Math.max(.08,mc.hwP));
+  p=typeof sportCalibrate==='function'?sportCalibrate(p,'CFB'):p;
+  return{p,mc:mc.hwP,mcD:mc};
+}
+
 function renderStatMuseInsights(section, anchorId, limit){
   const anchor=document.getElementById(anchorId);if(!anchor)return;
   const hostId=anchorId+'-statmuse';
