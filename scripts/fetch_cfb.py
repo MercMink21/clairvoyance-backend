@@ -12,6 +12,7 @@ real conference.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_PATH = ROOT / "docs" / "cfb_teams.json"
+POWER_OUT_PATH = ROOT / "docs" / "cfb_power.json"
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ClairvoyanceBot/1.0)"}
@@ -108,5 +110,87 @@ def run() -> dict:
     return roster
 
 
+def fetch_rankings() -> list[dict]:
+    """AP Top 25 — updates weekly (Mon/Tue during the season, once for the
+    preseason poll in mid-August). Defaults to whatever ESPN's own API
+    currently considers "latest" (last season's final poll until the 2026
+    preseason poll actually drops), which is expected/correct, not a bug —
+    it'll pick up the new poll automatically the moment ESPN publishes it."""
+    r = requests.get(f"{ESPN_BASE}/rankings", headers=HEADERS, timeout=15)
+    r.raise_for_status()
+    d = r.json()
+    ap = next((p for p in d.get("rankings", []) if p.get("shortName") == "AP Poll"), None)
+    if not ap:
+        _log("  AP Poll not found in rankings response")
+        return []
+    out = []
+    for entry in ap.get("ranks", []):
+        t = entry.get("team", {})
+        out.append({
+            "rank": entry.get("current"),
+            "previousRank": entry.get("previous"),
+            "trend": entry.get("trend"),
+            "points": entry.get("points"),
+            "firstPlaceVotes": entry.get("firstPlaceVotes"),
+            "teamId": t.get("id"),
+            "abbr": t.get("abbreviation"),
+            # ESPN's team object here has location/name/nickname backwards
+            # from what the field names suggest -- "name" holds the mascot
+            # ("Hoosiers"), "nickname" holds the short school name
+            # ("Indiana"), confirmed by direct inspection (Indiana Hoosiers
+            # entry: name="Hoosiers", nickname="Indiana"). Using location +
+            # name gives the correct "Indiana Hoosiers".
+            "name": f"{t.get('location','')} {t.get('name','')}".strip(),
+        })
+    _log(f"AP Top 25: {len(out)} teams, week={d.get('latestWeek',{}).get('displayValue')}")
+    return out
+
+
+_ESPNFITT_RE = re.compile(r"window\['__espnfitt__'\]\s*=\s*(\{.*?\});", re.DOTALL)
+
+
+def _fetch_fpi_view(view: str | None = None) -> dict:
+    """FPI / Resume / Efficiencies all share one page template — ESPN
+    server-renders the table into a `window['__espnfitt__']` JSON blob
+    (same pattern as their other stat pages), so this reads that directly
+    instead of parsing rendered HTML, which is far more stable and avoids
+    another Playwright dependency for something that's already
+    server-side JSON. Genuinely useful even now, in preseason — FPI/Resume/
+    Efficiencies projections already exist ahead of Week 1."""
+    url = "https://www.espn.com/college-football/fpi" + (f"/_/view/{view}" if view else "")
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    m = _ESPNFITT_RE.search(r.text)
+    if not m:
+        _log(f"  FPI view={view or 'fpi'}: embedded data blob not found")
+        return {}
+    data = json.loads(m.group(1))
+    table = data.get("page", {}).get("content", {}).get("table", {})
+    rows = []
+    for entry in table.get("stats", []):
+        team = entry.get("team", {})
+        stats = {s["name"]: s.get("value") for s in entry.get("stats", [])}
+        rows.append({"teamId": team.get("id"), "abbr": team.get("abbrev"),
+                     "name": team.get("displayName"), "stats": stats})
+    _log(f"  FPI view={view or 'fpi'}: {len(rows)} teams")
+    return {"headers": table.get("headers", {}), "rows": rows}
+
+
+def fetch_power_ratings() -> dict:
+    out = {}
+    for view, key in [(None, "fpi"), ("resume", "resume"), ("efficiencies", "efficiencies")]:
+        out[key] = _fetch_fpi_view(view)
+        time.sleep(1)
+    return out
+
+
 if __name__ == "__main__":
     run()
+    rankings = fetch_rankings()
+    power = fetch_power_ratings()
+    POWER_OUT_PATH.write_text(json.dumps({
+        "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+        "rankings": rankings,
+        "power": power,
+    }, indent=2))
+    _log(f"wrote {POWER_OUT_PATH}")
