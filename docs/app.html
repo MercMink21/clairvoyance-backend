@@ -4089,12 +4089,23 @@ function autoSettleFromESPN(games){
         if(p.betOn===g.hA)outcome=hW?'win':'loss';
         else if(p.betOn===g.awA)outcome=aW?'win':'loss';
       }else if(p.betType==='RL'){
+        // MLB run lines are always ±1.5 in practice, so this isn't wrong
+        // today, but it's an assumption baked into the win-margin check
+        // rather than read from the actual locked line — a run line ever
+        // locked at a non-standard number would still be graded as if it
+        // were 1.5.
         const fav=p.betOn.includes('-1.5');const diff=g.hScore-g.aScore;
         if(p.betOn.includes(g.hA))outcome=(fav?diff>=2:diff<=-2)?'win':'loss';
         else if(p.betOn.includes(g.awA))outcome=(fav?diff<=-2:diff>=2)?'win':'loss';
       }else if(p.betType==='OU'){
-        const total=g.hScore+g.aScore;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|/gi,''));
-        if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';
+        const total=g.hScore+g.aScore;
+        // Trailing-number extraction — see identical comment in
+        // autoSettleNBA. betOn's "TEAM/TEAM Under 9.5" prefix means a
+        // keyword-only strip leaves non-numeric text in front of the
+        // number and parseFloat returns NaN, so the pick never settles.
+        const m=(p.betOn||'').match(/(\d+\.?\d*)\s*$/);
+        const ou=m?parseFloat(m[1]):NaN;
+        if(!isNaN(ou))outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
       }
       if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;
         // Update daily log
@@ -4129,7 +4140,7 @@ async function autoSettleNHL(){
           else if(p.betOn.includes(a))outcome=(p.betOn.includes('-1.5')?diff<=-2:diff>=2)?'win':'loss';
         }else if(p.betType==='OU'){
           const total=hs+as;const ou=parseFloat(p.ou||5.5);
-          outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';
+          outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
         }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NHL',outcome});}catch(ex){}}
       }
@@ -7503,10 +7514,12 @@ async function doUpdate(){
           const hSc=parseInt(home.score||0),aSc=parseInt(away.score||0);
           for(const p of preds){
             if(p.outcome!=='pending'||p.sport!=='NBA')continue;
-            if(p.hA!==hAbbr&&p.awA!==aAbbr)continue;
+            if(p.date!==today())continue;
+            const dupSameGame=(p.hA===hAbbr&&p.awA===aAbbr)||(p.hA===aAbbr&&p.awA===hAbbr);
+            if(!dupSameGame)continue;
             let outcome=null;
             if(p.betType==='ML'){if(p.betOn===hAbbr)outcome=hSc>aSc?'win':'loss';else if(p.betOn===aAbbr)outcome=aSc>hSc?'win':'loss';}
-            else if(p.betType==='OU'){const total=hSc+aSc;const ou=parseFloat(p.ou||0);if(ou>0)outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
+            else if(p.betType==='OU'){const total=hSc+aSc;const ou=parseFloat(p.ou||0);if(ou>0)outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';}
             if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`NBA SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
           }
           if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
@@ -8852,11 +8865,15 @@ function renderHistoryForSport(sport,summId,listId){
   const wins=settled.filter(p=>p.outcome==='win').length;
   const losses=settled.filter(p=>p.outcome==='loss').length;
   const acc=settled.length?wins/settled.length:null;
-  const roi=settled.length?settled.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds-1)*(p.wager||100);return s-(p.wager||100);},0)/settled.reduce((s,p)=>s+(p.wager||100),0):null;
+  // A push returns the stake — it must contribute 0, not count as a loss
+  // (matching the pnl() helper used everywhere else in the app; this
+  // renderer previously fell through to the loss branch for anything
+  // that wasn't a win, silently dragging down ROI/win-loss for any push).
+  const roi=settled.length?settled.reduce((s,p)=>{if(p.outcome==='win')return s+(p.decOdds-1)*(p.wager||100);if(p.outcome==='push')return s;return s-(p.wager||100);},0)/settled.reduce((s,p)=>s+(p.wager||100),0):null;
   // Streak
   let streak=0,streakType='';
   for(let i=settled.length-1;i>=0;i--){const o=settled[i].outcome;if(!streakType){streakType=o;streak=1;}else if(o===streakType)streak++;else break;}
-  const byType={};for(const p of settled){if(!byType[p.betType])byType[p.betType]={w:0,l:0};if(p.outcome==='win')byType[p.betType].w++;else byType[p.betType].l++;}
+  const byType={};for(const p of settled){if(!byType[p.betType])byType[p.betType]={w:0,l:0};if(p.outcome==='win')byType[p.betType].w++;else if(p.outcome!=='push')byType[p.betType].l++;}
   const sumEl=summId?document.getElementById(summId):null;
   if(sumEl){
     const accColor=acc===null?'var(--t3)':acc>=.55?'var(--nc)':acc>=.45?'var(--vc)':'var(--hc)';
@@ -11620,10 +11637,26 @@ async function autoSettleNBA(){
       const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
       for(const p of preds){
         if(p.outcome!=='pending'||p.sport!=='NBA')continue;
-        if(p.hA!==hn&&p.awA!==an)continue;
+        if(p.date!==today())continue;
+        // Both teams must match (either home/away order) — the previous
+        // OR check let a pending bet settle off any game sharing just
+        // ONE team code with the actual locked matchup.
+        const nbaSameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+        if(!nbaSameGame)continue;
         let outcome=null;
         if(p.betType==='ML'){if(p.betOn===hn)outcome=hs>as?'win':'loss';else if(p.betOn===an)outcome=as>hs?'win':'loss';}
-        else if(p.betType==='OU'){const total=hs+as;const ou=parseFloat(p.betOn.replace(/OVER|UNDER|\s/gi,''));if(!isNaN(ou))outcome=(p.betOn.includes('OVER')?total>ou:total<ou)?'win':'loss';}
+        else if(p.betType==='OU'){
+          const total=hs+as;
+          // Trailing-number extraction, not prefix-stripping — betOn is
+          // stored as "TEAM/TEAM Under 9.5" elsewhere in this app, and a
+          // regex that only strips the OVER/UNDER keyword leaves the
+          // team-code prefix in place, so parseFloat returns NaN and the
+          // pick silently never settles. Grabbing the last number in the
+          // string works regardless of whatever prefix text precedes it.
+          const m=(p.betOn||'').match(/(\d+\.?\d*)\s*$/);
+          const ou=m?parseFloat(m[1]):NaN;
+          if(!isNaN(ou))outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NBA',outcome,score:(p.hScore!=null&&p.aScore!=null)?`${p.hA} ${p.hScore} – ${p.awA} ${p.aScore}`:null});}catch(ex){}}
       }
     }
@@ -17591,7 +17624,7 @@ function updateFutureML(id,currentML){
 }
 
 function settleFuture(id,won){
-  const futs=getFutures();const fut=futs.find(f=>f.id===id);if(!fut)return;
+  const futs=getFutures();const fut=futs.find(f=>f.id===id);if(!fut||fut.settled)return;
   fut.settled=true;fut.result=won?'win':'loss';fut.settledAt=Date.now();
   saveFutures(futs);renderFuturesTab();
   toast(`// FUTURE ${won?'WON':'LOST'}: ${fut.pick}`);
