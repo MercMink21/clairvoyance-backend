@@ -17446,6 +17446,12 @@ function checkLineMovements(games){
   return alerts;
 }
 
+// #line-movement-panel doesn't exist in markup, so this always no-ops —
+// the primary user-facing alerting for line movement (toast() +
+// sendLocalNotification() in checkLineMovements above, specifically for
+// locked bets) already works independently of this function. This would
+// just be a secondary "all detected movements" panel; left undecided
+// rather than guessing where in the UI it belongs.
 function renderLineMovements(alerts){
   const el=document.getElementById('line-movement-panel');if(!el)return;
   if(!alerts.length){el.innerHTML='<div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.5)">NO SIGNIFICANT LINE MOVEMENT DETECTED</div>';return;}
@@ -21368,16 +21374,26 @@ function _reRenderActive(sport, tabId){
   }
 
   if(sport==='social'){
-    const sub=document.querySelector('#sp-social .subp.act')?.id||'';
-    if(sub.includes('ig'))          safe(renderSocialIG);
-    else if(sub.includes('dc'))     safe(renderSocialDC);
-    else                            safe(renderSocialX);
+    // renderSocialIG/DC/X targeted #ig-card-content/#dc-card-content/
+    // #x-card-content, none of which exist anywhere in the app — the real
+    // Social tab (see T(), tabId 'cards'/'record') uses renderIntelCards/
+    // renderTrackRecord instead. This silently no-op'd on every background
+    // sync while a user sat on the Social tab.
+    if(tabId==='record') safe(renderTrackRecord);
+    else                 safe(renderIntelCards);
     return;
   }
 
   if(sport==='live') { safe(renderGlobalLive); return; }
 
-  if(sport==='news') { safe(renderNewsTab); return; }
+  if(sport==='news') {
+    // renderNewsTab targeted #news-content, which doesn't exist — the real
+    // News tab (see T()) dispatches by tabId instead.
+    if(tabId==='injuries')      safe(renderNewsInjuries);
+    else if(tabId==='trades')   safe(renderNewsTrades);
+    else                        safe(renderNewsAll);
+    return;
+  }
 }
 
 function radarBar(label,val,max,col){
