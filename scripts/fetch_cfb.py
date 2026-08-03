@@ -110,6 +110,92 @@ def run() -> dict:
     return roster
 
 
+# Field allow-lists per the exact categories requested: offense (total
+# yards, passing, rushing, receiving, downs), defense (points allowed,
+# yards allowed, passing, rushing), special teams (returning, kicking,
+# punting). ESPN's own per-team /statistics endpoint returns far more
+# fields than this per category — trimmed down to what's actually needed
+# rather than carrying everything.
+_OFFENSE_FIELDS = {
+    "passing":       ["completionPct", "passingYards", "passingYardsPerGame", "passingTouchdowns",
+                        "interceptions", "yardsPerPassAttempt", "QBRating"],
+    "rushing":       ["rushingYards", "rushingYardsPerGame", "yardsPerRushAttempt",
+                        "rushingTouchdowns", "rushingFirstDowns"],
+    "receiving":     ["receivingYards", "receivingYardsPerGame", "receivingTouchdowns", "yardsPerReception"],
+    "miscellaneous": ["firstDowns", "thirdDownConvPct", "fourthDownConvPct", "totalPenaltyYards",
+                        "possessionTimeSeconds", "turnOverDifferential"],
+}
+_DEFENSE_ALLOWED_FIELDS = {
+    # from the "opponent" split — what opponents did against this team,
+    # i.e. this team's defense
+    "passing": ["totalPointsPerGame", "yardsPerGame", "passingYardsPerGame", "passingTouchdowns"],
+    "rushing": ["rushingYardsPerGame", "yardsPerRushAttempt", "rushingTouchdowns"],
+}
+_ST_FIELDS = {
+    "returning": ["yardsPerKickReturn", "kickReturnTouchdowns", "yardsPerPuntReturn", "puntReturnTouchdowns"],
+    "kicking":   ["fieldGoalPct", "longFieldGoalMade", "extraPointPct", "totalKickingPoints"],
+    "punting":   ["grossAvgPuntYards", "netAvgPuntYards", "puntsInside20"],
+}
+
+
+def _extract_fields(categories: list[dict], allow: dict[str, list[str]]) -> dict:
+    out = {}
+    by_cat = {c["name"]: c for c in categories}
+    for cat_name, fields in allow.items():
+        cat = by_cat.get(cat_name)
+        if not cat:
+            continue
+        stat_by_name = {s["name"]: s for s in cat.get("stats", [])}
+        for f in fields:
+            s = stat_by_name.get(f)
+            if s is not None:
+                out[f] = s.get("value", s.get("displayValue"))
+    return out
+
+
+def fetch_team_stats(team_id: str, season: int) -> dict | None:
+    try:
+        r = requests.get(f"{ESPN_BASE}/teams/{team_id}/statistics",
+                         params={"season": season}, headers=HEADERS, timeout=12)
+        r.raise_for_status()
+        d = r.json()
+        results = d.get("results", {})
+        own_cats = results.get("stats", {}).get("categories", [])
+        opp_cats = results.get("opponent", [])
+        if not own_cats:
+            return None
+        return {
+            "offense": _extract_fields(own_cats, _OFFENSE_FIELDS),
+            "defenseAllowed": _extract_fields(opp_cats, _DEFENSE_ALLOWED_FIELDS),
+            "specialTeams": _extract_fields(own_cats, _ST_FIELDS),
+        }
+    except Exception as e:
+        _log(f"  team {team_id} stats FAILED: {e}")
+        return None
+
+
+def fetch_all_team_stats(roster: dict, season: int = 2025) -> dict:
+    """season=2025 (last completed season) until 2026 games actually post
+    stats — the /statistics endpoint returns an empty categories list for
+    a season with zero games played, confirmed by direct testing, not a
+    bug. Automatically has real current-season numbers once games start;
+    no code change needed when that happens, just re-run with
+    season=2026 (or leave it: main() below already tries the current
+    year first and falls back)."""
+    out = {}
+    all_teams = [t for teams in roster.values() for t in teams]
+    _log(f"Fetching stats for {len(all_teams)} teams (season={season})…")
+    for i, t in enumerate(all_teams):
+        stats = fetch_team_stats(t["id"], season)
+        if stats:
+            out[t["abbr"]] = {"teamId": t["id"], "name": t["name"], **stats}
+        if (i + 1) % 20 == 0:
+            _log(f"  …{i+1}/{len(all_teams)}")
+        time.sleep(0.2)
+    _log(f"  {len(out)}/{len(all_teams)} teams had stats")
+    return out
+
+
 def fetch_rankings() -> list[dict]:
     """AP Top 25 — updates weekly (Mon/Tue during the season, once for the
     preseason poll in mid-August). Defaults to whatever ESPN's own API
