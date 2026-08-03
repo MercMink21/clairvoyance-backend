@@ -1,0 +1,48 @@
+name: Daily NFL Player Props Refresh
+
+# Gives NFL player props/trends their own dedicated scheduled run — see
+# nba-props-daily.yml's comment for the full reasoning (same gap, same fix,
+# same --mode props fast-path). Genuinely empty output until the season
+# starts (confirmed directly: linemate.io/nfl currently reads "NFL
+# off-season. See you next season.") — this just means the job is a no-op
+# most of the year, not that it's broken; it'll start populating real props
+# automatically once the season begins, same as the NFL module's own
+# schedule panel already does.
+
+on:
+  schedule:
+    # 10:45 MT = 16:45 UTC (MDT) / 17:45 UTC (MST)
+    - cron: '45 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-nfl-props:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q requests beautifulsoup4 lxml playwright
+          playwright install chromium --with-deps
+
+      - name: Refresh NFL props and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/clairvoyance_update.py --mode props --sport nfl --push

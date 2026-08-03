@@ -1,0 +1,47 @@
+name: Daily NBA Player Props Refresh
+
+# Gives NBA player props/trends their own dedicated scheduled run, same
+# reasoning as wnba-props-daily.yml — the main scheduled-refresh.yml job
+# always passes --no-linemate to stay fast, so without a dedicated job like
+# this one, NBA's Linemate-sourced props/trends never get fetched at all.
+# Runs clairvoyance_update.py's own --mode props fast-path (fetches just
+# props/trends/form, merges into the existing docs/data.json bundle, pushes)
+# rather than the full ~5-10 min sync.
+
+on:
+  schedule:
+    # 10:15 MT = 16:15 UTC (MDT) / 17:15 UTC (MST)
+    - cron: '15 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-nba-props:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q requests beautifulsoup4 lxml playwright
+          playwright install chromium --with-deps
+
+      - name: Refresh NBA props and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/clairvoyance_update.py --mode props --sport nba --push

@@ -2538,9 +2538,16 @@ def fetch_linemate_props(sport: str) -> list[dict]:
         team_match  = re.search(r'\b([A-Z]{2,4})\b', t)
         hit_match   = re.search(r'(\d+)/(\d+)', t)
         stat_cat = next((c for kw,c in STAT_KWDS if kw in txt_lower), "")
-        # Derive player name from stat line if still missing
+        # No fallback to lines[0] here on purpose — when a sport's Linemate
+        # page has no real prop cards (e.g. NBA/NFL off-season), the
+        # selector fallback in _linemate_playwright grabs generic page
+        # content instead ("Daily picks", "GET ACCESS TO ADVANCED PLAYS…"),
+        # and treating that first line as a "player name" injected page
+        # marketing chrome into the live props feed as if it were a real
+        # card. Require an actual name-shaped match; skip the block
+        # entirely otherwise rather than inventing a fake player.
         if not player_name:
-            player_name = lines[0] if lines else ""
+            continue
         over_val = None; line_val = None
         if over_match:
             over_val = over_match.group(1).lower() == "over"
@@ -2548,6 +2555,10 @@ def fetch_linemate_props(sport: str) -> list[dict]:
         elif plus_match:
             over_val = True
             line_val = float(plus_match.group(1))
+        # Also require a real line/over-under value — a name-shaped line
+        # with no actual prop number attached isn't a usable card either.
+        if line_val is None:
+            continue
         hit_rate = f"{hit_match.group(1)}/{hit_match.group(2)}" if hit_match else ""
         props.append({
             "raw":      t[:300],
@@ -4857,7 +4868,7 @@ def main() -> None:
     parser.add_argument("--no-linemate",   action="store_true", help="Skip Playwright/Linemate")
     parser.add_argument("--no-reference",  action="store_true", help="Skip Baseball/Basketball/Hockey Reference")
     parser.add_argument("--mode",          choices=["full","live","props"], default="full")
-    parser.add_argument("--sport",         choices=["nba","mlb","nhl","tennis","soccer","all"], default="all")
+    parser.add_argument("--sport",         choices=["nba","mlb","nhl","nfl","tennis","soccer","all"], default="all")
     parser.add_argument("--verbose","-v",  action="store_true")
     args    = parser.parse_args()
     _verbose = args.verbose
@@ -4875,17 +4886,30 @@ def main() -> None:
     S = args.sport  # shorthand
 
     # ── props-only mode ──────────────────────────────────────────────────────
+    # Was writing to data/linemate.json, which nothing else in this codebase
+    # ever reads — the live app only reads docs/data.json's own
+    # bundle["linemate"] key (written by the full run below), so this mode
+    # ran real scrapes whose output silently went nowhere. Now reads the
+    # current docs/data.json, merges in just this run's props/trends/form
+    # for the requested sport(s), and writes it back through the same
+    # write_data_json()/git_push() path the full run uses — everything else
+    # in the bundle (standings, odds, injuries, etc, last written by the
+    # most recent full 3x/day run) passes through untouched.
     if args.mode == "props":
-        lm: dict = {}
-        for sport in ["mlb","nba","nhl"]:
+        if not FE_DATA.exists():
+            log("props-only mode: docs/data.json doesn't exist yet — run a full sync first", "ERROR")
+            return
+        bundle = json.loads(FE_DATA.read_text())
+        bundle.setdefault("linemate", {}).setdefault("props", {})
+        bundle["linemate"].setdefault("trends", {})
+        bundle["linemate"].setdefault("form", {})
+        for sport in ["mlb","nba","nhl","nfl"]:
             if S in (sport,"all"):
-                lm[sport] = {
-                    "props":  fetch_linemate_props(sport),
-                    "trends": fetch_linemate_trends(sport),
-                    "form":   fetch_linemate_cheatsheet(sport),
-                }
+                bundle["linemate"]["props"][sport]  = fetch_linemate_props(sport)
+                bundle["linemate"]["trends"][sport] = fetch_linemate_trends(sport)
+                bundle["linemate"]["form"][sport]   = fetch_linemate_cheatsheet(sport)
                 time.sleep(1)
-        (DATA / "linemate.json").write_text(json.dumps(lm, indent=2))
+        write_data_json(bundle)
         if args.push: git_push("props-only refresh")
         return
 

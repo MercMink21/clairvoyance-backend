@@ -6400,7 +6400,7 @@ function renderNHLSeriesAndProps(){
   // ── Top player props from Linemate ──────────────────────────
   const propsEl=document.getElementById('nhl-inline-props');
   if(!propsEl)return;
-  const props=(window.__CV_DATA?.linemate?.nhl?.props||window._remoteNHLProps||[]).slice(0,4);
+  const props=(window.__CV_DATA?.linemate?.props?.nhl||window._remoteNHLProps||[]).slice(0,4);
   if(!props.length){propsEl.innerHTML='';return;}
   let ph=`<div class="sh" style="margin-top:4px"><span class="g"></span> TOP NHL PROPS TODAY</div>`;
   ph+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">`;
@@ -17077,9 +17077,12 @@ function applyServerSettlements(settled){
 function patchLinemateProps(linemate){
   window._linematePropCards=linemate;
   try{const np=document.getElementById('nba-tab-props');if(np&&np.classList.contains('act'))renderNBAProps();}catch(e){}
-  // Also hydrate NHL props/trends from linemate bundle if not already set from nhl.*
-  if(linemate?.nhl?.trends?.length&&!window._remoteNHLTrends?.length)window._remoteNHLTrends=linemate.nhl.trends;
-  if(linemate?.nhl?.props?.length&&!window._remoteNHLProps?.length)window._remoteNHLProps=linemate.nhl.props;
+  // Also hydrate NHL props/trends from linemate bundle if not already set —
+  // real bundle shape is linemate.props.nhl / linemate.trends.nhl (a flat
+  // dict keyed by sport), not linemate.nhl.props — that nesting never
+  // matched anything, so this silently never hydrated from the bundle.
+  if(linemate?.trends?.nhl?.length&&!window._remoteNHLTrends?.length)window._remoteNHLTrends=linemate.trends.nhl;
+  if(linemate?.props?.nhl?.length&&!window._remoteNHLProps?.length)window._remoteNHLProps=linemate.props.nhl;
   try{const hp=document.getElementById('nhl-tab-props');if(hp&&hp.classList.contains('act')){renderProps();renderNHLPropsLive(window._nhlPropFilter||'all');}}catch(e){}
   // NFL: linemate.props.nfl is the real bundle shape (linemate:{props:{nfl:[...]}})
   if(linemate?.props?.nfl?.length)window._remoteNFLProps=linemate.props.nfl;
