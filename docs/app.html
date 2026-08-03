@@ -7310,23 +7310,8 @@ function doExp(fmt='csv'){
     toast('// EXPORTED JSON');
   }
 }
-function exportBetHistoryCSV(){
-  const all=[...getP(),...(JSON.parse(localStorage.getItem('locked_bets')||'[]'))];
-  if(!all.length){toast('// NO BET HISTORY');return;}
-  const hdr=['Date','Sport','Home','Away','BetType','BetOn','ML','WinProb%','Outcome','HomeScore','AwayScore','Units','Wager','LockedAt'];
-  const rows=all.map(p=>[
-    p.date||'',p.sport||'',p.hA||'',p.awA||'',p.betType||'',p.betOn||'',p.ml||'',
-    p.winProb!=null?(p.winProb*100).toFixed(1):'',
-    p.outcome||'pending',
-    p.hScore!=null?p.hScore:'',p.aScore!=null?p.aScore:'',
-    p.units!=null?p.units:'',p.wager||'',
-    p.lockedAt?new Date(p.lockedAt).toLocaleString():''
-  ].map(v=>{const s=String(v);return s.includes(',')||s.includes('"')?`"${s.replace(/"/g,'""')}\"`:s;}).join(','));
-  const csv=[hdr.join(','),...rows].join('\n');
-  const b=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`clairvoyance_bet_history_${today()}.csv`;a.click();
-  toast(`// EXPORTED ${all.length} BETS`);
-}
+// (exportBetHistoryCSV lives further down, ~line 17098 — this was a dead
+// duplicate definition that the later one silently shadowed; removed.)
 function doImp(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const fr=new FileReader();fr.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.preds)saveP(d.preds);if(d.elo){ELO=d.elo;S.s('elo',ELO);}if(d.ens)ENS=d.ens;if(d.daily_log)saveDailyLog(d.daily_log);updHdr();renderR();toast('// IMPORTED');}catch{toast('// IMPORT FAILED');}};fr.readAsText(e.target.files[0]);};i.click();}
 function doReset(){['preds','elo','ens','last_upd','last_upd_date','last_nhl_upd','last_nhl_upd_date','daily_log','nhl_edge_date'].forEach(k=>S.d(k));ELO={};PAR=[];buildMLB();initELO();updHdr();renderR();toast('// SYSTEM RESET');}
 function toast(msg,col){
@@ -12649,6 +12634,14 @@ function renderFuturesPanes(tab){
     locked.map(f=>`<div class="card" style="border-left:2px solid var(--gc);margin-bottom:8px"><div style="font-family:var(--mono);font-size:16px;color:var(--t3)">${f.market}</div><div style="font-family:var(--orb);font-size:18px;font-weight:700">${f.pick}</div><div style="font-family:var(--mono);font-size:17px;color:${f.lockedML<0?'var(--hc)':'var(--nc)'}">${f.lockedML>0?'+':''}${f.lockedML}</div></div>`).join('');
   }
 }
+// renderTrackRecord(containerId) below is unreachable — a later,
+// parameterless function renderTrackRecord() (~line 18428) shadows this
+// one, so nothing actually calls into renderPerformanceSection() anymore.
+// Left in place (not deleted) because scripts/validate.py explicitly
+// checks for renderPerformanceSection's existence — that check is a
+// deliberate guardrail from the project owner, so it wins over my own
+// read of "this looks dead." If it's ever genuinely retired, the check
+// in validate.py should be removed in the same change.
 function renderTrackRecord(containerId){renderPerformanceSection(containerId);}
 function renderPerformanceSection(containerId){
   const el=document.getElementById(containerId);if(!el)return;
@@ -21722,14 +21715,12 @@ function wnbaEns(hA,awA,espnOdds){
   return{hP:Math.min(.88,Math.max(.12,ens)),aP:1-Math.min(.88,Math.max(.12,ens)),
          mcP:mc.hP,bayP:hBay,eloP:eloP,hNet:mc.hNet,aNet:mc.aNet,injH:injH,injA:injA};
 }
-function applyWNBAWeights(){
-  WNBA_ENS={
-    mc:parseInt(document.getElementById('wnba-w-mc')&&document.getElementById('wnba-w-mc').value||45)/100,
-    bay:parseInt(document.getElementById('wnba-w-bay')&&document.getElementById('wnba-w-bay').value||25)/100,
-    elo:parseInt(document.getElementById('wnba-w-elo')&&document.getElementById('wnba-w-elo').value||30)/100
-  };
-}
-window.applyWNBAWeights=applyWNBAWeights;
+// (applyWNBAWeights lives near the WNBA weight sliders, ~line 6943 — this
+// duplicate definition used to silently shadow it, so the on-screen
+// weight readout stopped updating even though WNBA_ENS itself still
+// changed. Removed rather than kept as the "real" one since the earlier
+// definition also updates the #wnba-model-weights display text, which
+// this version never did.)
 function _wnbaGrade(p){
   if(p>=.68)return{g:'PREMIUM',c:'var(--gc)'};
   if(p>=.61)return{g:'OPTIMAL',c:'var(--nc)'};
