@@ -12375,9 +12375,21 @@ function loadPickOfDay(){
   if(window.__CV_POTD)return Promise.resolve(window.__CV_POTD);
   if(_potdLoading)return _potdLoading;
   _potdLoading=fetch('pick_of_day.json',{cache:'no-cache'})
-    .then(function(r){return r.ok?r.json():[];})
+    .then(function(r){return r.ok?r.json():Promise.reject(new Error('HTTP '+r.status));})
     .then(function(d){window.__CV_POTD=Array.isArray(d)?d:[];return window.__CV_POTD;})
-    .catch(function(e){console.warn('[CV] Pick of Day load failed:',e.message);return [];});
+    .catch(function(e){
+      // Don't cache a failed load as window.__CV_POTD — an empty array is
+      // truthy, so the short-circuit above would treat a transient fetch
+      // failure as "already loaded, nothing pending" for the rest of the
+      // session (perf boxes elsewhere read getP()-derived data separately
+      // and could still show real settled counts, making an empty pending
+      // list here look like a data bug rather than a network blip).
+      // Leaving window.__CV_POTD unset lets the next loadPickOfDay() call
+      // retry instead of getting stuck.
+      console.warn('[CV] Pick of Day load failed:',e.message);
+      _potdLoading=null;
+      return [];
+    });
   return _potdLoading;
 }
 function _potdStats(ledger){
@@ -12413,7 +12425,6 @@ function renderPickOfDayTile(){
     ${perf.n?`
     <div class="perf-card-row" style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
       <span class="perf-card-rec" style="font-family:var(--orb);font-size:24px;font-weight:900;color:var(--t1);white-space:nowrap">${perf.w}W<span style="color:var(--t3);font-size:18px">-</span>${perf.l}L</span>
-      <span style="font-family:var(--mono);font-size:14px;color:var(--t3);white-space:nowrap">Picks ${ledger.length}</span>
     </div>
     <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
       <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px"></div>
@@ -12497,7 +12508,6 @@ function renderHomePage(){
         ${hasData?`
         <div class="perf-card-row" style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
           <span class="perf-card-rec" style="font-family:var(--orb);font-size:24px;font-weight:900;color:var(--t1);white-space:nowrap">${perf.w}W<span style="color:var(--t3);font-size:18px">-</span>${perf.l}L</span>
-          <span style="font-family:var(--mono);font-size:14px;color:var(--t3);white-space:nowrap">${perf.n} pick${perf.n===1?'':'s'}</span>
         </div>
         <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
           <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px"></div>
