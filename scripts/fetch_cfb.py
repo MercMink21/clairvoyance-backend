@@ -196,6 +196,73 @@ def fetch_all_team_stats(roster: dict, season: int = 2025) -> dict:
     return out
 
 
+# Real week date windows straight from ESPN's own scoreboard calendar
+# (confirmed via GET .../scoreboard's leagues[0].calendar) rather than
+# hardcoded guesses, since ESPN's actual week boundaries don't fall on
+# consistent day-of-week gaps.
+WEEK_LABELS = {str(i): f"Week {i}" for i in range(1, 16)}
+POSTSEASON_LABEL = "Bowls"  # ESPN's scoreboard API groups Bowls+CFP together
+                             # under seasontype=3 -- the schedule PAGE's
+                             # separate "CFP" calendar entry is a display
+                             # grouping, not a distinct queryable dimension.
+
+
+def fetch_week_games(year: int, week: int, seasontype: int = 2) -> list[dict]:
+    """One call gets every FBS game for that week, all conferences at
+    once -- far cheaper than querying per-conference (which would also
+    return each cross-conference game twice). Conference tagging happens
+    locally afterward via the roster's team->conference map."""
+    r = requests.get(f"{ESPN_BASE}/scoreboard",
+                     params={"limit": 300, "week": week, "seasontype": seasontype, "year": year},
+                     headers=HEADERS, timeout=15)
+    r.raise_for_status()
+    d = r.json()
+    games = []
+    for e in d.get("events", []):
+        comp = (e.get("competitions") or [{}])[0]
+        home = next((c for c in comp.get("competitors", []) if c.get("homeAway") == "home"), {})
+        away = next((c for c in comp.get("competitors", []) if c.get("homeAway") == "away"), {})
+        odds = (comp.get("odds") or [{}])[0]
+        games.append({
+            "id": e.get("id"),
+            "date": e.get("date"),
+            "name": e.get("name"),
+            "venue": (comp.get("venue") or {}).get("fullName"),
+            "city": ((comp.get("venue") or {}).get("address") or {}).get("city"),
+            "neutralSite": comp.get("neutralSite", False),
+            "home": (home.get("team") or {}).get("abbreviation"),
+            "homeName": (home.get("team") or {}).get("displayName"),
+            "away": (away.get("team") or {}).get("abbreviation"),
+            "awayName": (away.get("team") or {}).get("displayName"),
+            "spread": odds.get("spread"),
+            "spreadDetails": odds.get("details"),
+            "overUnder": odds.get("overUnder"),
+            "homeML": (odds.get("homeTeamOdds") or {}).get("moneyLine"),
+            "awayML": (odds.get("awayTeamOdds") or {}).get("moneyLine"),
+            "state": e.get("status", {}).get("type", {}).get("state", "pre"),
+        })
+    return games
+
+
+def fetch_full_schedule(year: int, roster: dict) -> dict:
+    team_conf = {t["abbr"]: conf for conf, teams in roster.items() for t in teams}
+    schedule = {}
+    for wk_num, label in WEEK_LABELS.items():
+        games = fetch_week_games(year, int(wk_num), seasontype=2)
+        for g in games:
+            g["conferences"] = sorted({c for c in (team_conf.get(g["home"]), team_conf.get(g["away"])) if c})
+        schedule[label] = games
+        _log(f"  {label}: {len(games)} games")
+        time.sleep(0.3)
+    # Postseason (Bowls + CFP combined, per the API's own grouping)
+    post_games = fetch_week_games(year, 1, seasontype=3)
+    for g in post_games:
+        g["conferences"] = sorted({c for c in (team_conf.get(g["home"]), team_conf.get(g["away"])) if c})
+    schedule[POSTSEASON_LABEL] = post_games
+    _log(f"  {POSTSEASON_LABEL}: {len(post_games)} games")
+    return schedule
+
+
 def fetch_rankings() -> list[dict]:
     """AP Top 25 — updates weekly (Mon/Tue during the season, once for the
     preseason poll in mid-August). Defaults to whatever ESPN's own API
