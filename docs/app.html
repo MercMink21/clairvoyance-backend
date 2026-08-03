@@ -6131,7 +6131,13 @@ function cfbMC(hA,awA,n,ouLine){
   const hAllowed=parseFloat(D.stats[hA]?.defenseAllowed?.totalPointsPerGame);
   const aAllowed=parseFloat(D.stats[awA]?.defenseAllowed?.totalPointsPerGame);
   const baseTotal=(!isNaN(hAllowed)&&!isNaN(aAllowed))?(hAllowed+aAllowed):_CFB_LG_TOTAL;
-  const finalOU=ouLine!=null?parseFloat(ouLine):baseTotal;
+  // Real market O/U (ouLine, when passed in) is used exactly as posted —
+  // sportsbooks already reliably post totals at .5. Only our own
+  // fallback (baseTotal, when no market total exists yet) gets forced to
+  // .5, so it can never resolve as a push on our own generated number —
+  // computed here, not just at display time, so overP/underP stay
+  // consistent with whatever line actually gets shown.
+  const finalOU=ouLine!=null?parseFloat(ouLine):parseFloat(_forceHalfLine(baseTotal));
   const sigmaMargin=16.5,sigmaTotal=13.0; // CFB's real game-to-game variance is high
   n=n||10000;
   let hw=0,ov=0,marginSum=0,totalSum=0;
@@ -6206,7 +6212,15 @@ function _cfbGameCard(g){
   const mc=ens.mcD;
   const hP=ens.p,aP=1-hP;
   const hML=p2ml(hP),aML=p2ml(aP);
-  const spreadLine=g.spread!=null?Math.abs(g.spread).toFixed(1):(mc?Math.abs(mc.avgMargin).toFixed(1):'--');
+  // Real market lines (g.spread/g.overUnder) are used as-is — sportsbooks
+  // sometimes post whole-number spreads (a real, normal push risk bettors
+  // already accept) and this must never misrepresent the actual market
+  // line. Only our OWN model-derived fallback (when no market line exists
+  // yet, this far ahead of a game) gets forced to .5, matching the same
+  // fix already applied to every other sport's fallback lines this
+  // session — a push in our own generated number is avoidable and should
+  // be avoided; a push in a real market number is not ours to hide.
+  const spreadLine=g.spread!=null?Math.abs(g.spread).toFixed(1):(mc?_forceHalfLine(Math.abs(mc.avgMargin)):'--');
   const spreadFav=g.spread!=null?(g.spread<0?g.home:g.away):(mc&&mc.avgMargin>0?g.home:g.away);
   const ouLine=mc?mc.ouLine:(g.overUnder||'--');
   const dt=g.date?new Date(g.date):null;
