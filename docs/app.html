@@ -74,7 +74,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   justify-self:center;white-space:nowrap;animation:logoPulse 4s ease-in-out infinite}
 @keyframes logoPulse{0%,100%{text-shadow:0 0 10px #f000ff,0 0 28px rgba(240,0,255,.75),0 0 60px rgba(240,0,255,.35)}50%{text-shadow:0 0 16px #f000ff,0 0 42px rgba(240,0,255,.9),0 0 90px rgba(240,0,255,.55),0 0 150px rgba(240,0,255,.2)}}
 @keyframes betPopupResultPop{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
-@keyframes cvRingPulse{0%,100%{box-shadow:0 0 14px #f000ff,0 0 30px rgba(240,0,255,.6)}50%{box-shadow:0 0 22px #f000ff,0 0 48px rgba(240,0,255,.85)}}
 /* Letter-by-letter wordmark reveal — pure CSS keyframe (GPU-composited via
    will-change) instead of per-letter JS setTimeouts, so the stagger runs on
    the compositor thread and stays smooth even under main-thread load. Each
@@ -515,25 +514,11 @@ body{line-height:1.5}
 
 <div id="splash">
   <div id="splash-grid"></div>
-  <!-- Crosshair/reticle — magenta ring + core, pulses in first (the ~75%
-       magenta-dominant opening beat) before the wordmark builds. -->
-  <div id="splash-ring" style="position:relative;width:64px;height:64px;margin-bottom:28px;opacity:0;transform:scale(.4);transition:opacity .6s ease,transform .6s cubic-bezier(.34,1.56,.64,1);border-radius:50%">
-    <div style="position:absolute;inset:0;border:2px solid #f000ff;border-radius:50%;box-shadow:0 0 14px #f000ff,0 0 30px rgba(240,0,255,.6)"></div>
-    <div style="position:absolute;inset:14px;border:1.5px solid #00f0ff;border-radius:50%;box-shadow:0 0 10px #00f0ff,0 0 20px rgba(0,240,255,.5)"></div>
-    <div style="position:absolute;inset:26px;border-radius:50%;background:radial-gradient(circle,#ff8cff,#f000ff);box-shadow:0 0 18px #f000ff"></div>
-    <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:2px;height:12px;background:#f000ff;box-shadow:0 0 8px #f000ff"></div>
-    <div style="position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);width:2px;height:12px;background:#f000ff;box-shadow:0 0 8px #f000ff"></div>
-    <div style="position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#f000ff;box-shadow:0 0 8px #f000ff"></div>
-    <div style="position:absolute;right:-14px;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#f000ff;box-shadow:0 0 8px #f000ff"></div>
-  </div>
   <div class="si">
     <div id="splash-wordmark" style="font-family:'Orbitron',sans-serif;font-size:clamp(26px,8.5vw,110px);font-weight:900;letter-spacing:clamp(1px,1.4vw,6px);color:#f000ff;-webkit-text-fill-color:#f000ff;text-shadow:0 0 12px #f000ff,0 0 28px rgba(240,0,255,.7);text-align:center;line-height:1;white-space:nowrap;max-width:94vw"></div>
     <div id="splash-sub" style="font-family:'Orbitron',sans-serif;font-size:clamp(14px,3vw,22px);letter-spacing:clamp(3px,1vw,6px);color:#00f0ff;text-shadow:0 0 10px #00f0ff,0 0 24px rgba(0,240,255,.6);text-transform:uppercase;opacity:0;transform:translateY(8px);transition:opacity .7s ease,transform .7s ease;margin-top:0">ADVANCED SPORTS INTELLIGENCE ENGINE</div>
     <div id="splash-bar-wrap" style="width:420px;max-width:80vw;height:6px;background:rgba(255,255,255,.07);border-radius:4px;margin-top:0;overflow:hidden;opacity:0;transition:opacity .4s ease"><div id="splash-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f000ff,#f000ff,#00f0ff);box-shadow:0 0 14px #f000ff,0 0 28px rgba(240,0,255,.5);transition:width 1.1s cubic-bezier(.4,0,.2,1);border-radius:4px"></div></div>
   </div>
-<div id="splash-skip" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .6s;animation:none" onclick="try{endSplash();}catch(e){document.getElementById('splash').style.display='none';document.getElementById('app')?.classList.add('ready');document.getElementById('sp-home')?.classList.add('act');}">
-  <div style="font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:4px;color:rgba(240,0,255,.5);cursor:pointer;padding:8px 16px;border:1px solid rgba(240,0,255,.2);border-radius:2px">TAP TO ENTER</div>
-</div>
 </div>
 
 <div id="app">
@@ -13237,16 +13222,6 @@ function startSplash(){
   setTimeout(()=>{
     const g=document.getElementById('splash-grid');if(g)g.style.opacity='1';
   },50);
-  // Stage 2 (150ms): magenta crosshair/ring pops in
-  setTimeout(()=>{
-    const r=document.getElementById('splash-ring');
-    if(r){r.style.opacity='1';r.style.transform='scale(1)';}
-  },150);
-  // Stage 4 (900ms): ring settles into a slow pulse while wordmark preps
-  setTimeout(()=>{
-    const r=document.getElementById('splash-ring');
-    if(r)r.style.animation='cvRingPulse 1.6s ease-in-out infinite';
-  },900);
   // Stage 5 (1300ms): wordmark CLAIRVOYANCE builds in one letter at a time
   // (magenta). Each letter is its own span so it can fade/rise in independently;
   // the parent #splash-wordmark itself is never opacity/transform-animated.
@@ -13280,8 +13255,6 @@ function startSplash(){
   },barStartAt);
   // Stage 8: end at 6s total
   setTimeout(endSplash,6000);
-  // Show skip button after 1.5s in case anything hangs
-  setTimeout(()=>{const sk=document.getElementById('splash-skip');if(sk)sk.style.opacity='1';},1500);
   // Hard escape hatch at 8s — force show regardless of what else happened
   setTimeout(()=>{
     try{endSplash();}catch(e){}
