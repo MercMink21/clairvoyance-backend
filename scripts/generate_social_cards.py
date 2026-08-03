@@ -746,6 +746,65 @@ def get_year_stats(page, year: int) -> dict:
     )
 
 
+def get_engine_performance(page) -> dict | None:
+    """Yesterday/Rolling 7D/This Month/Last Month/All Time win-loss-units,
+    computed with the exact same hCalc() logic as the home page's Engine
+    Performance boxes (docs/app.html renderHomePage) — including Pick of
+    Day results rolled into the totals the same way. Written to
+    docs/engine_performance.json so the landing page (a separate static
+    site with no Supabase access of its own) can mirror these numbers
+    without duplicating the whole ledger/auth setup — it just fetches this
+    JSON, which gets refreshed by this same daily automated run."""
+    return page.evaluate(
+        """
+        async () => {
+          if (!window.__CV_POTD) { await loadPickOfDay(); }
+          const allBets = getP();
+          const now = Date.now();
+          const yd = yesterday();
+          const nowD = getMSTNow();
+          const wk7ts = now - 7 * 86400000;
+          const firstOfMonth = mstFirstOfMonth(nowD);
+          const firstOfLastMonth = mstFirstOfMonth(new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1));
+          const thisMonthLbl = nowD.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+          const lastMonthLbl = firstOfLastMonth.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+
+          const hCalc = bets => {
+            const s = bets.filter(p => p.outcome !== 'pending');
+            const w = s.filter(p => p.outcome === 'win').length;
+            const l = s.filter(p => p.outcome === 'loss').length;
+            const u = s.reduce((a, p) => {
+              if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+              if (p.outcome === 'loss') return a - 1;
+              return a;
+            }, 0);
+            return { w, l, n: s.length, pct: s.length ? w / s.length : null, units: u };
+          };
+
+          const potdAsBets = (window.__CV_POTD || []).map(e => {
+            const m = parseFloat(String(e.ml).replace('+', ''));
+            const dec = m > 0 ? m / 100 + 1 : 100 / Math.abs(m) + 1;
+            return { date: e.date, outcome: e.outcome, decOdds: dec, lockedAt: new Date(e.date + 'T12:00:00').getTime() };
+          });
+
+          const periods = [
+            { key: 'YESTERDAY', label: 'YESTERDAY', sub: '',
+              perf: hCalc(allBets.filter(p => p.date === yd).concat(potdAsBets.filter(p => p.date === yd))) },
+            { key: 'ROLLING_7D', label: 'ROLLING 7D', sub: '',
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= wk7ts).concat(potdAsBets.filter(p => p.lockedAt >= wk7ts))) },
+            { key: 'THIS_MONTH', label: 'THIS MONTH', sub: thisMonthLbl,
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= firstOfMonth.getTime()).concat(potdAsBets.filter(p => p.lockedAt >= firstOfMonth.getTime()))) },
+            { key: 'LAST_MONTH', label: 'LAST MONTH', sub: lastMonthLbl,
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= firstOfLastMonth.getTime() && p.lockedAt < firstOfMonth.getTime()).concat(potdAsBets.filter(p => p.lockedAt >= firstOfLastMonth.getTime() && p.lockedAt < firstOfMonth.getTime()))) },
+            { key: 'ALL_TIME', label: 'ALL TIME', sub: '',
+              perf: hCalc(allBets.concat(potdAsBets)) },
+          ];
+          return periods.map(p => ({ key: p.key, label: p.label, sub: p.sub, w: p.perf.w, l: p.perf.l, n: p.perf.n, pct: p.perf.pct, units: p.perf.units }));
+        }
+        """
+    )
+
+
 def run(out_dir: Path, force: set[str] | None = None) -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -821,6 +880,23 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
         page.evaluate("() => { try { renderTrackRecord(); } catch(e) {} }")
         page.wait_for_timeout(400)
         page.evaluate("async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; }")
+
+        # Engine Performance snapshot (Yesterday/Rolling 7D/This Month/Last
+        # Month/All Time) — feeds the landing page's own Engine Performance
+        # section via a plain fetch, so it stays in sync with the home
+        # page's own numbers on every daily run without needing its own
+        # Supabase access.
+        try:
+            engine_perf = get_engine_performance(page)
+            if engine_perf:
+                perf_path = ROOT / "docs" / "engine_performance.json"
+                perf_path.write_text(json.dumps({
+                    "generated_at": now_mt.strftime("%Y-%m-%d %H:%M MT"),
+                    "periods": engine_perf,
+                }, indent=2))
+                log(f"Wrote {perf_path}")
+        except Exception as e:
+            log(f"WARNING: engine performance snapshot failed: {e}")
 
         # Daily (always)
         cards, stats = generate_cards(page, out_dir, "YESTERDAY")
