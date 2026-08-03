@@ -17099,9 +17099,11 @@ function patchNBATonight(games){
   if(games&&games.length){
     NBA_TONIGHT.length=0;
     games.forEach(g=>{
+      // Force half-point at ingest (see matching TONIGHT/NHL comment) —
+      // the live feed can post a whole-number total.
       NBA_TONIGHT.push({h:g.home,a:g.away,
         hML:g.homeML||-110,aML:g.awayML||110,
-        ou:g.ou||220.5,hL:g.spread||-1.5,
+        ou:g.ou?parseFloat(_forceHalfLine(g.ou)):220.5,hL:g.spread||-1.5,
         ctx:g.seriesNote||g.away+' @ '+g.home,
         state:g.state||'pre',id:g.id,
         hScore:g.homeScore,aScore:g.awayScore});
@@ -17152,8 +17154,14 @@ function patchNHLTonight(games){
     active.forEach(g=>{
       const sn=g.seriesStatus||g.seriesNote||'';
       const gn=parseInt((sn.match(/Game\s*(\d)/i)||[0,1])[1])||1;
+      // _forceHalfLine here (once, at ingest) instead of at every one of
+      // the ~10 template sites across the 3 NHL card renderers that read
+      // TONIGHT[].ou — the live feed itself occasionally posts a whole-
+      // number total (e.g. "6" instead of "5.5"), which every downstream
+      // OVER/UNDER chip, lock button, and input default would otherwise
+      // display and lock verbatim as a non-standard "OVER 6.0" line.
       TONIGHT.push({h:g.home,a:g.away,gn,ctx:sn||g.away+' @ '+g.home,
-        hML:g.homeML||0,aML:g.awayML||0,ou:g.ou||0,
+        hML:g.homeML||0,aML:g.awayML||0,ou:g.ou?parseFloat(_forceHalfLine(g.ou)):0,
         state:g.state||'pre',hScore:g.homeScore,aScore:g.awayScore});
     });
   }
@@ -21697,10 +21705,10 @@ function renderFutures(){
 function _socialPicks(sport){
   const picks=[];
   if(sport==='nhl'&&typeof TONIGHT!=='undefined'){
-    for(const g of(TONIGHT||[])){const h=NHL?.[g.h],aw=NHL?.[g.a];if(!h||!aw)continue;const ens=nhlEns(g.h,g.a);const mc=ens.mcD;const hP=ens.p,aP=1-ens.p;const ouP=mc?.overP||.52;[[hP,p2ml(hP),ev(hP,ml2d(p2ml(hP))),`ML ${g.h}`],[aP,p2ml(aP),ev(aP,ml2d(p2ml(aP))),`ML ${g.a}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${g.ou}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'NHL',matchup:`${g.h} vs ${g.a}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
+    for(const g of(TONIGHT||[])){const h=NHL?.[g.h],aw=NHL?.[g.a];if(!h||!aw)continue;const ens=nhlEns(g.h,g.a);const mc=ens.mcD;const hP=ens.p,aP=1-ens.p;const ouP=mc?.overP||.52;const ouLbl=g.ou!=null?_forceHalfLine(g.ou):'5.5';[[hP,p2ml(hP),ev(hP,ml2d(p2ml(hP))),`ML ${g.h}`],[aP,p2ml(aP),ev(aP,ml2d(p2ml(aP))),`ML ${g.a}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouLbl}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'NHL',matchup:`${g.h} vs ${g.a}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
     return picks;
   }
-  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou||_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
+  for(const g of(ESPN_GAMES||[])){if(!TEAMS?.[g.hA]||!TEAMS?.[g.awA])continue;const ens=mlbEns(g.hA,g.awA,g);const mc=ens.mc2;const ouL=g.ou!=null?_forceHalfLine(g.ou):_mlbOuDefault(mc?.avgT);const ouP=mc?.overP??(mc&&mc.avgT>parseFloat(ouL)?.52:.48);[[ens.p,g.hML||p2ml(ens.p),ev(ens.p,ml2d(g.hML||p2ml(ens.p))),`ML ${g.hA}`],[1-ens.p,g.aML||p2ml(1-ens.p),ev(1-ens.p,ml2d(g.aML||p2ml(1-ens.p))),`ML ${g.awA}`],[ouP,'-110',ev(ouP,1.91),`${ouP>=.5?'OVER':'UNDER'} ${ouL}`]].forEach(([p,ml,e2,lb])=>{if(tier(p,e2)>=1)picks.push({sport:'MLB',matchup:`${g.awA} at ${g.hA}`,lb,ml:String(ml),p,e2,t:tier(p,e2)});});}
   return picks;
 }
 function _filterTier(picks,tf){if(tf==='elite')return picks.filter(p=>p.t===3);if(tf==='lock')return picks.filter(p=>p.t>=2);return picks;}
