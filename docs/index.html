@@ -715,13 +715,31 @@ body{line-height:1.5}
   </div>
   <div id="cfb-week-list" style="padding:0 12px 12px"><div class="loading"><span class="spi"></span> LOADING…</div></div>
   </div></div>
-  <div id="fb-nfl" class="subp"><div class="sa"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 20px 10px;text-align:center">
-    <div style="font-family:var(--orb);font-size:27px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--vc),var(--ic));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">NFL MODULE</div>
-    <div style="font-family:var(--mono);font-size:15px;letter-spacing:3px;color:var(--t3);margin-bottom:12px">Full model activates: September 3, 2026 · 2026 Season Kickoff</div>
-    <div style="font-family:var(--mono);font-size:17px;color:var(--t3);max-width:320px;line-height:1.7">Full spread/total models, player props, and injury-adjusted ELO ratings come with kickoff. 7-day schedule + market odds below activate automatically as ESPN posts games (preseason may appear before Sep 3).</div>
+  <div id="fb-nfl" class="subp">
+    <nav class="snav" style="margin-bottom:8px">
+      <button class="sb2 act" id="nfl-innav-week" onclick="nflSubTab('week')">WEEK</button>
+      <button class="sb2" id="nfl-innav-props" onclick="nflSubTab('props')">PROPS</button>
+    </nav>
+    <div id="nfl-tab-week" class="subp act"><div class="sa"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 20px 10px;text-align:center">
+      <div style="font-family:var(--orb);font-size:27px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--vc),var(--ic));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">NFL MODULE</div>
+      <div style="font-family:var(--mono);font-size:15px;letter-spacing:3px;color:var(--t3);margin-bottom:12px">Full model activates: September 3, 2026 · 2026 Season Kickoff</div>
+      <div style="font-family:var(--mono);font-size:17px;color:var(--t3);max-width:320px;line-height:1.7">Full spread/total models, player props, and injury-adjusted ELO ratings come with kickoff. 7-day schedule + market odds below activate automatically as ESPN posts games (preseason may appear before Sep 3).</div>
+    </div>
+    <div id="nfl-week-list" style="padding:0 12px 12px"><div class="loading"><span class="spi"></span> LOADING…</div></div>
+    </div></div>
+    <div id="nfl-tab-props" class="subp" style="display:none"><div class="sa">
+      <div id="nfl-props-filter" style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn btn-o btn-sm act" onclick="renderNFLProps('all')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLProps('pass')">PASSING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLProps('rush')">RUSHING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLProps('rec')">RECEIVING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLProps('td')">TD</button>
+      </div>
+      <div id="nfl-props"><div class="empty">NO NFL PROPS — OFF-SEASON</div></div>
+      <div class="sh" style="margin-top:14px">LOCKED NFL PROPS</div>
+      <div id="nfl-props-tracker"></div>
+    </div></div>
   </div>
-  <div id="nfl-week-list" style="padding:0 12px 12px"><div class="loading"><span class="spi"></span> LOADING…</div></div>
-  </div></div>
 </div>
 
 <!-- HOCKEY -->
@@ -12586,6 +12604,84 @@ function setSub(sport,sub){
   if(sport==='fb'&&sub==='cfb'){try{renderGenericWeek('cfb-week-list','football/college-football','CFB');loadStatMuse().then(()=>renderStatMuseInsights('cfb','cfb-week-list'));}catch(e){}}
   if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');loadStatMuse().then(()=>renderStatMuseInsights('nfl','nfl-week-list'));}catch(e){}}
 }
+
+// ═══ NFL PLAYER PROPS ══════════════════════════════════════════
+// Source: Linemate (scripts/clairvoyance_update.py's fetch_linemate_props,
+// same scraper already powering NHL/NBA/MLB/WNBA props) via
+// window._DATA.linemate.props.nfl, hydrated into window._remoteNFLProps
+// the same way NHL props are. Genuinely empty until the season starts
+// (matches this module's own "activates September 3, 2026" messaging
+// above) — the panel says so rather than pretending there's data.
+function nflSubTab(tab){
+  ['week','props'].forEach(t=>{
+    const nav=document.getElementById('nfl-innav-'+t),panel=document.getElementById('nfl-tab-'+t);
+    if(nav)nav.classList.toggle('act',t===tab);
+    if(panel){panel.classList.toggle('act',t===tab);panel.style.display=t===tab?'':'none';}
+  });
+  if(tab==='props')renderNFLProps(window._nflPropFilter||'all');
+}
+function renderNFLProps(filter){
+  window._nflPropFilter=filter||'all';
+  const el=document.getElementById('nfl-props');if(!el)return;
+  document.querySelectorAll('#nfl-props-filter button').forEach(b=>{
+    b.classList.remove('act');
+    const t=b.textContent.toLowerCase();
+    if((filter||'all')==='all'&&t==='all')b.classList.add('act');
+    else if(t.startsWith(filter))b.classList.add('act');
+  });
+  const gradeC={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'};
+  let data=window._remoteNFLProps||window.__CV_DATA?.linemate?.props?.nfl||[];
+  const STAT_FILTER={pass:['pass','ypa','td/int'],rush:['rush'],rec:['rec','recept','target'],td:['td','touchdown']};
+  if(filter&&filter!=='all'){
+    const kws=STAT_FILTER[filter]||[filter];
+    data=data.filter(p=>kws.some(k=>(p.stat||'').toLowerCase().includes(k)||(p.raw||'').toLowerCase().includes(k)));
+  }
+  if(!data.length){el.innerHTML='<div class="empty">NO NFL PROPS — OFF-SEASON (ACTIVATES SEP 3, 2026)</div>';try{renderNFLPropsTracker();}catch(e){}return;}
+  el.innerHTML=data.map((p,i)=>{
+    const grade=p.conf>=67?'PREMIUM':p.conf>=62?'OPTIMAL':p.conf>=55?'LEAN':'SKIP';
+    const gc=gradeC[grade]||'var(--t3)';
+    const dirColor=p.over?'var(--nc)':'var(--hc)';
+    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gc}">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+        <div>
+          <span style="font-family:var(--orb);font-size:22px;font-weight:700">${p.player||'—'}</span>
+          <span style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-left:5px">${p.team||''}</span>
+        </div>
+        ${p.hitRate?`<span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">HIT:${p.hitRate}</span>`:''}
+      </div>
+      <div style="font-family:var(--mono);font-size:22px;color:${dirColor};margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line||''} ${p.stat||''} <span style="color:var(--t2);font-size:18px">· ${p.conf||55}% CONF</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ${p.src||'Linemate'}</span>
+        <button class="btn btn-o btn-sm" onclick="lockNFLProp(${i})">LOCK</button>
+      </div>
+    </div>`;
+  }).join('');
+  window._nflPropsCurrent=data;
+  try{renderNFLPropsTracker();}catch(e){}
+}
+function lockNFLProp(idx){
+  const p=(window._nflPropsCurrent||[])[idx];if(!p)return;
+  const dec=p.ml?ml2d(p.ml):(1/Math.max(0.01,(p.conf||55)/100));
+  const prop={id:`prop_nfl_${Date.now()}`,team:p.team,player:p.player,line:p.line,over:p.over,conf:(p.conf||55)/100,
+    lockedAt:Date.now(),outcome:'pending',date:today(),sport:'NFL',betType:'PROP',
+    betOn:`${p.player} ${p.over?'OVER':'UNDER'} ${p.line} ${p.stat}`,winProb:(p.conf||55)/100,decOdds:dec,wager:0};
+  LOCKED_PROPS.push(prop);
+  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
+  const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  toast(`// NFL PROP LOCKED: ${prop.betOn}`);
+  try{window.showBetPopup({type:'lock',betOn:prop.betOn,sport:'NFL',league:'NFL',betType:'PROP',prob:prop.winProb,decOdds:dec});}catch(e){}
+  renderNFLPropsTracker();
+}
+function renderNFLPropsTracker(){
+  const el=document.getElementById('nfl-props-tracker');if(!el)return;
+  const locked=LOCKED_PROPS.filter(p=>p.sport==='NFL');
+  if(!locked.length){el.innerHTML='<div class="empty">NO LOCKED NFL PROPS</div>';return;}
+  const oc_map={win:'var(--nc)',loss:'var(--hc)',pending:'var(--gc)'};
+  el.innerHTML=locked.map(p=>{const oc=oc_map[p.outcome]||'var(--gc)';
+    return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:var(--orb);font-size:19px;font-weight:700">${p.player}</div><div style="font-family:var(--mono);font-size:17px;color:var(--t2)">${p.betOn}</div></div><span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid ${oc};color:${oc};border-radius:2px">${(p.outcome||'pending').toUpperCase()}</span></div></div>`;
+  }).join('');
+}
+
 function T(sport,tabId){const D=window.__CV_DATA||{};
   const saMap={nhl:'nhl-sa',nba:'nba-sa',ovr:'ovr-sa',ten:'ten-sa',f1:'f1-sa',live:'live-sa',social:'social-sa',news:'news-sa',fut:'fut-sa',hk:'nhl-sa',fb:'mlb-sa',wnba:'wnba-sa',wc:'wc-sa',cbb:'cbb-sa',pl:'pl-sa',liga:'liga-sa',bl:'bl-sa',mls:'mls-sa',cl:'cl-sa',ita:'ita-sa',ncaah:'ncaah-sa',khl:'khl-sa',shl:'shl-sa',liiga:'liiga-sa'};
   const navMap={nhl:'nhl-in',nba:'nba-in',ovr:'ovr-in',ten:'ten-in',f1:'f1-in',live:'live-in',social:'social-in',news:'news-in',fut:'fut-in',hk:'nhl-in',fb:'mlb-in',wnba:'wnba-in',wc:'wc-in',cbb:'cbb-in',ncaah:'ncaah-in',khl:'khl-in',shl:'shl-in',liiga:'liiga-in',cl:'cl-in',pl:'pl-in',liga:'liga-in',bl:'bl-in',mls:'mls-in',ita:'ita-in'};
@@ -16574,6 +16670,7 @@ async function loadRemoteData(force=false){
     if(d.nhl?.standings)      patchNHLStandings(d.nhl.standings);
     if(d.nhl?.trends?.length) window._remoteNHLTrends=d.nhl.trends;
     if(d.nhl?.props?.length)  window._remoteNHLProps=d.nhl.props;
+    if(d.linemate?.props?.nfl?.length) window._remoteNFLProps=d.linemate.props.nfl;
     if(d.mp?.goalies?.length) patchMoneyPuck(d.mp.goalies,d.mp.teams||{});
     if(d.tennis?.atpElo?.length) patchATPElo(d.tennis.atpElo);
     if(d.tennis?.wtaElo?.length) patchWTAElo(d.tennis.wtaElo);
@@ -16799,6 +16896,9 @@ function patchLinemateProps(linemate){
   if(linemate?.nhl?.trends?.length&&!window._remoteNHLTrends?.length)window._remoteNHLTrends=linemate.nhl.trends;
   if(linemate?.nhl?.props?.length&&!window._remoteNHLProps?.length)window._remoteNHLProps=linemate.nhl.props;
   try{const hp=document.getElementById('nhl-tab-props');if(hp&&hp.classList.contains('act')){renderProps();renderNHLPropsLive(window._nhlPropFilter||'all');}}catch(e){}
+  // NFL: linemate.props.nfl is the real bundle shape (linemate:{props:{nfl:[...]}})
+  if(linemate?.props?.nfl?.length)window._remoteNFLProps=linemate.props.nfl;
+  try{const np=document.getElementById('nfl-tab-props');if(np&&np.classList.contains('act'))renderNFLProps(window._nflPropFilter||'all');}catch(e){}
 }
 function exportLockedProps(){
   const props=getP();
@@ -30088,7 +30188,12 @@ function trainerExportInsights() {
   </div>
 </div>
 <div id="navd-fb" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
-  <button onclick="SS('fb');setSub('fb','nfl');hideAllND()">NFL</button>
+  <div class="ndl"><button onclick="SS('fb');setSub('fb','nfl');hideAllND()">NFL</button>
+    <div class="ndl-sub">
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab('week');hideAllND()">Week</button>
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab('props');hideAllND()">Props</button>
+    </div>
+  </div>
   <button onclick="SS('fb');setSub('fb','cfb');hideAllND()">College Football</button>
 </div>
 <div id="navd-hk" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">

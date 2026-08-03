@@ -2511,7 +2511,10 @@ def fetch_linemate_props(sport: str) -> list[dict]:
     STAT_KWDS = [("strikeout","Ks"),("saves","Saves"),("goal","Goals"),
                  ("point","PTS"),("rebound","REB"),("assist","AST"),
                  ("hit","Hits"),("rbi","RBIs"),("home run","HR"),
-                 ("total base","TB"),("shot","Shots"),("three","3PM"),("block","BLK"),("steal","STL")]
+                 ("total base","TB"),("shot","Shots"),("three","3PM"),("block","BLK"),("steal","STL"),
+                 ("passing yard","Pass Yds"),("rushing yard","Rush Yds"),("receiving yard","Rec Yds"),
+                 ("reception","Rec"),("passing touchdown","Pass TD"),("rushing touchdown","Rush TD"),
+                 ("receiving touchdown","Rec TD"),("interception","INT"),("completion","Comp")]
     for t in raw:
         if not t or len(t) < 8: continue
         lines = [l.strip() for l in t.split("\n") if l.strip()]
@@ -4957,17 +4960,22 @@ def main() -> None:
                 time.sleep(0.3)
 
     # Linemate
-    lm_props:  dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
-    lm_trends: dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
-    lm_form:   dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[]}
+    lm_props:  dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[],"nfl":[]}
+    lm_trends: dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[],"nfl":[]}
+    lm_form:   dict = {"nba":[],"mlb":[],"nhl":[],"wnba":[],"nfl":[]}
     _lm_schedule = {"nba": nba_today, "mlb": mlb_today, "nhl": nhl_today, "wnba": []}
     if not args.no_linemate:
-        for sport in ["nba","mlb","nhl","wnba"]:
+        for sport in ["nba","mlb","nhl","wnba","nfl"]:
             if S in (sport,"all") or (sport=="wnba" and S=="nba"):
                 lm_props[sport]  = fetch_linemate_props(sport);     time.sleep(1)
                 lm_trends[sport] = fetch_linemate_trends(sport);    time.sleep(1)
                 lm_form[sport]   = fetch_linemate_cheatsheet(sport); time.sleep(1)
-                if sport != "wnba":  # WNBA's today-schedule isn't fetched yet — validated below
+                if sport == "nfl":
+                    # Weekly, not daily, schedule — NFL games span the
+                    # whole week rather than clustering on "today" the way
+                    # the other sports' schedules do.
+                    lm_props[sport] = validate_props_against_schedule(lm_props[sport], fetch_week_schedule("football/nfl","nfl"))
+                elif sport != "wnba":  # WNBA's today-schedule isn't fetched yet — validated below
                     lm_props[sport] = validate_props_against_schedule(lm_props[sport], _lm_schedule[sport])
 
     # NCAA Baseball + WNBA + PWHL
