@@ -6228,16 +6228,22 @@ function _cfbGameCard(g){
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MONEYLINE</div>
         <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${g.home} ${hML}</div>
         <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${g.away} ${aML}</div>
+        <div style="display:flex;gap:4px;margin-top:5px">
+          <button class="btn btn-o btn-sm" style="flex:1;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})">${g.home}</button>
+          <button class="btn btn-o btn-sm" style="flex:1;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})">${g.away}</button>
+        </div>
       </div>
       <div style="text-align:center;padding:8px;background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:2px">
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div>
         <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${spreadFav} -${spreadLine}</div>
         ${g.spreadDetails?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3)">Market: ${g.spreadDetails}</div>`:''}
+        <button class="btn btn-o btn-sm" style="width:100%;margin-top:5px;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine}','-110',${(spreadFav===g.home?hP:aP).toFixed(3)})">LOCK</button>
       </div>
       <div style="text-align:center;padding:8px;background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:2px">
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U</div>
         <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${ouLine}</div>
         <div style="font-family:var(--mono);font-size:13px;color:${mc&&mc.overP>=.5?'var(--nc)':'var(--hc)'}">${mc?(mc.overP>=.5?'OVER':'UNDER')+' '+(Math.max(mc.overP,mc.underP)*100).toFixed(1)+'%':'—'}</div>
+        ${mc?`<button class="btn btn-o btn-sm" style="width:100%;margin-top:5px;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','OU','${mc.overP>=.5?'OVER':'UNDER'} ${ouLine}','-110',${Math.max(mc.overP,mc.underP).toFixed(3)},${ouLine})">LOCK</button>`:''}
       </div>
     </div>
     <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:1.6;padding:8px 10px;background:rgba(0,0,0,.2);border-left:2px solid var(--ic);margin-bottom:8px">${reasoning}</div>
@@ -6289,6 +6295,68 @@ function renderCFBConfig(){
   <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:12px;line-height:1.7">
     Rankings refresh weekly (Mon/Tue). Team stats refresh Sunday evening + Monday morning. Schedule/lines refresh daily. MC sim margin is FPI-driven; totals come from each team's own points-allowed average, independent of FPI.
   </div>`;
+}
+function lockCFBGame(hA,awA,betType,betOn,ml,winProb,ouLine){
+  const dec=ml2d(ml);
+  const id=`cfb_${today()}_${hA}_${awA}_${betType}_${betOn.replace(/\s+/g,'')}`;
+  const pred={id,date:today(),hA,awA,sport:'CFB',betType,betOn,winProb,ml,decOdds:dec,
+    ou:ouLine!=null?ouLine:null,wager:0,outcome:'pending',lockedAt:Date.now()};
+  const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
+  updHdr();
+  toast('// CFB LOCKED: '+betOn);
+  try{window.showBetPopup({type:'lock',betOn,sport:'CFB',league:'CFB',betType,ml,prob:winProb,decOdds:dec});}catch(e){}
+}
+// Same settlement shape/fixes as autoSettleNBA/autoSettleFromESPN
+// (AND-logic same-game match, today-only, case-insensitive OVER, trailing-
+// number extraction for SPREAD's signed line) established during the
+// earlier accuracy audit — built in from the start here rather than
+// needing a follow-up fix.
+async function autoSettleCFB(){
+  try{
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?limit=300');
+    if(!r.ok)return;
+    const d=await r.json();
+    const preds=getP();let changed=false;
+    for(const ev of(d.events||[])){
+      const comp=(ev.competitions||[{}])[0];
+      if(comp.status?.type?.state!=='post')continue;
+      const home=comp.competitors?.find(c=>c.homeAway==='home');
+      const away=comp.competitors?.find(c=>c.homeAway==='away');
+      const hn=home?.team?.abbreviation,an=away?.team?.abbreviation;
+      const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
+      for(const p of preds){
+        if(p.outcome!=='pending'||p.sport!=='CFB')continue;
+        if(p.date!==today())continue;
+        const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+        if(!sameGame)continue;
+        let outcome=null;
+        if(p.betType==='ML'){
+          if(p.betOn===hn)outcome=hs>as?'win':'loss';
+          else if(p.betOn===an)outcome=as>hs?'win':'loss';
+        }else if(p.betType==='SPREAD'){
+          // betOn stored as "TCU -7.0" — favorite team + signed line
+          const m=(p.betOn||'').match(/(-?\d+\.?\d*)\s*$/);
+          const line=m?parseFloat(m[1]):NaN;
+          const favTeam=(p.betOn||'').split(' ')[0];
+          if(!isNaN(line)){
+            const favIsHome=favTeam===hn;
+            const diff=favIsHome?(hs-as):(as-hs);
+            const covered=diff+line;
+            outcome=covered>0?'win':covered<0?'loss':'push';
+          }
+        }else if(p.betType==='OU'){
+          const total=hs+as;const ou=parseFloat(p.ou);
+          if(!isNaN(ou))outcome=total===ou?'push':(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        }
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
+          toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');
+          try{notifySettlement(p.betOn,outcome);}catch(e){}
+          try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'CFB',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
+        }
+      }
+    }
+    if(changed){saveP(preds);updHdr();}
+  }catch(e){console.warn('CFB settle:',e);}
 }
 
 function renderStatMuseInsights(section, anchorId, limit){
@@ -11908,6 +11976,7 @@ async function autoSettleAll(btn){
     try{autoSettleFromESPN(ESPN_GAMES);}catch(e){}
     try{await autoSettleNBA();}catch(e){}
     try{await autoSettleNHL();}catch(e){}
+    try{await autoSettleCFB();}catch(e){}
     // Phase 2: text-format bets (hA contains "@", betOn has "TEAM ML -xxx")
     await autoSettleTextFormat();
     // Phase 3: player props via ESPN box scores
