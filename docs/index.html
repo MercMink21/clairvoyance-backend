@@ -2150,54 +2150,6 @@ body{line-height:1.5}
       <div id="xp-engine-parlays"><div class="loading"><span class="spi"></span></div></div>
     </div>
     <div class="sa" style="padding:14px">
-      <!-- CROSS-SPORT BUILDER -->
-      <div class="sh" style="margin:0 0 10px"><span class="p"></span> CROSS-SPORT PARLAY BUILDER</div>
-      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:8px;letter-spacing:1.5px">MAX 8 LEGS · ANY SPORT · ANY BET TYPE · GAME/PROP BADGE</div>
-      <!-- Sport selector -->
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
-        <button id="xp-sport-mlb" class="btn btn-p btn-sm" onclick="cvXParlaySetSport('mlb')">MLB</button>
-        <button id="xp-sport-nba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nba')">NBA</button>
-        <button id="xp-sport-wnba" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('wnba')">WNBA</button>
-        <button id="xp-sport-cbb" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('cbb')">CBB</button>
-        <button id="xp-sport-nfl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nfl')">NFL</button>
-        <button id="xp-sport-cfb" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('cfb')">CFB</button>
-        <button id="xp-sport-nhl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('nhl')">NHL</button>
-        <button id="xp-sport-ncaah" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('ncaah')">COLLEGE HOCKEY</button>
-        <button id="xp-sport-bl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('bl')">BUNDESLIGA</button>
-        <button id="xp-sport-liga" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('liga')">LA LIGA</button>
-        <button id="xp-sport-mls" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('mls')">MLS</button>
-        <button id="xp-sport-pl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('pl')">PREMIER LEAGUE</button>
-        <button id="xp-sport-seriea" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('seriea')">SERIE A</button>
-        <button id="xp-sport-cl" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('cl')">CHAMPIONS LEAGUE</button>
-        <button id="xp-sport-ten" class="btn btn-o btn-sm" onclick="cvXParlaySetSport('ten')">TENNIS</button>
-      </div>
-      <!-- View toggle -->
-      <div style="display:flex;gap:5px;margin-bottom:8px">
-        <button id="xp-view-games" class="btn btn-p btn-sm" onclick="cvXParlayToggle('games')">GAME LINES</button>
-        <button id="xp-view-props" class="btn btn-o btn-sm" onclick="cvXParlayToggle('props')">PLAYER PROPS</button>
-      </div>
-      <div class="g2">
-        <!-- Left: game/prop selection -->
-        <div>
-          <div id="xp-games-panel">
-            <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">// GAME LINES — TAP TO ADD</div>
-            <div id="xp-games-list"><div class="loading"><span class="spi"></span></div></div>
-          </div>
-          <div id="xp-props-panel" style="display:none">
-            <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">// PLAYER PROPS — TAP TO ADD</div>
-            <div id="xp-props-list"><div class="loading"><span class="spi"></span></div></div>
-          </div>
-        </div>
-        <!-- Right: legs + calc -->
-        <div>
-          <div style="font-family:var(--mono);font-size:15px;color:var(--pc);letter-spacing:2px;margin-bottom:6px">// PARLAY <span id="xp-par-count">(0)</span></div>
-          <div id="xp-par-legs" style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:16px;color:var(--t3)">NO LEGS ADDED</div></div>
-          <div id="xp-par-res"></div>
-          <input type="number" class="fi" id="xp-par-wager" value="100" placeholder="WAGER $" style="margin-bottom:7px" oninput="cvParlayCalc('xp')">
-          <button class="btn btn-p btn-fw" onclick="cvParlayCalc('xp')">CALCULATE</button>
-          <button class="btn btn-o btn-fw" style="margin-top:5px" onclick="window._cvPar['xp']=[];cvParlayRenderLegs('xp');cvParlayCalc('xp')">CLEAR</button>
-        </div>
-      </div>
       <!-- Past parlays -->
       <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -9993,28 +9945,25 @@ function potdRemove(dateKey){
 function renderOverallPickOfDayHistory(){
   var el=document.getElementById('ovr-pick-of-day');
   if(!el)return;
-  var ledger=(window.__CV_POTD||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;});
-  if(!ledger.length){el.innerHTML='<div class="empty" style="font-size:15px">NO PICK OF DAY HISTORY YET</div>';return;}
+  // Only pending picks show here — once settled, a pick drops out of this
+  // "needs action" list entirely and lives only in _potdStats()'s
+  // aggregated win%/record/units/picks-locked (rendered by
+  // renderPickOfDayTile() above this section), matching how the real bet
+  // ledger's pending-vs-settled split already works elsewhere.
+  var ledger=(window.__CV_POTD||[]).filter(function(e){return e.outcome==='pending';}).sort(function(a,b){return a.date<b.date?1:-1;});
+  if(!ledger.length){el.innerHTML='<div class="empty" style="font-size:15px">NO PENDING PICK OF DAY — SEE RECORD ABOVE</div>';return;}
   var gCol=function(g){return g==='PREMIUM'?'#ffcc00':g==='OPTIMAL'?'var(--ic)':g==='LEAN'?'var(--pc)':'var(--t3)';};
-  var oCol=function(o){return o==='win'?'var(--nc)':o==='loss'?'var(--hc)':'var(--t3)';};
-  // Settled entries move out of the "needs action" view and just show
-  // their final outcome + a remove option — pending entries are the
-  // only ones that get WIN/LOSS buttons, so a settled pick's record
-  // shows up in _potdStats()'s win%/units/picks-locked instead of
-  // sitting here looking actionable.
   var rows=ledger.slice(0,30).map(function(e){
-    var actions=e.outcome==='pending'
-      ?`<button class="btn btn-n btn-sm" onclick="potdSettle('${e.date}','win')">WIN</button>
+    var actions=`<button class="btn btn-n btn-sm" onclick="potdSettle('${e.date}','win')">WIN</button>
         <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="potdSettle('${e.date}','loss')">LOSS</button>
-        <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`
-      :`<button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`;
+        <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`;
     return`<div style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:0">
         <div style="font-family:var(--mono);font-size:15px;color:var(--t1);font-weight:700">${e.pick}</div>
         <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${e.date} · ${e.matchup} · ${e.sport}${e.league&&e.league!==e.sport?' / '+e.league:''} · ${e.betType||'ML'}</div>
       </div>
       <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${gCol(e.grade)}">${e.grade}</span>
-      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${oCol(e.outcome)};min-width:60px;text-align:right">${e.outcome.toUpperCase()}</span>
+      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--t3);min-width:60px;text-align:right">PENDING</span>
       <div style="display:flex;gap:5px;flex-wrap:wrap">${actions}</div>
     </div>`;
   }).join('');
@@ -12478,14 +12427,27 @@ function renderHomePage(){
       return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
     };
 
-    const rtd  = hCalc(allBets.filter(p=>p.date===todayStr));
-    const ry   = hCalc(allBets.filter(p=>p.date===yd));
-    const r7   = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts));
-    const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
-    const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
-    const rAll = hCalc(allBets);
+    // Pick of Day picks are tracked in their own ledger (docs/pick_of_day.json,
+    // separate from the real bet ledger so re-locking never collides with
+    // it), but should still roll into the same period totals everyone
+    // sees here — converted to the same bet shape hCalc expects (date/
+    // outcome/decOdds/lockedAt) and concatenated in per-period, not
+    // written into allBets itself.
+    if(!window.__CV_POTD){loadPickOfDay().then(renderHomePage);}
+    const potdAsBets=(window.__CV_POTD||[]).map(function(e){
+      var m=parseFloat(String(e.ml).replace('+',''));
+      var dec=m>0?m/100+1:100/Math.abs(m)+1;
+      return{date:e.date,outcome:e.outcome,decOdds:dec,lockedAt:new Date(e.date+'T12:00:00').getTime()};
+    });
+
+    const rtd  = hCalc(allBets.filter(p=>p.date===todayStr).concat(potdAsBets.filter(p=>p.date===todayStr)));
+    const ry   = hCalc(allBets.filter(p=>p.date===yd).concat(potdAsBets.filter(p=>p.date===yd)));
+    const r7   = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts).concat(potdAsBets.filter(p=>p.lockedAt>=wk7ts)));
+    const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()).concat(potdAsBets.filter(p=>p.lockedAt>=firstOfMonth.getTime())));
+    const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()).concat(potdAsBets.filter(p=>p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime())));
+    const rAll = hCalc(allBets.concat(potdAsBets));
     const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime();
-    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
+    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS).concat(potdAsBets.filter(p=>p.lockedAt>=LAUNCH_TS)));
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;

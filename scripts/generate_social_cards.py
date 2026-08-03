@@ -177,7 +177,12 @@ def _espn_scoreboard_result(entry: dict) -> str | None:
     """Looks up entry's matchup in ESPN's scoreboard for its sport+date and
     returns 'win'/'loss' if the game is final and the picked side is
     unambiguously identifiable, else None (left pending — never guess)."""
-    path = ESPN_SPORT_PATHS.get(entry["sport"])
+    # ESPN_SPORT_PATHS is keyed by league code (e.g. "MLB"), but the Pick
+    # of Day ledger's own "sport" field holds the broad-sport bucket (e.g.
+    # "BASEBALL", from _POTD_BROAD_SPORT) -- entry["sport"] never matched
+    # any key here, so every ledger entry silently failed to settle and
+    # sat "pending" forever. "league" holds the actual league code.
+    path = ESPN_SPORT_PATHS.get(entry.get("league") or entry.get("sport"))
     if not path:
         return None
     date_str = entry["date"].replace("-", "")
@@ -1248,22 +1253,38 @@ def main() -> None:
 
             # Record today's pick in the ledger as pending — tomorrow's
             # run will settle it against the real score before picking
-            # the next one.
-            pod_ledger.append({
-                "date": now_mt.strftime("%Y-%m-%d"),
+            # the next one. Replace (not append) any existing entry for
+            # today's date rather than blindly appending -- re-running the
+            # workflow manually the same day (for review/testing, or a
+            # retry after a failure) used to add a fresh duplicate entry
+            # every time with no dedup check at all, since date was never
+            # compared against what's already in the ledger.
+            today_key = now_mt.strftime("%Y-%m-%d")
+            pod_ledger = [e for e in pod_ledger if e.get("date") != today_key]
+            new_entry = {
+                "date": today_key,
                 "sport": _POTD_BROAD_SPORT.get(free_pick["sport"], free_pick["sport"]),
                 "league": free_pick["sport"],
                 "type": free_pick["type"],
-                "betType": "ML",
+                "betType": "PROP" if free_pick["type"] == "PROP" else "ML",
                 "pick": free_pick["name"],
                 "matchup": free_pick["matchup"],
                 "prob": free_pick["prob"],
                 "ml": free_pick["ml"],
                 "grade": free_pick["grade"],
-                "pickedAbbr": free_pick["pickedAbbr"],
+                "pickedAbbr": free_pick.get("pickedAbbr"),
                 "outcome": "pending",
                 "settledAt": None,
-            })
+            }
+            if free_pick["type"] == "PROP":
+                # settle_pending_picks()'s _mlb_prop_result() needs these to
+                # grade against the real boxscore -- without them a PROP
+                # free pick would sit pending forever, unsettleable.
+                new_entry["player"] = free_pick.get("player")
+                new_entry["stat"] = free_pick.get("stat")
+                new_entry["line"] = free_pick.get("line")
+                new_entry["over"] = free_pick.get("over")
+            pod_ledger.append(new_entry)
             save_pick_of_day_ledger(pod_ledger)
             log(f"Free pick video generated: {pick_video_path} ({free_pick['name']} @ {free_pick['prob']*100:.0f}%)")
         except Exception as exc:
