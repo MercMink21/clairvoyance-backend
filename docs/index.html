@@ -6758,6 +6758,35 @@ function _cfbGameCard(g){
     </div>
     <div style="padding:8px 10px;background:rgba(255,110,20,.04);border-top:1px solid rgba(255,110,20,.1)">
       ${_mcProjBarHTML({avgH:mc.avgH,avgA:mc.avgA,avgT:mc.avgTotal,overP:overP},ouL.toFixed(1),g.home,g.away,{n:mc.n,dec:1})}
+      ${(()=>{
+        // Model's own recommended lines, independent of whatever the
+        // sportsbook posted — some books shade their spread/O-U off the
+        // model number (juice, liability management), so the number
+        // worth betting isn't always the number on the board. Forced to
+        // .5 via _forceHalfLine, same push-avoidance convention as every
+        // other generated line in this app.
+        const recSpreadNum=_forceHalfLine(Math.abs(mc.avgMargin));
+        const recSpreadFav=mc.avgMargin>=0?g.home:g.away;
+        const recOU=_forceHalfLine(mc.avgTotal);
+        const mktSpreadNum=g.spread!=null?Math.abs(g.spread).toFixed(1):null;
+        const mktSpreadFav=g.spread!=null?(g.spread<0?g.home:g.away):null;
+        const mktOU=g.overUnder!=null?parseFloat(g.overUnder).toFixed(1):null;
+        const spreadGap=mktSpreadNum!=null?Math.abs(parseFloat(recSpreadNum)-parseFloat(mktSpreadNum)):null;
+        const ouGap=mktOU!=null?Math.abs(parseFloat(recOU)-parseFloat(mktOU)):null;
+        const spreadNote=mktSpreadNum==null?'No market spread posted yet — this is the only number available.'
+          :spreadGap>=1.5?`Model disagrees with the market by ${spreadGap.toFixed(1)} pts — worth a look at whatever number the book is actually offering, since real books sometimes shade off the model consensus for liability/juice reasons.`
+          :'Close to the market — no meaningful edge in taking a different number.';
+        const ouNote=mktOU==null?'No market total posted yet — this is the only number available.'
+          :ouGap>=1.5?`Model disagrees with the market by ${ouGap.toFixed(1)} pts — the market's ${mktOU} may be shaded off the model's own ${recOU} projection.`
+          :'Close to the market — no meaningful edge in taking a different number.';
+        return `<div style="margin-bottom:8px;padding:6px 9px;background:rgba(0,0,0,.25);border-radius:3px;border:1px solid rgba(255,200,0,.15)">
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">MODEL RECOMMENDED LINE (vs market)</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:3px"><strong style="color:var(--gc)">SPREAD</strong> — model: ${recSpreadFav} -${recSpreadNum}${mktSpreadNum!=null?` &nbsp;·&nbsp; market: ${mktSpreadFav} -${mktSpreadNum}`:''}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:6px">${spreadNote}</div>
+          <div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:3px"><strong style="color:var(--nc)">O/U</strong> — model: ${recOU}${mktOU!=null?` &nbsp;·&nbsp; market: ${mktOU}`:''}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${ouNote}</div>
+        </div>`;
+      })()}
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
         <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${nm.col};color:${nm.col};border-radius:2px">${nm.lbl}</span>
         <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">BEST MARKET: <strong style="color:var(--t2)">${nm.best.label}</strong> · ${(nm.best.prob*100).toFixed(1)}% · EV ${nm.best.evVal>=0?'+':''}${(nm.best.evVal*100).toFixed(1)}%</span>
@@ -6838,15 +6867,25 @@ function renderCFBModel(){
 function renderCFBConfig(){
   const el=document.getElementById('cfb-config-content');if(!el)return;
   const D=_CFB_DATA;
+  const W=window.CFB_ENS||{mc:.65,bay:.20,elo:.15};
+  const eloTeams=Object.keys(D?.elo?.ratings||{}).length;
+  const eloGamesTotal=Object.values(D?.elo?.gamesPlayed||{}).reduce((s,n)=>s+n,0)/2; // each game counted for both teams
   el.innerHTML=`<div class="sh" style="margin-bottom:8px">DATA SOURCES</div>
   <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:2">
     Rosters/Standings: ${D?.generatedAt?.teams||'not loaded'}<br>
     Rankings/FPI/Resume/Efficiencies: ${D?.generatedAt?.power||'not loaded'}<br>
     Team Stats (offense/defense/special teams): ${D?.generatedAt?.stats||'not loaded'}<br>
-    Schedule: ${D?.generatedAt?.schedule||'not loaded'}
+    Schedule/Lines: ${D?.generatedAt?.schedule||'not loaded'}<br>
+    Weather: live, geocoded per-venue at render time (Nominatim + Open-Meteo, not a scheduled scrape)<br>
+    Elo: computed client-side from ${Math.max(0,eloGamesTotal).toFixed(0)} completed game(s) this season across ${eloTeams} teams tracked
   </div>
-  <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:12px;line-height:1.7">
-    Rankings refresh weekly (Mon/Tue). Team stats refresh Sunday evening + Monday morning. Schedule/lines refresh daily. MC sim margin is FPI-driven; totals come from each team's own points-allowed average, independent of FPI.
+  <div class="sh" style="margin-top:14px;margin-bottom:8px">MODEL SUMMARY</div>
+  <div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.8">
+    Refresh cadence: rankings/FPI weekly (Mon/Tue) · team stats Sunday evening + Monday morning · schedule/lines daily.<br><br>
+    Win probability: MC/Bayesian/Elo blend, currently weighted MC ${Math.round(W.mc*100)}% / BAY ${Math.round(W.bay*100)}% / ELO ${Math.round(W.elo*100)}% (adjustable on the MODEL tab). Elo's actual weight ramps in with real games played per matchup rather than applying the full slider value before there's any signal.<br><br>
+    MC sim margin: FPI-driven (ESPN's expected-margin-vs-average-opponent-on-a-neutral-field rating) plus capped matchup-specific yardage, turnover, and real per-venue weather adjustments. When a team has no FPI (an FCS "buy game" opponent), the model falls back to the market's own spread instead of guessing.<br><br>
+    Totals: each team's own points-allowed average, independent of the FPI-based margin, then adjusted for the real forecast at the actual game venue (wind, rain, snow, cold — snow capped at -6.5 pts, the largest single weather effect modeled).<br><br>
+    Model-recommended spread/O-U lines (shown on each game card) are the sim's own numbers, forced to a half-point — they intentionally may differ from the market line, since books sometimes shade a posted number for liability/juice reasons rather than pure model agreement.
   </div>`;
 }
 function lockCFBGame(hA,awA,betType,betOn,ml,winProb,ouLine){
