@@ -107,7 +107,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .sa{flex:1 1 0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
 .tab{display:none;padding:12px 12px 82px}.tab.act{display:block}
 /* MOB NAV */
-#mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{flex:0 0 auto;background:rgba(6,0,15,.98);border-top:1px solid rgba(240,0,255,.45);box-shadow:0 -4px 18px rgba(240,0,255,.08);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:env(safe-area-inset-bottom);padding-bottom:constant(safe-area-inset-bottom);min-height:54px}
+/* Bottom tab nav removed across the whole engine, every screen size —
+   previously only hidden under the max-width:768px media query below,
+   which left it visible on tablet-width/resized-desktop viewports above
+   that breakpoint. Top sport-bar (#sbar) + in-page sub-tabs already
+   provide full navigation, so this is pure duplicate/redundant chrome
+   at any width, not just on phones. */
+#mn,#mn2,#mn3,#mn4,#mn5,#mn6,#mn7,#mn8,#mn9,#mn10,#mn11{display:none!important}
 #mn::-webkit-scrollbar,#mn2::-webkit-scrollbar,#mn3::-webkit-scrollbar,#mn4::-webkit-scrollbar,#mn5::-webkit-scrollbar,#mn6::-webkit-scrollbar,#mn7::-webkit-scrollbar,#mn8::-webkit-scrollbar,#mn9::-webkit-scrollbar,#mn10::-webkit-scrollbar,#mn11::-webkit-scrollbar{display:none}
 .mb{flex:0 0 52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border:none;background:none;color:var(--t2);font-size:16px;font-family:var(--mono);text-transform:uppercase;padding:5px 2px;min-height:54px;transition:color .2s}
 .mb:active{background:rgba(240,0,255,.06)}.mb.act{color:var(--nc)}.mb.ai{color:var(--ic)}.mb.ap{color:var(--pc)}.mbi{font-size:26px;line-height:1}
@@ -18928,8 +18934,22 @@ function _normSport(p){
   if(raw==='SERIEA'||raw==='SERIE A')return'SERIEA';
   if(raw==='CL'||raw==='CH'||raw==='CHAMPIONS LEAGUE')return'CL';
   if(raw==='TEN'||raw==='TENNIS'||raw==='ATP'||raw==='WTA')return'TEN';
+  // Only guess from team-abbreviation collision when there's genuinely no
+  // sport/league tag to go on at all (raw is empty). A bet that HAD a
+  // real tag, just one this function doesn't explicitly recognize yet
+  // (a typo, a newly-added league not listed above, a soccer/tennis/CFB
+  // code that fell through), used to still run the guesser below — which
+  // only checks WNBA/MLB/NFL/NBA/NHL — risking exactly the kind of false
+  // classification already fixed once for CBB-vs-NFL (see the comment
+  // above): a real, correctly-tagged CFB or soccer pick getting forced
+  // into "NFL" purely because its team code happened to coincide with an
+  // NFL abbreviation. An unrecognized-but-present tag is returned as-is
+  // instead — _broadSportOf() already excludes anything it doesn't
+  // recognize from the sport-level card rather than guessing, so this
+  // just lets that same "don't guess" principle apply here too.
   const h=(p.hA||'').trim().toUpperCase(),a=(p.awA||'').trim().toUpperCase();
   if(!h&&!a)return raw||'MISC';
+  if(raw)return raw;
   // Priority: WNBA then MLB then NFL then NBA then NHL
   // Full names (values) checked first — they are always unambiguous across sports
   // Abbreviation keys checked second with same priority order
