@@ -6244,6 +6244,104 @@ function _cfbPickRow(label,p,dec,reasoning,onclickJs){
     <button class="btn btn-o btn-sm" style="width:100%;font-size:12px;padding:3px 0;margin-top:6px" onclick="${onclickJs}">LOCK</button>
   </div>`;
 }
+// Shared analytical facts for a matchup — computed once per game and
+// reused across all 6 picks' reasoning, so each pick can reference
+// whichever specific subset actually applies to it (e.g. offense/defense
+// trends matter most for O/U, FPI+HFA matter most for ML/spread) without
+// recomputing the same lookups 6 times.
+//
+// Deliberately checks "is this a real number" before including a data
+// point rather than assuming it exists — efficiency/resume-in-season
+// fields (totefficiency, gamecontrolrank, etc) are genuinely empty right
+// now (preseason, ESPN computes them from actual games played) and will
+// populate automatically as the season progresses. No code change will
+// be needed when that happens — this just starts including more facts
+// the moment ESPN starts returning them, since the same daily scrape
+// already pulls the fields, they're just currently "--" or 0.
+function _cfbAnalysisFacts(g,mc){
+  const D=_CFB_DATA;
+  const h=g.home,a=g.away;
+  const hOff=D.stats[h]?.offense||{},aOff=D.stats[a]?.offense||{};
+  const hDef=D.stats[h]?.defenseAllowed||{},aDef=D.stats[a]?.defenseAllowed||{};
+  const hResume=D.resume[h]||{},aResume=D.resume[a]||{};
+  const hEff=D.efficiency[h]||{},aEff=D.efficiency[a]||{};
+  const hFpiRow=D.fpi[h]||{},aFpiRow=D.fpi[a]||{};
+  const _num=v=>{const n=parseFloat(v);return(v!=null&&v!=='--'&&!isNaN(n))?n:null;};
+  const facts={};
+
+  facts.hFpi=_num(hFpiRow.fpi);facts.aFpi=_num(aFpiRow.fpi);
+  facts.hFpiRank=_num(hFpiRow.fpirank);facts.aFpiRank=_num(aFpiRow.fpirank);
+  facts.fpiGap=(facts.hFpi!=null&&facts.aFpi!=null)?+(facts.hFpi-facts.aFpi).toFixed(1):null;
+
+  facts.neutralSite=!!g.neutralSite;
+  facts.hfa=_CFB_HFA;
+
+  facts.hOffPassYdsG=_num(hOff.passingYardsPerGame);facts.aOffPassYdsG=_num(aOff.passingYardsPerGame);
+  facts.hOffRushYdsG=_num(hOff.rushingYardsPerGame);facts.aOffRushYdsG=_num(aOff.rushingYardsPerGame);
+  facts.hOffTODiff=_num(hOff.turnOverDifferential);facts.aOffTODiff=_num(aOff.turnOverDifferential);
+  facts.hOff3rd=_num(hOff.thirdDownConvPct);facts.aOff3rd=_num(aOff.thirdDownConvPct);
+
+  facts.hDefPtsG=_num(hDef.totalPointsPerGame);facts.aDefPtsG=_num(aDef.totalPointsPerGame);
+  facts.hDefPassYdsG=_num(hDef.passingYardsPerGame);facts.aDefPassYdsG=_num(aDef.passingYardsPerGame);
+  facts.hDefRushYdsG=_num(hDef.rushingYardsPerGame);facts.aDefRushYdsG=_num(aDef.rushingYardsPerGame);
+
+  facts.hSosRank=_num(hResume.avgsosrank);facts.aSosRank=_num(aResume.avgsosrank);
+  facts.hRemSosRank=_num(hResume.sosremainingrank);facts.aRemSosRank=_num(aResume.sosremainingrank);
+  facts.hGameControlRank=_num(hResume.gamecontrolrank);facts.aGameControlRank=_num(aResume.gamecontrolrank);
+
+  facts.hTotEff=_num(hEff.totefficiency);facts.aTotEff=_num(aEff.totefficiency);
+  facts.hOffEff=_num(hEff.offefficiency);facts.aOffEff=_num(aEff.offefficiency);
+  facts.hDefEff=_num(hEff.defefficiency);facts.aDefEff=_num(aEff.defefficiency);
+
+  return facts;
+}
+// Builds a multi-sentence, pick-specific reasoning paragraph from the
+// shared facts — "focus" controls which factors lead (ML/SPREAD leans on
+// FPI+HFA+efficiency+resume; OU leans on offense/defense scoring trends),
+// "side" is 'home'|'away'|'over'|'under' so the framing argues FOR that
+// specific side rather than just describing the matchup neutrally.
+function _cfbPickReasoning(g,mc,f,focus){
+  const h=g.home,a=g.away;
+  const sents=[];
+
+  if(focus==='ML'||focus==='SPREAD'){
+    if(f.hFpi!=null&&f.aFpi!=null){
+      const gap=Math.abs(f.fpiGap);
+      sents.push(`FPI has ${h} at ${f.hFpi>=0?'+':''}${f.hFpi}${f.hFpiRank!=null?' (#'+f.hFpiRank+' nationally)':''} and ${a} at ${f.aFpi>=0?'+':''}${f.aFpi}${f.aFpiRank!=null?' (#'+f.aFpiRank+')':''} — a ${gap.toFixed(1)}-point model gap${gap>=10?', a significant edge':gap>=4?', a moderate edge':', essentially a toss-up on power rating alone'}.`);
+    }
+    if(f.neutralSite){
+      sents.push(`Neutral site (${g.venue||'no home team'}) — no home-field adjustment applied, so this is closer to a pure power-rating matchup than a typical campus game.`);
+    }else{
+      sents.push(`${h} is home, so the model applies its standard ${f.hfa}-point home-field adjustment to the projected margin — a fixed assumption baked into every non-neutral-site matchup, not something unique to this game.`);
+    }
+    if(f.hSosRank!=null&&f.aSosRank!=null){
+      sents.push(`Strength of schedule: ${h} ranks #${f.hSosRank} nationally, ${a} #${f.aSosRank} — ${Math.abs(f.hSosRank-f.aSosRank)<=15?'comparable schedule difficulty so far':(f.hSosRank<f.aSosRank?h+' has faced the tougher slate':a+' has faced the tougher slate')}.`);
+    }
+    if(f.hTotEff!=null&&f.aTotEff!=null){
+      sents.push(`Overall efficiency (0-100 scale, ~50 = average): ${h} ${f.hTotEff}, ${a} ${f.aTotEff}.`);
+    }else{
+      sents.push(`Efficiency ratings aren't populated yet this early in the season (ESPN computes them from actual games played) — will factor in automatically as they come online.`);
+    }
+    if(f.hOffTODiff!=null&&f.aOffTODiff!=null){
+      sents.push(`Turnover margin: ${h} ${f.hOffTODiff>=0?'+':''}${f.hOffTODiff}, ${a} ${f.aOffTODiff>=0?'+':''}${f.aOffTODiff} on the season — ${Math.abs(f.hOffTODiff-f.aOffTODiff)>=4?'a real disparity that tends to swing close games':'roughly a wash'}.`);
+    }
+  }
+
+  if(focus==='OU'){
+    if(f.hOffPassYdsG!=null&&f.aOffPassYdsG!=null&&f.hOffRushYdsG!=null&&f.aOffRushYdsG!=null){
+      sents.push(`2025 offense: ${h} averaged ${f.hOffPassYdsG.toFixed(0)} pass / ${f.hOffRushYdsG.toFixed(0)} rush yds/g, ${a} averaged ${f.aOffPassYdsG.toFixed(0)} pass / ${f.aOffRushYdsG.toFixed(0)} rush yds/g.`);
+    }
+    if(f.hDefPtsG!=null&&f.aDefPtsG!=null){
+      sents.push(`Defensively, ${h} allowed ${f.hDefPtsG.toFixed(1)} pts/g and ${a} allowed ${f.aDefPtsG.toFixed(1)} pts/g in 2025 — ${((f.hDefPtsG+f.aDefPtsG)/2)>=27?'both sides on the leakier end, supporting a higher total':((f.hDefPtsG+f.aDefPtsG)/2)<=20?'both defenses stingy, supporting a lower total':'a middle-of-the-road scoring environment'}.`);
+    }
+    if(!g.neutralSite){
+      sents.push(`${h} is home (${g.venue||'campus site'}), so the model's fixed home-field adjustment is already reflected in the margin used to derive this total — no separate total-specific crowd effect is applied beyond that.`);
+    }
+    sents.push(`MC sim projects ${mc.avgTotal} combined points across ${mc.n.toLocaleString()} simulations, independent of the FPI-based margin — driven purely by both teams' actual points-allowed averages.`);
+  }
+
+  return sents.filter(Boolean).join(' ');
+}
 function _cfbGameCard(g){
   const D=_CFB_DATA;
   const gid=g.id||(g.home+g.away+g.date);
@@ -6285,6 +6383,10 @@ function _cfbGameCard(g){
   const underP=1-overP;
   const hFpiTxt=`${_cfbRankLabel(g.home)}${g.homeName||g.home} FPI ${hFpi??'—'}`;
   const aFpiTxt=`${_cfbRankLabel(g.away)}${g.awayName||g.away} FPI ${aFpi??'—'}`;
+  const facts=_cfbAnalysisFacts(g,mc);
+  const mlReasoning=_cfbPickReasoning(g,mc,facts,'ML');
+  const spreadReasoning=_cfbPickReasoning(g,mc,facts,'SPREAD');
+  const ouReasoning=_cfbPickReasoning(g,mc,facts,'OU');
   return `<div class="card" style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
@@ -6295,10 +6397,10 @@ function _cfbGameCard(g){
     <div style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px;margin-bottom:5px">MONEYLINE</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       ${_cfbPickRow(g.home+' ML '+hML,hP,ml2d(hML),
-        `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+        `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims. ${mlReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})`)}
       ${_cfbPickRow(g.away+' ML '+aML,aP,ml2d(aML),
-        `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+        `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims. ${mlReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})`)}
     </div>
 
@@ -6312,10 +6414,10 @@ function _cfbGameCard(g){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       ${_cfbPickRow(spreadFav+' -'+spreadLine.toFixed(1),favCoverP,1.909,
-        `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims.`,
+        `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims. ${spreadReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine.toFixed(1)}','-110',${favCoverP.toFixed(3)})`)}
       ${_cfbPickRow(spreadDog+' +'+spreadLine.toFixed(1),dogCoverP,1.909,
-        `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright.`,
+        `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright. ${spreadReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadDog} +${spreadLine.toFixed(1)}','-110',${dogCoverP.toFixed(3)})`)}
     </div>
 
@@ -6329,10 +6431,10 @@ function _cfbGameCard(g){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       ${_cfbPickRow('OVER '+ouLine.toFixed(1),overP,1.909,
-        `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. Total driven by both teams' points-allowed averages, independent of the FPI-based margin.`,
+        `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. ${ouReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','OU','OVER ${ouLine.toFixed(1)}','-110',${overP.toFixed(3)},${ouLine.toFixed(1)})`)}
       ${_cfbPickRow('UNDER '+ouLine.toFixed(1),underP,1.909,
-        `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims.`,
+        `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims. ${ouReasoning}`,
         `lockCFBGame('${g.home}','${g.away}','OU','UNDER ${ouLine.toFixed(1)}','-110',${underP.toFixed(3)},${ouLine.toFixed(1)})`)}
     </div>
 
