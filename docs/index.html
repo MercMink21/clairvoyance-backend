@@ -736,6 +736,25 @@ body{line-height:1.5}
       <div id="cfb-games-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
     </div></div>
     <div id="cfb-tab-model" class="subp" style="display:none"><div class="sa">
+      <div class="sh"><span class="p"></span> MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">15K sims/game. FPI margin + capped yards/turnover/weather adjustments. Real per-venue forecast.</div></div>
+        <div class="card cp"><div class="ct">BAYESIAN</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Beta-binomial prior on this season's actual W-L record. Posterior updates per result.</div></div>
+        <div class="card cn"><div class="ct">ELO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">K=20, MOV-multiplier, built from real final scores (not FPI-derived). Ramps in as games are played.</div></div>
+      </div>
+      <div class="sh"><span class="p"></span> WEIGHTS</div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="cfb-wmc">65%</span></div><input type="range" id="cfb-w-mc" min="10" max="85" value="65" oninput="document.getElementById('cfb-wmc').textContent=this.value+'%';renderCFBEW()">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="cfb-wbay">20%</span></div><input type="range" id="cfb-w-bay" min="5" max="60" value="20" oninput="document.getElementById('cfb-wbay').textContent=this.value+'%';renderCFBEW()">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">ELO</span><span class="rrv" id="cfb-welo">15%</span></div><input type="range" id="cfb-w-elo" min="0" max="40" value="15" oninput="document.getElementById('cfb-welo').textContent=this.value+'%';renderCFBEW()">
+        <div style="font-family:var(--mono);font-size:18px;margin-top:7px" id="cfb-ews">SUM: 100%</div>
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:4px">Elo's actual contribution ramps in with real games played per matchup (0% preseason) regardless of this slider — see any game card's ENSEMBLE line for the effective weight used.</div>
+        <button class="btn btn-p btn-sm" style="margin-top:7px" onclick="applyCFBWeights()">APPLY</button>
+      </div>
+      <div id="cfb-model-weights"></div>
+      <div class="sh" style="margin-top:14px"><span class="p"></span> FPI POWER RANKINGS</div>
       <div id="cfb-model-content"><div class="loading"><span class="spi"></span> LOADING…</div></div>
     </div></div>
     <div id="cfb-tab-config" class="subp" style="display:none"><div class="sa">
@@ -6119,8 +6138,9 @@ function loadCFBData(){
 // come in, which is disclosed in the reasoning text rather than presented
 // as if it already reflects a full season of form.
 function _cfbBuildElo(weeks){
-  const elo={},gamesPlayed={};
+  const elo={},gamesPlayed={},records={};
   const rating=abbr=>elo[abbr]??(elo[abbr]=1500);
+  const rec=abbr=>records[abbr]??(records[abbr]={w:0,l:0});
   const games=[];
   Object.values(weeks||{}).forEach(list=>(list||[]).forEach(g=>{
     if(g.homeScore!=null&&g.awayScore!=null&&g.date)games.push(g);
@@ -6141,10 +6161,22 @@ function _cfbBuildElo(weeks){
     elo[g.away]=aR+k*((1-hWon)-(1-hExp));
     gamesPlayed[g.home]=(gamesPlayed[g.home]||0)+1;
     gamesPlayed[g.away]=(gamesPlayed[g.away]||0)+1;
+    if(margin>0){rec(g.home).w++;rec(g.away).l++;}
+    else if(margin<0){rec(g.away).w++;rec(g.home).l++;}
   });
-  return{ratings:elo,gamesPlayed};
+  return{ratings:elo,gamesPlayed,records};
 }
 function cfbEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
+// Beta-binomial posterior on this season's actual W-L record, same family
+// as MLB's getBayes/NBA's nbaGetBayes — Beta(1,1) uniform prior so a
+// winless/lossless team (preseason, 0 games) sits exactly at .5 rather
+// than a biased guess, and it sharpens toward the real win rate as
+// results come in.
+function _cfbBayes(abbr){
+  const D=_CFB_DATA;
+  const r=D?.elo?.records?.[abbr]||{w:0,l:0};
+  return{m:(r.w+1)/(r.w+r.l+2),w:r.w,l:r.l};
+}
 loadCFBData();
 
 // League-average combined score, used as a fallback when a team's own
@@ -6167,7 +6199,18 @@ function _boxMullerZ(){
 function cfbMC(hA,awA,n,ouLine,g){
   const D=_CFB_DATA;if(!D)return null;
   const fpiH=parseFloat(D.fpi[hA]?.fpi),fpiA=parseFloat(D.fpi[awA]?.fpi);
-  if(isNaN(fpiH)||isNaN(fpiA))return null;
+  const hasFpi=!isNaN(fpiH)&&!isNaN(fpiA);
+  // FBS-vs-FCS "buy games" are common (especially Weeks 1-2) — the FCS
+  // side genuinely has no FPI (ESPN's FPI is FBS-only) and no entry in
+  // our stats pipeline (FBS-only roster), so this used to bail out
+  // entirely and show no card at all for a game the FBS side clearly has
+  // real data for. When FPI is missing but a real market spread exists
+  // (sportsbooks post lines for these games same as any other), use the
+  // market's own implied margin as the base instead — the market already
+  // has real information about the FCS side that we don't. Still bails
+  // out (returns null) only when there's truly no signal of any kind.
+  const marketMargin=(g&&g.spread!=null)?-parseFloat(g.spread):null; // ESPN convention: negative spread = home favored
+  if(!hasFpi&&marketMargin==null)return null;
   const _n=v=>{const x=parseFloat(v);return isNaN(x)?null:x;};
   const hOff=D.stats[hA]?.offense||{},aOff=D.stats[awA]?.offense||{};
   const hDefAllowed=D.stats[hA]?.defenseAllowed||{},aDefAllowed=D.stats[awA]?.defenseAllowed||{};
@@ -6177,7 +6220,9 @@ function cfbMC(hA,awA,n,ouLine,g){
   // point-scale power rating. Yardage and turnover matchup data are folded
   // in as small, capped adjustments on top, never allowed to swing the
   // margin more than a few points, so no single stat category can dominate
-  // or double-count what FPI already reflects.
+  // or double-count what FPI already reflects. When falling back to the
+  // market margin instead, the same capped adjustments still apply using
+  // whichever side (usually just the FBS team) has real stats.
   let yardsAdjPts=0;
   const hOffYds=(_n(hOff.passingYardsPerGame)??0)+(_n(hOff.rushingYardsPerGame)??0);
   const aDefYdsAllowed=(_n(aDefAllowed.passingYardsPerGame)??0)+(_n(aDefAllowed.rushingYardsPerGame)??0);
@@ -6202,10 +6247,20 @@ function cfbMC(hA,awA,n,ouLine,g){
     toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
   }
 
-  const margin0=(fpiH-fpiA)+_CFB_HFA+yardsAdjPts+toAdjPts;
+  // FPI is explicitly "vs an average opponent on a neutral field" (ESPN's
+  // own definition), so home-field still needs to be added on top of an
+  // FPI-based margin. A market spread, by contrast, is a sportsbook's
+  // final number and already has HFA priced into it — adding _CFB_HFA
+  // again on top would double-count it.
+  const margin0=hasFpi?((fpiH-fpiA)+_CFB_HFA+yardsAdjPts+toAdjPts):(marketMargin+yardsAdjPts+toAdjPts);
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
-  let baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed):_CFB_LG_TOTAL;
+  // FCS opponents have no defenseAllowed entry (FBS-only stats pipeline) —
+  // fall back to just the FBS side's own allowed average plus a modest
+  // assumed FCS-offense floor, rather than the full league-average total,
+  // since an FBS-vs-FCS total is realistically lopsided, not average.
+  let baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed)
+    :(hAllowed!=null?hAllowed+17:aAllowed!=null?aAllowed+17:_CFB_LG_TOTAL);
   // Real per-venue forecast (wind/rain/cold), when it's already been
   // prefetched into _CFB_WX_CACHE by _cfbPrefetchWeather -- capped nudge,
   // same philosophy as the yards/turnover adjustments above.
@@ -6235,7 +6290,7 @@ function cfbMC(hA,awA,n,ouLine,g){
     avgH:+((avgTotal+avgMargin)/2).toFixed(1),avgA:+((avgTotal-avgMargin)/2).toFixed(1),
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
     n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
-    wx,wxImpact,
+    wx,wxImpact,hasFpi,marketMargin,
   };
 }
 // Analytical cover probability for an arbitrary spread/total line, reusing
@@ -6246,25 +6301,39 @@ function cfbMC(hA,awA,n,ouLine,g){
 function _cfbCoverProb(mean,sigma,line){
   return 1-normalCDF((line-mean)/sigma);
 }
+// User-adjustable MC/BAYESIAN/ELO blend weights, same shape and same
+// per-sport persisted-settings pattern as MLB's ENS/applyEW and the
+// hockey leagues' HOCKEY_ENS/applyHockeyWeights -- CFB gets its own
+// MODEL tab with matching sliders (renderCFBModel/applyCFBWeights)
+// instead of the fixed automatic-weighting this used before.
+window.CFB_ENS=window.CFB_ENS||(typeof S!=='undefined'?S.g('cfb_ens'):null)||{mc:.65,bay:.20,elo:.15};
 function cfbEns(hA,awA,ouLine,g){
-  const mc=cfbMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,mcD:null};
+  const mc=cfbMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
   const D=_CFB_DATA;
   const eloR=D?.elo?.ratings||{},gp=D?.elo?.gamesPlayed||{};
   const hElo=eloR[hA]??1500,aElo=eloR[awA]??1500;
   const eloP=cfbEloWP(hElo,aElo);
-  // Elo's blend weight scales with how many real games have actually
-  // fed it -- 0 games played means Elo is still flat at 1500 for both
-  // teams (a coin flip, i.e. no real signal), so it should contribute
-  // ~nothing yet rather than dragging a genuine FPI-based edge back
-  // toward 50/50. Caps at 20% weight once both teams have a handful of
-  // results in, deliberately kept a minority weight since FPI already
-  // incorporates far more per-game detail than a plain win/loss Elo does.
-  const gamesForWeight=Math.min(gp[hA]||0,gp[awA]||0);
-  const eloWeight=Math.min(.20,gamesForWeight*.04);
-  let p=mc.hwP*(1-eloWeight)+eloP*eloWeight;
+  const hBay=_cfbBayes(hA),aBay=_cfbBayes(awA);
+  const bayP=Math.min(.92,Math.max(.08,hBay.m/(hBay.m+aBay.m)+.02)); // +2pp home-field nudge, same shape as MLB's getBayes hfa bump
+  const W=window.CFB_ENS||{mc:.65,bay:.20,elo:.15};
+  // Elo's configured weight still ramps in with how many real games have
+  // actually fed it -- 0 games played means Elo sits flat at 1500 for
+  // both teams (a coin flip, i.e. no real signal yet), so even if the
+  // user sets ELO to 15%, it shouldn't drag a genuine FPI-based edge
+  // toward 50/50 before there's anything to compute Elo from. The weight
+  // it isn't using yet gets redistributed proportionally to MC/BAY so
+  // the three still sum to the user's configured total.
+  const gamesForRamp=Math.min(gp[hA]||0,gp[awA]||0);
+  const eloRamp=Math.min(1,gamesForRamp/5);
+  const effEloW=W.elo*eloRamp;
+  const redistrib=W.elo-effEloW;
+  const mcShare=W.mc/((W.mc+W.bay)||1);
+  const effMcW=W.mc+redistrib*mcShare;
+  const effBayW=W.bay+redistrib*(1-mcShare);
+  let p=mc.hwP*effMcW+bayP*effBayW+eloP*effEloW;
   p=Math.min(.92,Math.max(.08,p));
   p=typeof sportCalibrate==='function'?sportCalibrate(p,'CFB'):p;
-  return{p,mc:mc.hwP,elo:eloP,eloWeight,mcD:mc};
+  return{p,mc:mc.hwP,bay:bayP,elo:eloP,eloWeight:effEloW,mcD:mc};
 }
 
 // ═══ CFB UI ═══════════════════════════════════════════════════════════
@@ -6444,7 +6513,7 @@ function cfbWeatherImpact(wx){
   totalAdj=Math.max(-6.5,Math.min(1,totalAdj));
   return{totalAdj:+totalAdj.toFixed(2),label:notes.join(' · ')};
 }
-function _cfbAnalysisFacts(g,mc){
+function _cfbAnalysisFacts(g,mc,ens){
   const D=_CFB_DATA;
   const h=g.home,a=g.away;
   const hOff=D.stats[h]?.offense||{},aOff=D.stats[a]?.offense||{};
@@ -6465,10 +6534,12 @@ function _cfbAnalysisFacts(g,mc){
   const _eloR=D.elo?.ratings||{},_eloGp=D.elo?.gamesPlayed||{};
   facts.hElo=Math.round(_eloR[h]??1500);facts.aElo=Math.round(_eloR[a]??1500);
   facts.hEloGames=_eloGp[h]||0;facts.aEloGames=_eloGp[a]||0;
-  // Mirrors cfbEns's own weight formula so the reasoning text always
-  // describes the exact weight actually used in the probability, not an
-  // approximation of it.
-  facts.eloWeight=+Math.min(.20,Math.min(facts.hEloGames,facts.aEloGames)*.04).toFixed(2);
+  // Pulled straight from cfbEns's own return value rather than
+  // re-derived, so the reasoning text always describes the exact weight
+  // actually used in the probability -- including the user's configured
+  // MC/BAY/ELO slider weights from the Model tab, not just the ramp.
+  facts.eloWeight=ens?.eloWeight??0;
+  facts.hBay=_cfbBayes(h);facts.aBay=_cfbBayes(a);
 
   facts.hOffPassYdsG=_num(hOff.passingYardsPerGame);facts.aOffPassYdsG=_num(aOff.passingYardsPerGame);
   facts.hOffRushYdsG=_num(hOff.rushingYardsPerGame);facts.aOffRushYdsG=_num(aOff.rushingYardsPerGame);
@@ -6512,6 +6583,9 @@ function _cfbPickReasoning(g,mc,f,focus){
     if(f.hFpi!=null&&f.aFpi!=null){
       const gap=Math.abs(f.fpiGap);
       sents.push(`FPI has ${h} at ${f.hFpi>=0?'+':''}${f.hFpi}${f.hFpiRank!=null?' (#'+f.hFpiRank+' nationally)':''} and ${a} at ${f.aFpi>=0?'+':''}${f.aFpi}${f.aFpiRank!=null?' (#'+f.aFpiRank+')':''} — a ${gap.toFixed(1)}-point model gap${gap>=10?', a significant edge':gap>=4?', a moderate edge':', essentially a toss-up on power rating alone'}.`);
+    }else if(mc.hasFpi===false){
+      const fcsSide=f.hFpi==null?h:a;
+      sents.push(`${fcsSide} has no FPI rating — almost certainly an FCS opponent, which ESPN's FPI doesn't cover. This projection uses the actual market spread (${g.spreadDetails||(g.spread!=null?g.spread:'n/a')}) as its margin base instead of FPI, since the market has real information on the FCS side that this model's own stats pipeline doesn't.`);
     }
     if(f.neutralSite){
       sents.push(`Neutral site (${g.venue||'no home team'}) — no home-field adjustment applied, so this is closer to a pure power-rating matchup than a typical campus game.`);
@@ -6527,9 +6601,9 @@ function _cfbPickReasoning(g,mc,f,focus){
       sents.push(`Efficiency ratings aren't populated yet this early in the season (ESPN computes them from actual games played) — will factor in automatically as they come online.`);
     }
     if(f.hEloGames>0||f.aEloGames>0){
-      sents.push(`Elo (built from this season's own final scores, separate from FPI): ${h} ${f.hElo} (${f.hEloGames} game${f.hEloGames===1?'':'s'} played), ${a} ${f.aElo} (${f.aEloGames}) — currently weighted ${(f.eloWeight*100).toFixed(0)}% into the win probability, capped at 20% and scaling up as both teams accumulate more results.`);
+      sents.push(`Elo (built from this season's own final scores, separate from FPI): ${h} ${f.hElo} (${f.hEloGames} game${f.hEloGames===1?'':'s'} played), ${a} ${f.aElo} (${f.aEloGames}) — currently weighted ${(f.eloWeight*100).toFixed(0)}% into the win probability, ramping toward the Model tab's configured Elo weight as both teams accumulate more results. Bayesian W-L: ${h} ${f.hBay.w}-${f.hBay.l}, ${a} ${f.aBay.w}-${f.aBay.l}.`);
     }else{
-      sents.push(`Elo hasn't differentiated yet — neither team has a completed game this season to build it from, so it starts flat at 1500 and contributes 0% to the win probability right now. It'll pick up real weight once games are on the board.`);
+      sents.push(`Elo hasn't differentiated yet — neither team has a completed game this season to build it from, so it starts flat at 1500 and contributes 0% to the win probability right now regardless of the Model tab's configured Elo weight. Bayesian W-L is similarly uninformative at 0-0 for both teams. Both will pick up real weight once games are on the board.`);
     }
     if(f.hOffTODiff!=null&&f.aOffTODiff!=null){
       sents.push(`Turnover margin: ${h} ${f.hOffTODiff>=0?'+':''}${f.hOffTODiff}, ${a} ${f.aOffTODiff>=0?'+':''}${f.aOffTODiff} on the season — ${Math.abs(f.hOffTODiff-f.aOffTODiff)>=4?'a real disparity that tends to swing close games':'roughly a wash'}.`);
@@ -6605,10 +6679,20 @@ function _cfbGameCard(g){
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
   const hFpi=D.fpi[g.home]?.fpi,aFpi=D.fpi[g.away]?.fpi;
   if(!mc){
+    // cfbMC() now falls back to the real market spread whenever FPI is
+    // missing (the common FBS-vs-FCS "buy game" case), so this only still
+    // bails out when there's truly no signal at all: no FPI for either
+    // team AND no market spread posted yet either.
+    const hMissing=D.fpi[g.home]==null,aMissing=D.fpi[g.away]==null;
+    const noFpiReason=(hMissing&&aMissing)?`Neither ${g.home} nor ${g.away} has an FPI rating`
+      :hMissing?`${g.home} has no FPI rating`:aMissing?`${g.away} has no FPI rating`:null;
+    const msg=noFpiReason
+      ?`${noFpiReason} — likely an FCS (non-FBS) opponent, which ESPN's FPI doesn't cover — and no market spread has been posted yet to fall back to. No model projection is generated without one.`
+      :`Insufficient FPI/stats data for this matchup yet.`;
     return`<div class="card" style="margin-bottom:12px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
       <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr} · ${g.venue||''}</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">Insufficient FPI/stats data for this matchup yet.</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">${msg}</div>
     </div>`;
   }
   const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
@@ -6629,7 +6713,7 @@ function _cfbGameCard(g){
   const underP=1-overP;
   const hFpiTxt=`${_cfbRankLabel(g.home)}${g.homeName||g.home} FPI ${hFpi??'—'}`;
   const aFpiTxt=`${_cfbRankLabel(g.away)}${g.awayName||g.away} FPI ${aFpi??'—'}`;
-  const facts=_cfbAnalysisFacts(g,mc);
+  const facts=_cfbAnalysisFacts(g,mc,ens);
   // Evaluate all 6 markets through the same shared multi-factor scorer
   // MLB/NBA use (grades each market PREMIUM/OPTIMAL/LEAN/SKIP), but keep
   // three separate reasoning paragraphs — one each for ML/SPREAD/O-U —
@@ -6679,6 +6763,7 @@ function _cfbGameCard(g){
         <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">BEST MARKET: <strong style="color:var(--t2)">${nm.best.label}</strong> · ${(nm.best.prob*100).toFixed(1)}% · EV ${nm.best.evVal>=0?'+':''}${(nm.best.evVal*100).toFixed(1)}%</span>
       </div>
       <div style="margin-bottom:8px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px">MARKET SCAN: ${nm.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+      <div style="margin-bottom:8px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px">ENSEMBLE: MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}% win prob (weighted MC/BAY/ELO ${(100-ens.eloWeight*100).toFixed(0)}%/ELO ${(ens.eloWeight*100).toFixed(0)}% blend applied — see MODEL tab to adjust)</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">MONEYLINE REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${mlReasoning}</div></div>
         <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">SPREAD REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${sprdReasoning}</div></div>
@@ -6709,13 +6794,40 @@ function renderCFBGames(){
     if(stillEl)stillEl.innerHTML=games.map(_cfbGameCard).join('');
   });
 }
+// Slider ids cfb-w-mc/cfb-w-bay/cfb-w-elo, persisted key 'cfb_ens' —
+// same shape as MLB's w-mc/w-bay/w-elo + renderEW/applyEW pair.
+function renderCFBEW(){
+  const mc=+document.getElementById('cfb-w-mc')?.value||65,bay=+document.getElementById('cfb-w-bay')?.value||20,elo=+document.getElementById('cfb-w-elo')?.value||15;
+  const sum=mc+bay+elo;const el=document.getElementById('cfb-ews');
+  if(el){el.textContent=`SUM: ${sum}% ${sum!==100?'// NORMALIZES':'✓'}`;el.style.color=sum===100?'var(--nc)':'var(--vc)';}
+}
+function applyCFBWeights(){
+  const mc=+document.getElementById('cfb-w-mc')?.value||65,bay=+document.getElementById('cfb-w-bay')?.value||20,elo=+document.getElementById('cfb-w-elo')?.value||15;
+  const s=mc+bay+elo||100;
+  window.CFB_ENS={mc:mc/s,bay:bay/s,elo:elo/s};
+  if(typeof S!=='undefined')S.s('cfb_ens',window.CFB_ENS);
+  toast('// CFB WEIGHTS APPLIED');
+  renderCFBModelWeights();
+  if(window._cfbActiveTab==='games')renderCFBGames();
+}
+function renderCFBModelWeights(){
+  const el=document.getElementById('cfb-model-weights');if(!el)return;
+  const W=window.CFB_ENS||{mc:.65,bay:.20,elo:.15};
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:8px">ACTIVE WEIGHTS — MC:${Math.round(W.mc*100)}% · BAYESIAN:${Math.round(W.bay*100)}% · ELO:${Math.round(W.elo*100)}% (Elo ramps toward this as real games are played)</div>`;
+}
 function renderCFBModel(){
   const el=document.getElementById('cfb-model-content');if(!el)return;
   const D=_CFB_DATA;if(!D){el.innerHTML='<div class="loading"><span class="spi"></span></div>';return;}
+  const W=window.CFB_ENS||{mc:.65,bay:.20,elo:.15};
+  const mcEl=document.getElementById('cfb-w-mc'),bayEl=document.getElementById('cfb-w-bay'),eloEl=document.getElementById('cfb-w-elo');
+  if(mcEl){mcEl.value=Math.round(W.mc*100);document.getElementById('cfb-wmc').textContent=mcEl.value+'%';}
+  if(bayEl){bayEl.value=Math.round(W.bay*100);document.getElementById('cfb-wbay').textContent=bayEl.value+'%';}
+  if(eloEl){eloEl.value=Math.round(W.elo*100);document.getElementById('cfb-welo').textContent=eloEl.value+'%';}
+  renderCFBEW();
+  renderCFBModelWeights();
   const rows=Object.entries(D.fpi).map(([abbr,s])=>({abbr,...s}))
     .filter(r=>r.fpirank).sort((a,b)=>parseInt(a.fpirank)-parseInt(b.fpirank)).slice(0,50);
-  el.innerHTML=`<div class="sh" style="margin-bottom:8px">FPI POWER RANKINGS (TOP 50)</div>
-  <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:10px">FPI = expected point margin vs an average opponent on a neutral field. Data updates daily via ESPN.</div>
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:10px">FPI = expected point margin vs an average opponent on a neutral field. Data updates daily via ESPN.</div>
   ${rows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06)">
     <span style="font-family:var(--mono);font-size:15px;color:var(--t3);width:36px">#${r.fpirank}</span>
     <span style="font-family:var(--orb);font-size:16px;font-weight:700;flex:1">${_cfbRankLabel(r.abbr)}${r.abbr}</span>
