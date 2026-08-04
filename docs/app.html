@@ -6313,12 +6313,17 @@ function renderCFBConfig(){
 function lockCFBGame(hA,awA,betType,betOn,ml,winProb,ouLine){
   const dec=ml2d(ml);
   const id=`cfb_${today()}_${hA}_${awA}_${betType}_${betOn.replace(/\s+/g,'')}`;
-  const pred={id,date:today(),hA,awA,sport:'CFB',betType,betOn,winProb,ml,decOdds:dec,
+  // sport:'FOOTBALL' (broad) + league:'CFB' (specific) — safe now that
+  // _normSport() prefers the league field over an ambiguous broad sport
+  // tag (fixed alongside this so 'FOOTBALL' can't get mis-read as NFL,
+  // which it otherwise would since _normSport treats FOOTBALL as an NFL
+  // synonym on its own).
+  const pred={id,date:today(),hA,awA,sport:'FOOTBALL',league:'CFB',betType,betOn,winProb,ml,decOdds:dec,
     ou:ouLine!=null?ouLine:null,wager:0,outcome:'pending',lockedAt:Date.now()};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();
   toast('// CFB LOCKED: '+betOn);
-  try{window.showBetPopup({type:'lock',betOn,sport:'CFB',league:'CFB',betType,ml,prob:winProb,decOdds:dec});}catch(e){}
+  try{window.showBetPopup({type:'lock',betOn,sport:'FOOTBALL',league:'CFB',betType,ml,prob:winProb,decOdds:dec});}catch(e){}
 }
 // Same settlement shape/fixes as autoSettleNBA/autoSettleFromESPN
 // (AND-logic same-game match, today-only, case-insensitive OVER, trailing-
@@ -6339,7 +6344,10 @@ async function autoSettleCFB(){
       const hn=home?.team?.abbreviation,an=away?.team?.abbreviation;
       const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
       for(const p of preds){
-        if(p.outcome!=='pending'||p.sport!=='CFB')continue;
+        // _normSport() rather than a raw p.sport check — picks are now
+        // tagged sport:'FOOTBALL'/league:'CFB', so this correctly matches
+        // regardless of which field ended up holding 'CFB'.
+        if(p.outcome!=='pending'||_normSport(p)!=='CFB')continue;
         if(p.date!==today())continue;
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
@@ -6365,7 +6373,7 @@ async function autoSettleCFB(){
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
           toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');
           try{notifySettlement(p.betOn,outcome);}catch(e){}
-          try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'CFB',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
+          try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'FOOTBALL',league:'CFB',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
         }
       }
     }
@@ -18149,8 +18157,15 @@ function _broadSportOf(tag){
 window._broadSportOf=_broadSportOf;
 // Sport normalization — infers correct sport from pick metadata
 function _normSport(p){
-  // Explicit sport field always wins
-  const raw=(p.sport||p.league||'').toUpperCase().trim();
+  // Explicit sport field always wins — EXCEPT when it's a broad/ambiguous
+  // bucket (FOOTBALL/BASKETBALL/HOCKEY/SOCCER/BASEBALL) and a specific
+  // league field also exists, since a plain "FOOTBALL" sport tag can't by
+  // itself distinguish NFL from CFB (the checks below treat FOOTBALL as
+  // an NFL synonym specifically) — league is the more specific signal in
+  // that case, so it wins instead.
+  const _broadAmbiguous=new Set(['FOOTBALL','BASKETBALL','HOCKEY','SOCCER','BASEBALL']);
+  const _sportUp=(p.sport||'').toUpperCase().trim();
+  const raw=((_broadAmbiguous.has(_sportUp)&&p.league)?p.league:(p.sport||p.league||'')).toUpperCase().trim();
   if(raw==='MLB'||raw==='BASEBALL')return'MLB';
   if(raw==='NHL'||raw==='HOCKEY'||raw==='ICE HOCKEY')return'NHL';
   if(raw==='WNBA')return'WNBA';
