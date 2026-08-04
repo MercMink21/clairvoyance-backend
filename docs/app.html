@@ -6423,24 +6423,25 @@ async function _cfbPrefetchWeather(games){
 // team, not modeled per-team here so only the total is adjusted), cold and
 // snow suppress scoring (snow games are historically low-scoring — footing,
 // grip, visibility all degrade), heavy rain suppresses scoring and raises
-// turnover-driven variance. Capped at +/-4.5 points on the total (widened
-// from +/-3 to let a real snow game register — a 90%+ heavy-snow forecast
-// is a genuinely large scoring depressant, not a minor nudge), same
-// capped-nudge philosophy as cfbMC's yardsAdjPts/toAdjPts — a real signal,
-// but never allowed to dominate the FPI/points-allowed-based projection.
+// turnover-driven variance. Capped at +/-6.5 points on the total (widened
+// from +/-4.5 so a heavy-snow game — the single largest depressant here —
+// can register in full rather than getting clipped by a lower-magnitude
+// cap meant for wind/rain alone), same capped-nudge philosophy as
+// cfbMC's yardsAdjPts/toAdjPts — a real signal, but never allowed to
+// dominate the FPI/points-allowed-based projection.
 function cfbWeatherImpact(wx){
   if(!wx)return{totalAdj:0,label:''};
   let totalAdj=0;const notes=[];
   const wind=wx.wind||0,precip=wx.precip||0,temp=wx.temp!=null?wx.temp:65,snow=wx.snow||0;
   if(wind>=20){totalAdj-=2.5;notes.push(`${wind}mph wind`);}
   else if(wind>=12){totalAdj-=1.0;notes.push(`${wind}mph wind`);}
-  if(snow>=0.3){totalAdj-=2.5;notes.push(`heavy snow (${snow}"/hr)`);}
+  if(snow>=0.3){totalAdj-=6.5;notes.push(`heavy snow (${snow}"/hr)`);}
   else if(snow>0){totalAdj-=1.2;notes.push(`snow (${snow}"/hr)`);}
   if(precip>=70){totalAdj-=1.5;notes.push('high rain risk');}
   else if(precip>=40){totalAdj-=0.5;notes.push('rain possible');}
   if(temp<25){totalAdj-=1.5;notes.push('hard freeze');}
   else if(temp<40){totalAdj-=0.7;notes.push('cold');}
-  totalAdj=Math.max(-4.5,Math.min(1,totalAdj));
+  totalAdj=Math.max(-6.5,Math.min(1,totalAdj));
   return{totalAdj:+totalAdj.toFixed(2),label:notes.join(' · ')};
 }
 function _cfbAnalysisFacts(g,mc){
