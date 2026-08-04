@@ -6793,6 +6793,56 @@ function _cfbOuLockDir(hA,awA,baseOverP,baseL,inputId,dir){
   const p=dir==='OVER'?np:1-np;
   lockCFBGame(hA,awA,'OU',dir+' '+nl.toFixed(1),'-110',p,nl);
 }
+// Matchup comparison radar — same hand-drawn SVG polygon technique the
+// Overall/Analytics tab's "SPORT RADAR" already uses (sportCardSVG, see
+// renderOverallAnalytics), extended to two overlaid datasets (home/away)
+// instead of one. No external chart library, consistent with how every
+// other visual in this app is built.
+// Six axes, each a real scraped/computed input normalized to 0-100 —
+// never a fabricated percentile. Missing data for a specific axis falls
+// back to 50 (a neutral midpoint), same fallback-to-average convention
+// cfbMC() itself already uses for missing points-allowed data, rather
+// than collapsing that axis to 0 (which would misleadingly read as
+// "worst possible" instead of "unknown").
+function _cfbRadarAxisValues(abbr,f,side){
+  const D=_CFB_DATA;
+  const st=D.stats[abbr]?.specialTeams||{};
+  const _n=v=>{const x=parseFloat(v);return(v!=null&&v!=='--'&&!isNaN(x))?x:null;};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  const offYds=(side==='h'?((f.hOffPassYdsG??0)+(f.hOffRushYdsG??0)):((f.aOffPassYdsG??0)+(f.aOffRushYdsG??0)))||null;
+  const defPts=side==='h'?f.hDefPtsG:f.aDefPtsG;
+  const toDiff=side==='h'?f.hOffTODiff:f.aOffTODiff;
+  const sosRank=side==='h'?f.hSosRank:f.aSosRank;
+  const fgPct=_n(st.fieldGoalPct),netPunt=_n(st.netAvgPuntYards);
+  const stScore=(fgPct!=null||netPunt!=null)
+    ?((fgPct!=null?clamp(fgPct,60,95):50)*.6+(netPunt!=null?clamp(netPunt,34,45):50)*.4)
+    :50;
+  return[
+    clamp(offYds,250,550),
+    100-clamp(defPts,15,45),
+    stScore,
+    clamp(toDiff,-12,12),
+    sosRank!=null?100-clamp(sosRank,1,134):50,
+    clamp(_cfbTeamHFA(abbr),0,6),
+  ];
+}
+function _cfbMatchupRadarSVG(g,f){
+  const labels=['OFFENSE','DEFENSE','SPEC TEAMS','TURNOVERS','SOS','HOME EDGE'];
+  const hVals=_cfbRadarAxisValues(g.home,f,'h'),aVals=_cfbRadarAxisValues(g.away,f,'a');
+  const ax=6,CX=60,CY=60,R=44;
+  const hCol='#2a78d6',aCol='#eb6834';
+  const pts=r=>Array.from({length:ax},(_,i)=>{const a=-Math.PI/2+(i/ax)*2*Math.PI;return[CX+r*Math.cos(a),CY+r*Math.sin(a)];});
+  const polyStr=ps=>ps.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const rings=[.25,.5,.75,1].map(r=>`<polygon points="${polyStr(pts(R*r))}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1"/>`).join('');
+  const axes=pts(R).map(([x,y])=>`<line x1="${CX}" y1="${CY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>`).join('');
+  const dataPoly=(vals,col)=>`<polygon points="${polyStr(vals.map((v,i)=>{const a=-Math.PI/2+(i/ax)*2*Math.PI;const r=R*(v/100);return[CX+r*Math.cos(a),CY+r*Math.sin(a)];}))}" fill="${col}22" stroke="${col}" stroke-width="1.5"/>`;
+  const axLabels=pts(R+14).map(([x,y],i)=>`<text x="${x.toFixed(1)}" y="${(y+3).toFixed(1)}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="rgba(220,190,255,.6)">${labels[i]}</text>`).join('');
+  return`<svg viewBox="0 0 120 120" width="100%" height="220" style="display:block">${rings}${axes}${dataPoly(hVals,hCol)}${dataPoly(aVals,aCol)}${axLabels}<circle cx="${CX}" cy="${CY}" r="1.5" fill="rgba(255,255,255,.3)"/></svg>`;
+}
+function _cfbToggleRadar(gidSafe){
+  const el=document.getElementById('radar_cfb_'+gidSafe);
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
+}
 function _cfbGameCard(g){
   const D=_CFB_DATA;
   const ens=cfbEns(g.home,g.away,g.overUnder,g);
@@ -6873,7 +6923,17 @@ function _cfbGameCard(g){
         <div class="gsp">${g.venue||''}${g.neutralSite?' (Neutral)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}</div>
         ${g.spreadDetails?`<div class="gsp">Market: ${g.spreadDetails}${g.overUnder!=null?' · O/U '+g.overUnder:''}</div>`:''}
       </div>
-      <div style="text-align:right"><div class="np mono" style="font-size:19px">${timeStr}</div></div>
+      <div style="text-align:right">
+        <div class="np mono" style="font-size:19px">${timeStr}</div>
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px;margin-top:3px" onclick="event.stopPropagation();_cfbToggleRadar('${gidSafe}')">COMPARE</button>
+      </div>
+    </div>
+    <div id="radar_cfb_${gidSafe}" style="display:none;padding:8px 10px 4px;border-bottom:1px solid rgba(255,110,20,.1)">
+      <div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">
+        <span style="color:#2a78d6">■ ${g.home}</span><span style="color:#eb6834">■ ${g.away}</span>
+      </div>
+      ${_cfbMatchupRadarSVG(g,facts)}
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real scraped/computed stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). Home edge reflects each team's own team-specific HFA, not just today's home team.</div>
     </div>
     ${mc.wx?weatherBadge(mc.wx,g.home):''}
     <div class="brow">
