@@ -61,11 +61,24 @@ def fetch_team_conference(team_id: str) -> dict | None:
         r.raise_for_status()
         t = r.json().get("team", {})
         groups = t.get("groups") or {}
+        venue = t.get("venue") or {}
         return {
             "id": t.get("id"),
             "abbr": t.get("abbreviation"),
             "name": t.get("displayName"),
             "confId": groups.get("id"),
+            # Stadium capacity, piggybacked on the same per-team detail call
+            # already made to resolve conference membership -- no extra API
+            # calls needed. Used to derive a team-specific home-field-
+            # advantage weight (a 100k-seat stadium plausibly provides a
+            # bigger real edge than a 20k-seat one), rather than treating
+            # every program's home crowd as identical. ESPN's field name
+            # for this varies by whether the venue record is fully
+            # populated; capacity is None when ESPN doesn't have it for a
+            # given school rather than guessed.
+            "venueCapacity": venue.get("capacity"),
+            "venueName": venue.get("fullName"),
+            "venueIndoor": venue.get("indoor"),
         }
     except Exception as e:
         _log(f"  team {team_id} FAILED: {e}")
@@ -91,7 +104,12 @@ def build_roster() -> dict:
             continue
         conf_name = TARGET_CONFERENCES.get(str(info["confId"]))
         if conf_name:
-            roster[conf_name].append({"id": info["id"], "abbr": info["abbr"], "name": info["name"]})
+            roster[conf_name].append({
+                "id": info["id"], "abbr": info["abbr"], "name": info["name"],
+                "venueCapacity": info.get("venueCapacity"),
+                "venueName": info.get("venueName"),
+                "venueIndoor": info.get("venueIndoor"),
+            })
         time.sleep(0.15)
 
     for conf, teams in roster.items():
