@@ -6311,35 +6311,6 @@ function _cfbRankLabel(abbr){
   const D=_CFB_DATA;const r=D?.rankByAbbr?.[abbr];
   return r?`#${r.rank} `:'';
 }
-window._cfbLineAdj=window._cfbLineAdj||{}; // {gameId:{spread:0,ou:0}} — ±0.5 increments from the base line
-function _cfbAdjLine(gid,field,delta){
-  if(!window._cfbLineAdj[gid])window._cfbLineAdj[gid]={spread:0,ou:0};
-  window._cfbLineAdj[gid][field]+=delta;
-  renderCFBGames();
-}
-function _cfbGradeInfo(p,dec){
-  const e=ev(p,dec);
-  const t=tier(p,e,'CFB');
-  const label=t===3?'PREMIUM':t===2?'OPTIMAL':t===1?'LEAN':'SKIP';
-  const col=t===3?'var(--gc)':t===2?'var(--nc)':t===1?'var(--ic)':'var(--t3)';
-  return{label,col,ev:e};
-}
-function _cfbPickRow(label,p,dec,reasoning,onclickJs){
-  const g=_cfbGradeInfo(p,dec);
-  // Square card — aspect-ratio:1 with internal flex-column layout so it
-  // holds its shape regardless of how long the reasoning text is
-  // (clamped to 4 lines rather than growing the box taller than it is
-  // wide).
-  return`<div style="aspect-ratio:1;background:rgba(10,4,24,.85);border:1px solid ${g.col};border-radius:4px;padding:9px;display:flex;flex-direction:column;justify-content:space-between">
-    <div>
-      <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${g.col};margin-bottom:4px;overflow-wrap:anywhere">${label}</div>
-      <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:5px">${(p*100).toFixed(1)}% · EV ${g.ev>=0?'+':''}${(g.ev*100).toFixed(1)}%</div>
-      <span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${g.col};color:${g.col};border-radius:2px">${g.label}</span>
-      <div style="font-family:var(--mono);font-size:12px;color:var(--t3);line-height:1.4;margin-top:6px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">${reasoning}</div>
-    </div>
-    <button class="btn btn-o btn-sm" style="width:100%;font-size:12px;padding:3px 0;margin-top:6px" onclick="${onclickJs}">LOCK</button>
-  </div>`;
-}
 // Shared analytical facts for a matchup — computed once per game and
 // reused across all 6 picks' reasoning, so each pick can reference
 // whichever specific subset actually applies to it (e.g. offense/defense
@@ -6355,18 +6326,45 @@ function _cfbPickRow(label,p,dec,reasoning,onclickJs){
 // the moment ESPN starts returning them, since the same daily scrape
 // already pulls the fields, they're just currently "--" or 0.
 // ── CFB weather: real per-venue forecast, not a league-wide guess ──────
-// fetch_cfb.py captures each game's actual venue city (ESPN's
-// venue.address.city/state) — geocoded here via Open-Meteo's free
-// geocoding API (no API key, same provider MLB's fetchParkWeather
-// already uses) rather than a hand-maintained stadium coordinate table,
-// so it works for all ~130 FBS venues including one-off neutral sites
-// (e.g. Dublin, Ireland) without needing to enumerate them by hand.
+// fetch_cfb.py captures each game's actual venue name + city + state
+// (ESPN's venue.fullName/address.city/state). Geocoding happens in two
+// stages so the forecast is pulled at the actual stadium's coordinates,
+// not just its city center:
+//   1. Nominatim (OpenStreetMap) venue-name search — stadiums are named
+//      POIs in OSM ("Ohio Stadium", "Aviva Stadium"), so this resolves
+//      to the real building footprint when it's mapped.
+//   2. Falls back to Open-Meteo's city geocoder (same provider MLB's
+//      fetchParkWeather already uses) only when the venue itself isn't
+//      found in OSM — a city-center approximation, honestly a fallback
+//      rather than the exact site.
 // Indoor venues (ESPN's venue.indoor flag) are skipped entirely — wind/
-// rain/cold don't apply to a dome game, so it would be dishonest to
+// rain/snow don't apply to a dome game, so it would be dishonest to
 // apply an outdoor adjustment there.
 let _CFB_GEO_CACHE={},_CFB_WX_CACHE={};
-async function _cfbGeocode(city,state){
-  const key=(city||'')+','+(state||'');
+// Nominatim's usage policy caps free use at ~1 req/sec — this chains every
+// call onto a shared promise with a spacer delay so a batch of games never
+// fires concurrent requests at it, regardless of how many venues need
+// resolving in one prefetch.
+let _cfbGeoQueue=Promise.resolve();
+function _cfbThrottled(fn){
+  const run=_cfbGeoQueue.then(fn);
+  _cfbGeoQueue=run.catch(()=>{}).then(()=>new Promise(r=>setTimeout(r,1100)));
+  return run;
+}
+async function _cfbGeocodeVenue(venue,city,state){
+  if(!venue)return null;
+  try{
+    const q=`${venue}${city?', '+city:''}${state?', '+state:''}`;
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`;
+    const r=await fetch(url,{headers:{'Accept-Language':'en'},signal:AbortSignal.timeout?AbortSignal.timeout(5000):undefined});
+    if(!r.ok)return null;
+    const d=await r.json();
+    if(!d?.length)return null;
+    return{lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon),precise:true};
+  }catch(e){return null;}
+}
+async function _cfbGeocodeCity(city,state){
+  const key='city:'+(city||'')+','+(state||'');
   if(_CFB_GEO_CACHE[key]!==undefined)return _CFB_GEO_CACHE[key];
   if(!city)return(_CFB_GEO_CACHE[key]=null);
   try{
@@ -6376,20 +6374,27 @@ async function _cfbGeocode(city,state){
     const d=await r.json();
     const results=d.results||[];
     const match=(state&&results.find(x=>x.admin1&&(x.admin1===state||x.admin1_id===state)))||results[0];
-    const geo=match?{lat:match.latitude,lon:match.longitude}:null;
+    const geo=match?{lat:match.latitude,lon:match.longitude,precise:false}:null;
     return(_CFB_GEO_CACHE[key]=geo);
   }catch(e){return(_CFB_GEO_CACHE[key]=null);}
+}
+async function _cfbGeocode(venue,city,state){
+  const key='venue:'+(venue||'')+','+(city||'')+','+(state||'');
+  if(_CFB_GEO_CACHE[key]!==undefined)return _CFB_GEO_CACHE[key];
+  const precise=await _cfbThrottled(()=>_cfbGeocodeVenue(venue,city,state));
+  if(precise)return(_CFB_GEO_CACHE[key]=precise);
+  const cityLevel=await _cfbGeocodeCity(city,state);
+  return(_CFB_GEO_CACHE[key]=cityLevel);
 }
 async function _cfbFetchWeather(g){
   if(!g||g.indoor)return null;
   const wxKey=g.id||(g.city+g.date);
   if(_CFB_WX_CACHE[wxKey]&&Date.now()-_CFB_WX_CACHE[wxKey].ts<3600000)return _CFB_WX_CACHE[wxKey];
-  const geo=await _cfbGeocode(g.city,g.venueState);
+  const geo=await _cfbGeocode(g.venue,g.city,g.venueState);
   if(!geo)return null;
   try{
     const gameDate=g.date?new Date(g.date):new Date();
-    const gameHr=Math.min(gameDate.getUTCHours(),23);
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=windspeed_10m,precipitation_probability,temperature_2m&wind_speed_unit=mph&temperature_unit=fahrenheit&forecast_days=16&timezone=UTC`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=windspeed_10m,precipitation_probability,temperature_2m,snowfall&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch&forecast_days=16&timezone=UTC`;
     const r=await fetch(url,{signal:AbortSignal.timeout?AbortSignal.timeout(4000):undefined});
     if(!r.ok)return null;
     const d=await r.json();
@@ -6401,34 +6406,41 @@ async function _cfbFetchWeather(g){
     const targetIso=gameDate.toISOString().slice(0,13);
     const idx=times.findIndex(t=>t.startsWith(targetIso));
     if(idx<0)return null;
-    const wx={wind:Math.round(d.hourly.windspeed_10m?.[idx]||0),precip:Math.round(d.hourly.precipitation_probability?.[idx]||0),temp:Math.round(d.hourly.temperature_2m?.[idx]||65),ts:Date.now()};
+    const wx={wind:Math.round(d.hourly.windspeed_10m?.[idx]||0),precip:Math.round(d.hourly.precipitation_probability?.[idx]||0),temp:Math.round(d.hourly.temperature_2m?.[idx]||65),snow:+(d.hourly.snowfall?.[idx]||0).toFixed(2),geoPrecise:!!geo.precise,ts:Date.now()};
     _CFB_WX_CACHE[wxKey]=wx;return wx;
   }catch(e){return null;}
 }
 // Prefetches weather for a batch of games (e.g. today's/this week's slate)
 // so _cfbGameCard can read _CFB_WX_CACHE synchronously when rendering —
 // same prefetch-then-render-sync pattern MLB uses via fetchAllParkWeather.
+// Sequential (not Promise.all) because _cfbGeocodeVenue is throttled
+// against Nominatim's rate limit internally via _cfbThrottled/_cfbGeoQueue.
 async function _cfbPrefetchWeather(games){
   await Promise.allSettled((games||[]).filter(g=>!g.indoor).map(g=>_cfbFetchWeather(g)));
 }
 // Football-specific impact, distinct from MLB's weatherImpact — wind hurts
 // passing/kicking accuracy (favors UNDER + slightly favors the run-heavier
-// team, not modeled per-team here so only the total is adjusted), cold
-// suppresses scoring modestly, heavy rain suppresses scoring and raises
-// turnover-driven variance. Capped at +/-3 points on the total, same
+// team, not modeled per-team here so only the total is adjusted), cold and
+// snow suppress scoring (snow games are historically low-scoring — footing,
+// grip, visibility all degrade), heavy rain suppresses scoring and raises
+// turnover-driven variance. Capped at +/-4.5 points on the total (widened
+// from +/-3 to let a real snow game register — a 90%+ heavy-snow forecast
+// is a genuinely large scoring depressant, not a minor nudge), same
 // capped-nudge philosophy as cfbMC's yardsAdjPts/toAdjPts — a real signal,
 // but never allowed to dominate the FPI/points-allowed-based projection.
 function cfbWeatherImpact(wx){
   if(!wx)return{totalAdj:0,label:''};
   let totalAdj=0;const notes=[];
-  const wind=wx.wind||0,precip=wx.precip||0,temp=wx.temp!=null?wx.temp:65;
+  const wind=wx.wind||0,precip=wx.precip||0,temp=wx.temp!=null?wx.temp:65,snow=wx.snow||0;
   if(wind>=20){totalAdj-=2.5;notes.push(`${wind}mph wind`);}
   else if(wind>=12){totalAdj-=1.0;notes.push(`${wind}mph wind`);}
+  if(snow>=0.3){totalAdj-=2.5;notes.push(`heavy snow (${snow}"/hr)`);}
+  else if(snow>0){totalAdj-=1.2;notes.push(`snow (${snow}"/hr)`);}
   if(precip>=70){totalAdj-=1.5;notes.push('high rain risk');}
   else if(precip>=40){totalAdj-=0.5;notes.push('rain possible');}
   if(temp<25){totalAdj-=1.5;notes.push('hard freeze');}
   else if(temp<40){totalAdj-=0.7;notes.push('cold');}
-  totalAdj=Math.max(-3,Math.min(1,totalAdj));
+  totalAdj=Math.max(-4.5,Math.min(1,totalAdj));
   return{totalAdj:+totalAdj.toFixed(2),label:notes.join(' · ')};
 }
 function _cfbAnalysisFacts(g,mc){
@@ -6543,9 +6555,11 @@ function _cfbPickReasoning(g,mc,f,focus){
       sents.push(`${h} is home (${g.venue||'campus site'}), so the model's fixed home-field adjustment is already reflected in the margin used to derive this total — no separate total-specific crowd effect is applied beyond that.`);
     }
     if(mc.wx){
+      const _wxSrc=mc.wx.geoPrecise?'the stadium\'s actual coordinates':`${g.city||'the venue city'}'s center (exact stadium location not found, city-level estimate used)`;
+      const _snowStr=mc.wx.snow>0?`, ${mc.wx.snow}"/hr snowfall`:'';
       sents.push(mc.wxImpact.totalAdj!==0
-        ?`Real forecast for ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip chance (${mc.wxImpact.label}) — folded into the total as a ${mc.wxImpact.totalAdj>0?'+':''}${mc.wxImpact.totalAdj}-point adjustment.`
-        :`Forecast for ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip — mild enough conditions that no weather adjustment was applied to the total.`);
+        ?`Real forecast at ${_wxSrc} — ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip chance${_snowStr} (${mc.wxImpact.label}) — folded into the total as a ${mc.wxImpact.totalAdj>0?'+':''}${mc.wxImpact.totalAdj}-point adjustment.`
+        :`Forecast at ${_wxSrc} — ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip${_snowStr} — mild enough conditions that no weather adjustment was applied to the total.`);
     }else if(g.indoor){
       sents.push(`${g.venue||'This venue'} is indoors — no weather factor applies.`);
     }else{
@@ -6556,14 +6570,36 @@ function _cfbPickReasoning(g,mc,f,focus){
 
   return sents.filter(Boolean).join(' ');
 }
+// CFB-specific spread/O-U adjuster locks — mirror the generic
+// _spreadLockDir/_ouLockDir math (used by MLB/NHL/NBA/WNBA) exactly, but
+// call lockCFBGame directly instead of the generic lockPick, since CFB
+// picks must carry sport:'FOOTBALL'/league:'CFB' (lockPick's sport-
+// guesser doesn't know CFB team codes and would mis-tag or drop them).
+function _cfbSpreadLockDir(hA,awA,favN,dogN,baseFavP,baseSprd,inputId,dir){
+  const inp=document.getElementById(inputId);
+  let ns=inp?parseFloat(inp.value):parseFloat(baseSprd);
+  if(isNaN(ns))ns=parseFloat(baseSprd);
+  const delta=Math.abs(ns)-Math.abs(parseFloat(baseSprd));
+  const p=dir==='FAV'?Math.max(.05,Math.min(.95,baseFavP-delta*0.045)):Math.max(.05,Math.min(.95,(1-baseFavP)+delta*0.045));
+  const label=dir==='FAV'?favN+' -'+Math.abs(ns).toFixed(1):dogN+' +'+Math.abs(ns).toFixed(1);
+  lockCFBGame(hA,awA,'SPREAD',label,'-110',p);
+}
+function _cfbOuLockDir(hA,awA,baseOverP,baseL,inputId,dir){
+  const inp=document.getElementById(inputId);
+  let nl=inp?parseFloat(inp.value):parseFloat(baseL);
+  if(isNaN(nl))nl=parseFloat(baseL);
+  const delta=nl-parseFloat(baseL);
+  const np=Math.min(.95,Math.max(.05,baseOverP-delta*0.07));
+  const p=dir==='OVER'?np:1-np;
+  lockCFBGame(hA,awA,'OU',dir+' '+nl.toFixed(1),'-110',p,nl);
+}
 function _cfbGameCard(g){
   const D=_CFB_DATA;
-  const gid=g.id||(g.home+g.away+g.date);
-  const adj=window._cfbLineAdj[gid]||{spread:0,ou:0};
   const ens=cfbEns(g.home,g.away,g.overUnder,g);
   const mc=ens.mcD;
   const hP=ens.p,aP=1-hP;
   const hML=p2ml(hP),aML=p2ml(aP);
+  const hD=ml2d(hML),aD=ml2d(aML);
   const dt=g.date?new Date(g.date):null;
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
   const hFpi=D.fpi[g.home]?.fpi,aFpi=D.fpi[g.away]?.fpi;
@@ -6574,88 +6610,79 @@ function _cfbGameCard(g){
       <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">Insufficient FPI/stats data for this matchup yet.</div>
     </div>`;
   }
+  const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
   // Real market lines (g.spread/g.overUnder) start as-is — sportsbooks
   // sometimes post whole-number spreads (a real, normal push risk bettors
   // already accept) and this must never misrepresent the actual market
   // line. Our own fallback (when no market line exists yet) is forced to
-  // .5 inside cfbMC(). The ±0.5 adjuster then moves off whichever base
-  // the user is adjusting from, in either case.
+  // .5 inside cfbMC().
   const baseSpread=g.spread!=null?Math.abs(g.spread):Math.abs(mc.avgMargin);
-  const spreadLine=Math.max(0.5,baseSpread+adj.spread);
   const spreadFav=g.spread!=null?(g.spread<0?g.home:g.away):(mc.avgMargin>0?g.home:g.away);
   const spreadDog=spreadFav===g.home?g.away:g.home;
-  const baseOU=mc.ouLine;
-  const ouLine=Math.max(1,baseOU+adj.ou);
-  // Favorite covers when (their actual margin) > (the line they're
-  // laying) — analytical cover prob off the sim's own margin distribution,
-  // reused for both sides and any adjusted line via _cfbCoverProb.
   const favIsHome=spreadFav===g.home;
   const favMarginMean=favIsHome?mc.avgMargin:-mc.avgMargin;
-  const favCoverP=Math.min(.95,Math.max(.05,_cfbCoverProb(favMarginMean,_CFB_SIGMA_MARGIN,spreadLine)));
+  const favCoverP=Math.min(.95,Math.max(.05,_cfbCoverProb(favMarginMean,_CFB_SIGMA_MARGIN,baseSpread)));
   const dogCoverP=1-favCoverP;
-  const overP=Math.min(.95,Math.max(.05,_cfbCoverProb(mc.avgTotal,_CFB_SIGMA_TOTAL,ouLine)));
+  const ouL=mc.ouLine;
+  const overP=Math.min(.95,Math.max(.05,_cfbCoverProb(mc.avgTotal,_CFB_SIGMA_TOTAL,ouL)));
   const underP=1-overP;
   const hFpiTxt=`${_cfbRankLabel(g.home)}${g.homeName||g.home} FPI ${hFpi??'—'}`;
   const aFpiTxt=`${_cfbRankLabel(g.away)}${g.awayName||g.away} FPI ${aFpi??'—'}`;
   const facts=_cfbAnalysisFacts(g,mc);
-  const mlReasoning=_cfbPickReasoning(g,mc,facts,'ML');
-  const spreadReasoning=_cfbPickReasoning(g,mc,facts,'SPREAD');
-  const ouReasoning=_cfbPickReasoning(g,mc,facts,'OU');
-  return `<div class="card" style="margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <div style="font-family:var(--orb);font-size:22px;font-weight:700">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr}</div>
-    </div>
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">${g.venue||''}${g.neutralSite?' (Neutral Site)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}${g.spreadDetails?' · Market: '+g.spreadDetails:''}</div>
-
-    <div style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px;margin-bottom:5px">MONEYLINE</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-      ${_cfbPickRow(g.home+' ML '+hML,hP,ml2d(hML),
-        `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims. ${mlReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})`)}
-      ${_cfbPickRow(g.away+' ML '+aML,aP,ml2d(aML),
-        `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims. ${mlReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})`)}
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-      <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">SPREAD</span>
-      <div style="display:flex;gap:4px;align-items:center">
-        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','spread',-0.5)">−½</button>
-        <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${spreadLine.toFixed(1)}</span>
-        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','spread',0.5)">+½</button>
+  // Evaluate all 6 markets through the same shared multi-factor scorer
+  // MLB/NBA use (grades each market PREMIUM/OPTIMAL/LEAN/SKIP), but keep
+  // three separate reasoning paragraphs — one each for ML/SPREAD/O-U —
+  // rather than collapsing to a single best-market paragraph. Each is
+  // grade-tagged to whichever side of that market currently qualifies.
+  const rawMkts=[
+    {label:`${g.home} ML`,prob:hP,dec:hD,ml:hML,side:'mlFav'},
+    {label:`${g.away} ML`,prob:aP,dec:aD,ml:aML,side:'mlDog'},
+    {label:`${spreadFav} -${baseSpread.toFixed(1)}`,prob:favCoverP,dec:1.909,ml:'-110',side:'sprdFav'},
+    {label:`${spreadDog} +${baseSpread.toFixed(1)}`,prob:dogCoverP,dec:1.909,ml:'-110',side:'sprdDog'},
+    {label:`OVER ${ouL.toFixed(1)}`,prob:overP,dec:1.909,ml:'-110',side:'over'},
+    {label:`UNDER ${ouL.toFixed(1)}`,prob:underP,dec:1.909,ml:'-110',side:'under'},
+  ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
+  const nm=_evalMkts(rawMkts);
+  const _mktGrade=side=>{const m=nm.mkts.find(x=>x.side===side);const lbl=['SKIP','LEAN','OPTIMAL','PREMIUM'][m.tierN];const col=m.tierN===3?'var(--gc)':m.tierN===2?'var(--nc)':m.tierN===1?'var(--ic)':'var(--t3)';return{m,lbl,col};};
+  const mlGrade=hP>=aP?_mktGrade('mlFav'):_mktGrade('mlDog');
+  const sprdGrade=favCoverP>=dogCoverP?_mktGrade('sprdFav'):_mktGrade('sprdDog');
+  const ouGrade=overP>=underP?_mktGrade('over'):_mktGrade('under');
+  const mlReasoning=`<span style="color:${mlGrade.col}">${mlGrade.m.label} · ${mlGrade.lbl} · ${(mlGrade.m.prob*100).toFixed(1)}% · EV +${(mlGrade.m.evVal*100).toFixed(1)}%</span><br>${hFpiTxt} vs ${aFpiTxt}. ${_cfbPickReasoning(g,mc,facts,'ML')}`;
+  const sprdReasoning=`<span style="color:${sprdGrade.col}">${sprdGrade.m.label} · ${sprdGrade.lbl} · ${(sprdGrade.m.prob*100).toFixed(1)}% · EV +${(sprdGrade.m.evVal*100).toFixed(1)}%</span><br>MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav}. ${_cfbPickReasoning(g,mc,facts,'SPREAD')}`;
+  const ouReasoning=`<span style="color:${ouGrade.col}">${ouGrade.m.label} · ${ouGrade.lbl} · ${(ouGrade.m.prob*100).toFixed(1)}% · EV +${(ouGrade.m.evVal*100).toFixed(1)}%</span><br>${_cfbPickReasoning(g,mc,facts,'OU')}`;
+  const gidSafe=(g.home+'_'+g.away).replace(/[^A-Za-z0-9_]/g,'');
+  return`<div class="gc" style="border-left:2px solid rgba(255,110,20,.4)">
+    <div class="gch">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="gtm" style="color:${aP>=hP?'var(--pc)':'var(--t2)'}">${_cfbRankLabel(g.away)}${g.away}</span>
+          <span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>
+          <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${_cfbRankLabel(g.home)}${g.home}</span>
+        </div>
+        <div class="gsp">${g.venue||''}${g.neutralSite?' (Neutral)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}</div>
+        ${g.spreadDetails?`<div class="gsp">Market: ${g.spreadDetails}${g.overUnder!=null?' · O/U '+g.overUnder:''}</div>`:''}
       </div>
+      <div style="text-align:right"><div class="np mono" style="font-size:19px">${timeStr}</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-      ${_cfbPickRow(spreadFav+' -'+spreadLine.toFixed(1),favCoverP,1.909,
-        `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims. ${spreadReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine.toFixed(1)}','-110',${favCoverP.toFixed(3)})`)}
-      ${_cfbPickRow(spreadDog+' +'+spreadLine.toFixed(1),dogCoverP,1.909,
-        `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright. ${spreadReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadDog} +${spreadLine.toFixed(1)}','-110',${dogCoverP.toFixed(3)})`)}
+    ${mc.wx?weatherBadge(mc.wx,g.home):''}
+    <div class="brow">
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+      <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('sprd_cfb_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="-${baseSpread.toFixed(1)}" id="sprd_cfb_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)"><button onclick="event.stopPropagation();_adjV('sprd_cfb_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:2px;width:100%"><button onclick="event.stopPropagation();_cfbSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_cfb_${gidSafe}','FAV')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadFav}</div><div id="fav_sprd_cfb_${gidSafe}" style="font-size:11px;opacity:.85">-${baseSpread.toFixed(1)}</div></button><button onclick="event.stopPropagation();_cfbSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_cfb_${gidSafe}','DOG')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadDog}</div><div id="dog_sprd_cfb_${gidSafe}" style="font-size:11px;opacity:.85">+${baseSpread.toFixed(1)}</div></button></div></div>
+      <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_cfb_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL.toFixed(1)}" id="ouinp_cfb_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_cfb_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_cfbOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_cfb_${gidSafe}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_cfbOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_cfb_${gidSafe}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-      <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">OVER/UNDER</span>
-      <div style="display:flex;gap:4px;align-items:center">
-        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','ou',-0.5)">−½</button>
-        <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${ouLine.toFixed(1)}</span>
-        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','ou',0.5)">+½</button>
+    <div style="padding:8px 10px;background:rgba(255,110,20,.04);border-top:1px solid rgba(255,110,20,.1)">
+      ${_mcProjBarHTML({avgH:mc.avgH,avgA:mc.avgA,avgT:mc.avgTotal,overP:overP},ouL.toFixed(1),g.home,g.away,{n:mc.n,dec:1})}
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${nm.col};color:${nm.col};border-radius:2px">${nm.lbl}</span>
+        <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">BEST MARKET: <strong style="color:var(--t2)">${nm.best.label}</strong> · ${(nm.best.prob*100).toFixed(1)}% · EV ${nm.best.evVal>=0?'+':''}${(nm.best.evVal*100).toFixed(1)}%</span>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-      ${_cfbPickRow('OVER '+ouLine.toFixed(1),overP,1.909,
-        `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. ${ouReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','OU','OVER ${ouLine.toFixed(1)}','-110',${overP.toFixed(3)},${ouLine.toFixed(1)})`)}
-      ${_cfbPickRow('UNDER '+ouLine.toFixed(1),underP,1.909,
-        `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims. ${ouReasoning}`,
-        `lockCFBGame('${g.home}','${g.away}','OU','UNDER ${ouLine.toFixed(1)}','-110',${underP.toFixed(3)},${ouLine.toFixed(1)})`)}
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:14px;color:var(--t3);padding:6px 10px;background:rgba(0,0,0,.15);border-radius:2px;margin-top:4px">
-      <span>MC SIM (${mc.n.toLocaleString()} runs)</span>
-      <span>PROJ: ${g.away} ${mc.avgA} – ${g.home} ${mc.avgH} <span style="color:var(--t2)">(${mc.avgTotal} total)</span></span>
-      <span style="color:var(--ic)">${(hP*100).toFixed(1)}% / ${(aP*100).toFixed(1)}%</span>
+      <div style="margin-bottom:8px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px">MARKET SCAN: ${nm.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">MONEYLINE REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${mlReasoning}</div></div>
+        <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">SPREAD REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${sprdReasoning}</div></div>
+        <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">O/U REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${ouReasoning}</div></div>
+      </div>
     </div>
   </div>`;
 }
