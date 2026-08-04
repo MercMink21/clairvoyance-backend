@@ -754,6 +754,13 @@ body{line-height:1.5}
         <button class="btn btn-p btn-sm" style="margin-top:7px" onclick="applyCFBWeights()">APPLY</button>
       </div>
       <div id="cfb-model-weights"></div>
+      <div class="sh" style="margin-top:14px"><span class="p"></span> HOME FIELD ADVANTAGE</div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="rr"><span class="rrl">HFA (points)</span><span class="rrv" id="cfb-whfa">2.2</span></div><input type="range" id="cfb-w-hfa" min="0" max="6" step="0.1" value="2.2" oninput="document.getElementById('cfb-whfa').textContent=this.value">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:4px">Added directly to the FPI-based margin for non-neutral-site games only (neutral-site games get 0 regardless of this slider). Only applies when the model is FPI-driven — market-fallback games (FCS opponents) already have HFA priced into the book's own spread, so this isn't added on top of those.</div>
+        <button class="btn btn-p btn-sm" style="margin-top:7px" onclick="applyCFBHFA()">APPLY</button>
+      </div>
+      <div id="cfb-model-hfa"></div>
       <div class="sh" style="margin-top:14px"><span class="p"></span> FPI POWER RANKINGS</div>
       <div id="cfb-model-content"><div class="loading"><span class="spi"></span> LOADING…</div></div>
     </div></div>
@@ -6104,7 +6111,13 @@ function loadCFBData(){
   ]).then(([teams,power,stats,schedule])=>{
     const conferences=teams?.conferences||{};
     const teamConf={};
-    Object.entries(conferences).forEach(([conf,list])=>{(list||[]).forEach(t=>{teamConf[t.abbr]=conf;});});
+    const venueCapacity={},venueName={},venueIndoorByAbbr={};
+    Object.entries(conferences).forEach(([conf,list])=>{(list||[]).forEach(t=>{
+      teamConf[t.abbr]=conf;
+      if(t.venueCapacity!=null)venueCapacity[t.abbr]=t.venueCapacity;
+      if(t.venueName)venueName[t.abbr]=t.venueName;
+      if(t.venueIndoor!=null)venueIndoorByAbbr[t.abbr]=t.venueIndoor;
+    });});
     const fpiByAbbr={};
     (power?.power?.fpi?.rows||[]).forEach(r=>{fpiByAbbr[r.abbr]=r.stats;});
     const resumeByAbbr={};
@@ -6115,7 +6128,7 @@ function loadCFBData(){
     (power?.rankings||[]).forEach(r=>{rankByAbbr[r.abbr]=r;});
     const weeks=schedule?.weeks||{};
     _CFB_DATA={
-      conferences, teamConf,
+      conferences, teamConf, venueCapacity, venueName, venueIndoorByAbbr,
       fpi:fpiByAbbr, resume:resumeByAbbr, efficiency:efficiencyByAbbr,
       rankings:power?.rankings||[], rankByAbbr,
       stats:stats?.teams||{},
@@ -6138,9 +6151,10 @@ function loadCFBData(){
 // come in, which is disclosed in the reasoning text rather than presented
 // as if it already reflects a full season of form.
 function _cfbBuildElo(weeks){
-  const elo={},gamesPlayed={},records={};
+  const elo={},gamesPlayed={},records={},homeAway={};
   const rating=abbr=>elo[abbr]??(elo[abbr]=1500);
   const rec=abbr=>records[abbr]??(records[abbr]={w:0,l:0});
+  const ha=abbr=>homeAway[abbr]??(homeAway[abbr]={homeMarginSum:0,homeN:0,awayMarginSum:0,awayN:0});
   const games=[];
   Object.values(weeks||{}).forEach(list=>(list||[]).forEach(g=>{
     if(g.homeScore!=null&&g.awayScore!=null&&g.date)games.push(g);
@@ -6163,10 +6177,44 @@ function _cfbBuildElo(weeks){
     gamesPlayed[g.away]=(gamesPlayed[g.away]||0)+1;
     if(margin>0){rec(g.home).w++;rec(g.away).l++;}
     else if(margin<0){rec(g.away).w++;rec(g.home).l++;}
+    // Track each team's actual home-margin vs away-margin split (neutral
+    // site games don't count toward either side — they're not "home"
+    // for anyone). This is the real signal team-specific HFA is derived
+    // from: not every stadium provides the same edge, so a team that
+    // consistently blows opponents out at home but plays close on the
+    // road has a real, measurable home-field effect beyond the model's
+    // flat default — and a team with no real split shouldn't get one
+    // manufactured for it.
+    if(!g.neutralSite){
+      const hh=ha(g.home);hh.homeMarginSum+=margin;hh.homeN++;
+      const aa=ha(g.away);aa.awayMarginSum+=(-margin);aa.awayN++;
+    }
   });
-  return{ratings:elo,gamesPlayed,records};
+  return{ratings:elo,gamesPlayed,records,homeAway};
 }
 function cfbEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
+// Team-specific home-field advantage: starts at the MODEL tab's
+// configured base HFA for every team (honest default, no data yet), then
+// nudges toward that specific team's own observed home-margin-minus-
+// away-margin split as real results accumulate -- capped so one wild
+// early-season blowout can't swing it to an implausible extreme, and
+// requiring games on BOTH sides (home and away) before nudging at all,
+// since a team with only home games played has no away baseline to
+// compare against yet.
+function _cfbTeamHFA(abbr){
+  const D=_CFB_DATA;
+  const base=_cfbHFA();
+  const ha=D?.elo?.homeAway?.[abbr];
+  if(!ha||ha.homeN<1||ha.awayN<1)return base;
+  const observedEdge=(ha.homeMarginSum/ha.homeN)-(ha.awayMarginSum/ha.awayN);
+  const clampedEdge=Math.max(-2,Math.min(9,observedEdge));
+  // Ramps from 0 (1 home + 1 away game, bare minimum sample) toward a cap
+  // of 70% weight on the team's own observed split by ~4 games each way
+  // -- never fully replaces the base, since even a several-game sample
+  // is noisy relative to a season-long true talent gap.
+  const ramp=Math.min(.7,Math.min(ha.homeN,ha.awayN)/4*.7);
+  return+(base*(1-ramp)+clampedEdge*ramp).toFixed(2);
+}
 // Beta-binomial posterior on this season's actual W-L record, same family
 // as MLB's getBayes/NBA's nbaGetBayes — Beta(1,1) uniform prior so a
 // winless/lossless team (preseason, 0 games) sits exactly at .5 rather
@@ -6183,7 +6231,15 @@ loadCFBData();
 // allowed-points figure isn't available yet (e.g. a team with no 2025
 // data). ~52 matches real FBS-wide scoring averages.
 const _CFB_LG_TOTAL=52;
-const _CFB_HFA=2.2; // typical college home-field edge, in points
+const _CFB_HFA_DEFAULT=2.2; // typical college home-field edge, in points — default/fallback
+// User-adjustable via the MODEL tab's HOME FIELD ADV slider (a point
+// value, not a percentage weight like MC/BAY/ELO — home-field advantage
+// is a margin adjustment, not a blend-share). Persisted the same way as
+// CFB_ENS. _cfbHFA() is the live getter every margin calc should call
+// instead of reading a bare constant, so an in-session slider change
+// takes effect on the next render without a page reload.
+window.CFB_HFA_PTS=window.CFB_HFA_PTS??(typeof S!=='undefined'?S.g('cfb_hfa'):null)??_CFB_HFA_DEFAULT;
+function _cfbHFA(){return window.CFB_HFA_PTS;}
 const _CFB_SIGMA_MARGIN=16.5,_CFB_SIGMA_TOTAL=13.0; // CFB's real game-to-game variance is high
 function _boxMullerZ(){
   const u1=Math.random()||1e-10,u2=Math.random();
@@ -6250,9 +6306,10 @@ function cfbMC(hA,awA,n,ouLine,g){
   // FPI is explicitly "vs an average opponent on a neutral field" (ESPN's
   // own definition), so home-field still needs to be added on top of an
   // FPI-based margin. A market spread, by contrast, is a sportsbook's
-  // final number and already has HFA priced into it — adding _CFB_HFA
-  // again on top would double-count it.
-  const margin0=hasFpi?((fpiH-fpiA)+_CFB_HFA+yardsAdjPts+toAdjPts):(marketMargin+yardsAdjPts+toAdjPts);
+  // final number and already has HFA priced into it — adding it again on
+  // top would double-count it. Neutral-site games get no HFA either way.
+  const hfaApplied=g?.neutralSite?0:_cfbTeamHFA(hA);
+  const margin0=hasFpi?((fpiH-fpiA)+hfaApplied+yardsAdjPts+toAdjPts):(marketMargin+yardsAdjPts+toAdjPts);
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
   // FCS opponents have no defenseAllowed entry (FBS-only stats pipeline) —
@@ -6529,7 +6586,9 @@ function _cfbAnalysisFacts(g,mc,ens){
   facts.fpiGap=(facts.hFpi!=null&&facts.aFpi!=null)?+(facts.hFpi-facts.aFpi).toFixed(1):null;
 
   facts.neutralSite=!!g.neutralSite;
-  facts.hfa=_CFB_HFA;
+  facts.hfa=_cfbTeamHFA(h);
+  facts.hfaBase=_cfbHFA();
+  facts.hfaIsTeamSpecific=facts.hfa!==facts.hfaBase;
 
   const _eloR=D.elo?.ratings||{},_eloGp=D.elo?.gamesPlayed||{};
   facts.hElo=Math.round(_eloR[h]??1500);facts.aElo=Math.round(_eloR[a]??1500);
@@ -6590,7 +6649,9 @@ function _cfbPickReasoning(g,mc,f,focus){
     if(f.neutralSite){
       sents.push(`Neutral site (${g.venue||'no home team'}) — no home-field adjustment applied, so this is closer to a pure power-rating matchup than a typical campus game.`);
     }else{
-      sents.push(`${h} is home, so the model applies its standard ${f.hfa}-point home-field adjustment to the projected margin — a fixed assumption baked into every non-neutral-site matchup, not something unique to this game.`);
+      sents.push(f.hfaIsTeamSpecific
+        ?`${h} is home — this model uses a team-specific ${f.hfa}-point home-field edge here (vs the ${f.hfaBase}-pt default), derived from ${h}'s own actual home-vs-away scoring margin split this season, not a flat league-wide assumption.`
+        :`${h} is home, so the model applies its ${f.hfa}-point default home-field adjustment — ${h} doesn't have enough games yet on both sides (home and away) to derive its own team-specific figure, so this stays the flat default for now rather than guessing.`);
     }
     if(f.hSosRank!=null&&f.aSosRank!=null){
       sents.push(`Strength of schedule: ${h} ranks #${f.hSosRank} nationally, ${a} #${f.aSosRank} — ${Math.abs(f.hSosRank-f.aSosRank)<=15?'comparable schedule difficulty so far':(f.hSosRank<f.aSosRank?h+' has faced the tougher slate':a+' has faced the tougher slate')}.`);
@@ -17771,7 +17832,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-08-03 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-08-04 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
