@@ -3639,19 +3639,113 @@ def _supabase_patch_outcome(bet_id: str, outcome: str, h_score: int, a_score: in
         log(f"Supabase patch {bet_id}: {exc}", "WARN")
         return False
 
+# Every league a pick can actually be locked under — mirrors
+# ESPN_SPORT_PATHS in generate_social_cards.py. NBA/MLB/NHL are handled
+# via the pre-fetched today/tomorrow lists this run already has (no
+# extra API calls); everything else here gets a direct, on-demand ESPN
+# scoreboard fetch below, since this script never otherwise pulls
+# CFB/NFL/WNBA/CBB/NCAAH/soccer schedules.
+_SUPABASE_SETTLE_ESPN_PATHS = {
+    "NFL": "football/nfl", "CFB": "football/college-football",
+    "WNBA": "basketball/wnba", "CBB": "basketball/mens-college-basketball",
+    "NCAAH": "hockey/mens-college-hockey",
+    "BL": "soccer/ger.1", "LIGA": "soccer/esp.1", "MLS": "soccer/usa.1",
+    "PL": "soccer/eng.1", "SERIEA": "soccer/ita.1", "CL": "soccer/UEFA.champions",
+}
+
+def _fetch_espn_games_for_date(path: str, date_str: str) -> list[dict]:
+    """Generic ESPN scoreboard fetch for one league/date, normalized to
+    the same {home,away,state,homeScore,awayScore} shape game_index()
+    already expects from the NBA/MLB/NHL pre-fetched lists — so both
+    sources can be merged into one index below without special-casing."""
+    try:
+        r = _session.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard",
+            params={"dates": date_str.replace("-", ""), "limit": 300}, timeout=15,
+        )
+        r.raise_for_status()
+        events = r.json().get("events", [])
+    except Exception as exc:
+        log(f"  ESPN scoreboard fetch failed for {path} {date_str}: {exc}", "WARN")
+        return []
+    out = []
+    for ev in events:
+        comp = (ev.get("competitions") or [{}])[0]
+        comps = comp.get("competitors") or []
+        home = next((c for c in comps if c.get("homeAway") == "home"), {})
+        away = next((c for c in comps if c.get("homeAway") == "away"), {})
+        state = ((comp.get("status") or {}).get("type") or {}).get("state", "pre")
+        out.append({
+            "home": (home.get("team") or {}).get("abbreviation", ""),
+            "away": (away.get("team") or {}).get("abbreviation", ""),
+            "homeScore": home.get("score") if state != "pre" else None,
+            "awayScore": away.get("score") if state != "pre" else None,
+            "state": state,
+        })
+    return out
+
+def _settle_bet_outcome(bet_type: str, raw: dict, game: dict) -> str | None:
+    """Same win/loss/push logic as the local auto_settle(), shared here so
+    Supabase settlement covers every bet type that function does (ML,
+    SPREAD/RL/PL, OU) instead of ML-only. Returns None (leave pending)
+    for anything it can't verify — never a guess."""
+    hs, as_ = int(game.get("homeScore") or 0), int(game.get("awayScore") or 0)
+    home, away = game.get("home", ""), game.get("away", "")
+    if bet_type == "ML":
+        # Pred objects never carry a bare "team" field — every lock*()
+        # path (lockPick, lockCFBGame, etc.) stores the picked side as
+        # betOn itself for ML bets (e.g. betOn: hA), not a separate
+        # "team" key. Checking raw.get("team") — which no bet has ever
+        # actually had — meant this branch silently matched nothing.
+        picked = str(raw.get("betOn", "")).strip()
+        winner = home if hs > as_ else away
+        if picked not in (home, away):
+            return None  # betOn wasn't a bare team code for this pick — don't guess
+        return "win" if picked == winner else "loss"
+    if bet_type in ("RL", "PL", "RUNLINE", "PUCKLINE", "SPREAD"):
+        bet_on = str(raw.get("betOn", ""))
+        m = re.search(r"(-?\d+\.?\d*)\s*$", bet_on)
+        if not m:
+            return None
+        line = float(m.group(1))
+        fav_team = bet_on.split(" ")[0]
+        if fav_team not in (home, away):
+            return None
+        is_home = fav_team == home
+        diff = (hs - as_) if is_home else (as_ - hs)
+        covered = diff + line
+        return "win" if covered > 0 else ("push" if covered == 0 else "loss")
+    if bet_type in ("OU", "OVER_UNDER", "TOTAL"):
+        total = hs + as_
+        try:
+            lv = float(raw.get("ou") if raw.get("ou") is not None else raw.get("line") or 0)
+        except (TypeError, ValueError):
+            return None
+        if not lv:
+            return None
+        over = "OVER" in str(raw.get("betOn", "")).upper()
+        if total == lv:
+            return "push"
+        return "win" if (total > lv) == over else "loss"
+    return None  # PROP and anything else: no verifiable server-side source here
+
 def run_supabase_automation(nba_final: list, mlb_final: list, nhl_final: list) -> dict:
     """
     Server-side counterpart to the client-side Stale Pending Audit /
     auto-settle — the difference is this actually runs on the 3x/day
     schedule regardless of whether a browser is open. Two jobs:
-      1. Settle any pending bet whose game already has a final score in
-         the box scores this same run fetched (same game_index matching
-         logic as the existing local auto_settle(), just sourced from
-         Supabase instead of locked_props.json).
+      1. Settle any pending bet whose game already has a final score —
+         NBA/MLB/NHL from the box scores this same run already fetched,
+         every other league (CFB/NFL/WNBA/CBB/NCAAH/soccer — previously
+         not covered server-side at all) via an on-demand ESPN scoreboard
+         fetch, deduped per (league, date) pair actually needed. Handles
+         ML/SPREAD/OU, not just ML (previously ML-only, and that ML match
+         itself was checking a field — raw.team — that no bet has ever
+         actually had, so it never matched anything).
       2. Flag bets that are still pending with a date >24h in the past —
          these didn't match a final score above, so either the game
-         hasn't been added to game_index yet or something's off; surfaced
-         in the run log rather than silently sitting unresolved.
+         hasn't gone final yet or something's off; surfaced in the run
+         log rather than silently sitting unresolved.
     """
     bets = fetch_bets_from_supabase()
     if not bets:
@@ -3671,6 +3765,23 @@ def run_supabase_automation(nba_final: list, mlb_final: list, nhl_final: list) -
     all_idx.update(game_index(mlb_final))
     all_idx.update(game_index(nhl_final))
 
+    # Pull in every other league that actually has a pending bet, one
+    # scoreboard fetch per distinct (league, date) pair — bounded by
+    # however many distinct pairs are really in the pending set, not a
+    # fixed fan-out across every league regardless of whether it's used.
+    pending_bets = [b for b in bets if b.get("outcome", "pending") == "pending"]
+    other_pairs: set[tuple[str, str]] = set()
+    for bet in pending_bets:
+        raw = bet.get("raw") or {}
+        league = str(raw.get("league") or bet.get("sport") or raw.get("sport") or "").upper()
+        path = _SUPABASE_SETTLE_ESPN_PATHS.get(league)
+        bet_date = bet.get("date")
+        if path and bet_date:
+            other_pairs.add((league, bet_date))
+    for league, bet_date in other_pairs:
+        games = _fetch_espn_games_for_date(_SUPABASE_SETTLE_ESPN_PATHS[league], bet_date)
+        all_idx.update(game_index(games))
+
     settled_count = 0
     stale = []
     now_ms = int(time.time() * 1000)
@@ -3682,13 +3793,8 @@ def run_supabase_automation(nba_final: list, mlb_final: list, nhl_final: list) -
         game = all_idx.get((hA, awA))
         bet_type = str(bet.get("bet_type", "ML")).upper()
         if game:
-            hs, as_ = int(game.get("homeScore") or 0), int(game.get("awayScore") or 0)
-            outcome = None
-            if bet_type == "ML":
-                winner = game.get("home") if hs > as_ else game.get("away")
-                team = raw.get("team", "")
-                outcome = "win" if team == winner else "loss"
-            if outcome and _supabase_patch_outcome(bet["id"], outcome, hs, as_):
+            outcome = _settle_bet_outcome(bet_type, raw, game)
+            if outcome and _supabase_patch_outcome(bet["id"], outcome, int(game.get("homeScore") or 0), int(game.get("awayScore") or 0)):
                 settled_count += 1
                 log(f"  Supabase auto-settle: {bet.get('bet_on', bet['id'])} -> {outcome.upper()}")
                 continue
