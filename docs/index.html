@@ -3784,6 +3784,20 @@ function normalCDF(z){
   let poly=0,tk=t;for(const c of a){poly+=c*tk;tk*=t;}
   const cdf=1-d*poly;return z>=0?cdf:1-cdf;
 }
+// Inverse normal CDF (probit) via bisection against the existing
+// normalCDF approximation — no separate rational-approximation constants
+// to get wrong, just reuses the CDF this app already trusts elsewhere.
+// Only needs ~1e-4 precision for its one caller (CFB's moneyline-only
+// margin fallback), so 40 bisection steps is comfortably more than enough.
+function _normInv(p){
+  p=Math.min(.999,Math.max(.001,p));
+  let lo=-6,hi=6;
+  for(let i=0;i<40;i++){
+    const mid=(lo+hi)/2;
+    if(normalCDF(mid)<p)lo=mid;else hi=mid;
+  }
+  return(lo+hi)/2;
+}
 function _kelly(p,dec){return Math.max(0,Math.min(0.30,(p*dec-1)/Math.max(0.001,dec-1)));}
 function _edge(p,dec){return+(p-1/Math.max(0.001,dec)).toFixed(4);}
 function _sigma(comps){
@@ -6273,16 +6287,33 @@ function cfbMC(hA,awA,n,ouLine,g){
   const D=_CFB_DATA;if(!D)return null;
   const fpiH=parseFloat(D.fpi[hA]?.fpi),fpiA=parseFloat(D.fpi[awA]?.fpi);
   const hasFpi=!isNaN(fpiH)&&!isNaN(fpiA);
-  // FBS-vs-FCS "buy games" are common (especially Weeks 1-2) — the FCS
-  // side genuinely has no FPI (ESPN's FPI is FBS-only) and no entry in
-  // our stats pipeline (FBS-only roster), so this used to bail out
-  // entirely and show no card at all for a game the FBS side clearly has
-  // real data for. When FPI is missing but a real market spread exists
-  // (sportsbooks post lines for these games same as any other), use the
-  // market's own implied margin as the base instead — the market already
-  // has real information about the FCS side that we don't. Still bails
-  // out (returns null) only when there's truly no signal of any kind.
-  const marketMargin=(g&&g.spread!=null)?-parseFloat(g.spread):null; // ESPN convention: negative spread = home favored
+  // FBS-vs-FCS "buy games" are common (especially Weeks 1-2), and FPI can
+  // also just be missing/not-yet-scraped for a real FBS team — either
+  // way, a missing FPI value should never block the whole card when
+  // ESPN's own market data can fill it instead. Two market-derived
+  // fallbacks, tried in order:
+  //   1. Real market spread (most direct — already margin-shaped).
+  //   2. Real market moneyline odds, converted to an implied margin via
+  //      the same normal-distribution inverse used everywhere else in
+  //      this app to go probability -> margin, for games that have ML
+  //      odds posted but no spread yet.
+  // Only returns null (still shows the informational card) when there's
+  // truly no FPI AND no market signal of any kind for this game.
+  const marketSpreadMargin=(g&&g.spread!=null)?-parseFloat(g.spread):null; // ESPN convention: negative spread = home favored
+  let marketMlMargin=null;
+  if(marketSpreadMargin==null&&g&&g.homeML!=null&&g.awayML!=null){
+    const hImp=_epImp(g.homeML),aImp=_epImp(g.awayML);
+    const sum=hImp+aImp;
+    if(sum>0){
+      const hP=hImp/sum;
+      // Inverse of the normal CDF used for cover-probability elsewhere —
+      // solves for the margin that would produce this implied win prob
+      // at the sim's own margin sigma, so a moneyline-only game still
+      // gets a real, consistently-scaled margin rather than a guess.
+      marketMlMargin=_CFB_SIGMA_MARGIN*_normInv(Math.min(.99,Math.max(.01,hP)));
+    }
+  }
+  const marketMargin=marketSpreadMargin!=null?marketSpreadMargin:marketMlMargin;
   if(!hasFpi&&marketMargin==null)return null;
   const _n=v=>{const x=parseFloat(v);return isNaN(x)?null:x;};
   const hOff=D.stats[hA]?.offense||{},aOff=D.stats[awA]?.offense||{};
@@ -6665,7 +6696,9 @@ function _cfbPickReasoning(g,mc,f,focus){
       sents.push(`FPI has ${h} at ${f.hFpi>=0?'+':''}${f.hFpi}${f.hFpiRank!=null?' (#'+f.hFpiRank+' nationally)':''} and ${a} at ${f.aFpi>=0?'+':''}${f.aFpi}${f.aFpiRank!=null?' (#'+f.aFpiRank+')':''} — a ${gap.toFixed(1)}-point model gap${gap>=10?', a significant edge':gap>=4?', a moderate edge':', essentially a toss-up on power rating alone'}.`);
     }else if(mc.hasFpi===false){
       const fcsSide=f.hFpi==null?h:a;
-      sents.push(`${fcsSide} has no FPI rating — almost certainly an FCS opponent, which ESPN's FPI doesn't cover. This projection uses the actual market spread (${g.spreadDetails||(g.spread!=null?g.spread:'n/a')}) as its margin base instead of FPI, since the market has real information on the FCS side that this model's own stats pipeline doesn't.`);
+      const usedSpread=g.spread!=null;
+      const marketSrc=usedSpread?`the actual market spread (${g.spreadDetails||g.spread})`:`ESPN's market moneyline (${g.home} ${g.homeML>0?'+':''}${g.homeML} / ${g.away} ${g.awayML>0?'+':''}${g.awayML}), converted to an implied margin`;
+      sents.push(`${fcsSide} has no FPI rating — either an FCS opponent (ESPN's FPI is FBS-only) or simply not scraped yet. Rather than blocking this card, the projection uses ${marketSrc} as its margin base instead of FPI, since the market has real information on this matchup that this model's own stats pipeline doesn't.`);
     }
     if(f.neutralSite){
       sents.push(`Neutral site (${g.venue||'no home team'}) — no home-field adjustment applied, so this is closer to a pure power-rating matchup than a typical campus game.`);
@@ -6765,15 +6798,16 @@ function _cfbGameCard(g){
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
   const hFpi=D.fpi[g.home]?.fpi,aFpi=D.fpi[g.away]?.fpi;
   if(!mc){
-    // cfbMC() now falls back to the real market spread whenever FPI is
-    // missing (the common FBS-vs-FCS "buy game" case), so this only still
-    // bails out when there's truly no signal at all: no FPI for either
-    // team AND no market spread posted yet either.
+    // cfbMC() now falls back to real ESPN market data (spread, or
+    // moneyline odds converted to an implied margin when no spread is
+    // posted yet) whenever FPI is missing, so this only still bails out
+    // when there's truly no signal at all: no FPI for either team AND no
+    // market spread AND no market moneyline either.
     const hMissing=D.fpi[g.home]==null,aMissing=D.fpi[g.away]==null;
     const noFpiReason=(hMissing&&aMissing)?`Neither ${g.home} nor ${g.away} has an FPI rating`
       :hMissing?`${g.home} has no FPI rating`:aMissing?`${g.away} has no FPI rating`:null;
     const msg=noFpiReason
-      ?`${noFpiReason} — likely an FCS (non-FBS) opponent, which ESPN's FPI doesn't cover — and no market spread has been posted yet to fall back to. No model projection is generated without one.`
+      ?`${noFpiReason} — likely an FCS (non-FBS) opponent, which ESPN's FPI doesn't cover, or simply not scraped yet — and no market spread or moneyline odds have been posted yet to fall back to. No model projection is generated without one.`
       :`Insufficient FPI/stats data for this matchup yet.`;
     return`<div class="card" style="margin-bottom:12px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
