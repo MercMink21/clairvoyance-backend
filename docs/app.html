@@ -6112,6 +6112,7 @@ loadCFBData();
 // data). ~52 matches real FBS-wide scoring averages.
 const _CFB_LG_TOTAL=52;
 const _CFB_HFA=2.2; // typical college home-field edge, in points
+const _CFB_SIGMA_MARGIN=16.5,_CFB_SIGMA_TOTAL=13.0; // CFB's real game-to-game variance is high
 function _boxMullerZ(){
   const u1=Math.random()||1e-10,u2=Math.random();
   return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
@@ -6138,12 +6139,11 @@ function cfbMC(hA,awA,n,ouLine){
   // computed here, not just at display time, so overP/underP stay
   // consistent with whatever line actually gets shown.
   const finalOU=ouLine!=null?parseFloat(ouLine):parseFloat(_forceHalfLine(baseTotal));
-  const sigmaMargin=16.5,sigmaTotal=13.0; // CFB's real game-to-game variance is high
-  n=n||10000;
+  n=n||15000;
   let hw=0,ov=0,marginSum=0,totalSum=0;
   for(let i=0;i<n;i++){
-    const simMargin=margin0+_boxMullerZ()*sigmaMargin;
-    const simTotal=Math.max(20,baseTotal+_boxMullerZ()*sigmaTotal);
+    const simMargin=margin0+_boxMullerZ()*_CFB_SIGMA_MARGIN;
+    const simTotal=Math.max(20,baseTotal+_boxMullerZ()*_CFB_SIGMA_TOTAL);
     marginSum+=simMargin;totalSum+=simTotal;
     if(simMargin>0)hw++;
     if(simTotal>finalOU)ov++;
@@ -6153,10 +6153,19 @@ function cfbMC(hA,awA,n,ouLine){
     hwP:hw/n,avgMargin:+avgMargin.toFixed(1),avgTotal:+avgTotal.toFixed(1),
     avgH:+((avgTotal+avgMargin)/2).toFixed(1),avgA:+((avgTotal-avgMargin)/2).toFixed(1),
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
+    n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
   };
 }
+// Analytical cover probability for an arbitrary spread/total line, reusing
+// the sim's own mean/sigma (normal-approximation, same technique already
+// used elsewhere in this app e.g. WNBA spread) — lets the UI's ±0.5 line
+// adjusters recompute probability instantly without re-running the full
+// 15,000-iteration simulation on every click.
+function _cfbCoverProb(mean,sigma,line){
+  return 1-normalCDF((line-mean)/sigma);
+}
 function cfbEns(hA,awA,ouLine){
-  const mc=cfbMC(hA,awA,10000,ouLine);if(!mc)return{p:.5,mc:.5,mcD:null};
+  const mc=cfbMC(hA,awA,15000,ouLine);if(!mc)return{p:.5,mc:.5,mcD:null};
   let p=Math.min(.92,Math.max(.08,mc.hwP));
   p=typeof sportCalibrate==='function'?sportCalibrate(p,'CFB'):p;
   return{p,mc:mc.hwP,mcD:mc};
@@ -6206,66 +6215,124 @@ function _cfbRankLabel(abbr){
   const D=_CFB_DATA;const r=D?.rankByAbbr?.[abbr];
   return r?`#${r.rank} `:'';
 }
+window._cfbLineAdj=window._cfbLineAdj||{}; // {gameId:{spread:0,ou:0}} — ±0.5 increments from the base line
+function _cfbAdjLine(gid,field,delta){
+  if(!window._cfbLineAdj[gid])window._cfbLineAdj[gid]={spread:0,ou:0};
+  window._cfbLineAdj[gid][field]+=delta;
+  renderCFBGames();
+}
+function _cfbGradeInfo(p,dec){
+  const e=ev(p,dec);
+  const t=tier(p,e,'CFB');
+  const label=t===3?'PREMIUM':t===2?'OPTIMAL':t===1?'LEAN':'SKIP';
+  const col=t===3?'var(--gc)':t===2?'var(--nc)':t===1?'var(--ic)':'var(--t3)';
+  return{label,col,ev:e};
+}
+function _cfbPickRow(label,p,dec,reasoning,onclickJs){
+  const g=_cfbGradeInfo(p,dec);
+  return`<div style="background:rgba(10,4,24,.85);border:1px solid ${g.col};border-radius:3px;padding:7px 9px;margin-bottom:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <span style="font-family:var(--mono);font-size:15px;font-weight:700;color:${g.col}">${label}</span>
+      <div style="display:flex;gap:5px;align-items:center">
+        <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">${(p*100).toFixed(1)}% · EV ${g.ev>=0?'+':''}${(g.ev*100).toFixed(1)}%</span>
+        <span style="font-family:var(--mono);font-size:13px;padding:1px 5px;border:1px solid ${g.col};color:${g.col};border-radius:2px">${g.label}</span>
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 7px" onclick="${onclickJs}">LOCK</button>
+      </div>
+    </div>
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);line-height:1.5">${reasoning}</div>
+  </div>`;
+}
 function _cfbGameCard(g){
   const D=_CFB_DATA;
+  const gid=g.id||(g.home+g.away+g.date);
+  const adj=window._cfbLineAdj[gid]||{spread:0,ou:0};
   const ens=cfbEns(g.home,g.away,g.overUnder);
   const mc=ens.mcD;
   const hP=ens.p,aP=1-hP;
   const hML=p2ml(hP),aML=p2ml(aP);
-  // Real market lines (g.spread/g.overUnder) are used as-is — sportsbooks
-  // sometimes post whole-number spreads (a real, normal push risk bettors
-  // already accept) and this must never misrepresent the actual market
-  // line. Only our OWN model-derived fallback (when no market line exists
-  // yet, this far ahead of a game) gets forced to .5, matching the same
-  // fix already applied to every other sport's fallback lines this
-  // session — a push in our own generated number is avoidable and should
-  // be avoided; a push in a real market number is not ours to hide.
-  const spreadLine=g.spread!=null?Math.abs(g.spread).toFixed(1):(mc?_forceHalfLine(Math.abs(mc.avgMargin)):'--');
-  const spreadFav=g.spread!=null?(g.spread<0?g.home:g.away):(mc&&mc.avgMargin>0?g.home:g.away);
-  const ouLine=mc?mc.ouLine:(g.overUnder||'--');
   const dt=g.date?new Date(g.date):null;
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
   const hFpi=D.fpi[g.home]?.fpi,aFpi=D.fpi[g.away]?.fpi;
-  const reasoning=mc?
-    `${_cfbRankLabel(g.home)}${g.homeName||g.home} FPI ${hFpi??'—'} vs ${_cfbRankLabel(g.away)}${g.awayName||g.away} FPI ${aFpi??'—'}`+
-    ` · MC-projected margin ${mc.avgMargin>=0?'+':''}${mc.avgMargin} (home perspective) over ${(mc.hwP*100).toFixed(1)}% of simulations`+
-    ` · Total projection driven by both teams' points-allowed averages, independent of the FPI-based margin.`
-    :'Insufficient FPI/stats data for this matchup yet.';
+  if(!mc){
+    return`<div class="card" style="margin-bottom:12px">
+      <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr} · ${g.venue||''}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">Insufficient FPI/stats data for this matchup yet.</div>
+    </div>`;
+  }
+  // Real market lines (g.spread/g.overUnder) start as-is — sportsbooks
+  // sometimes post whole-number spreads (a real, normal push risk bettors
+  // already accept) and this must never misrepresent the actual market
+  // line. Our own fallback (when no market line exists yet) is forced to
+  // .5 inside cfbMC(). The ±0.5 adjuster then moves off whichever base
+  // the user is adjusting from, in either case.
+  const baseSpread=g.spread!=null?Math.abs(g.spread):Math.abs(mc.avgMargin);
+  const spreadLine=Math.max(0.5,baseSpread+adj.spread);
+  const spreadFav=g.spread!=null?(g.spread<0?g.home:g.away):(mc.avgMargin>0?g.home:g.away);
+  const spreadDog=spreadFav===g.home?g.away:g.home;
+  const baseOU=mc.ouLine;
+  const ouLine=Math.max(1,baseOU+adj.ou);
+  // Favorite covers when (their actual margin) > (the line they're
+  // laying) — analytical cover prob off the sim's own margin distribution,
+  // reused for both sides and any adjusted line via _cfbCoverProb.
+  const favIsHome=spreadFav===g.home;
+  const favMarginMean=favIsHome?mc.avgMargin:-mc.avgMargin;
+  const favCoverP=Math.min(.95,Math.max(.05,_cfbCoverProb(favMarginMean,_CFB_SIGMA_MARGIN,spreadLine)));
+  const dogCoverP=1-favCoverP;
+  const overP=Math.min(.95,Math.max(.05,_cfbCoverProb(mc.avgTotal,_CFB_SIGMA_TOTAL,ouLine)));
+  const underP=1-overP;
+  const hFpiTxt=`${_cfbRankLabel(g.home)}${g.homeName||g.home} FPI ${hFpi??'—'}`;
+  const aFpiTxt=`${_cfbRankLabel(g.away)}${g.awayName||g.away} FPI ${aFpi??'—'}`;
   return `<div class="card" style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
       <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr}</div>
     </div>
-    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:8px">${g.venue||''}${g.neutralSite?' (Neutral Site)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
-      <div style="text-align:center;padding:8px;background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:2px">
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MONEYLINE</div>
-        <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${g.home} ${hML}</div>
-        <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${g.away} ${aML}</div>
-        <div style="display:flex;gap:4px;margin-top:5px">
-          <button class="btn btn-o btn-sm" style="flex:1;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})">${g.home}</button>
-          <button class="btn btn-o btn-sm" style="flex:1;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})">${g.away}</button>
-        </div>
-      </div>
-      <div style="text-align:center;padding:8px;background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:2px">
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div>
-        <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${spreadFav} -${spreadLine}</div>
-        ${g.spreadDetails?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3)">Market: ${g.spreadDetails}</div>`:''}
-        <button class="btn btn-o btn-sm" style="width:100%;margin-top:5px;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine}','-110',${(spreadFav===g.home?hP:aP).toFixed(3)})">LOCK</button>
-      </div>
-      <div style="text-align:center;padding:8px;background:rgba(10,4,24,.9);border:1px solid rgba(240,0,255,.2);border-radius:2px">
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U</div>
-        <div style="font-family:var(--orb);font-size:17px;font-weight:700;margin-top:3px">${ouLine}</div>
-        <div style="font-family:var(--mono);font-size:13px;color:${mc&&mc.overP>=.5?'var(--nc)':'var(--hc)'}">${mc?(mc.overP>=.5?'OVER':'UNDER')+' '+(Math.max(mc.overP,mc.underP)*100).toFixed(1)+'%':'—'}</div>
-        ${mc?`<button class="btn btn-o btn-sm" style="width:100%;margin-top:5px;font-size:13px" onclick="lockCFBGame('${g.home}','${g.away}','OU','${mc.overP>=.5?'OVER':'UNDER'} ${ouLine}','-110',${Math.max(mc.overP,mc.underP).toFixed(3)},${ouLine})">LOCK</button>`:''}
+    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">${g.venue||''}${g.neutralSite?' (Neutral Site)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}${g.spreadDetails?' · Market: '+g.spreadDetails:''}</div>
+
+    <div style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px;margin-bottom:5px">MONEYLINE</div>
+    ${_cfbPickRow(g.home+' ML '+hML,hP,ml2d(hML),
+      `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+      `lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})`)}
+    ${_cfbPickRow(g.away+' ML '+aML,aP,ml2d(aML),
+      `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+      `lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})`)}
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">SPREAD</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','spread',-0.5)">−½</button>
+        <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${spreadLine.toFixed(1)}</span>
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','spread',0.5)">+½</button>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:1.6;padding:8px 10px;background:rgba(0,0,0,.2);border-left:2px solid var(--ic);margin-bottom:8px">${reasoning}</div>
-    ${mc?`<div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:14px;color:var(--t3);padding:6px 10px;background:rgba(0,0,0,.15);border-radius:2px">
-      <span>MC SIM (10,000 runs)</span>
+    ${_cfbPickRow(spreadFav+' -'+spreadLine.toFixed(1),favCoverP,1.909,
+      `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims.`,
+      `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine.toFixed(1)}','-110',${favCoverP.toFixed(3)})`)}
+    ${_cfbPickRow(spreadDog+' +'+spreadLine.toFixed(1),dogCoverP,1.909,
+      `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright.`,
+      `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadDog} +${spreadLine.toFixed(1)}','-110',${dogCoverP.toFixed(3)})`)}
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">OVER/UNDER</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','ou',-0.5)">−½</button>
+        <span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${ouLine.toFixed(1)}</span>
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','ou',0.5)">+½</button>
+      </div>
+    </div>
+    ${_cfbPickRow('OVER '+ouLine.toFixed(1),overP,1.909,
+      `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. Total driven by both teams' points-allowed averages, independent of the FPI-based margin.`,
+      `lockCFBGame('${g.home}','${g.away}','OU','OVER ${ouLine.toFixed(1)}','-110',${overP.toFixed(3)},${ouLine.toFixed(1)})`)}
+    ${_cfbPickRow('UNDER '+ouLine.toFixed(1),underP,1.909,
+      `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims.`,
+      `lockCFBGame('${g.home}','${g.away}','OU','UNDER ${ouLine.toFixed(1)}','-110',${underP.toFixed(3)},${ouLine.toFixed(1)})`)}
+
+    <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:14px;color:var(--t3);padding:6px 10px;background:rgba(0,0,0,.15);border-radius:2px;margin-top:4px">
+      <span>MC SIM (${mc.n.toLocaleString()} runs)</span>
       <span>PROJ: ${g.away} ${mc.avgA} – ${g.home} ${mc.avgH}</span>
       <span style="color:var(--ic)">${(hP*100).toFixed(1)}% / ${(aP*100).toFixed(1)}%</span>
-    </div>`:''}
+    </div>
   </div>`;
 }
 function renderCFBGames(){
@@ -6379,6 +6446,16 @@ async function autoSettleCFB(){
     }
     if(changed){saveP(preds);updHdr();}
   }catch(e){console.warn('CFB settle:',e);}
+}
+// Keeps CFB scores/settlement current automatically instead of relying on
+// a user remembering to click "AUTO SETTLE ALL" — same pattern as
+// startNHLLive/startNBALive. 60s cadence: CFB games run for hours, so this
+// doesn't need the same near-real-time interval a live-score ticker would.
+let _cfbSettleIv=null;
+function startCFBSettle(){
+  if(_cfbSettleIv)clearInterval(_cfbSettleIv);
+  autoSettleCFB();
+  _cfbSettleIv=setInterval(autoSettleCFB,60000);
 }
 
 function renderStatMuseInsights(section, anchorId, limit){
@@ -20528,6 +20605,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{renderMoneyPuck();}catch(e){console.error('renderMoneyPuck',e);}
   try{startNHLLive();}catch(e){console.error('nhlLive',e);}
   try{startNBALive();}catch(e){console.error('nbaLive',e);}
+  try{startCFBSettle();}catch(e){console.error('cfbSettle',e);}
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}
   try{renderOverallHistory();}catch(e){console.error('renderOverallHistory',e);}
