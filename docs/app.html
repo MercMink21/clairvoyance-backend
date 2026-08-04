@@ -6094,17 +6094,57 @@ function loadCFBData(){
     (power?.power?.efficiencies?.rows||[]).forEach(r=>{efficiencyByAbbr[r.abbr]=r.stats;});
     const rankByAbbr={};
     (power?.rankings||[]).forEach(r=>{rankByAbbr[r.abbr]=r;});
+    const weeks=schedule?.weeks||{};
     _CFB_DATA={
       conferences, teamConf,
       fpi:fpiByAbbr, resume:resumeByAbbr, efficiency:efficiencyByAbbr,
       rankings:power?.rankings||[], rankByAbbr,
       stats:stats?.teams||{},
-      weeks:schedule?.weeks||{},
+      weeks,
+      elo:_cfbBuildElo(weeks),
       generatedAt:{teams:teams?.generated_at,power:power?.generated_at,stats:stats?.generated_at,schedule:schedule?.generated_at},
     };
     return _CFB_DATA;
   });
 }
+// Genuine incremental Elo built from this season's actual completed
+// results (homeScore/awayScore present once ESPN posts a final) --
+// unlike FPI (ESPN's own proprietary composite), this is our own signal
+// computed independently from real final scores, so blending it into
+// cfbEns actually adds diversity rather than restating FPI in different
+// units. K=20 with a margin-of-victory multiplier, same pattern as the
+// app's existing NHL Elo (nhlEns). Every team starts at a neutral 1500 --
+// early in the season (before any FBS games are final) this stays flat
+// for everyone and is honestly a no-op; it differentiates as real results
+// come in, which is disclosed in the reasoning text rather than presented
+// as if it already reflects a full season of form.
+function _cfbBuildElo(weeks){
+  const elo={},gamesPlayed={};
+  const rating=abbr=>elo[abbr]??(elo[abbr]=1500);
+  const games=[];
+  Object.values(weeks||{}).forEach(list=>(list||[]).forEach(g=>{
+    if(g.homeScore!=null&&g.awayScore!=null&&g.date)games.push(g);
+  }));
+  games.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  games.forEach(g=>{
+    const hR=rating(g.home),aR=rating(g.away);
+    const hfaElo=g.neutralSite?0:65; // ~65 Elo pts ≈ this model's HFA at K=20/MOV=1
+    const hExp=1/(1+Math.pow(10,(aR-(hR+hfaElo))/400));
+    const margin=g.homeScore-g.awayScore;
+    const hWon=margin>0?1:margin<0?0:.5;
+    // MOV multiplier (FiveThirtyEight-style): bigger blowouts move rating
+    // more, but log-dampened so a 70-point margin doesn't swing it 10x a
+    // 7-point win.
+    const movMult=Math.log(Math.abs(margin)+1)*(2.2/((Math.abs(hR-aR))*.001+2.2));
+    const k=20*Math.max(0.5,movMult);
+    elo[g.home]=hR+k*(hWon-hExp);
+    elo[g.away]=aR+k*((1-hWon)-(1-hExp));
+    gamesPlayed[g.home]=(gamesPlayed[g.home]||0)+1;
+    gamesPlayed[g.away]=(gamesPlayed[g.away]||0)+1;
+  });
+  return{ratings:elo,gamesPlayed};
+}
+function cfbEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
 loadCFBData();
 
 // League-average combined score, used as a fallback when a team's own
@@ -6124,7 +6164,7 @@ function _boxMullerZ(){
 // uses both teams' own points-allowed (proxy for what a similarly-rated
 // opponent tends to score against them), which is independent of FPI on
 // purpose — it's a real, separate signal from actual defensive output.
-function cfbMC(hA,awA,n,ouLine){
+function cfbMC(hA,awA,n,ouLine,g){
   const D=_CFB_DATA;if(!D)return null;
   const fpiH=parseFloat(D.fpi[hA]?.fpi),fpiA=parseFloat(D.fpi[awA]?.fpi);
   if(isNaN(fpiH)||isNaN(fpiA))return null;
@@ -6165,7 +6205,14 @@ function cfbMC(hA,awA,n,ouLine){
   const margin0=(fpiH-fpiA)+_CFB_HFA+yardsAdjPts+toAdjPts;
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
-  const baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed):_CFB_LG_TOTAL;
+  let baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed):_CFB_LG_TOTAL;
+  // Real per-venue forecast (wind/rain/cold), when it's already been
+  // prefetched into _CFB_WX_CACHE by _cfbPrefetchWeather -- capped nudge,
+  // same philosophy as the yards/turnover adjustments above.
+  const wxKey=g&&(g.id||(g.city+g.date));
+  const wx=wxKey?_CFB_WX_CACHE[wxKey]:null;
+  const wxImpact=wx?cfbWeatherImpact(wx):{totalAdj:0,label:''};
+  baseTotal=Math.max(20,baseTotal+wxImpact.totalAdj);
   // Real market O/U (ouLine, when passed in) is used exactly as posted —
   // sportsbooks already reliably post totals at .5. Only our own
   // fallback (baseTotal, when no market total exists yet) gets forced to
@@ -6188,6 +6235,7 @@ function cfbMC(hA,awA,n,ouLine){
     avgH:+((avgTotal+avgMargin)/2).toFixed(1),avgA:+((avgTotal-avgMargin)/2).toFixed(1),
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
     n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
+    wx,wxImpact,
   };
 }
 // Analytical cover probability for an arbitrary spread/total line, reusing
@@ -6198,11 +6246,25 @@ function cfbMC(hA,awA,n,ouLine){
 function _cfbCoverProb(mean,sigma,line){
   return 1-normalCDF((line-mean)/sigma);
 }
-function cfbEns(hA,awA,ouLine){
-  const mc=cfbMC(hA,awA,15000,ouLine);if(!mc)return{p:.5,mc:.5,mcD:null};
-  let p=Math.min(.92,Math.max(.08,mc.hwP));
+function cfbEns(hA,awA,ouLine,g){
+  const mc=cfbMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,mcD:null};
+  const D=_CFB_DATA;
+  const eloR=D?.elo?.ratings||{},gp=D?.elo?.gamesPlayed||{};
+  const hElo=eloR[hA]??1500,aElo=eloR[awA]??1500;
+  const eloP=cfbEloWP(hElo,aElo);
+  // Elo's blend weight scales with how many real games have actually
+  // fed it -- 0 games played means Elo is still flat at 1500 for both
+  // teams (a coin flip, i.e. no real signal), so it should contribute
+  // ~nothing yet rather than dragging a genuine FPI-based edge back
+  // toward 50/50. Caps at 20% weight once both teams have a handful of
+  // results in, deliberately kept a minority weight since FPI already
+  // incorporates far more per-game detail than a plain win/loss Elo does.
+  const gamesForWeight=Math.min(gp[hA]||0,gp[awA]||0);
+  const eloWeight=Math.min(.20,gamesForWeight*.04);
+  let p=mc.hwP*(1-eloWeight)+eloP*eloWeight;
+  p=Math.min(.92,Math.max(.08,p));
   p=typeof sportCalibrate==='function'?sportCalibrate(p,'CFB'):p;
-  return{p,mc:mc.hwP,mcD:mc};
+  return{p,mc:mc.hwP,elo:eloP,eloWeight,mcD:mc};
 }
 
 // ═══ CFB UI ═══════════════════════════════════════════════════════════
@@ -6292,6 +6354,83 @@ function _cfbPickRow(label,p,dec,reasoning,onclickJs){
 // be needed when that happens — this just starts including more facts
 // the moment ESPN starts returning them, since the same daily scrape
 // already pulls the fields, they're just currently "--" or 0.
+// ── CFB weather: real per-venue forecast, not a league-wide guess ──────
+// fetch_cfb.py captures each game's actual venue city (ESPN's
+// venue.address.city/state) — geocoded here via Open-Meteo's free
+// geocoding API (no API key, same provider MLB's fetchParkWeather
+// already uses) rather than a hand-maintained stadium coordinate table,
+// so it works for all ~130 FBS venues including one-off neutral sites
+// (e.g. Dublin, Ireland) without needing to enumerate them by hand.
+// Indoor venues (ESPN's venue.indoor flag) are skipped entirely — wind/
+// rain/cold don't apply to a dome game, so it would be dishonest to
+// apply an outdoor adjustment there.
+let _CFB_GEO_CACHE={},_CFB_WX_CACHE={};
+async function _cfbGeocode(city,state){
+  const key=(city||'')+','+(state||'');
+  if(_CFB_GEO_CACHE[key]!==undefined)return _CFB_GEO_CACHE[key];
+  if(!city)return(_CFB_GEO_CACHE[key]=null);
+  try{
+    const url=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=5&language=en&format=json`;
+    const r=await fetch(url,{signal:AbortSignal.timeout?AbortSignal.timeout(4000):undefined});
+    if(!r.ok)return(_CFB_GEO_CACHE[key]=null);
+    const d=await r.json();
+    const results=d.results||[];
+    const match=(state&&results.find(x=>x.admin1&&(x.admin1===state||x.admin1_id===state)))||results[0];
+    const geo=match?{lat:match.latitude,lon:match.longitude}:null;
+    return(_CFB_GEO_CACHE[key]=geo);
+  }catch(e){return(_CFB_GEO_CACHE[key]=null);}
+}
+async function _cfbFetchWeather(g){
+  if(!g||g.indoor)return null;
+  const wxKey=g.id||(g.city+g.date);
+  if(_CFB_WX_CACHE[wxKey]&&Date.now()-_CFB_WX_CACHE[wxKey].ts<3600000)return _CFB_WX_CACHE[wxKey];
+  const geo=await _cfbGeocode(g.city,g.venueState);
+  if(!geo)return null;
+  try{
+    const gameDate=g.date?new Date(g.date):new Date();
+    const gameHr=Math.min(gameDate.getUTCHours(),23);
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=windspeed_10m,precipitation_probability,temperature_2m&wind_speed_unit=mph&temperature_unit=fahrenheit&forecast_days=16&timezone=UTC`;
+    const r=await fetch(url,{signal:AbortSignal.timeout?AbortSignal.timeout(4000):undefined});
+    if(!r.ok)return null;
+    const d=await r.json();
+    // forecast_days=16 covers next-two-weeks kickoffs; a game further out
+    // than that has no forecast yet — Open-Meteo simply won't have the
+    // hour, so this correctly falls through to "no data" rather than a
+    // stale or made-up number.
+    const times=d.hourly?.time||[];
+    const targetIso=gameDate.toISOString().slice(0,13);
+    const idx=times.findIndex(t=>t.startsWith(targetIso));
+    if(idx<0)return null;
+    const wx={wind:Math.round(d.hourly.windspeed_10m?.[idx]||0),precip:Math.round(d.hourly.precipitation_probability?.[idx]||0),temp:Math.round(d.hourly.temperature_2m?.[idx]||65),ts:Date.now()};
+    _CFB_WX_CACHE[wxKey]=wx;return wx;
+  }catch(e){return null;}
+}
+// Prefetches weather for a batch of games (e.g. today's/this week's slate)
+// so _cfbGameCard can read _CFB_WX_CACHE synchronously when rendering —
+// same prefetch-then-render-sync pattern MLB uses via fetchAllParkWeather.
+async function _cfbPrefetchWeather(games){
+  await Promise.allSettled((games||[]).filter(g=>!g.indoor).map(g=>_cfbFetchWeather(g)));
+}
+// Football-specific impact, distinct from MLB's weatherImpact — wind hurts
+// passing/kicking accuracy (favors UNDER + slightly favors the run-heavier
+// team, not modeled per-team here so only the total is adjusted), cold
+// suppresses scoring modestly, heavy rain suppresses scoring and raises
+// turnover-driven variance. Capped at +/-3 points on the total, same
+// capped-nudge philosophy as cfbMC's yardsAdjPts/toAdjPts — a real signal,
+// but never allowed to dominate the FPI/points-allowed-based projection.
+function cfbWeatherImpact(wx){
+  if(!wx)return{totalAdj:0,label:''};
+  let totalAdj=0;const notes=[];
+  const wind=wx.wind||0,precip=wx.precip||0,temp=wx.temp!=null?wx.temp:65;
+  if(wind>=20){totalAdj-=2.5;notes.push(`${wind}mph wind`);}
+  else if(wind>=12){totalAdj-=1.0;notes.push(`${wind}mph wind`);}
+  if(precip>=70){totalAdj-=1.5;notes.push('high rain risk');}
+  else if(precip>=40){totalAdj-=0.5;notes.push('rain possible');}
+  if(temp<25){totalAdj-=1.5;notes.push('hard freeze');}
+  else if(temp<40){totalAdj-=0.7;notes.push('cold');}
+  totalAdj=Math.max(-3,Math.min(1,totalAdj));
+  return{totalAdj:+totalAdj.toFixed(2),label:notes.join(' · ')};
+}
 function _cfbAnalysisFacts(g,mc){
   const D=_CFB_DATA;
   const h=g.home,a=g.away;
@@ -6309,6 +6448,14 @@ function _cfbAnalysisFacts(g,mc){
 
   facts.neutralSite=!!g.neutralSite;
   facts.hfa=_CFB_HFA;
+
+  const _eloR=D.elo?.ratings||{},_eloGp=D.elo?.gamesPlayed||{};
+  facts.hElo=Math.round(_eloR[h]??1500);facts.aElo=Math.round(_eloR[a]??1500);
+  facts.hEloGames=_eloGp[h]||0;facts.aEloGames=_eloGp[a]||0;
+  // Mirrors cfbEns's own weight formula so the reasoning text always
+  // describes the exact weight actually used in the probability, not an
+  // approximation of it.
+  facts.eloWeight=+Math.min(.20,Math.min(facts.hEloGames,facts.aEloGames)*.04).toFixed(2);
 
   facts.hOffPassYdsG=_num(hOff.passingYardsPerGame);facts.aOffPassYdsG=_num(aOff.passingYardsPerGame);
   facts.hOffRushYdsG=_num(hOff.rushingYardsPerGame);facts.aOffRushYdsG=_num(aOff.rushingYardsPerGame);
@@ -6366,6 +6513,11 @@ function _cfbPickReasoning(g,mc,f,focus){
     }else{
       sents.push(`Efficiency ratings aren't populated yet this early in the season (ESPN computes them from actual games played) — will factor in automatically as they come online.`);
     }
+    if(f.hEloGames>0||f.aEloGames>0){
+      sents.push(`Elo (built from this season's own final scores, separate from FPI): ${h} ${f.hElo} (${f.hEloGames} game${f.hEloGames===1?'':'s'} played), ${a} ${f.aElo} (${f.aEloGames}) — currently weighted ${(f.eloWeight*100).toFixed(0)}% into the win probability, capped at 20% and scaling up as both teams accumulate more results.`);
+    }else{
+      sents.push(`Elo hasn't differentiated yet — neither team has a completed game this season to build it from, so it starts flat at 1500 and contributes 0% to the win probability right now. It'll pick up real weight once games are on the board.`);
+    }
     if(f.hOffTODiff!=null&&f.aOffTODiff!=null){
       sents.push(`Turnover margin: ${h} ${f.hOffTODiff>=0?'+':''}${f.hOffTODiff}, ${a} ${f.aOffTODiff>=0?'+':''}${f.aOffTODiff} on the season — ${Math.abs(f.hOffTODiff-f.aOffTODiff)>=4?'a real disparity that tends to swing close games':'roughly a wash'}.`);
     }
@@ -6390,7 +6542,16 @@ function _cfbPickReasoning(g,mc,f,focus){
     if(!g.neutralSite){
       sents.push(`${h} is home (${g.venue||'campus site'}), so the model's fixed home-field adjustment is already reflected in the margin used to derive this total — no separate total-specific crowd effect is applied beyond that.`);
     }
-    sents.push(`MC sim projects ${mc.avgTotal} combined points across ${mc.n.toLocaleString()} simulations, independent of the FPI-based margin — driven purely by both teams' actual points-allowed averages.`);
+    if(mc.wx){
+      sents.push(mc.wxImpact.totalAdj!==0
+        ?`Real forecast for ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip chance (${mc.wxImpact.label}) — folded into the total as a ${mc.wxImpact.totalAdj>0?'+':''}${mc.wxImpact.totalAdj}-point adjustment.`
+        :`Forecast for ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind, ${mc.wx.precip}% precip — mild enough conditions that no weather adjustment was applied to the total.`);
+    }else if(g.indoor){
+      sents.push(`${g.venue||'This venue'} is indoors — no weather factor applies.`);
+    }else{
+      sents.push(`No forecast loaded yet for this matchup's venue (either too far out for a 16-day forecast window, or the game's location hasn't resolved) — total is weather-neutral for now.`);
+    }
+    sents.push(`MC sim projects ${mc.avgTotal} combined points across ${mc.n.toLocaleString()} simulations, driven by both teams' actual points-allowed averages plus the capped yardage/turnover/weather adjustments above — independent of the FPI-based margin used for the moneyline/spread side.`);
   }
 
   return sents.filter(Boolean).join(' ');
@@ -6399,7 +6560,7 @@ function _cfbGameCard(g){
   const D=_CFB_DATA;
   const gid=g.id||(g.home+g.away+g.date);
   const adj=window._cfbLineAdj[gid]||{spread:0,ou:0};
-  const ens=cfbEns(g.home,g.away,g.overUnder);
+  const ens=cfbEns(g.home,g.away,g.overUnder,g);
   const mc=ens.mcD;
   const hP=ens.p,aP=1-hP;
   const hML=p2ml(hP),aML=p2ml(aP);
@@ -6511,6 +6672,14 @@ function renderCFBGames(){
   if(!games.length){el.innerHTML='<div class="empty">NO GAMES MATCH THESE FILTERS</div>';return;}
   games.sort((a,b)=>new Date(a.date)-new Date(b.date));
   el.innerHTML=games.map(_cfbGameCard).join('');
+  // Render immediately with whatever weather is already cached, then
+  // prefetch real forecasts for this filtered slate and re-render once
+  // they land — same pattern as MLB's fetchAllParkWeather, avoids
+  // blocking the initial paint on ~20 external geocode+forecast calls.
+  _cfbPrefetchWeather(games).then(()=>{
+    const stillEl=document.getElementById('cfb-games-list');
+    if(stillEl)stillEl.innerHTML=games.map(_cfbGameCard).join('');
+  });
 }
 function renderCFBModel(){
   const el=document.getElementById('cfb-model-content');if(!el)return;
@@ -8504,15 +8673,27 @@ function _nbaGameCard(espnEv){
       let explanation='';
       if(pre){
         // ── NBA analytics context ──────────────────────────────────────────
+        // Same source priority nbaMC() itself uses (live teamAdv > static
+        // NBA_BBREF/NBA_TEAMS > league average) so the numbers shown here
+        // never disagree with what actually drove the model's probability.
+        // Previously this pulled straight from the static 4-team tables
+        // regardless of whether live data existed, silently showing a
+        // possibly-stale number for the other 26 teams — _hHasData/_aHasData
+        // below is surfaced in the reasoning text so a league-average
+        // fallback is never presented as if it were this team's real stat.
+        const _liveAdvR=window.__CV_DATA?.nba?.teamAdv||{};
+        const _hLiveR=_liveAdvR[hn],_aLiveR=_liveAdvR[an];
         const _hBbr=NBA_BBREF[hn]||{},_aBbr=NBA_BBREF[an]||{};
         const _hTeam=NBA_TEAMS[hn]||{},_aTeam=NBA_TEAMS[an]||{};
-        const _hOrtg=(_hBbr.p100?.ortg||_hTeam.net+110||110).toFixed(1);
-        const _aOrtg=(_aBbr.p100?.ortg||_aTeam.net+110||110).toFixed(1);
-        const _hDrtg=(_hBbr.p100?.drtg||110-(_hTeam.net||0)).toFixed(1);
-        const _aDrtg=(_aBbr.p100?.drtg||110-(_aTeam.net||0)).toFixed(1);
-        const _hNet=(_hTeam.net||_hBbr.adv?.net_rtg||0).toFixed(1);
-        const _aNet=(_aTeam.net||_aBbr.adv?.net_rtg||0).toFixed(1);
-        const _hEFG=((_hBbr.p100?.efg_pct||_hTeam.efg||.520)*100).toFixed(1);
+        const _hHasData=!!(_hLiveR||_hBbr.p100||_hTeam.net!=null);
+        const _aHasData=!!(_aLiveR||_aBbr.p100||_aTeam.net!=null);
+        const _hOrtg=(_hLiveR?.ortg??_hBbr.p100?.ortg??(_hTeam.net!=null?_hTeam.net+110:null)??110).toFixed(1);
+        const _aOrtg=(_aLiveR?.ortg??_aBbr.p100?.ortg??(_aTeam.net!=null?_aTeam.net+110:null)??110).toFixed(1);
+        const _hDrtg=(_hLiveR?.drtg??_hBbr.p100?.drtg??(110-(_hTeam.net||0))).toFixed(1);
+        const _aDrtg=(_aLiveR?.drtg??_aBbr.p100?.drtg??(110-(_aTeam.net||0))).toFixed(1);
+        const _hNet=(_hLiveR?.net??_hTeam.net??_hBbr.adv?.net_rtg??0).toFixed(1);
+        const _aNet=(_aLiveR?.net??_aTeam.net??_aBbr.adv?.net_rtg??0).toFixed(1);
+        const _hEFG=((_hLiveR?.efg_pct??_hBbr.p100?.efg_pct??_hTeam.efg??.520)*100).toFixed(1);
         const _aEFG=((_aBbr.p100?.efg_pct||_aTeam.efg||.520)*100).toFixed(1);
         const _hTS=((_hBbr.p100?.ts_pct||_hTeam.ts||.560)*100).toFixed(1);
         const _aTS=((_aBbr.p100?.ts_pct||_aTeam.ts||.560)*100).toFixed(1);
@@ -8536,7 +8717,8 @@ function _nbaGameCard(espnEv){
         const _nbaSigStr=_nbaSig<=.03?'well-aligned':_nbaSig<=.06?'converging':'partial consensus';
         const _nbaEdge=_edge(_bmNBA.prob,_bmNBA.dec||1.91);
         const _nbaKelly=(_kelly(_bmNBA.prob,_bmNBA.dec||1.91)*100).toFixed(1);
-        const _nbaCtxLine=`ORtg: ${_favOrtg} vs ${_dogOrtg} | DRtg: ${_favDrtg} vs ${_dogDrtg} | Net: ${_favNet} vs ${_dogNet} | eFG%: ${_favEFG} vs ${_dogEFG} | TS%: ${_favTS} | TOV%: ${_favTOV} | Opp eFG%: ${_favOppEFG}`;
+        const _nbaDataNote=(!_hHasData||!_aHasData)?` (${!_hHasData&&!_aHasData?'both teams':!_hHasData?hn:an} on league-average estimates — no live/season data source matched yet)`:'';
+        const _nbaCtxLine=`ORtg: ${_favOrtg} vs ${_dogOrtg} | DRtg: ${_favDrtg} vs ${_dogDrtg} | Net: ${_favNet} vs ${_dogNet} | eFG%: ${_favEFG} vs ${_dogEFG} | TS%: ${_favTS} | TOV%: ${_favTOV} | Opp eFG%: ${_favOppEFG}${_nbaDataNote}`;
         const _nbaProjLine=`Projected: ${_favNbaN} ${_projHScr>=_projAScr?_projHScr:_projAScr}–${_projHScr>=_projAScr?_projAScr:_projHScr} (margin ${_projSprdDisp>0?'+':''}${_projSprdDisp} vs line ${espnSprdNum>0?'+':''}${espnSprdNum})`;
         if(topTier===0){explanation=`No qualifying edge (${(_nbaFavP*100).toFixed(1)}% vs implied ${(1/(_bmNBA.dec||1.91)*100).toFixed(1)}%, edge ${(_nbaEdge*100).toFixed(1)}pp). Net rating: ${_favNbaN} ${_favNet} vs ${_dogNbaN} ${_dogNet}. ${_nbaEnsStr} (σ ${(_nbaSig*100).toFixed(1)}%). Line appears efficient — skip or monitor.`;}
         else{
