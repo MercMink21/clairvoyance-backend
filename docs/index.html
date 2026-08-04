@@ -6230,16 +6230,18 @@ function _cfbGradeInfo(p,dec){
 }
 function _cfbPickRow(label,p,dec,reasoning,onclickJs){
   const g=_cfbGradeInfo(p,dec);
-  return`<div style="background:rgba(10,4,24,.85);border:1px solid ${g.col};border-radius:3px;padding:7px 9px;margin-bottom:6px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-      <span style="font-family:var(--mono);font-size:15px;font-weight:700;color:${g.col}">${label}</span>
-      <div style="display:flex;gap:5px;align-items:center">
-        <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">${(p*100).toFixed(1)}% · EV ${g.ev>=0?'+':''}${(g.ev*100).toFixed(1)}%</span>
-        <span style="font-family:var(--mono);font-size:13px;padding:1px 5px;border:1px solid ${g.col};color:${g.col};border-radius:2px">${g.label}</span>
-        <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 7px" onclick="${onclickJs}">LOCK</button>
-      </div>
+  // Square card — aspect-ratio:1 with internal flex-column layout so it
+  // holds its shape regardless of how long the reasoning text is
+  // (clamped to 4 lines rather than growing the box taller than it is
+  // wide).
+  return`<div style="aspect-ratio:1;background:rgba(10,4,24,.85);border:1px solid ${g.col};border-radius:4px;padding:9px;display:flex;flex-direction:column;justify-content:space-between">
+    <div>
+      <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${g.col};margin-bottom:4px;overflow-wrap:anywhere">${label}</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:5px">${(p*100).toFixed(1)}% · EV ${g.ev>=0?'+':''}${(g.ev*100).toFixed(1)}%</div>
+      <span style="font-family:var(--mono);font-size:12px;padding:1px 5px;border:1px solid ${g.col};color:${g.col};border-radius:2px">${g.label}</span>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--t3);line-height:1.4;margin-top:6px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">${reasoning}</div>
     </div>
-    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);line-height:1.5">${reasoning}</div>
+    <button class="btn btn-o btn-sm" style="width:100%;font-size:12px;padding:3px 0;margin-top:6px" onclick="${onclickJs}">LOCK</button>
   </div>`;
 }
 function _cfbGameCard(g){
@@ -6291,12 +6293,14 @@ function _cfbGameCard(g){
     <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">${g.venue||''}${g.neutralSite?' (Neutral Site)':''}${g.conferences?.length?' · '+g.conferences.join('/'):''}${g.spreadDetails?' · Market: '+g.spreadDetails:''}</div>
 
     <div style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px;margin-bottom:5px">MONEYLINE</div>
-    ${_cfbPickRow(g.home+' ML '+hML,hP,ml2d(hML),
-      `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
-      `lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})`)}
-    ${_cfbPickRow(g.away+' ML '+aML,aP,ml2d(aML),
-      `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
-      `lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})`)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      ${_cfbPickRow(g.home+' ML '+hML,hP,ml2d(hML),
+        `${hFpiTxt} vs ${aFpiTxt} · MC win rate ${(hP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+        `lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})`)}
+      ${_cfbPickRow(g.away+' ML '+aML,aP,ml2d(aML),
+        `${aFpiTxt} vs ${hFpiTxt} · MC win rate ${(aP*100).toFixed(1)}% of ${mc.n.toLocaleString()} sims.`,
+        `lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})`)}
+    </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
       <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">SPREAD</span>
@@ -6306,12 +6310,14 @@ function _cfbGameCard(g){
         <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','spread',0.5)">+½</button>
       </div>
     </div>
-    ${_cfbPickRow(spreadFav+' -'+spreadLine.toFixed(1),favCoverP,1.909,
-      `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims.`,
-      `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine.toFixed(1)}','-110',${favCoverP.toFixed(3)})`)}
-    ${_cfbPickRow(spreadDog+' +'+spreadLine.toFixed(1),dogCoverP,1.909,
-      `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright.`,
-      `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadDog} +${spreadLine.toFixed(1)}','-110',${dogCoverP.toFixed(3)})`)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      ${_cfbPickRow(spreadFav+' -'+spreadLine.toFixed(1),favCoverP,1.909,
+        `MC-projected margin ${(favIsHome?mc.avgMargin:-mc.avgMargin)>=0?'+':''}${(favIsHome?mc.avgMargin:-mc.avgMargin).toFixed(1)} for ${spreadFav} · covers -${spreadLine.toFixed(1)} in ${(favCoverP*100).toFixed(1)}% of sims.`,
+        `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadFav} -${spreadLine.toFixed(1)}','-110',${favCoverP.toFixed(3)})`)}
+      ${_cfbPickRow(spreadDog+' +'+spreadLine.toFixed(1),dogCoverP,1.909,
+        `${spreadDog} covers the +${spreadLine.toFixed(1)} in ${(dogCoverP*100).toFixed(1)}% of sims — needs to lose by fewer than ${spreadLine.toFixed(1)} or win outright.`,
+        `lockCFBGame('${g.home}','${g.away}','SPREAD','${spreadDog} +${spreadLine.toFixed(1)}','-110',${dogCoverP.toFixed(3)})`)}
+    </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
       <span style="font-family:var(--mono);font-size:13px;color:var(--ic);letter-spacing:1px">OVER/UNDER</span>
@@ -6321,16 +6327,18 @@ function _cfbGameCard(g){
         <button class="btn btn-o btn-sm" style="font-size:12px;padding:1px 6px" onclick="_cfbAdjLine('${gid}','ou',0.5)">+½</button>
       </div>
     </div>
-    ${_cfbPickRow('OVER '+ouLine.toFixed(1),overP,1.909,
-      `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. Total driven by both teams' points-allowed averages, independent of the FPI-based margin.`,
-      `lockCFBGame('${g.home}','${g.away}','OU','OVER ${ouLine.toFixed(1)}','-110',${overP.toFixed(3)},${ouLine.toFixed(1)})`)}
-    ${_cfbPickRow('UNDER '+ouLine.toFixed(1),underP,1.909,
-      `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims.`,
-      `lockCFBGame('${g.home}','${g.away}','OU','UNDER ${ouLine.toFixed(1)}','-110',${underP.toFixed(3)},${ouLine.toFixed(1)})`)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      ${_cfbPickRow('OVER '+ouLine.toFixed(1),overP,1.909,
+        `MC projects ${mc.avgTotal} total — ${overP>=.5?'+':''}${(mc.avgTotal-ouLine).toFixed(1)} vs the ${ouLine.toFixed(1)} line, OVER in ${(overP*100).toFixed(1)}% of sims. Total driven by both teams' points-allowed averages, independent of the FPI-based margin.`,
+        `lockCFBGame('${g.home}','${g.away}','OU','OVER ${ouLine.toFixed(1)}','-110',${overP.toFixed(3)},${ouLine.toFixed(1)})`)}
+      ${_cfbPickRow('UNDER '+ouLine.toFixed(1),underP,1.909,
+        `MC projects ${mc.avgTotal} total vs the ${ouLine.toFixed(1)} line, UNDER in ${(underP*100).toFixed(1)}% of sims.`,
+        `lockCFBGame('${g.home}','${g.away}','OU','UNDER ${ouLine.toFixed(1)}','-110',${underP.toFixed(3)},${ouLine.toFixed(1)})`)}
+    </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:14px;color:var(--t3);padding:6px 10px;background:rgba(0,0,0,.15);border-radius:2px;margin-top:4px">
       <span>MC SIM (${mc.n.toLocaleString()} runs)</span>
-      <span>PROJ: ${g.away} ${mc.avgA} – ${g.home} ${mc.avgH}</span>
+      <span>PROJ: ${g.away} ${mc.avgA} – ${g.home} ${mc.avgH} <span style="color:var(--t2)">(${mc.avgTotal} total)</span></span>
       <span style="color:var(--ic)">${(hP*100).toFixed(1)}% / ${(aP*100).toFixed(1)}%</span>
     </div>
   </div>`;
