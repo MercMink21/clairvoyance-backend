@@ -6128,10 +6128,44 @@ function cfbMC(hA,awA,n,ouLine){
   const D=_CFB_DATA;if(!D)return null;
   const fpiH=parseFloat(D.fpi[hA]?.fpi),fpiA=parseFloat(D.fpi[awA]?.fpi);
   if(isNaN(fpiH)||isNaN(fpiA))return null;
-  const margin0=(fpiH-fpiA)+_CFB_HFA;
-  const hAllowed=parseFloat(D.stats[hA]?.defenseAllowed?.totalPointsPerGame);
-  const aAllowed=parseFloat(D.stats[awA]?.defenseAllowed?.totalPointsPerGame);
-  const baseTotal=(!isNaN(hAllowed)&&!isNaN(aAllowed))?(hAllowed+aAllowed):_CFB_LG_TOTAL;
+  const _n=v=>{const x=parseFloat(v);return isNaN(x)?null:x;};
+  const hOff=D.stats[hA]?.offense||{},aOff=D.stats[awA]?.offense||{};
+  const hDefAllowed=D.stats[hA]?.defenseAllowed||{},aDefAllowed=D.stats[awA]?.defenseAllowed||{};
+
+  // FPI is the primary margin driver -- ESPN defines it as expected point
+  // margin vs an average opponent on a neutral field, so it's already a
+  // point-scale power rating. Yardage and turnover matchup data are folded
+  // in as small, capped adjustments on top, never allowed to swing the
+  // margin more than a few points, so no single stat category can dominate
+  // or double-count what FPI already reflects.
+  let yardsAdjPts=0;
+  const hOffYds=(_n(hOff.passingYardsPerGame)??0)+(_n(hOff.rushingYardsPerGame)??0);
+  const aDefYdsAllowed=(_n(aDefAllowed.passingYardsPerGame)??0)+(_n(aDefAllowed.rushingYardsPerGame)??0);
+  const aOffYds=(_n(aOff.passingYardsPerGame)??0)+(_n(aOff.rushingYardsPerGame)??0);
+  const hDefYdsAllowed=(_n(hDefAllowed.passingYardsPerGame)??0)+(_n(hDefAllowed.rushingYardsPerGame)??0);
+  if(hOffYds&&aDefYdsAllowed&&aOffYds&&hDefYdsAllowed){
+    // Net matchup-specific yards edge (each team's own output vs this
+    // specific opponent's allowed average), converted at a rough 16
+    // yards-per-point rule of thumb -- an approximation, not a precise
+    // conversion -- then capped at +/-3 points.
+    const hEdgeYds=hOffYds-aDefYdsAllowed;
+    const aEdgeYds=aOffYds-hDefYdsAllowed;
+    yardsAdjPts=Math.max(-3,Math.min(3,(hEdgeYds-aEdgeYds)/16));
+  }
+
+  let toAdjPts=0;
+  const hTO=_n(hOff.turnOverDifferential),aTO=_n(aOff.turnOverDifferential);
+  if(hTO!=null&&aTO!=null){
+    // Turnover differential gap, capped at +/-1.5 points -- turnovers are
+    // high-variance and already partly reflected in FPI, so this stays a
+    // small nudge rather than a primary driver.
+    toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
+  }
+
+  const margin0=(fpiH-fpiA)+_CFB_HFA+yardsAdjPts+toAdjPts;
+  const hAllowed=_n(hDefAllowed.totalPointsPerGame);
+  const aAllowed=_n(aDefAllowed.totalPointsPerGame);
+  const baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed):_CFB_LG_TOTAL;
   // Real market O/U (ouLine, when passed in) is used exactly as posted —
   // sportsbooks already reliably post totals at .5. Only our own
   // fallback (baseTotal, when no market total exists yet) gets forced to
@@ -6278,12 +6312,22 @@ function _cfbAnalysisFacts(g,mc){
 
   facts.hOffPassYdsG=_num(hOff.passingYardsPerGame);facts.aOffPassYdsG=_num(aOff.passingYardsPerGame);
   facts.hOffRushYdsG=_num(hOff.rushingYardsPerGame);facts.aOffRushYdsG=_num(aOff.rushingYardsPerGame);
+  facts.hOffRecYdsG=_num(hOff.receivingYardsPerGame);facts.aOffRecYdsG=_num(aOff.receivingYardsPerGame);
   facts.hOffTODiff=_num(hOff.turnOverDifferential);facts.aOffTODiff=_num(aOff.turnOverDifferential);
   facts.hOff3rd=_num(hOff.thirdDownConvPct);facts.aOff3rd=_num(aOff.thirdDownConvPct);
+  // Season totals, not per-game -- fetch_cfb.py pulls these as raw counting
+  // stats (no /G suffix from ESPN), so games-played is needed to get a rate.
+  // gamesPlayed isn't scraped yet, so these stay season totals; reasoning
+  // text below labels them as such rather than implying per-game.
+  facts.hOffPassTD=_num(hOff.passingTouchdowns);facts.aOffPassTD=_num(aOff.passingTouchdowns);
+  facts.hOffRushTD=_num(hOff.rushingTouchdowns);facts.aOffRushTD=_num(aOff.rushingTouchdowns);
+  facts.hOffRecTD=_num(hOff.receivingTouchdowns);facts.aOffRecTD=_num(aOff.receivingTouchdowns);
 
   facts.hDefPtsG=_num(hDef.totalPointsPerGame);facts.aDefPtsG=_num(aDef.totalPointsPerGame);
   facts.hDefPassYdsG=_num(hDef.passingYardsPerGame);facts.aDefPassYdsG=_num(aDef.passingYardsPerGame);
   facts.hDefRushYdsG=_num(hDef.rushingYardsPerGame);facts.aDefRushYdsG=_num(aDef.rushingYardsPerGame);
+  facts.hDefPassTD=_num(hDef.passingTouchdowns);facts.aDefPassTD=_num(aDef.passingTouchdowns);
+  facts.hDefRushTD=_num(hDef.rushingTouchdowns);facts.aDefRushTD=_num(aDef.rushingTouchdowns);
 
   facts.hSosRank=_num(hResume.avgsosrank);facts.aSosRank=_num(aResume.avgsosrank);
   facts.hRemSosRank=_num(hResume.sosremainingrank);facts.aRemSosRank=_num(aResume.sosremainingrank);
@@ -6325,6 +6369,9 @@ function _cfbPickReasoning(g,mc,f,focus){
     if(f.hOffTODiff!=null&&f.aOffTODiff!=null){
       sents.push(`Turnover margin: ${h} ${f.hOffTODiff>=0?'+':''}${f.hOffTODiff}, ${a} ${f.aOffTODiff>=0?'+':''}${f.aOffTODiff} on the season — ${Math.abs(f.hOffTODiff-f.aOffTODiff)>=4?'a real disparity that tends to swing close games':'roughly a wash'}.`);
     }
+    if(f.hOffPassTD!=null&&f.aOffPassTD!=null&&f.hOffRushTD!=null&&f.aOffRushTD!=null){
+      sents.push(`Season TD production: ${h} ${f.hOffPassTD} passing / ${f.hOffRushTD} rushing, ${a} ${f.aOffPassTD} passing / ${f.aOffRushTD} rushing (season totals, not per-game rates) — ${f.hOffRushTD+f.hOffPassTD>f.aOffRushTD+f.aOffPassTD?h:a} has scored more often through the air and on the ground so far.`);
+    }
   }
 
   if(focus==='OU'){
@@ -6333,6 +6380,12 @@ function _cfbPickReasoning(g,mc,f,focus){
     }
     if(f.hDefPtsG!=null&&f.aDefPtsG!=null){
       sents.push(`Defensively, ${h} allowed ${f.hDefPtsG.toFixed(1)} pts/g and ${a} allowed ${f.aDefPtsG.toFixed(1)} pts/g in 2025 — ${((f.hDefPtsG+f.aDefPtsG)/2)>=27?'both sides on the leakier end, supporting a higher total':((f.hDefPtsG+f.aDefPtsG)/2)<=20?'both defenses stingy, supporting a lower total':'a middle-of-the-road scoring environment'}.`);
+    }
+    if(f.hDefPassYdsG!=null&&f.aDefPassYdsG!=null&&f.hDefRushYdsG!=null&&f.aDefRushYdsG!=null){
+      sents.push(`Yards allowed: ${h} gives up ${f.hDefPassYdsG.toFixed(0)} pass / ${f.hDefRushYdsG.toFixed(0)} rush yds/g, ${a} gives up ${f.aDefPassYdsG.toFixed(0)} pass / ${f.aDefRushYdsG.toFixed(0)} rush yds/g — matches each offense's strength above against what the opposing defense actually allows.`);
+    }
+    if(f.hDefPassTD!=null&&f.aDefPassTD!=null&&f.hDefRushTD!=null&&f.aDefRushTD!=null){
+      sents.push(`Season TDs allowed: ${h} ${f.hDefPassTD} passing / ${f.hDefRushTD} rushing, ${a} ${f.aDefPassTD} passing / ${f.aDefRushTD} rushing (season totals, not per-game rates).`);
     }
     if(!g.neutralSite){
       sents.push(`${h} is home (${g.venue||'campus site'}), so the model's fixed home-field adjustment is already reflected in the margin used to derive this total — no separate total-specific crowd effect is applied beyond that.`);
