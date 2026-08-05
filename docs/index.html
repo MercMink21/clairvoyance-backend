@@ -2710,8 +2710,8 @@ let LOCKED_PROPS=(()=>{try{return JSON.parse(localStorage.getItem('locked_props'
     {id:'finals_g1_wemby_3pm',team:'SA',player:'Victor Wembanyama',line:'3PM O/U 1.5',over:true,conf:.72,ml:'-170',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'Victor Wembanyama OVER 3PM 1.5',winProb:.72,hA:'SA',awA:'NY',decOdds:1.588,wager:1,note:'NBA Finals G1 WIN. Wemby OVER 1.5 3PM (had 2).',playerResult:'had 2 3PM'},
     {id:'finals_g1_og_pts',team:'NY',player:'OG Anunoby',line:'PTS O/U 12.5',over:true,conf:.62,ml:'-112',lockedAt:FINALS_G1_TS,outcome:'win',date:'2026-06-03',sport:'NBA',betType:'PROP',betOn:'OG Anunoby OVER PTS 12.5',winProb:.62,hA:'SA',awA:'NY',decOdds:1.893,wager:1,note:'NBA Finals G1 WIN. OG Anunoby OVER 12.5 pts (had 17).',playerResult:'had 17 pts'},
     // ── JUNE 13 2026 · PENDING PARLAYS ─────────────────────────────────────────
-    {id:'j13_slip1_wc_nba',sport:'NBA',betType:'PARLAY',betOn:"6-Pick WC+NBA: Vinícius O1.5 Shots / Harper O22.5 PRA / Brunson O33.5 PRA / OG O16.5 PTS / Castle O11.5 PTS / Wemby O34.5 PRA",hA:'SA',awA:'NY',ml:'+1100',decOdds:12.00,winProb:.12,wager:0,outcome:'pending',date:'2026-06-13',lockedAt:1749852000000,note:'6-Pick WC+NBA G5. BRA vs MAR (Vinícius O1.5 Shots) + NYK vs SAS G5: Harper/Brunson/OG/Castle/Wemby overs. Pending.'},
-    {id:'j13_slip2_wnba',sport:'WNBA',betType:'PARLAY',betOn:"4-Pick WNBA: A.Boston O24.5 PRA / A.Wilson O38.5 PRA / J.Young O33 FS / O.Miles O16.5 PTS",hA:'LVA',awA:'MIN',ml:'+575',decOdds:6.75,winProb:.18,wager:0,outcome:'pending',date:'2026-06-13',lockedAt:1749855600000,note:'4-Pick WNBA June 13. Bueckers (DAL) removed — WNP. IND@CON: A.Boston. MIN@LVA: A.Wilson + J.Young + O.Miles. Pending.'},
+    {id:'j13_slip1_wc_nba',sport:'NBA',league:'NBA',betType:'PARLAY',betOn:"6-Pick WC+NBA: Vinícius O1.5 Shots / Harper O22.5 PRA / Brunson O33.5 PRA / OG O16.5 PTS / Castle O11.5 PTS / Wemby O34.5 PRA",hA:'SA',awA:'NY',ml:'+1100',decOdds:12.00,winProb:.12,wager:0,outcome:'pending',date:'2026-06-13',lockedAt:1749852000000,note:'6-Pick WC+NBA G5. BRA vs MAR (Vinícius O1.5 Shots) + NYK vs SAS G5: Harper/Brunson/OG/Castle/Wemby overs. Pending.'},
+    {id:'j13_slip2_wnba',sport:'WNBA',league:'WNBA',betType:'PARLAY',betOn:"4-Pick WNBA: A.Boston O24.5 PRA / A.Wilson O38.5 PRA / J.Young O33 FS / O.Miles O16.5 PTS",hA:'LVA',awA:'MIN',ml:'+575',decOdds:6.75,winProb:.18,wager:0,outcome:'pending',date:'2026-06-13',lockedAt:1749855600000,note:'4-Pick WNBA June 13. Bueckers (DAL) removed — WNP. IND@CON: A.Boston. MIN@LVA: A.Wilson + J.Young + O.Miles. Pending.'},
   ];
   // ── Merge: never downgrade a locally-settled bet back to pending ──
   const histIds=new Set(hist.map(h=>h.id));
@@ -4999,7 +4999,7 @@ function lockBet(sport,game,pick,prob,ml){
   const parts=game.split(' vs ');const hA=parts[0]||'';const awA=parts[1]||'';
   const id=sport+'_'+Date.now();
   const decOdds=parseFloat(ml)<0?1+(100/Math.abs(parseFloat(ml))):1+(parseFloat(ml)/100);
-  const pred={id,sport,betType:'ML',betOn:pick,hA,awA,winProb:prob,ml,decOdds,wager:100,outcome:'pending',date:today(),lockedAt:Date.now(),ctx:game};
+  const pred={id,sport,league:sport,betType:'ML',betOn:pick,hA,awA,winProb:prob,ml,decOdds,wager:100,outcome:'pending',date:today(),lockedAt:Date.now(),ctx:game};
   const preds=getP();preds.push(pred);saveP(preds);
   if(API_ONLINE())api('POST','/picks',pred).catch(()=>{addPendingUpload(pred);});
   else addPendingUpload(pred);
@@ -8214,7 +8214,7 @@ function lockParlay(w,p,ml,d,sport){
   // of inventing a new tag. Sport-specific parlay panes (e.g. NHL) already
   // pass their real sport explicitly and are unaffected.
   const sp=sport||'MISC';
-  const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:sp,betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:sp+' PARLAY',sport:sp,betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}
+  const preds=getP();preds.push({id:`p_${today()}_${Date.now()}`,date:today(),hA:'PARLAY',awA:'',sport:sp,league:sp,betType:'PARLAY',betOn:PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});saveP(preds);toast('// PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:sp+' PARLAY',sport:sp,betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}
 }
 
 // ═══ LIVE TRACKER ═══════════════════════════════════════════
@@ -8359,7 +8359,7 @@ function clearAllPending(){
 // ── Lock NRFI bet ──
 function lockNRFIBet(gameStr,betLabel,awA,hA,prob){
   const id='nrfi_'+Date.now();
-  const p={id,sport:'MLB',betType:'NRFI',betOn:betLabel,hA,awA,winProb:prob,ml:'+100',decOdds:2,wager:100,outcome:'pending',date:today(),lockedAt:Date.now(),ctx:gameStr};
+  const p={id,sport:'MLB',league:'MLB',betType:'NRFI',betOn:betLabel,hA,awA,winProb:prob,ml:'+100',decOdds:2,wager:100,outcome:'pending',date:today(),lockedAt:Date.now(),ctx:gameStr};
   const preds=getP();preds.push(p);saveP(preds);
   try{logOpeningLine(id,sport||'?',hA+' vs '+awA,betOn,parseInt(String(ml).replace('+','')||0),+d,getImpliedProb(ml));}catch(e){}
   p.reason=window._lastLockReason||null;p.journalNote=window._lastLockNote||null;window._lastLockReason=null;window._lastLockNote=null;
@@ -8396,7 +8396,7 @@ function lockNHLGame(gameStr,pick,ml){
   const mlNum=parseInt(String(ml).replace('+',''))||0;
   const dec=mlNum>0?mlNum/100+1:100/Math.abs(mlNum)+1;
   const id=`nhl_${today()}_${hA}_${awA}_${pick.replace(/\s/g,'')}`;
-  const pred={id,date:today(),hA,awA,sport:'NHL',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
+  const pred={id,date:today(),hA,awA,sport:'NHL',league:'NHL',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderNHLLockedBets();try{renderHomeLockedBets();}catch(e){}
   toast('// NHL LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick,sport:'NHL',league:'NHL',betType:'ML',ml,prob:0.55,decOdds:dec});}catch(ex){}
@@ -9532,7 +9532,7 @@ function lockNBAGame(gameStr,pick,ml){
   const mlNum=parseInt(String(ml).replace('+',''))||0;
   const dec=mlNum>0?mlNum/100+1:100/Math.abs(mlNum)+1;
   const id=`nba_${today()}_${hA}_${awA}_${pick.replace(/\s/g,'')}`;
-  const pred={id,date:today(),hA,awA,sport:'NBA',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
+  const pred={id,date:today(),hA,awA,sport:'NBA',league:'NBA',betType:'ML',betOn:pick,winProb:0.55,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now()};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderNBALockedBets();try{renderHomeLockedBets();}catch(e){}
   toast('// NBA LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick,sport:'NBA',league:'NBA',betType:'ML',ml,prob:0.55,decOdds:dec});}catch(ex){}
@@ -10526,7 +10526,7 @@ function calcNBAP(){
 }
 function lockNBAParlay(w,p,ml,d){
   const preds=getP();
-  preds.push({id:`nba_p_${today()}_${Date.now()}`,date:today(),hA:'NBA-PARLAY',awA:'',sport:'NBA',betType:'PARLAY',betOn:NBA_PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});
+  preds.push({id:`nba_p_${today()}_${Date.now()}`,date:today(),hA:'NBA-PARLAY',awA:'',sport:'NBA',league:'NBA',betType:'PARLAY',betOn:NBA_PAR.map(l=>l.name).join('|'),winProb:p,ml,decOdds:d,wager:w,outcome:'pending',lockedAt:Date.now()});
   saveP(preds);updHdr();toast('// NBA PARLAY LOCKED');try{window.showBetPopup({type:'lock',betOn:'NBA PARLAY',sport:'NBA',betType:'PARLAY',ml,prob:p,decOdds:d});}catch(ex){}
 }
 
@@ -15402,7 +15402,7 @@ function lockProp(team,player,line,over,conf,ml,sport,opp){
   if(sport==='UNKNOWN'){try{console.warn('[lockProp] unclassified team — tagged UNKNOWN:',team);}catch(e){}}
   const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
   const prop={id:`prop_${Date.now()}`,team,player,line,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
-    sport,betType:'PROP',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,winProb:conf||0.60,
+    sport,league:sport,betType:'PROP',betOn:`${player} ${over?'OVER':'UNDER'} ${line}`,winProb:conf||0.60,
     // awA falls back to team only when no opponent was passed through —
     // this used to be hardcoded to team (both sides), which is exactly
     // what produced "CHI at CHI" style matchup displays.
@@ -15427,7 +15427,7 @@ function lockNHLProp(player,stat,dir,prob,ml,line){
     id:`nhl_prop_${Date.now()}`,player,team:'NHL',
     line:line!=null?String(line):`${dir} ${stat}`,
     over,conf:prob,ml:mlNum,lockedAt:Date.now(),outcome:'pending',date:today(),
-    sport:'NHL',betType:'PROP',
+    sport:'NHL',league:'NHL',betType:'PROP',
     betOn:fullBet,
     propPlayer:player,propStat:stat,propDir:dir,
     winProb:prob,hA:'NHL',awA:'',decOdds:dec,wager:0,
@@ -15606,7 +15606,7 @@ function stopMLBLive(){if(_mlbLiveIv){clearInterval(_mlbLiveIv);_mlbLiveIv=null;
 // ═══ UNIVERSAL LIVE OPTIMAL ═════════════════════════════════════
 function lockLiveBet(sport,game,pick,ml,modelPct,betContext){
   const bet={
-    id:Date.now(),sport,game,pick,ml,
+    id:Date.now(),sport,league:sport,game,pick,ml,
     modelPct:parseInt(modelPct||50),
     date:today(),outcome:'pending',
     locked:new Date().toISOString(),
@@ -28495,7 +28495,7 @@ function cvParlayCalc(s){
 function cvParlayLock(s,w,cP,cML,cD){
   var legs=_cvParGet(s);if(!legs.length){toast('// NO LEGS');return;}
   var sp=s.toUpperCase();var preds=getP();
-  preds.push({id:'cvpar_'+s+'_'+Date.now(),date:today(),hA:'PARLAY',awA:'',sport:sp,betType:'PARLAY',
+  preds.push({id:'cvpar_'+s+'_'+Date.now(),date:today(),hA:'PARLAY',awA:'',sport:sp,league:sp,betType:'PARLAY',
     betOn:legs.map(function(l){return l.name;}).join('|'),winProb:cP,ml:cML,decOdds:cD,wager:w,
     outcome:'pending',lockedAt:Date.now(),
     note:legs.length+'-leg '+sp+' parlay. '+legs.map(function(l){return l.name+'('+l.type+')';}).join(', ')+'.'});
