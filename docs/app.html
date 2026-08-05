@@ -4144,9 +4144,34 @@ function mlbMC(hA,awA,n=25000,ouLine=8.5){
   const aPitAdj=PIT[awA]?pAdjFull(awA):pAdj(PIT[awA]?.era||4.35);
   const hL=adjLam(h,aw,h.pf,true,aPitAdj);const awL=adjLam(aw,h,h.pf,false,hPitAdj);
   let hw=0,aw2=0,ts=0,hT=0,aT=0,rT=0,ov=0;const mD={};
-  for(let i=0;i<n;i++){const hr=pois(hL),ar=pois(awL);hT+=hr;aT+=ar;rT+=hr+ar;const m=hr-ar;mD[m]=(mD[m]||0)+1;if(hr>ar)hw++;else if(ar>hr)aw2++;else ts++;if(hr+ar>ouLine)ov++;}
+  // Outlier-aware projection: a blowout sim (|margin|>=6 runs -- a real
+  // MLB rarity, roughly the extreme tail of the distribution) still
+  // counts fully toward win%/O-U probabilities below (a simulated
+  // blowout win is still a real win, a simulated 14-run game is still a
+  // real over) -- it's never discarded. But it's downweighted to 30%
+  // weight specifically for the DISPLAYED average score/margin, so a
+  // handful of extreme sims can't single-handedly drag the projected
+  // score away from what usually actually happens. rawAvg* (unweighted)
+  // stays available alongside the weighted avg* for transparency.
+  const OUTLIER_MARGIN=6,OUTLIER_WEIGHT=0.3;
+  let wSumH=0,wSumA=0,wSumT=0,wTotal=0,outlierCt=0;
+  for(let i=0;i<n;i++){
+    const hr=pois(hL),ar=pois(awL);hT+=hr;aT+=ar;rT+=hr+ar;
+    const m=hr-ar;mD[m]=(mD[m]||0)+1;
+    const isOutlier=Math.abs(m)>=OUTLIER_MARGIN;
+    const w=isOutlier?OUTLIER_WEIGHT:1;
+    if(isOutlier)outlierCt++;
+    wSumH+=hr*w;wSumA+=ar*w;wSumT+=(hr+ar)*w;wTotal+=w;
+    if(hr>ar)hw++;else if(ar>hr)aw2++;else ts++;
+    if(hr+ar>ouLine)ov++;
+  }
   hw+=Math.round(ts*.503);aw2+=Math.round(ts*.497);
-  return{hwP:hw/n,avgH:hT/n,avgA:aT/n,avgT:rT/n,overP:ov/n,underP:1-ov/n,rl15:Object.entries(mD).filter(([m])=>+m>=2).reduce((s,[,c])=>s+c,0)/n,rlN:Object.entries(mD).filter(([m])=>+m<=-2).reduce((s,[,c])=>s+c,0)/n};
+  return{hwP:hw/n,avgH:wSumH/wTotal,avgA:wSumA/wTotal,avgT:wSumT/wTotal,
+    rawAvgH:hT/n,rawAvgA:aT/n,rawAvgT:rT/n,
+    overP:ov/n,underP:1-ov/n,
+    rl15:Object.entries(mD).filter(([m])=>+m>=2).reduce((s,[,c])=>s+c,0)/n,
+    rlN:Object.entries(mD).filter(([m])=>+m<=-2).reduce((s,[,c])=>s+c,0)/n,
+    outlierPct:outlierCt/n,outlierMargin:OUTLIER_MARGIN};
 }
 function _ouAdj(hA,awA,date,baseOverP,ouL,delta){
   var nl=(parseFloat(ouL)+delta).toFixed(1);
@@ -4449,6 +4474,14 @@ function mlbCard(hA,awA,gt,date,espnGame){
         +`Model projects ${_projT} combined runs vs ${ouL} line (under probability ${(unP*100).toFixed(0)}%). ${_mcEns}. Kelly ${_favKelly}%. ${sizeWord}${secStr}`;
     }
   }
+  // Outlier disclosure, appended to every reasoning branch: blowout sims
+  // still count fully toward the win%/O-U probabilities the pick is
+  // actually based on -- this is purely informational, so the reasoning
+  // text doesn't silently hide how much of the projected AVERAGE score
+  // (not the pick itself) is being pulled by rare extreme outcomes.
+  if(mc?.outlierPct!=null&&mc.outlierPct>0){
+    explanation+=` <br>${(mc.outlierPct*100).toFixed(1)}% of sims produced a ${mc.outlierMargin}+ run blowout margin -- those are downweighted (not discarded) for the displayed average score above, so they can't single-handedly drag the projection; win%/O-U probabilities already count every sim in full regardless.`;
+  }
   return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
     <div class="gch">
       <div>
@@ -4471,7 +4504,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
       <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_mlb_${hA}_${awA}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL}" id="ouinp_mlb_${hA}_${awA}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_mlb_${hA}_${awA}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="_ouLockDir('${hA}','${awA}','${date||today()}',${ouP.toFixed(3)},'${ouL}','ouinp_mlb_${hA}_${awA}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
     <div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">
-      ${mc?`<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:5px 8px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(255,255,255,.06)"><span style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MC PROJ (${(mc.n||5000)/1000|0}k sims)</span><span style="font-family:var(--mono);font-size:16px;color:var(--nc);font-weight:700">${mc.avgH.toFixed(1)} – ${mc.avgA.toFixed(1)}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Total: <span style="color:var(--vc);font-weight:700">${mc.avgT.toFixed(1)}</span> vs line <span style="color:var(--t2)">${ouL}</span></span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Margin: <span style="color:${(mc.avgH-mc.avgA)>=0?'var(--nc)':'var(--t2)'}">${(mc.avgH-mc.avgA)>=0?'+':''}${(mc.avgH-mc.avgA).toFixed(1)} (${hA})</span></span></div>`:''}
+      ${mc?`<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:5px 8px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(255,255,255,.06);flex-wrap:wrap"><span style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MC PROJ (${(mc.n||5000)/1000|0}k sims)</span><span style="font-family:var(--mono);font-size:16px;color:var(--nc);font-weight:700">${mc.avgH.toFixed(1)} – ${mc.avgA.toFixed(1)}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Total: <span style="color:var(--vc);font-weight:700">${mc.avgT.toFixed(1)}</span> vs line <span style="color:var(--t2)">${ouL}</span></span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Margin: <span style="color:${(mc.avgH-mc.avgA)>=0?'var(--nc)':'var(--t2)'}">${(mc.avgH-mc.avgA)>=0?'+':''}${(mc.avgH-mc.avgA).toFixed(1)} (${hA})</span></span>${mc.outlierPct!=null?`<span style="font-family:var(--mono);font-size:13px;color:${mc.outlierPct>=0.03?'var(--vc)':'var(--t3)'}" title="Blowout sims (|margin|≥${mc.outlierMargin} runs) still count fully toward win%/O-U above -- only downweighted (30% weight) for this displayed average, so a handful of extreme sims can't drag the projected score by themselves.">⚠ ${(mc.outlierPct*100).toFixed(1)}% blowout sims (≥${mc.outlierMargin}R, downweighted) · raw avg ${mc.rawAvgH.toFixed(1)}–${mc.rawAvgA.toFixed(1)}</span>`:''}</div>`:''}
       <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">RUN LINE ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const mcProjH=mc?mc.avgH.toFixed(1):'—';const mcProjA=mc?mc.avgA.toFixed(1):'—';const mcMargin=mc?Math.abs(mc.avgH-mc.avgA).toFixed(1):'—';const mcFavScore=hP>=.5?(mc?mc.avgH.toFixed(1):'—'):(mc?mc.avgA.toFixed(1):'—');const mcDogScore=hP>=.5?(mc?mc.avgA.toFixed(1):'—'):(mc?mc.avgH.toFixed(1):'—');const mcMarginNum=mc?mc.avgH-mc.avgA:0;const mcFavMargin=hP>=.5?mcMarginNum:-mcMarginNum;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV,'SPREAD');const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV,'SPREAD');const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const rlReason=rlTier>=2?`${favRL} -1.5: MC proj margin ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} runs (${mcFavScore}–${mcDogScore}). Covers -1.5 in ${(rlP*100).toFixed(0)}% of 5k sims. ERA: ${favPit} ${favERA} vs ${dogPit} ${dogERA}.`:`${favRL} -1.5: MC margin only ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} (${mcFavScore}–${mcDogScore}). ${(rlP*100).toFixed(0)}% cover prob insufficient — ERA gap thin (${favERA} vs ${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5: MC projects fav margin ${mcFavMargin.toFixed(1)} — within 1 run in enough sims. Dog covers in ${(dogRLP*100).toFixed(0)}% of 5k sims. ${dogPit} (${dogERA} ERA) limits blowout risk.`:`${dogRL} +1.5: Fav MC margin ${mcFavMargin.toFixed(1)} runs exceeds 1.5-run line in too many sims (${(dogRLP*100).toFixed(0)}% dog cover).`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
@@ -14160,7 +14193,7 @@ function renderHomePage(){
     const premiumPicks=[];const darkHorsePicks=[];
     for(const p of todayAll){
       const wp=p.winProb||0;const dec=parseFloat(p.decOdds)||2;const evVal=mlEV(wp,dec);
-      const mlNum=parseFloat((p.ml||'').replace('+',''))||0;
+      const mlNum=parseFloat(String(p.ml||'').replace('+',''))||0;
       if(wp>=0.67&&evVal>0.03)premiumPicks.push({...p,_evVal:evVal,_bucket:'PREMIUM'});
       else if(mlNum>0&&wp>=0.47&&evVal>0.04)darkHorsePicks.push({...p,_evVal:evVal,_bucket:'SLEEPER'});
     }
