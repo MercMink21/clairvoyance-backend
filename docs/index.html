@@ -17018,7 +17018,7 @@ const RG_R1_WOMEN_RESULTS=[
   {w:'N.Osaka',seed:'(16)',l:'L.Siegemund',ml:'-195',note:'OPTIMAL ✓ — Osaka def. Siegemund. Clay specialist contained. Won in straight sets.',grade:'OPTIMAL'},
   {w:'M.Keys',seed:'(19)',l:'H.Vandewinkel',ml:'-310',note:'OPTIMAL ✓ — Keys power baseline too much for wildcard. Won comfortably.',grade:'OPTIMAL'},
 ];
-function lockTennisBet(tournament,match,pick,ml){
+function lockTennisBet(tournament,match,pick,ml,winProb,surface){
   const matchParts=match.split(' vs ');const hA=matchParts[0]||match;const awA=matchParts[1]||'';
   const mlNum=parseInt(String(ml).replace('+',''))||0;
   const dec=mlNum>0?mlNum/100+1:100/Math.abs(mlNum)+1;
@@ -17026,7 +17026,15 @@ function lockTennisBet(tournament,match,pick,ml){
   const id=`ten_${today()}_${hA.replace(/\s/g,'')}_${awA.replace(/\s/g,'')}_${pick.replace(/\s/g,'')}`;
   const _adb=typeof ATP_DB!=='undefined'?ATP_DB:{};const _wdb=typeof WTA_DB!=='undefined'?WTA_DB:{};
   const _sp=_adb[hA]?'ATP':_wdb[hA]?'WTA':_adb[awA]?'ATP':_wdb[awA]?'WTA':'TEN';
-  const pred={id,date:today(),hA,awA,sport:_sp,league:_sp,betType:'ML',betOn,winProb:0.60,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now(),surface:'clay',note:tournament};
+  // winProb/surface are now real caller-supplied values (tennisMatchWinProbFull's
+  // output, and the actual tournament's real surface) instead of a
+  // hardcoded 0.60/'clay' that misrepresented every non-clay-court,
+  // non-60%-favorite lock -- callers not yet passing them fall back to
+  // the ml-implied probability (still real, not a fabricated constant)
+  // and a neutral 'hard' default (the most common tour surface) rather
+  // than a specific surface claim that's often wrong.
+  const _wp=winProb!=null?winProb:(mlNum>0?100/(mlNum+100):Math.abs(mlNum)/(Math.abs(mlNum)+100));
+  const pred={id,date:today(),hA,awA,sport:_sp,league:_sp,betType:'ML',betOn,winProb:_wp,ml,decOdds:dec,wager:0,outcome:'pending',lockedAt:Date.now(),surface:surface||'hard',note:tournament};
   const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
   updHdr();renderTennisPendingBets();try{renderHomeLockedBets();}catch(e){}
   toast('// TENNIS LOCKED: '+pick);try{window.showBetPopup({type:'lock',betOn:pick+' ML',sport:_sp,league:_sp,betType:'ML',ml,prob:0.60,decOdds:dec});}catch(ex){}
@@ -17035,16 +17043,24 @@ function renderTennisPendingBets(){
   const el=document.getElementById('ten-pending');if(!el)return;
   // All tennis bets now in preds (sport:'ATP'/'WTA'); legacy locked_bets TENNIS also merged
   const pp=getP().filter(p=>p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA').map(p=>({
-    id:p.id,sport:p.sport,
+    id:p.id,sport:p.sport,_src:'preds',
     game:_gameTitle(p.hA,p.awA,p.sport)||p.betOn||'Match',
     pick:p.betOn,ml:p.ml,date:p.date,outcome:p.outcome||'pending'
   }));
-  const legacy=JSON.parse(localStorage.getItem('locked_bets')||'[]').filter(b=>b.sport==='TENNIS'&&!pp.find(p=>p.id==b.id)).map(b=>({...b,id:String(b.id)}));
+  const legacy=JSON.parse(localStorage.getItem('locked_bets')||'[]').filter(b=>b.sport==='TENNIS'&&!pp.find(p=>p.id==b.id)).map(b=>({...b,id:String(b.id),_src:'legacy'}));
   const all=[...pp,...legacy];
   if(!all.length){el.innerHTML='<div style="font-family:var(--mono);font-size:17px;color:var(--t3);padding:10px 0;letter-spacing:1px">NO LOCKED TENNIS BETS</div>';return;}
   el.innerHTML=all.slice(0,30).map(b=>{
     const oc=b.outcome==='win'?'var(--nc)':b.outcome==='loss'?'var(--hc)':b.outcome==='push'?'var(--vc)':'var(--gc)';
-    const isPreds=b.sport==='TEN';
+    // Real tennis picks are tagged sport:'ATP'/'WTA' (rarely 'TEN'), so
+    // checking b.sport==='TEN' here was almost always false for actual
+    // locked picks -- they fell into the "legacy" branch below, which
+    // called updateBetOutcome with the id interpolated unquoted into an
+    // onclick string (a JS syntax error for the real non-numeric string
+    // ids these picks use) and pointed at the wrong storage key
+    // ('locked_bets' instead of the real preds store). _src (set above)
+    // is the actual, reliable signal for which array a row came from.
+    const isPreds=b._src==='preds';
     return`<div class="card" style="margin-bottom:6px;border-left:2px solid ${oc}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1;min-width:0;margin-right:8px">
@@ -18263,10 +18279,17 @@ function resetTennisLive(){
     if((p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA')&&p.outcome==='pending'){
       const locked=new Date(p.lockedAt||0);
       const hoursAgo=(Date.now()-locked.getTime())/3600000;
-      if(hoursAgo>6){p.outcome='loss';p.settledAt=Date.now();changed=true;}// assume loss if >6h old pending
+      // Was unconditionally marked 'loss' for anything pending >6h --
+      // fabricating a result nobody ever checked, and silently deflating
+      // the real win rate for picks that may well have won. 'push'
+      // (already a recognized outcome elsewhere in this same panel's
+      // manual dropdown) honestly says "no real result recorded" instead
+      // of asserting one, and _autoExpired flags it for a manual look
+      // rather than pretending the auto-clear was itself a settlement.
+      if(hoursAgo>6){p.outcome='push';p.settledAt=Date.now();p._autoExpired=true;changed=true;}
     }
   }
-  if(changed){saveP(preds);updHdr();toast('// OLD TENNIS BETS SETTLED — REVIEW IN HISTORY');}
+  if(changed){saveP(preds);updHdr();toast('// OLD TENNIS BETS MARKED UNRESOLVED (PUSH) — REVIEW REAL RESULT IN HISTORY');}
   // Clear live score displays
   const s1=document.getElementById('ten-live-scores');if(s1)s1.innerHTML='';
   const s2=document.getElementById('tennis-live-scores');if(s2)s2.innerHTML='';
