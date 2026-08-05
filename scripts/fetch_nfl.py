@@ -45,6 +45,11 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ClairvoyanceBot/1.0)"}
 # here beyond using ESPN's week param directly.
 REGULAR_SEASON_WEEKS = list(range(1, 19))
 POSTSEASON_ROUNDS = {1: "Wild Card", 2: "Divisional", 3: "Conference Championship", 5: "Super Bowl"}
+# Preseason (seasontype=1) is 3 real game weeks for most teams (a 4th,
+# "Hall of Fame Game" week, only involves 2 teams most years) -- included
+# so preseason matchups show up in the engine as soon as they're
+# scheduled, not just once the regular season starts.
+PRESEASON_WEEKS = {0: "Hall of Fame Game", 1: "Preseason Week 1", 2: "Preseason Week 2", 3: "Preseason Week 3"}
 
 
 def _log(msg: str) -> None:
@@ -152,13 +157,21 @@ def fetch_week_games(year: int, week: int, seasontype: int = 2) -> list[dict]:
 
 
 def fetch_full_schedule(year: int) -> dict:
-    """Weeks 1-18 regular season, then the 4 postseason rounds (Wild
-    Card/Divisional/Conf Champ/Super Bowl — ESPN's postseason week
-    numbering skips 4, there's no "week 4" round). Thursday/Sunday/
-    Monday games for a given week all come back from the same week=N
-    call already, matching the user's own week-boundary framing --
-    no extra date-bucketing needed."""
+    """Preseason (3-4 weeks), then weeks 1-18 regular season, then the 4
+    postseason rounds (Wild Card/Divisional/Conf Champ/Super Bowl —
+    ESPN's postseason week numbering skips 4, there's no "week 4"
+    round). Thursday/Sunday/Monday games for a given regular-season week
+    all come back from the same week=N call already, matching the
+    user's own week-boundary framing -- no extra date-bucketing needed.
+    Preseason weeks are inserted first so they sort chronologically
+    ahead of "Week 1" in the schedule dict/week-filter dropdown."""
     schedule: dict[str, list[dict]] = {}
+    for wk, label in PRESEASON_WEEKS.items():
+        games = fetch_week_games(year, wk, seasontype=1)
+        if games:
+            schedule[label] = games
+            _log(f"  {label}: {len(games)} games")
+        time.sleep(0.2)
     for wk in REGULAR_SEASON_WEEKS:
         games = fetch_week_games(year, wk, seasontype=2)
         schedule[f"Week {wk}"] = games
@@ -221,7 +234,7 @@ def fetch_standings(year: int) -> dict:
 # offense; yards allowed/turnovers/passing/receiving/downs on defense;
 # returning/kicking/punting on special teams.
 _OFFENSE_FIELDS = {
-    "total":      ["totalYards", "yardsPerGame", "totalPoints", "totalPointsPerGame"],
+    "total":      ["totalYards", "yardsPerGame", "totalPoints", "totalPointsPerGame", "turnOverDifferential"],
     "passing":    ["netPassingYards", "netPassingYardsPerGame", "passingTouchdowns",
                     "completionPct", "yardsPerPassAttempt", "interceptions"],
     "rushing":    ["rushingYards", "rushingYardsPerGame", "rushingTouchdowns", "yardsPerRushAttempt"],
@@ -232,6 +245,10 @@ _DEFENSE_ALLOWED_FIELDS = {
     "yardsAllowed": ["totalYards", "yardsPerGame", "totalPointsPerGame"],
     "turnovers":    ["interceptions", "fumblesRecovered", "totalTakeaways"],
     "passing":      ["netPassingYardsPerGame", "passingTouchdowns", "interceptions"],
+    # "rushing" was missing entirely -- defense radar/reasoning needs a
+    # real rush-defense signal, not just pass/receiving, to be a genuine
+    # offense/defense breakdown rather than a partial one.
+    "rushing":      ["rushingYardsPerGame", "rushingTouchdowns"],
     "receiving":    ["receivingYards", "receivingTouchdowns"],
     "downs":        ["thirdDownConvPct", "fourthDownConvPct"],
 }
