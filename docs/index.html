@@ -5646,7 +5646,7 @@ async function renderGoaliesFromBackend(){
 // League-average reference points for the special-teams/shot-quality/
 // goaltending nudges below -- centering points only, not claimed as
 // precise constants, same role _CFB_MEDIAN_CAPACITY plays for CFB.
-const _NHL_LG_PP=.205,_NHL_LG_PK=.795,_NHL_LG_GA60=2.9;
+const _NHL_LG_PP=.205,_NHL_LG_PK=.795,_NHL_LG_GA60=2.9,_NHL_LG_GF60=2.9;
 function nhlMC(hA,awA,n=25000){
   const h=NHL[hA],aw=NHL[awA];if(!h||!aw)return null;
   const hfa=.055;
@@ -8185,7 +8185,7 @@ function renderProps(){
   // ── 4. Nothing available — show loading state ─────────────────────────────
   el.innerHTML='<div class="empty" style="text-align:center;padding:24px"><div style="font-family:var(--mono);font-size:18px;color:var(--t3);letter-spacing:1px">LOADING NHL PLAYER PROPS FROM LINEMATE…</div><div style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-top:6px">REFRESHES WITH NEXT DATA FETCH</div></div>';
 }
-function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:17px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
+function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t||t._syntheticEntry)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:17px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:23px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:22px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(240,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:22px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
@@ -18988,8 +18988,29 @@ function patchNHLTonight(games){
 }
 function patchNHLStandings(standings){
   window._remoteNHLStandings=standings;
+  // fetch_nhl_standings() (clairvoyance_update.py) pulls all 32 teams
+  // straight from the NHL's own official API, but this used to only
+  // ever WRITE into a pre-existing NHL[abbr] entry -- and the static
+  // NHL object only has the 4 current playoff teams hand-authored, so
+  // 28 teams' worth of real standings were silently discarded every
+  // refresh. Now creates a minimal real entry for any team missing
+  // from the static table: gf60/ga60 approximated as goals-for/against
+  // per game (a real, if coarse, stand-in for the 5v5-per-60 rate the
+  // hand-curated entries use -- an NHL game is ~60 min of game clock,
+  // so per-game and per-60 track closely). hv stays a neutral {0,0,0}
+  // rather than a fabricated qualitative score -- nhlMC's formula
+  // degrades cleanly to "use the real scoring rate, no qualitative
+  // boost" when hv is neutral, instead of guessing at a HockeyViz-style
+  // composite rating this pipeline has no real source for per team.
   for(const[abbr,s]of Object.entries(standings)){
-    if(NHL[abbr]){NHL[abbr].w=s.w;NHL[abbr].l=s.l;NHL[abbr].otl=s.otl;NHL[abbr].pts=s.pts;}
+    if(!NHL[abbr]){
+      const gp=(s.w||0)+(s.l||0)+(s.otl||0);
+      NHL[abbr]={n:s.div?`${abbr} (${s.div})`:abbr,hv:{off:0,fin:0,def:0,pp:0,pk:0},
+        gf60:gp?+(s.gf/gp).toFixed(2):_NHL_LG_GF60,ga60:gp?+(s.ga/gp).toFixed(2):_NHL_LG_GA60,
+        series:'', // several playoff-era UI functions guard on !series.startsWith('ELIMINATED') -- '' reads as "active", and they separately guard on hand-authored fields (g1, sw/sl) this entry doesn't have, so it's excluded from those panels cleanly rather than rendering blank/undefined
+        _syntheticEntry:true};
+    }
+    NHL[abbr].w=s.w;NHL[abbr].l=s.l;NHL[abbr].otl=s.otl;NHL[abbr].pts=s.pts;
   }
 }
 function patchMoneyPuck(goalies,teams){
