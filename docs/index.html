@@ -9547,49 +9547,57 @@ function renderNBALockedBets(){
   }).join('');
 }
 // NBA matchup radar -- same 3-tab MATCHUP/OFFENSE/DEFENSE pattern as
-// CFB/NHL/soccer/NFL, built from real NBA_BBREF per-game/per-100/advanced
-// stats. NBA_BBREF/NBA_TEAMS currently only have the 4 current playoff
-// teams (a known, temporary, season-state-tied limitation -- not
-// something this radar tries to paper over); any other team's axes
-// fall back to the neutral 50 midpoint via the same clamp(null)=>50
-// rule every other radar in this codebase already uses, not a guess.
+// CFB/NHL/soccer/NFL. Same live-over-static preference nbaMC/nbaGetBayes
+// already apply: window.__CV_DATA.nba.teamAdv (off/def/net rating, pace,
+// TS%) and .fourFactors (eFG%/TOV%/ORB%/FT-rate/opp-eFG%/opp-TOV%) are
+// both scraped for all 30 teams now (fetch_nba_team_advanced/
+// fetch_nba_four_factors, clairvoyance_update.py) and preferred per-field
+// over the static NBA_BBREF table, which only ever covers the 4 current
+// playoff/Finals teams. PPG/3PT%/AST/STL/BLK/DRB have no live source at
+// all yet (BBRef's per-game/misc tables aren't scraped for every team) --
+// those axes stay on NBA_BBREF and fall back to the neutral 50 midpoint
+// for any other team rather than guessing.
 function _nbaMatchupRadarValues(abbr){
+  const live=window.__CV_DATA?.nba?.teamAdv?.[abbr]||{};
+  const ff=window.__CV_DATA?.nba?.fourFactors?.[abbr]||{};
   const adv=NBA_BBREF[abbr]?.adv||{};
   const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
   return[
-    clamp(adv.off_rtg,105,125),
-    100-clamp(adv.def_rtg,100,120),
-    clamp(adv.net_rtg,-5,15),
-    clamp(adv.pace,92,104),
-    clamp(adv.ts,.54,.64),
-    100-clamp(adv.tov,10,16),
+    clamp(live.ortg??adv.off_rtg,105,125),
+    100-clamp(live.drtg??adv.def_rtg,100,120),
+    clamp(live.net_rtg??adv.net_rtg,-5,15),
+    clamp(live.pace??adv.pace,92,104),
+    clamp(live.ts_pct??adv.ts,.54,.64),
+    100-clamp(ff.tov_pct??adv.tov,10,16),
   ];
 }
 function _nbaOffenseRadarValues(abbr){
+  const ff=window.__CV_DATA?.nba?.fourFactors?.[abbr]||{};
   const pg=NBA_BBREF[abbr]?.pg||{};
   const p100=NBA_BBREF[abbr]?.p100||{};
   const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
   return[
     clamp(pg.pts,105,125),
-    clamp(p100.efg_pct,.50,.62),
+    clamp(ff.efg_pct??p100.efg_pct,.50,.62),
     clamp(pg.fg3_pct,.33,.42),
     clamp(pg.ast,20,30),
-    clamp(p100.orb_pct,20,32),
-    clamp(p100.ft_rate,.20,.36),
+    clamp(ff.orb_pct??p100.orb_pct,20,32),
+    clamp(ff.ft_rate??p100.ft_rate,.20,.36),
   ];
 }
 function _nbaDefenseRadarValues(abbr){
+  const ff=window.__CV_DATA?.nba?.fourFactors?.[abbr]||{};
   const opp=NBA_BBREF[abbr]?.opp_pg||{};
   const p100=NBA_BBREF[abbr]?.p100||{};
   const pg=NBA_BBREF[abbr]?.pg||{};
   const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
   return[
     100-clamp(opp.pts,100,120),
-    100-clamp(p100.opp_efg,.48,.58),
+    100-clamp(ff.opp_efg_pct??p100.opp_efg,.48,.58),
     clamp(pg.stl,6,10),
     clamp(pg.blk,3.5,7),
     clamp(pg.drb,32,38),
-    clamp(p100.opp_tov_pct,13,19),
+    clamp(ff.opp_tov_pct??p100.opp_tov_pct,13,19),
   ];
 }
 function _nbaGameCard(espnEv){
@@ -18919,7 +18927,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-08-04 15:00 MT';
+let LAST_AUTO_UPDATE = '2026-08-05 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -23689,25 +23697,54 @@ function _wnbaKey(abbr){
   var a=abbr.trim();
   return WNBA_ABBR_MAP[a]||a;
 }
-// WNBA matchup radar -- single MATCHUP tab only, not the 3-tab MATCHUP/
-// OFFENSE/DEFENSE split CFB/NHL/soccer/NFL/NBA use. window.__CV_DATA.wnba.teamStats
-// only carries 4 real fields per team (ortg/drtg/pace/net) -- there's no
-// real offense/defense sub-breakdown (eFG%/AST/STL/BLK-style categories)
-// to split into two more tabs honestly, so this doesn't fake one.
-function _wnbaMatchupRadarValues(abbr){
+// WNBA matchup radar -- 3-tab MATCHUP/OFFENSE/DEFENSE, same as NBA/CFB/
+// NHL/soccer/NFL. fetch_wnba_team_stats() (clairvoyance_update.py) scrapes
+// BBRef's real advanced-team/per_game-team/per_game-opponent tables for
+// EVERY WNBA team, not just a hand-curated few -- efg%/TOV%/ORB%/FT-rate/
+// opponent shooting are all real fields, not fabricated to fill out a
+// 3-tab layout (an earlier version of this radar assumed only 4 fields
+// existed and scoped itself to one tab; that assumption was wrong).
+// DEFENSE stays at 4 axes rather than 6 -- there's no real "opponent
+// turnovers forced" or "opponent 3PT%" field scraped, and this doesn't
+// invent one just to match OFFENSE's axis count.
+function _wnbaTeamStat(abbr){
   var D=window.__CV_DATA||{};
   var ts=(D.wnba&&D.wnba.teamStats)||{};
-  var k=_wnbaKey(abbr);
-  var t=ts[k]||ts[abbr]||{};
-  var clamp=function(v,lo,hi){return v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
-  var ortg=t.ortg!=null?t.ortg:t.offRtg;
-  var drtg=t.drtg!=null?t.drtg:t.defRtg;
-  var net=t.net!=null?t.net:(ortg!=null&&drtg!=null?ortg-drtg:null);
+  return ts[_wnbaKey(abbr)]||ts[abbr]||{};
+}
+function _wnbaMatchupRadarValues(abbr){
+  var t=_wnbaTeamStat(abbr);
+  var clamp=function(v,lo,hi){return v==null||v===0?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  var net=t.net_rtg!=null?t.net_rtg:(t.ortg!=null&&t.drtg!=null?t.ortg-t.drtg:null);
   return[
-    clamp(ortg,92,108),
-    100-clamp(drtg,92,108),
+    clamp(t.ortg,92,108),
+    100-clamp(t.drtg,92,108),
     clamp(net,-10,10),
     clamp(t.pace,86,96),
+    clamp(t.ts_pct,.50,.58),
+    100-clamp(t.tov_pct,14,20),
+  ];
+}
+function _wnbaOffenseRadarValues(abbr){
+  var t=_wnbaTeamStat(abbr);
+  var clamp=function(v,lo,hi){return v==null||v===0?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  return[
+    clamp(t.pts_pg,74,90),
+    clamp(t.efg_pct,.46,.56),
+    clamp(t.fg3_pct,.30,.38),
+    clamp(t.ft_pct,.72,.82),
+    clamp(t.orb_pct,22,32),
+    clamp(t.ft_rate,.18,.30),
+  ];
+}
+function _wnbaDefenseRadarValues(abbr){
+  var t=_wnbaTeamStat(abbr);
+  var clamp=function(v,lo,hi){return v==null||v===0?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  return[
+    100-clamp(t.drtg,92,108),
+    100-clamp(t.opp_pts,74,90),
+    100-clamp(t.opp_efg,.46,.56),
+    100-clamp(t.opp_fg,.40,.48),
   ];
 }
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
@@ -23716,8 +23753,11 @@ function wnbaMC(hA,awA,n=25000){
   var D=window.__CV_DATA||{};
   var ts=D.wnba&&D.wnba.teamStats||{};
   var ht=ts[hk]||ts[hA]||{};var at=ts[ak]||ts[awA]||{};
-  var hNet=(ht.net!==undefined?ht.net:(ht.ortg||100)-(ht.drtg||100))||0;
-  var aNet=(at.net!==undefined?at.net:(at.ortg||100)-(at.drtg||100))||0;
+  // fetch_wnba_team_stats() writes "net_rtg" (BBRef's actual column name),
+  // never "net" -- this always fell through to the ortg-drtg fallback
+  // before, which is numerically close but not the real scraped value.
+  var hNet=(ht.net_rtg!==undefined?ht.net_rtg:(ht.ortg||100)-(ht.drtg||100))||0;
+  var aNet=(at.net_rtg!==undefined?at.net_rtg:(at.ortg||100)-(at.drtg||100))||0;
   var hOrtg=ht.ortg||ht.offRtg||(100+hNet*.5);
   var hDrtg=ht.drtg||ht.defRtg||(100-hNet*.5);
   var aOrtg=at.ortg||at.offRtg||(100+aNet*.5);
@@ -24180,10 +24220,12 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'<div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px"><span style="color:#00f0ff">■ '+hab+'</span><span style="color:#f000ff">■ '+aab+'</span></div>'
         +(function(){try{
           return _radarTabPanelHTML('wnba_'+_wnbaGidSafe,[
-            {label:'MATCHUP',svg:_matchupRadarSVG(['Off Rating','Def Rating','Net Rating','Pace'],_wnbaMatchupRadarValues(hab),_wnbaMatchupRadarValues(aab),'wnba_'+_wnbaGidSafe+'_m')},
+            {label:'MATCHUP',svg:_matchupRadarSVG(['Off Rating','Def Rating','Net Rating','Pace','TS%','Turnover%'],_wnbaMatchupRadarValues(hab),_wnbaMatchupRadarValues(aab),'wnba_'+_wnbaGidSafe+'_m')},
+            {label:'OFFENSE',svg:_matchupRadarSVG(['PPG','eFG%','3PT%','FT%','ORB%','FT Rate'],_wnbaOffenseRadarValues(hab),_wnbaOffenseRadarValues(aab),'wnba_'+_wnbaGidSafe+'_o')},
+            {label:'DEFENSE',svg:_matchupRadarSVG(['Def Rating','Pts Allowed','eFG% Allowed','FG% Allowed'],_wnbaDefenseRadarValues(hab),_wnbaDefenseRadarValues(aab),'wnba_'+_wnbaGidSafe+'_d')},
           ]);
         }catch(e){return'';}})()
-        +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). Only 4 real team-level fields exist for WNBA today, so this is one MATCHUP tab, not a separate offense/defense breakdown.</div>'
+        +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed), scraped for every WNBA team from Basketball-Reference. DEFENSE has fewer axes than OFFENSE -- no real opponent-turnovers or opponent-3PT% field is scraped, so this doesn\'t invent one.</div>'
         +'</div>'
         +'<div class="brow">'
         +'<div class="'+csH.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\''+hab+' ML\','+hP.toFixed(4)+','+hMLn+','+hDec+',typeof today===\'function\'?today():\'\')">'
