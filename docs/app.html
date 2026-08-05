@@ -6180,6 +6180,56 @@ function loadStatMuse(){
 // already resolved, so _statmuseFormNudge has real data to work with
 // instead of always failing safe to "not loaded yet".
 loadStatMuse();
+// Per-game StatMuse insights — StatMuse's own data has no team/matchup
+// tag on each blurb (just {headline, detail} bucketed by broad section:
+// 'cfb', 'nfl', 'mlb', etc.), so this filters that section's real scraped
+// blurbs down to only the ones that actually name one of this specific
+// game's two teams, instead of dumping the whole section's unrelated
+// headlines onto every card. Returns [] (renders nothing) rather than a
+// generic filler when no real blurb mentions either team — never fakes
+// relevance. `names` should include every real name variant worth
+// matching (full name, mascot-less short name, abbreviation) since
+// StatMuse's own phrasing is inconsistent about which form it uses.
+function _statmuseForGame(section,homeNames,awayNames){
+  const items=((_STATMUSE||{}).sections||{})[section]||[];
+  if(!items.length)return{home:[],away:[]};
+  const norm=s=>(s||'').toLowerCase();
+  const hNames=(homeNames||[]).filter(Boolean).map(norm);
+  const aNames=(awayNames||[]).filter(Boolean).map(norm);
+  // Some scraped blurbs' "detail" field is a full standings/leaderboard
+  // page dump (every ranked team's record, league leaders, etc.), not a
+  // targeted note -- matching against that would flag almost every team
+  // as "mentioned" on almost every card, which is technically true but
+  // not actually relevant. Long detail blocks (>400 chars, empirically a
+  // full-page dump vs. a real note) only count as a match if the team is
+  // named in the headline itself; short/targeted blurbs still match on
+  // either field.
+  const mentions=(item,names)=>{
+    const headline=norm(item.headline);
+    const detail=norm(item.detail);
+    const detailIsDump=detail.length>400;
+    const text=detailIsDump?headline:headline+' '+detail;
+    return names.some(n=>n.length>=3&&text.indexOf(n)>=0);
+  };
+  return{
+    home:items.filter(it=>mentions(it,hNames)).slice(0,2),
+    away:items.filter(it=>mentions(it,aNames)).slice(0,2),
+  };
+}
+// Renders the matched blurbs as a compact card-footer section — same
+// visual language as renderStatMuseInsights' section-level version, just
+// scoped to one matchup and inline (returns an HTML string, not a DOM
+// side-effect) so it can be embedded directly inside a game card's own
+// template string.
+function _statmuseGameInsightsHTML(section,homeAbbr,homeNames,awayAbbr,awayNames){
+  const m=_statmuseForGame(section,homeNames,awayNames);
+  if(!m.home.length&&!m.away.length)return'';
+  const row=(label,items)=>items.length?`<div style="margin-bottom:4px"><span style="color:var(--ic);font-weight:700">${label}</span> ${items.map(n=>n.headline+(n.detail?' — '+n.detail:'')).join(' · ')}</div>`:'';
+  return`<div style="margin-top:6px;padding:6px 9px;background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.15);border-radius:3px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--ic);letter-spacing:1.5px;margin-bottom:4px">◆ STATMUSE INSIGHTS</div>
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t2);line-height:1.5">${row(homeAbbr,m.home)}${row(awayAbbr,m.away)}</div>
+  </div>`;
+}
 
 // ═══ CFB DATA LOADER + MC SIM ENGINE ══════════════════════════════════
 // Three source files (scripts/fetch_cfb.py): cfb_teams.json (conference
@@ -7077,6 +7127,7 @@ function _cfbGameCard(g){
         <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">SPREAD REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${sprdReasoning}</div></div>
         <div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:4px">O/U REASONING</div><div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${ouReasoning}</div></div>
       </div>
+      ${(()=>{try{return _statmuseGameInsightsHTML('cfb',g.home,[g.homeName,g.home],g.away,[g.awayName,g.away]);}catch(e){return'';}})()}
     </div>
   </div>`;
 }
@@ -7537,6 +7588,7 @@ function _nhlGameCard(espnEv){
     ${(()=>{try{return _mcProjBarHTML(nhlEns(hn,an)?.mcD,nhlOuL,hn,an,{dec:2});}catch(e){return'';}})()}
     <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
     <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: ${_nm3.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+    ${(()=>{try{return _statmuseGameInsightsHTML('nhl',hn,[_TEAM_NAMES?.NHL?.[hn],hn],an,[_TEAM_NAMES?.NHL?.[an],an]);}catch(e){return'';}})()}
   </div>
   <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
     <span class="mono" style="font-size:16px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%</span>
@@ -25917,6 +25969,7 @@ function _renderSocMatchCard(g,leagueKey){
     +_mcProjBarHTML(mc,ouL,g.home,g.away,{dec:2})
     +'<div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">'+explanation+'</div>'
     +'<div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: '+_mkts.mkts.map(function(m){return m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN];}).join(' · ')+'</div>'
+    +(function(){try{return _statmuseGameInsightsHTML('soccer',hc,[g.home],ac,[g.away]);}catch(e){return'';}})()
     +'</div>'
     +'<div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">'
     +'<span class="mono" style="font-size:16px;color:var(--t3)">xG: '+g.home+' '+hxg.toFixed(2)+' · '+g.away+' '+axg.toFixed(2)+' · H:'+Math.round(hP*100)+'% D:'+Math.round(dP*100)+'% A:'+Math.round(aP*100)+'%</span>'
