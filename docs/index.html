@@ -803,6 +803,17 @@ body{line-height:1.5}
         <button class="btn btn-o btn-sm" onclick="renderNFLProps('td')">TD</button>
       </div>
       <div id="nfl-props"><div class="empty">NO NFL PROPS — OFF-SEASON</div></div>
+      <div class="sh" style="margin-top:18px">MODEL PROPS (ANALYTICAL)</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">Generated from each player's real season-to-date per-game average (ESPN team leaders) adjusted for the specific opponent's real defensive stats allowed. No per-game head-to-head or division-rival history is factored in -- that needs a heavier per-player game-log scrape not built yet. Likelihood % uses a modeled variance assumption per stat category, not measured from real game logs -- read it as directional, not a market-calibrated probability.</div>
+      <select id="nfl-model-props-game" onchange="renderNFLModelProps(window._nflModelPropFilter||'all')" style="width:100%;padding:8px;margin-bottom:10px;background:rgba(4,0,12,.9);border:1px solid rgba(0,120,255,.25);color:var(--t);font-family:var(--mono);font-size:15px;border-radius:2px"><option value="">SELECT A GAME…</option></select>
+      <div id="nfl-model-props-filter" style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn btn-o btn-sm act" onclick="renderNFLModelProps('all')">ALL</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLModelProps('pass')">PASSING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLModelProps('rush')">RUSHING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLModelProps('rec')">RECEIVING</button>
+        <button class="btn btn-o btn-sm" onclick="renderNFLModelProps('td')">TOUCHDOWNS</button>
+      </div>
+      <div id="nfl-model-props"><div class="empty">SELECT A GAME ABOVE TO SEE MODEL PROPS</div></div>
       <div class="sh" style="margin-top:14px">LOCKED NFL PROPS</div>
       <div id="nfl-props-tracker"></div>
     </div></div>
@@ -7413,9 +7424,10 @@ function loadNFLData(){
     fetch('nfl_schedule.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('nfl_standings.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('nfl_team_stats.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_player_stats.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('nfl_injuries.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('nfl_transactions.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
-  ]).then(([teams,schedule,standings,stats,injuries,transactions])=>{
+  ]).then(([teams,schedule,standings,stats,playerStats,injuries,transactions])=>{
     const teamByAbbr={};
     (teams?.teams||[]).forEach(t=>{teamByAbbr[t.abbr]=t;});
     const standingsByAbbr={};
@@ -7424,10 +7436,11 @@ function loadNFLData(){
       teams:teamByAbbr,
       standings:standingsByAbbr,
       stats:stats?.teams||{},
+      playerStats:playerStats?.teams||{},
       weeks:schedule?.weeks||{},
       injuriesByTeam:injuries?.teams||{},
       transactions:transactions?.items||[],
-      generatedAt:{teams:teams?.generated_at,schedule:schedule?.generated_at,standings:standings?.generated_at,stats:stats?.generated_at,injuries:injuries?.generated_at,transactions:transactions?.generated_at},
+      generatedAt:{teams:teams?.generated_at,schedule:schedule?.generated_at,standings:standings?.generated_at,stats:stats?.generated_at,playerStats:playerStats?.generated_at,injuries:injuries?.generated_at,transactions:transactions?.generated_at},
     };
     return _NFL_DATA;
   });
@@ -7583,7 +7596,7 @@ function nflSubTab2(tab){
     if(panel){panel.classList.toggle('act',t===tab);panel.style.display=t===tab?'':'none';}
   });
   if(tab==='games')loadNFLData().then(()=>{_nflPopulateWeekFilter();renderNFLGames2();});
-  else if(tab==='props')renderNFLProps(window._nflPropFilter||'all');
+  else if(tab==='props')loadNFLData().then(()=>{_nflPopulateModelPropsGameFilter();renderNFLProps(window._nflPropFilter||'all');renderNFLModelProps(window._nflModelPropFilter||'all');});
   else if(tab==='model')loadNFLData().then(renderNFLModel2);
   else if(tab==='config')renderNFLConfig2();
 }
@@ -7780,7 +7793,7 @@ function renderNFLConfig2(){
     Win probability: MC/Bayesian blend, weighted MC ${Math.round(W.mc*100)}% / BAY ${Math.round(W.bay*100)}% (adjustable on the MODEL tab).<br><br>
     MC sim margin: each team's own point-differential-per-game (PF-PA from real standings) -- NFL has no ESPN-published power index the way CFB has FPI, so this is the honest substitute, not a downgrade dressed up as equivalent -- plus capped matchup-specific yardage/turnover and real per-venue weather adjustments. Falls back to the market spread when a team has no standings entry yet.<br><br>
     Totals: each team's own points-allowed average, adjusted for the real forecast at the actual game venue.<br><br>
-    Player props: live Linemate-sourced lines power the PROPS tab today. A separate analytical prop-likelihood system, built from scraped per-player passing/rushing/receiving stats, is a planned phase 2 on top of that.
+    Player props: the PROPS tab has two sections -- live Linemate-sourced sportsbook lines, and a separate MODEL PROPS section that generates its own passing/rushing/receiving/TD lines from real season-to-date player stats adjusted for the specific opponent's defense. The model section doesn't yet factor in head-to-head or division-rival history (needs a per-player game-log scrape not built yet) -- it says so on the panel rather than pretending otherwise.
   </div>`;
 }
 function lockNFLGame(hA,awA,betType,betOn,ml,winProb,ouLine){
@@ -14714,6 +14727,177 @@ function setSub(sport,sub){
   // leg-gathering, which reads that cache independently.
   if(sport==='fb'&&sub==='cfb'){try{renderGenericWeek('cfb-week-list','football/college-football','CFB');cfbSubTab(window._cfbActiveTab||'games');loadStatMuse().then(()=>renderStatMuseInsights('cfb','cfb-games-list'));}catch(e){}}
   if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');nflSubTab2(window._nflActiveTab||'games');}catch(e){}}
+}
+
+// ═══ NFL ANALYTICAL PLAYER PROPS (model-generated) ══════════════════════
+// Built from each team's real season-to-date leader stats
+// (docs/nfl_player_stats.json, ESPN team leaders) plus the opponent's
+// real defensive stats allowed (docs/nfl_team_stats.json). This is a
+// SEPARATE model from the Linemate sportsbook-line feed below -- its
+// own probability model (mean/stdev per stat category), not folded
+// into nflMC's game-level Monte Carlo loop.
+//
+// Deliberately NOT included (kept honest rather than faked):
+//  - per-game head-to-head or division-rival history vs this specific
+//    opponent -- needs a per-player game-log scrape not built yet
+//  - within-season injury/role-change trend ("form") beyond what the
+//    season average already reflects
+// Variance per stat category (used for the likelihood %) is a modeled
+// assumption (typical yardage/TD variance shapes), not measured from
+// real game logs -- likelihood reads as directional, not a
+// market-calibrated true probability.
+const _NFL_PROP_CATS=[
+  {key:'passingYards',label:'Passing Yards',grp:'pass',defKey:'netPassingYardsPerGame',defPerGame:true,leagueAvg:215,cv:0.22},
+  {key:'rushingYards',label:'Rushing Yards',grp:'rush',defKey:'rushingYardsPerGame',defPerGame:true,leagueAvg:70,cv:0.45},
+  {key:'receivingYards',label:'Receiving Yards',grp:'rec',defKey:'receivingYards',defPerGame:false,leagueAvg:45,cv:0.5},
+  {key:'receptions',label:'Receptions',grp:'rec',defKey:null,leagueAvg:3.6,cv:0.35},
+  {key:'passingTouchdowns',label:'Passing TDs',grp:'td',isTD:true,defKey:'passingTouchdowns',defPerGame:false,leagueAvg:1.4},
+  {key:'rushingTouchdowns',label:'Rushing TDs',grp:'td',isTD:true,defKey:'rushingTouchdowns',defPerGame:false,leagueAvg:0.65},
+  {key:'receivingTouchdowns',label:'Receiving TDs',grp:'td',isTD:true,defKey:'receivingTouchdowns',defPerGame:false,leagueAvg:0.65},
+];
+function _nflNormCdf(x){ // Abramowitz-Stegun erf approximation
+  const t=1/(1+0.3275911*Math.abs(x));
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  const erf=x<0?-y:y;
+  return 0.5*(1+erf);
+}
+// Ensures every generated number lands on a .5, matching real
+// sportsbook prop-line convention (never allows an exact push).
+function _nflHalfPoint(v){
+  let r=Math.round(v*2)/2;
+  if(Number.isInteger(r))r+=0.5;
+  return r;
+}
+function _nflOppDefFactor(oppDef,cat,games){
+  if(!oppDef||cat.defKey==null)return{factor:0,note:'no opponent defensive data yet'};
+  const raw=oppDef[cat.defKey];
+  if(raw==null)return{factor:0,note:'no opponent defensive data yet'};
+  const perGame=cat.defPerGame||!games?raw:raw/games;
+  const pct=(perGame-cat.leagueAvg)/cat.leagueAvg;
+  const factor=Math.max(-0.15,Math.min(0.15,pct)); // capped nudge -- same philosophy as CFB/NFL's weather/yardage adjustments
+  return{factor,perGame,note:null};
+}
+function _nflPropGrade(likelihoodPct,games){
+  const edge=Math.abs(likelihoodPct-50);
+  let g=edge>=18?'A+':edge>=13?'A':edge>=8?'B':edge>=4?'C':'PASS';
+  if(g!=='PASS'&&games!=null&&games<3){ // small sample -> don't dress up noise as confidence
+    const downgrade={'A+':'B','A':'C','B':'C','C':'PASS'};
+    g=downgrade[g]||g;
+  }
+  return g;
+}
+const _NFL_PROP_GRADE_COLOR={'A+':'var(--gc)','A':'var(--nc)','B':'var(--pc)','C':'var(--t2)','PASS':'var(--t3)'};
+function _nflBuildPropRow(player,teamAbbr,oppAbbr,cat){
+  const base=parseFloat(player[cat.key]);
+  const games=player.games;
+  if(isNaN(base)||base<=0||!games)return null; // no real signal -> don't fabricate a row
+  const perGame=base/games;
+  const D=_NFL_DATA;
+  const oppDef=D?.stats?.[oppAbbr]?.defenseAllowed||null;
+  const{factor,perGame:oppPerGame,note}=_nflOppDefFactor(oppDef,cat,games);
+  if(cat.isTD){
+    const line=0.5;
+    const adjMean=Math.max(0.05,perGame*(1+factor));
+    const likelihood=+((1-Math.exp(-adjMean))*100).toFixed(1); // Poisson P(X>=1)
+    const pick=likelihood>=50?'OVER':'UNDER';
+    const adjustor=+(adjMean-perGame).toFixed(2);
+    const grade=_nflPropGrade(likelihood,games);
+    const reasoning=`${player.name} has ${base} ${cat.label.toLowerCase()} in ${games} games this season (${perGame.toFixed(2)}/gm). `+
+      (note?`No real opponent defensive data available for ${oppAbbr} in this category yet — rate is season-average only, no matchup adjustment applied. `:
+        `${oppAbbr} allows ${oppPerGame.toFixed(2)} ${cat.label.toLowerCase()} per game (league avg ~${cat.leagueAvg}), a ${(factor*100).toFixed(0)}% ${factor>=0?'boost':'reduction'} folded into the rate as a ${adjustor>=0?'+':''}${adjustor}/gm adjustment. `)+
+      `No head-to-head history vs ${oppAbbr} this season or historically is factored in yet.`;
+    return{player:player.name,position:player.position,team:teamAbbr,opp:oppAbbr,cat:cat.label,grp:cat.grp,line,pick,adjustor,likelihood,grade,games,reasoning};
+  }
+  const lineBase=_nflHalfPoint(perGame);
+  const adjProj=_nflHalfPoint(perGame*(1+factor));
+  const adjustor=+(adjProj-lineBase).toFixed(1);
+  const stdev=Math.max(1,perGame*cat.cv);
+  const z=(lineBase-adjProj)/stdev;
+  const likelihood=+((1-_nflNormCdf(z))*100).toFixed(1);
+  const pick=adjustor>0?'OVER':adjustor<0?'UNDER':(likelihood>=50?'OVER':'UNDER');
+  const grade=(adjustor===0&&Math.abs(likelihood-50)<4)?'PASS':_nflPropGrade(likelihood,games);
+  const reasoning=`${player.name} is averaging ${perGame.toFixed(1)} ${cat.label.toLowerCase()} across ${games} games this season. `+
+    (note?`No real opponent defensive data available for ${oppAbbr} in this category yet — line reflects season average only, no matchup adjustment applied. `:
+      `${oppAbbr} allows ${oppPerGame.toFixed(1)} ${cat.label.toLowerCase()} per game (league avg ~${cat.leagueAvg}), a ${(factor*100).toFixed(0)}% ${factor>=0?'boost':'reduction'} folded into the projection as a ${adjustor>=0?'+':''}${adjustor} adjustment. `)+
+    `No head-to-head history vs ${oppAbbr} this season or historically is factored in yet — treat the likelihood % as directional (modeled variance assumption), not a market-calibrated probability.`;
+  return{player:player.name,position:player.position,team:teamAbbr,opp:oppAbbr,cat:cat.label,grp:cat.grp,line:lineBase,pick,adjustor,likelihood,grade,games,reasoning};
+}
+function _nflModelPropsForGame(g){
+  const D=_NFL_DATA;if(!D||!g)return[];
+  const rows=[];
+  [[g.home,g.away],[g.away,g.home]].forEach(([teamAbbr,oppAbbr])=>{
+    const players=D.playerStats?.[teamAbbr]||[];
+    players.forEach(p=>{
+      _NFL_PROP_CATS.forEach(cat=>{
+        try{const row=_nflBuildPropRow(p,teamAbbr,oppAbbr,cat);if(row)rows.push(row);}catch(e){}
+      });
+    });
+  });
+  return rows;
+}
+function _nflPopulateModelPropsGameFilter(){
+  const sel=document.getElementById('nfl-model-props-game');if(!sel)return;
+  const D=_NFL_DATA;if(!D)return;
+  const games=[];
+  Object.values(D.weeks||{}).forEach(list=>(list||[]).forEach(g=>games.push(g)));
+  const cur=sel.value;
+  sel.innerHTML='<option value="">SELECT A GAME…</option>'+games.map(g=>`<option value="${g.id}">${g.away} @ ${g.home} — ${g.date?new Date(g.date).toLocaleDateString():''}</option>`).join('');
+  if(cur)sel.value=cur;
+}
+function renderNFLModelProps(filter){
+  window._nflModelPropFilter=filter||'all';
+  const el=document.getElementById('nfl-model-props');if(!el)return;
+  document.querySelectorAll('#nfl-model-props-filter button').forEach(b=>{
+    b.classList.remove('act');
+    const t=b.textContent.toLowerCase();
+    if((filter||'all')==='all'&&t==='all')b.classList.add('act');
+    else if(t.startsWith(filter)||(filter==='td'&&t.includes('touchdown')))b.classList.add('act');
+  });
+  const D=_NFL_DATA;
+  const sel=document.getElementById('nfl-model-props-game');
+  const gid=sel?.value;
+  if(!D||!Object.keys(D.playerStats||{}).length){el.innerHTML='<div class="empty">NO PLAYER STATS LOADED YET</div>';return;}
+  if(!gid){el.innerHTML='<div class="empty">SELECT A GAME ABOVE TO SEE MODEL PROPS</div>';return;}
+  let g=null;
+  Object.values(D.weeks||{}).forEach(list=>(list||[]).forEach(x=>{if(x.id===gid)g=x;}));
+  if(!g){el.innerHTML='<div class="empty">GAME NOT FOUND</div>';return;}
+  let rows=_nflModelPropsForGame(g);
+  if(filter&&filter!=='all')rows=rows.filter(r=>r.grp===filter);
+  rows.sort((a,b)=>Math.abs(b.likelihood-50)-Math.abs(a.likelihood-50));
+  if(!rows.length){el.innerHTML='<div class="empty">NO MODEL PROPS FOR THIS GAME/FILTER — LIKELY MISSING SEASON STATS FOR THESE PLAYERS YET</div>';window._nflModelPropsCurrent=[];return;}
+  el.innerHTML=rows.map((r,i)=>{
+    const gc=_NFL_PROP_GRADE_COLOR[r.grade]||'var(--t3)';
+    const dirColor=r.pick==='OVER'?'var(--nc)':'var(--hc)';
+    return`<div class="card" style="margin-bottom:9px;border-left:3px solid ${gc}">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+        <div>
+          <span style="font-family:var(--orb);font-size:22px;font-weight:700">${r.player}</span>
+          <span style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-left:5px">${r.team} vs ${r.opp}${r.position?' · '+r.position:''}</span>
+        </div>
+        <span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${r.grade}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:22px;color:${dirColor};margin-bottom:3px">${r.pick==='OVER'?'▲ OVER':'▼ UNDER'} ${r.line} ${r.cat} <span style="color:var(--t2);font-size:18px">· ${r.likelihood}% LIKELIHOOD</span></div>
+      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">Adjustor: ${r.adjustor>=0?'+':''}${r.adjustor} vs season avg · ${r.games} games sampled</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:6px">${r.reasoning}</div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-o btn-sm" onclick="lockNFLModelProp(${i})">LOCK</button>
+      </div>
+    </div>`;
+  }).join('');
+  window._nflModelPropsCurrent=rows;
+}
+function lockNFLModelProp(idx){
+  const r=(window._nflModelPropsCurrent||[])[idx];if(!r)return;
+  const dec=1/Math.max(0.01,r.likelihood/100);
+  const prop={id:`prop_nfl_model_${Date.now()}`,team:r.team,player:r.player,line:r.line,over:r.pick==='OVER',conf:r.likelihood/100,
+    lockedAt:Date.now(),outcome:'pending',date:today(),sport:'NFL',betType:'PROP',
+    betOn:`${r.player} ${r.pick} ${r.line} ${r.cat}`,winProb:r.likelihood/100,decOdds:dec,wager:0};
+  LOCKED_PROPS.push(prop);
+  localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
+  const preds=getP();preds.push(prop);saveP(preds);updHdr();
+  toast(`// NFL MODEL PROP LOCKED: ${prop.betOn}`);
+  try{window.showBetPopup({type:'lock',betOn:prop.betOn,sport:'NFL',league:'NFL',betType:'PROP',prob:prop.winProb,decOdds:dec});}catch(e){}
+  renderNFLPropsTracker();
 }
 
 // ═══ NFL PLAYER PROPS ══════════════════════════════════════════

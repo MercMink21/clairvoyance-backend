@@ -2,11 +2,17 @@
 
 Phase 1: teams/schedule/standings/team-stats/injuries/transactions --
 everything the Games/Model/Config tabs, weather, settlement, and the
-injuries/transactions news feed need. Player-level stats for props
-(passing/rushing/receiving/TD props) are a deliberate phase 2, not
-built here -- scraping real per-player season stats well (not just a
-handful of league leaders) needs its own pass rather than a rushed
-add-on to this one.
+injuries/transactions news feed need.
+
+Phase 2 (player_stats mode): each team's real season-to-date leaders in
+passing/rushing/receiving yards+TDs+receptions, via ESPN's team-detail
+leaders array. This is deliberately scoped to season-to-date totals for
+the players who'd actually have real prop markets (starting QB, lead
+backs, top targets) -- NOT a full-roster or per-game-log scrape. A real
+per-player game-log build (needed for true head-to-head/division-rival
+history in the prop reasoning) is a bigger, separate pass; the frontend
+prop model says so explicitly rather than pretending that history is
+factored in.
 
 Unlike CFB, NFL doesn't need a conference-membership discovery step --
 every team's own detail endpoint directly exposes AFC/NFC + division,
@@ -30,6 +36,7 @@ STANDINGS_OUT = ROOT / "docs" / "nfl_standings.json"
 STATS_OUT = ROOT / "docs" / "nfl_team_stats.json"
 INJURIES_OUT = ROOT / "docs" / "nfl_injuries.json"
 TRANSACTIONS_OUT = ROOT / "docs" / "nfl_transactions.json"
+PLAYER_STATS_OUT = ROOT / "docs" / "nfl_player_stats.json"
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
 ESPN_WEB_BASE = "https://site.web.api.espn.com/apis/v2/sports/football/nfl"
@@ -307,6 +314,81 @@ def fetch_all_team_stats(roster: list[dict], season: int) -> dict:
     return stats
 
 
+# ESPN's team-detail endpoint exposes each team's own leaders per real
+# stat category directly (team.leaders[]) -- exactly the skill players
+# who'd have real prop markets anyway (QB1, lead backs, top targets).
+# Season-to-date totals, not a per-game log -- see module docstring.
+_LEADER_CATEGORY_MAP = {
+    "passingYards": "passingYards",
+    "passingTouchdowns": "passingTouchdowns",
+    "rushingYards": "rushingYards",
+    "rushingTouchdowns": "rushingTouchdowns",
+    "receivingYards": "receivingYards",
+    "receivingTouchdowns": "receivingTouchdowns",
+    "receivingReceptions": "receptions",
+}
+
+
+def fetch_team_leaders(team_id: str) -> dict:
+    """Top players per real season stat category for one team, keyed by
+    ESPN athlete id so a player who leads multiple categories (e.g. a
+    receiving-yards AND receiving-TD leader) merges into one row."""
+    players: dict[str, dict] = {}
+    try:
+        r = requests.get(f"{ESPN_BASE}/teams/{team_id}", headers=HEADERS, timeout=15)
+        r.raise_for_status()
+        d = r.json()
+        leaders = (d.get("team") or {}).get("leaders") or []
+        for cat in leaders:
+            field = _LEADER_CATEGORY_MAP.get(cat.get("name"))
+            if not field:
+                continue
+            for entry in cat.get("leaders") or []:
+                athlete = entry.get("athlete") or {}
+                aid = athlete.get("id")
+                if not aid:
+                    continue
+                row = players.setdefault(aid, {
+                    "name": athlete.get("displayName"),
+                    "position": (athlete.get("position") or {}).get("abbreviation"),
+                })
+                val = entry.get("value")
+                if val is not None:
+                    row[field] = val
+    except Exception as exc:
+        _log(f"  team {team_id} leaders FAILED: {exc}")
+    return players
+
+
+def fetch_all_player_stats(roster: list[dict], standings: dict) -> dict:
+    """standings is the {"conferences": {...}} shape from fetch_standings --
+    used only to turn each player's season totals into an honest
+    per-game average via their team's real games-played count."""
+    games_by_abbr: dict[str, int] = {}
+    for rows in (standings.get("conferences") or {}).values():
+        for row in rows or []:
+            abbr = row.get("abbr")
+            if not abbr:
+                continue
+            w = row.get("wins") or 0
+            l = row.get("losses") or 0
+            t = row.get("ties") or 0
+            games_by_abbr[abbr] = w + l + t
+
+    out: dict[str, list[dict]] = {}
+    for i, tm in enumerate(roster):
+        abbr, tid = tm.get("abbr"), tm.get("id")
+        if not abbr or not tid:
+            continue
+        players = fetch_team_leaders(tid)
+        games = games_by_abbr.get(abbr) or 0
+        out[abbr] = [{**p, "games": games} for p in players.values()]
+        if (i + 1) % 8 == 0:
+            _log(f"  player stats …{i + 1}/{len(roster)}")
+        time.sleep(0.2)
+    return out
+
+
 def fetch_injuries() -> dict:
     """Per-team injury report: player, status, injury description,
     estimated return date when ESPN publishes one. Feeds both the
@@ -382,7 +464,7 @@ def git_push(paths: list[str], message: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["roster", "schedule", "standings", "stats", "injuries", "transactions", "all"], default="all")
+    ap.add_argument("--mode", choices=["roster", "schedule", "standings", "stats", "player_stats", "injuries", "transactions", "all"], default="all")
     ap.add_argument("--push", action="store_true")
     ap.add_argument("--stats-season", type=int, default=2025)
     ap.add_argument("--schedule-year", type=int, default=2026)
@@ -416,6 +498,21 @@ if __name__ == "__main__":
             stats = fetch_all_team_stats(roster_teams, args.stats_season)
             _write(STATS_OUT, {"teams": stats})
 
+    if args.mode in ("player_stats", "all"):
+        if not roster_teams:
+            if TEAMS_OUT.exists():
+                roster_teams = json.loads(TEAMS_OUT.read_text()).get("teams", [])
+            else:
+                _log("  no roster available for player_stats — run --mode roster first")
+        standings_data = {"conferences": {}}
+        if STANDINGS_OUT.exists():
+            standings_data = json.loads(STANDINGS_OUT.read_text())
+        elif args.mode == "player_stats":
+            standings_data = fetch_standings(args.schedule_year)
+        if roster_teams:
+            player_stats = fetch_all_player_stats(roster_teams, standings_data)
+            _write(PLAYER_STATS_OUT, {"teams": player_stats})
+
     if args.mode in ("injuries", "all"):
         _write(INJURIES_OUT, fetch_injuries())
 
@@ -424,5 +521,5 @@ if __name__ == "__main__":
 
     if args.push:
         paths = ["docs/nfl_teams.json", "docs/nfl_schedule.json", "docs/nfl_standings.json",
-                  "docs/nfl_team_stats.json", "docs/nfl_injuries.json", "docs/nfl_transactions.json"]
+                  "docs/nfl_team_stats.json", "docs/nfl_player_stats.json", "docs/nfl_injuries.json", "docs/nfl_transactions.json"]
         git_push(paths, f"chore: refresh NFL {args.mode} data")
