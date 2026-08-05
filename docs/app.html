@@ -804,7 +804,7 @@ body{line-height:1.5}
       </div>
       <div id="nfl-props"><div class="empty">NO NFL PROPS — OFF-SEASON</div></div>
       <div class="sh" style="margin-top:18px">MODEL PROPS (ANALYTICAL)</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">Generated from each player's real season-to-date per-game average (ESPN team leaders) adjusted for how the specific opponent's defense has actually performed against every player who's faced them this season -- real defensive rank + league average computed live from every loaded team, not a guessed baseline. No per-game head-to-head or division-rival history is factored in yet -- that needs a heavier per-player game-log scrape not built yet. Likelihood % uses a modeled variance assumption per stat category, not measured from real game logs -- read it as directional, not a market-calibrated probability.</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">Generated from each player's real season-to-date per-game average (ESPN team leaders) adjusted for the specific opponent's real per-game defensive production -- ESPN's own per-game figures where available, otherwise divided by that team's own real games-played count from the same stats snapshot (never a cross-file guess), then compared against a real league average + rank computed live from every loaded team's own per-game numbers. No per-game head-to-head or division-rival history is factored in yet -- that needs a heavier per-player game-log scrape not built yet. Likelihood % uses a modeled variance assumption per stat category, not measured from real game logs -- read it as directional, not a market-calibrated probability.</div>
       <select id="nfl-model-props-game" onchange="renderNFLModelProps(window._nflModelPropFilter||'all')" style="width:100%;padding:8px;margin-bottom:10px;background:rgba(4,0,12,.9);border:1px solid rgba(0,120,255,.25);color:var(--t);font-family:var(--mono);font-size:15px;border-radius:2px"><option value="">SELECT A GAME…</option></select>
       <div id="nfl-model-props-filter" style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-o btn-sm act" onclick="renderNFLModelProps('all')">ALL</button>
@@ -14749,7 +14749,7 @@ function setSub(sport,sub){
 const _NFL_PROP_CATS=[
   {key:'passingYards',label:'Passing Yards',grp:'pass',defKey:'netPassingYardsPerGame',defPerGame:true,leagueAvg:215,cv:0.22},
   {key:'rushingYards',label:'Rushing Yards',grp:'rush',defKey:'rushingYardsPerGame',defPerGame:true,leagueAvg:70,cv:0.45},
-  {key:'receivingYards',label:'Receiving Yards',grp:'rec',defKey:'receivingYards',defPerGame:false,leagueAvg:45,cv:0.5},
+  {key:'receivingYards',label:'Receiving Yards',grp:'rec',defKey:'receivingYards',defKeyPG:'receivingYardsPerGame',defPerGame:false,leagueAvg:45,cv:0.5},
   {key:'receptions',label:'Receptions',grp:'rec',defKey:null,leagueAvg:3.6,cv:0.35},
   {key:'passingTouchdowns',label:'Passing TDs',grp:'td',isTD:true,defKey:'passingTouchdowns',defPerGame:false,leagueAvg:1.4},
   {key:'rushingTouchdowns',label:'Rushing TDs',grp:'td',isTD:true,defKey:'rushingTouchdowns',defPerGame:false,leagueAvg:0.65},
@@ -14776,16 +14776,33 @@ function _nflHalfPoint(v){
 // currently-loaded team's own defenseAllowed stats -- falls back to a
 // rough static constant only when too few teams are loaded yet to
 // trust a computed average (e.g. very early season), and says so.
+// Resolves one team's real per-game defensive figure for a category --
+// prefers ESPN's own native PerGame field (defKeyPG) when scraped, since
+// that's ESPN's own per-game computation, not ours. Only derives our
+// own average (raw/games) when no native PerGame field exists for this
+// category (TDs allowed, etc.), and even then prefers the gamesPlayed
+// count computed server-side from this SAME team-stats snapshot
+// (totalPoints/totalPointsPerGame, see fetch_nfl.py) over the
+// separately-scraped standings file, so the games divisor can't be out
+// of sync with the stat it's dividing -- no cross-file guesswork.
+function _nflDefPerGame(def,cat,fallbackGames){
+  if(!def)return null;
+  if(cat.defKeyPG&&def[cat.defKeyPG]!=null)return def[cat.defKeyPG];
+  if(cat.defKey==null||def[cat.defKey]==null)return null;
+  if(cat.defPerGame)return def[cat.defKey];
+  const g=def.gamesPlayed||fallbackGames;
+  if(!g)return null;
+  return def[cat.defKey]/g;
+}
 function _nflLeagueDefRows(cat){
   const D=_NFL_DATA;if(!D||cat.defKey==null)return[];
   const rows=[];
   Object.keys(D.stats||{}).forEach(abbr=>{
     const def=D.stats[abbr]?.defenseAllowed;
-    if(!def||def[cat.defKey]==null)return;
     const s=D.standings?.[abbr];
-    const g=s?((s.wins||0)+(s.losses||0)+(s.ties||0)):0;
-    if(!cat.defPerGame&&!g)return;
-    const perGame=cat.defPerGame?def[cat.defKey]:def[cat.defKey]/g;
+    const fallbackGames=s?((s.wins||0)+(s.losses||0)+(s.ties||0)):0;
+    const perGame=_nflDefPerGame(def,cat,fallbackGames);
+    if(perGame==null)return;
     rows.push({abbr,perGame});
   });
   return rows;
@@ -14794,11 +14811,10 @@ function _nflOppDefFactor(oppAbbr,cat,games){
   if(cat.defKey==null)return{factor:0,note:'no opponent defensive category tracked for this stat'};
   const D=_NFL_DATA;
   const oppDef=D?.stats?.[oppAbbr]?.defenseAllowed;
-  const raw=oppDef?oppDef[cat.defKey]:null;
-  if(raw==null)return{factor:0,note:'no opponent defensive data yet'};
   const s=D.standings?.[oppAbbr];
-  const g=s?((s.wins||0)+(s.losses||0)+(s.ties||0)):games;
-  const perGame=cat.defPerGame||!g?raw:raw/g;
+  const fallbackGames=s?((s.wins||0)+(s.losses||0)+(s.ties||0)):games;
+  const perGame=_nflDefPerGame(oppDef,cat,fallbackGames);
+  if(perGame==null)return{factor:0,note:'no opponent defensive data yet'};
   const rows=_nflLeagueDefRows(cat);
   const haveLeague=rows.length>=8; // need a real sample of teams before trusting a computed average over the static fallback
   const leagueAvg=haveLeague?(rows.reduce((s2,r)=>s2+r.perGame,0)/rows.length):cat.leagueAvg;
@@ -14827,8 +14843,8 @@ function _nflPropGrade(conf,games){
 const _NFL_PROP_GRADE_COLOR={PREMIUM:'var(--vc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--t3)'};
 function _nflDefNote(oppAbbr,cat,factor,perGame,leagueAvg,rank,total,realAvg,adjustor,adjUnit){
   const dir=factor>=0?'boost':'reduction';
-  const rankTxt=realAvg&&rank?`${oppAbbr} ranks ${rank} of ${total} in real ${cat.label.toLowerCase()} allowed this season (${perGame.toFixed(2)}/gm vs a ${leagueAvg.toFixed(2)} league average computed from every currently-loaded defense -- the real production every opposing player has put up against them, not a guess)`
-    :`${oppAbbr} allows ${perGame.toFixed(2)} ${cat.label.toLowerCase()} per game (vs an assumed ~${cat.leagueAvg} league baseline -- not enough teams loaded yet to compute a real league average)`;
+  const rankTxt=realAvg&&rank?`${oppAbbr} allows ${perGame.toFixed(2)} ${cat.label.toLowerCase()} per game (real per-game production, not a season-total guess) -- ranks ${rank} of ${total} vs a ${leagueAvg.toFixed(2)}/gm league average computed from every currently-loaded defense's own real per-game numbers, the actual production every opposing player has put up against them`
+    :`${oppAbbr} allows ${perGame.toFixed(2)} ${cat.label.toLowerCase()} per game (real per-game production) vs an assumed ~${cat.leagueAvg} league baseline -- not enough teams loaded yet to compute a real league average`;
   return`${rankTxt}, a ${(factor*100).toFixed(0)}% ${dir} folded in as a ${adjustor>=0?'+':''}${adjustor}${adjUnit} adjustment. `;
 }
 function _nflBuildPropRow(player,teamAbbr,oppAbbr,cat){

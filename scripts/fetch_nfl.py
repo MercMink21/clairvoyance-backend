@@ -256,7 +256,12 @@ _DEFENSE_ALLOWED_FIELDS = {
     # real rush-defense signal, not just pass/receiving, to be a genuine
     # offense/defense breakdown rather than a partial one.
     "rushing":      ["rushingYardsPerGame", "rushingTouchdowns"],
-    "receiving":    ["receivingYards", "receivingTouchdowns"],
+    # receivingYardsPerGame (ESPN's own per-game figure, when exposed)
+    # is preferred over receivingYards -- the props model divides the
+    # season total by games itself only when this native field is
+    # missing, so it isn't guessing a per-game number that ESPN
+    # already computed correctly.
+    "receiving":    ["receivingYards", "receivingYardsPerGame", "receivingTouchdowns"],
     "downs":        ["thirdDownConvPct", "fourthDownConvPct"],
 }
 _ST_FIELDS = {
@@ -289,9 +294,25 @@ def fetch_team_stats(team_id: str, season: int) -> dict | None:
         d = r.json()
         own_cats = ((d.get("results") or {}).get("stats") or {}).get("categories") or []
         opp_cats = (d.get("results") or {}).get("opponent") or []
+        offense = _extract_fields(own_cats, _OFFENSE_FIELDS)
+        defense = _extract_fields(opp_cats, _DEFENSE_ALLOWED_FIELDS)
+        # Real games-played for this exact stats snapshot, derived from
+        # this team's own totalPoints/totalPointsPerGame ratio -- not
+        # cross-referenced against the separately-scraped standings
+        # file, which can be a snapshot or two out of sync. Any category
+        # here that's a season total without a native ESPN PerGame
+        # field (TDs allowed, etc.) divides by this number, so the
+        # per-game figure used in the props model comes from the same
+        # data pull it's being combined with, not a guess.
+        games_played = None
+        tp, tppg = offense.get("totalPoints"), offense.get("totalPointsPerGame")
+        if tp and tppg:
+            games_played = round(tp / tppg)
+        if games_played:
+            defense["gamesPlayed"] = games_played
         return {
-            "offense": _extract_fields(own_cats, _OFFENSE_FIELDS),
-            "defenseAllowed": _extract_fields(opp_cats, _DEFENSE_ALLOWED_FIELDS),
+            "offense": offense,
+            "defenseAllowed": defense,
             "specialTeams": _extract_fields(own_cats, _ST_FIELDS),
         }
     except Exception as exc:
