@@ -23713,6 +23713,43 @@ function _wnbaKey(abbr){
   var a=abbr.trim();
   return WNBA_ABBR_MAP[a]||a;
 }
+// ═══ REAL ROSTER LOOKUPS (NBA/NHL/WNBA) ═══════════════════════════════
+// fetch_nba_roster()/fetch_nhl_roster()/fetch_wnba_roster()
+// (clairvoyance_update.py) scrape every team's real current roster from
+// ESPN -- these replace guessing a player's team from a hand-curated
+// list (like the old NBA_PLAYERS table, which only ever covered
+// whichever series was current when it was last hand-edited) with a
+// real, auto-refreshing source that reflects actual trades/signings.
+// Returns null (not a guess) when the player isn't found -- callers
+// should treat that as "unknown," never silently keep a stale team.
+function _playerTeam(league,name){
+  const D=window.__CV_DATA||{};
+  const roster=(league==='NBA'?D.nba?.roster:league==='NHL'?D.nhl?.roster:league==='WNBA'?D.wnba?.roster:null)||{};
+  const entry=roster[(name||'').toLowerCase().trim()];
+  return entry?{team:entry.team,pos:entry.pos}:null;
+}
+function _nbaPlayerTeam(name){return _playerTeam('NBA',name);}
+function _nhlPlayerTeam(name){return _playerTeam('NHL',name);}
+function _wnbaPlayerTeam(name){return _playerTeam('WNBA',name);}
+// Cross-checks a hand-curated {name,t/team} list against the real
+// scraped roster and returns only the mismatches -- a player whose
+// hand-entered team no longer matches their real current team (traded/
+// signed elsewhere) or who isn't found on any roster at all. Used to
+// audit NBA_PLAYERS/ATP_DB-style static tables against real data
+// instead of trusting them blind.
+function _auditRosterMismatches(league,staticList,nameKey,teamKey){
+  const D=window.__CV_DATA||{};
+  const roster=(league==='NBA'?D.nba?.roster:league==='NHL'?D.nhl?.roster:league==='WNBA'?D.wnba?.roster:null);
+  if(!roster||!Object.keys(roster).length)return{ok:false,reason:'no live roster data loaded',mismatches:[]};
+  const mismatches=[];
+  (staticList||[]).forEach(p=>{
+    const name=p[nameKey||'n'],staticTeam=p[teamKey||'t'];
+    const real=roster[(name||'').toLowerCase().trim()];
+    if(!real)mismatches.push({name,staticTeam,realTeam:null,issue:'not found on any current roster'});
+    else if(real.team!==staticTeam)mismatches.push({name,staticTeam,realTeam:real.team,issue:'team mismatch'});
+  });
+  return{ok:true,checked:staticList.length,mismatches};
+}
 // WNBA matchup radar -- 3-tab MATCHUP/OFFENSE/DEFENSE, same as NBA/CFB/
 // NHL/soccer/NFL. fetch_wnba_team_stats() (clairvoyance_update.py) scrapes
 // BBRef's real advanced-team/per_game-team/per_game-opponent tables for

@@ -626,6 +626,110 @@ def fetch_mlb_batter_rosters() -> dict:
         log(f"MLB batter rosters: {exc}", "WARN")
     return result
 
+def fetch_nba_roster() -> dict:
+    """
+    Real, current NBA roster for all 30 teams -- replaces the app's
+    hand-embedded NBA_PLAYERS table (which only ever covered the
+    handful of players relevant to whatever series/Finals matchup was
+    current when it was last hand-edited) with a scraped source that
+    reflects real offseason trades/signings automatically instead of
+    needing another manual edit every time a player changes teams.
+
+    Same fetch_mlb_batter_rosters() pattern: one ESPN team-list call,
+    then one roster call per team. Returns {"player name": {"team":
+    "ABBR", "pos": "PG"}, ...}, keyed lowercase to match this
+    codebase's existing name-lookup convention (see fetch_mlb_batter_rosters).
+    """
+    log("NBA rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams?limit=40")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}/roster")
+                for p in (roster or {}).get("athletes", []):
+                    pos = (p.get("position") or {}).get("abbreviation", "")
+                    name = p.get("fullName", "")
+                    if name:
+                        result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"NBA roster {abbr}: {exc}", "WARN")
+        log(f"  NBA rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"NBA rosters: {exc}", "WARN")
+    return result
+
+def fetch_nhl_roster() -> dict:
+    """
+    Real, current NHL roster for all 32 teams -- this codebase had NO
+    NHL player-roster source at all before this (only the hand-curated
+    4-team NHL object's implicit "goalie/skater" mentions). Same
+    ESPN team-list -> per-team-roster pattern as fetch_nba_roster()/
+    fetch_mlb_batter_rosters(). Returns {"player name": {"team": "ABBR",
+    "pos": "C"}, ...}, keyed lowercase.
+    """
+    log("NHL rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json("https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams?limit=40")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/{team_id}/roster")
+                for p in (roster or {}).get("athletes", []):
+                    pos = (p.get("position") or {}).get("abbreviation", "")
+                    name = p.get("fullName", "")
+                    if name:
+                        result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"NHL roster {abbr}: {exc}", "WARN")
+        log(f"  NHL rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"NHL rosters: {exc}", "WARN")
+    return result
+
+def fetch_wnba_roster() -> dict:
+    """
+    Real, current WNBA roster for all teams -- same pattern, closes the
+    same gap fetch_nba_roster() closes for NBA (no scraped player-team
+    source existed before this).
+    """
+    log("WNBA rosters (ESPN)…")
+    result: dict = {}
+    try:
+        teams_data = fetch_json("https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams?limit=20")
+        teams = ((teams_data or {}).get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])
+        for t in teams:
+            tm = t.get("team", {})
+            team_id, abbr = tm.get("id"), tm.get("abbreviation", "")
+            if not team_id or not abbr:
+                continue
+            try:
+                time.sleep(0.2)
+                roster = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams/{team_id}/roster")
+                for p in (roster or {}).get("athletes", []):
+                    pos = (p.get("position") or {}).get("abbreviation", "")
+                    name = p.get("fullName", "")
+                    if name:
+                        result[name.lower()] = {"team": abbr, "pos": pos}
+            except Exception as exc:
+                log(f"WNBA roster {abbr}: {exc}", "WARN")
+        log(f"  WNBA rosters: {len(result)} players across {len(teams)} teams")
+    except Exception as exc:
+        log(f"WNBA rosters: {exc}", "WARN")
+    return result
+
 def fetch_mlb_statcast_team(batter_rosters: dict) -> dict:
     """
     Real Statcast quality-of-contact metrics — xwOBA, barrel rate, hard-hit%,
@@ -5091,9 +5195,11 @@ def main() -> None:
     nba_ref              = (fetch_basketball_reference()  if not args.no_reference else {}) if S in ("nba","all") else {}
     nba_adv              = (fetch_nba_team_advanced()     if not args.no_reference else {}) if S in ("nba","all") else {}
     nba_four_factors     = (fetch_nba_four_factors()      if not args.no_reference else {}) if S in ("nba","all") else {}
+    nba_roster           = fetch_nba_roster()             if S in ("nba","all") else {}
 
     nhl_today, nhl_tom   = fetch_nhl_today()               if S in ("nhl","all") else ([],[])
     nhl_standings        = fetch_nhl_standings()          if S in ("nhl","all") else {}
+    nhl_roster           = fetch_nhl_roster()             if S in ("nhl","all") else {}
     nhl_bracket          = fetch_nhl_playoff_bracket()    if S in ("nhl","all") else {}
     nhl_edge             = fetch_nhl_edge()               if S in ("nhl","all") else {}
     nhl_edge_enh         = fetch_nhl_edge_enhanced()      if S in ("nhl","all") else {}
@@ -5162,6 +5268,8 @@ def main() -> None:
     # daily fetch. Bundle key kept (empty) below for the same reason as F1.
     ncaa_baseball: dict = {}
     wnba          = fetch_wnba()          if S in ("nba","all") else {}
+    wnba_roster   = fetch_wnba_roster()   if S in ("nba","all") else {}
+    if wnba: wnba["roster"] = wnba_roster
     if lm_props.get("wnba"):
         lm_props["wnba"] = validate_props_against_schedule(lm_props["wnba"], wnba.get("today", []))
     pwhl          = fetch_pwhl()          if S in ("nhl","all") else {}
@@ -5406,11 +5514,13 @@ def main() -> None:
             "teamAdv":      nba_adv,
             "fourFactors":  nba_four_factors,
             "weekSchedule": nba_week_schedule,
+            "roster":       nba_roster,
         },
         "nhl": {
             "today":        nhl_today,
             "tomorrow":     nhl_tom,
             "standings":    nhl_standings,
+            "roster":       nhl_roster,
             "bracket":      nhl_bracket,
             "edge":         nhl_edge,
             "edgeEnhanced": nhl_edge_enh,
