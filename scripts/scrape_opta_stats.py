@@ -215,6 +215,13 @@ def main() -> None:
     html = APP.read_text(encoding="utf-8")
     original_html = html
     any_changes = False
+    # Tracks whether any docs/{league}_opta_stats.json was (re)written this
+    # run, independent of any_changes (which only reflects the _SOC_XG
+    # static-table patch below, gated on cfg["name_map"] existing). Without
+    # this, a run where e.g. MLS's Opta detail legitimately updated but
+    # PL/Serie A/Bundesliga's xg numbers happened not to move would write
+    # the JSON files locally and then never reach the push step at all.
+    any_json_written = False
 
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
@@ -238,15 +245,23 @@ def main() -> None:
             else:
                 out_path.write_text(json.dumps(slim, indent=2), encoding="utf-8")
                 print(f"[INFO] wrote {out_path} ({len(slim['attacking'])} teams)")
-                # MLS is also served straight to the browser (docs/ is the
-                # GitHub Pages root) — loadMLSOptaStats() in app.html fetches
-                # this exact copy to feed _mlsStyleFactor()'s passing/
-                # pressing/sequences adjustment into the MC engine.
-                if lg_key == "mls":
-                    (ROOT / "docs" / "mls_opta_stats.json").write_text(
-                        json.dumps(slim, indent=2), encoding="utf-8"
-                    )
-                    print("[INFO] synced docs/mls_opta_stats.json")
+                # Every league's slim categories are also served straight to
+                # the browser (docs/ is the GitHub Pages root), not just
+                # MLS's — loadLeagueOptaStats(key) in app.html fetches
+                # docs/{key}_opta_stats.json for the offense/defense radar
+                # breakdown (attacking/passing/sequences for offense,
+                # pressing/defending for defense) and, for MLS specifically,
+                # also feeds _mlsStyleFactor()'s existing MC adjustment.
+                # Previously only MLS's copy was synced here, so PL/Serie A/
+                # Bundesliga's passing/pressing/sequences/defending detail
+                # was fetched, used once to refresh _SOC_XG's xg/xga
+                # fallback numbers, and then discarded — never reaching the
+                # frontend at all despite being scraped every run.
+                (ROOT / "docs" / f"{lg_key}_opta_stats.json").write_text(
+                    json.dumps(slim, indent=2), encoding="utf-8"
+                )
+                print(f"[INFO] synced docs/{lg_key}_opta_stats.json")
+                any_json_written = True
 
             if cfg["name_map"]:
                 new_lines = build_soc_xg_lines(slim, cfg["name_map"])
@@ -275,11 +290,11 @@ def main() -> None:
             sys.exit(1)
         print("[INFO] Validator: all checks passed")
 
-    if args.push and any_changes and not args.dry_run:
-        msg = "chore: refresh BL/PL/Serie A team xG stats (Opta scrape)"
-        subprocess.run(["git", "add", "docs/app.html", "docs/index.html", "docs/mls_opta_stats.json",
-                        "data/opta_reference"],
-                        cwd=ROOT, check=True)
+    if args.push and (any_changes or any_json_written) and not args.dry_run:
+        msg = "chore: refresh BL/PL/Serie A/MLS Opta team stats"
+        add_paths = ["docs/app.html", "docs/index.html", "data/opta_reference"]
+        add_paths += [f"docs/{lg_key}_opta_stats.json" for lg_key in LEAGUES]
+        subprocess.run(["git", "add", *add_paths], cwd=ROOT, check=True)
         r = subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, capture_output=True, text=True)
         if r.returncode == 0:
             print("[INFO] Committed.")

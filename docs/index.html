@@ -3804,6 +3804,26 @@ function _toggleMatchupRadar(id){
   const el=document.getElementById('radar_'+id);
   if(el)el.style.display=el.style.display==='none'?'block':'none';
 }
+// Wraps 2+ pre-rendered radar SVGs (e.g. overall matchup / offense-only /
+// defense-only) behind a small tab strip inside one COMPARE panel, instead
+// of a separate button+panel per breakdown. All panels are rendered once
+// up front (no recomputation on tab switch, just show/hide), so switching
+// is instant and there's no risk of a tab silently failing to render.
+function _radarTabPanelHTML(uid,tabs){
+  const strip=tabs.map((t,i)=>`<button class="btn btn-o btn-sm" data-radar-tab="${uid}::${i}" style="font-size:11px;padding:2px 9px;${i===0?'background:rgba(0,240,255,.12);border-color:#00f0ff;color:#00f0ff':''}" onclick="event.stopPropagation();_switchRadarTab('${uid}',${i})">${t.label}</button>`).join('');
+  const bodies=tabs.map((t,i)=>`<div id="radarpanel_${uid}_${i}" style="display:${i===0?'block':'none'}">${t.svg}</div>`).join('');
+  return`<div style="display:flex;justify-content:center;gap:6px;margin-bottom:8px">${strip}</div>${bodies}`;
+}
+function _switchRadarTab(uid,idx){
+  document.querySelectorAll(`[id^="radarpanel_${uid}_"]`).forEach(el=>{el.style.display='none';});
+  const active=document.getElementById(`radarpanel_${uid}_${idx}`);if(active)active.style.display='block';
+  document.querySelectorAll(`[data-radar-tab^="${uid}::"]`).forEach(btn=>{
+    const isActive=btn.dataset.radarTab===uid+'::'+idx;
+    btn.style.background=isActive?'rgba(0,240,255,.12)':'';
+    btn.style.borderColor=isActive?'#00f0ff':'';
+    btn.style.color=isActive?'#00f0ff':'';
+  });
+}
 
 // ── MC PROJ bar — shared across all sport game cards ─────────────────────────
 function _mcProjBarHTML(mc,ouL,hTeam,aTeam,opts){
@@ -6873,6 +6893,40 @@ function _cfbRadarAxisValues(abbr,f,side){
     clamp(_cfbTeamHFA(abbr),0,6),
   ];
 }
+// Finer-grained breakdown than the combined matchup radar's single
+// "Offense"/"Defense" axes -- pulls the individual real fields
+// fetch_cfb.py already scrapes (D.stats[abbr].offense/defenseAllowed)
+// instead of collapsing each side down to one number. Season-total TD
+// counts are labeled as such (not per-game) for the same reason
+// _cfbPickReasoning already does -- gamesPlayed isn't scraped, so a
+// per-game rate would be a guess.
+function _cfbOffenseRadarValues(abbr,f,side){
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  const p=side==='h'?'h':'a';
+  return[
+    clamp(f[p+'OffPassYdsG'],100,350),
+    clamp(f[p+'OffRushYdsG'],80,300),
+    clamp(f[p+'Off3rd'],25,55),
+    clamp(f[p+'OffTODiff'],-12,12),
+    clamp(f[p+'OffPassTD'],0,40),
+    clamp(f[p+'OffRushTD'],0,45),
+  ];
+}
+function _cfbDefenseRadarValues(abbr,f,side){
+  const D=_CFB_DATA;
+  const _n=v=>{const x=parseFloat(v);return(v!=null&&v!=='--'&&!isNaN(x))?x:null;};
+  const totYdsAllowed=_n(D.stats[abbr]?.defenseAllowed?.yardsPerGame);
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  const p=side==='h'?'h':'a';
+  return[
+    100-clamp(f[p+'DefPtsG'],15,45),
+    100-clamp(totYdsAllowed,280,500),
+    100-clamp(f[p+'DefPassYdsG'],150,320),
+    100-clamp(f[p+'DefRushYdsG'],80,250),
+    100-clamp(f[p+'DefPassTD'],0,35),
+    100-clamp(f[p+'DefRushTD'],0,35),
+  ];
+}
 function _cfbMatchupRadarSVG(g,f){
   const labels=['Offense','Defense','Spec teams','Turnovers','SOS','Home edge'];
   const hVals=_cfbRadarAxisValues(g.home,f,'h'),aVals=_cfbRadarAxisValues(g.away,f,'a');
@@ -6967,8 +7021,12 @@ function _cfbGameCard(g){
       <div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">
         <span style="color:#00f0ff">■ ${g.home}</span><span style="color:#f000ff">■ ${g.away}</span>
       </div>
-      ${_cfbMatchupRadarSVG(g,facts)}
-      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real scraped/computed stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). Home edge reflects each team's own team-specific HFA, not just today's home team.</div>
+      ${_radarTabPanelHTML('cfb_'+gidSafe,[
+        {label:'MATCHUP',svg:_cfbMatchupRadarSVG(g,facts)},
+        {label:'OFFENSE',svg:_matchupRadarSVG(['Passing','Rushing','3rd down%','Turnovers','Pass TDs','Rush TDs'],_cfbOffenseRadarValues(g.home,facts,'h'),_cfbOffenseRadarValues(g.away,facts,'a'),'cfb_'+gidSafe+'_o')},
+        {label:'DEFENSE',svg:_matchupRadarSVG(['Points allowed','Total yds allowed','Pass yds allowed','Rush yds allowed','Pass TDs allowed','Rush TDs allowed'],_cfbDefenseRadarValues(g.home,facts,'h'),_cfbDefenseRadarValues(g.away,facts,'a'),'cfb_'+gidSafe+'_d')},
+      ])}
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real scraped/computed stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). TD counts are season totals, not per-game rates. Home edge (MATCHUP tab) reflects each team's own team-specific HFA, not just today's home team.</div>
     </div>
     ${mc.wx?weatherBadge(mc.wx,g.home):''}
     <div class="brow">
@@ -7357,6 +7415,33 @@ function _nhlRadarAxisValues(team,opp){
     xgShare,
   ];
 }
+// Finer-grained breakdown than the combined matchup radar's single
+// offense/defense axes -- uses the real per-team rate stats (gf60/ga60,
+// pp%/pk%, corsi/high-danger shares, save%) already sitting in the NHL
+// team data object but not previously read anywhere in the app, rather
+// than the qualitative -2..3 hv.off/hv.def scouting-style ratings.
+function _nhlOffenseRadarValues(team){
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    clamp(team.gf60,2.0,3.8),
+    clamp(team.pp!=null?team.pp*100:null,14,28),
+    clamp(team.cf5!=null?team.cf5*100:null,44,56),
+    clamp(team.hdcf,42,58),
+    clamp(team.xgf5!=null?team.xgf5*100:null,44,58),
+    clamp(team.hv?.fin,-2,3),
+  ];
+}
+function _nhlDefenseRadarValues(team){
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    100-clamp(team.ga60,1.8,3.6),
+    clamp(team.pk!=null?team.pk*100:null,72,88),
+    clamp(team.sv!=null?team.sv*100:null,89,93),
+    clamp(team.hdsv!=null?team.hdsv*100:null,86,94),
+    100-clamp(team.gaa,1.8,3.6),
+    clamp(team.gsax,-15,15),
+  ];
+}
 function _nhlGameCard(espnEv){
       const c=espnEv.competitions?.[0];if(!c)return'';
       const hE=c.competitors?.find(t=>t.homeAway==='home'),aE=c.competitors?.find(t=>t.homeAway==='away');
@@ -7429,8 +7514,14 @@ function _nhlGameCard(espnEv){
     <div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">
       <span style="color:#00f0ff">■ ${hn}</span><span style="color:#f000ff">■ ${an}</span>
     </div>
-    ${(()=>{try{return _matchupRadarSVG(['Offense','Defense','Goaltending','Special teams','Speed/zone','xG share'],_nhlRadarAxisValues(hNHL,aNHL),_nhlRadarAxisValues(aNHL,hNHL),'nhl_'+hn+'_'+an);}catch(e){return'';}})()}
-    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real input already used by the NHL model (GF/60, hockey-value defense, GSAx, special teams, Edge speed/zone data, xG share) normalized 0-100. Missing data defaults to the 50 midpoint.</div>
+    ${(()=>{try{
+      return _radarTabPanelHTML('nhl_'+hn+'_'+an,[
+        {label:'MATCHUP',svg:_matchupRadarSVG(['Offense','Defense','Goaltending','Special teams','Speed/zone','xG share'],_nhlRadarAxisValues(hNHL,aNHL),_nhlRadarAxisValues(aNHL,hNHL),'nhl_'+hn+'_'+an+'_m')},
+        {label:'OFFENSE',svg:_matchupRadarSVG(['GF/60','PP%','Corsi F%','HD chances%','xGF%','Finishing'],_nhlOffenseRadarValues(hNHL),_nhlOffenseRadarValues(aNHL),'nhl_'+hn+'_'+an+'_o')},
+        {label:'DEFENSE',svg:_matchupRadarSVG(['GA/60','PK%','Save%','HD save%','GAA','GSAx'],_nhlDefenseRadarValues(hNHL),_nhlDefenseRadarValues(aNHL),'nhl_'+hn+'_'+an+'_d')},
+      ]);
+    }catch(e){return'';}})()}
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real input this app already has for this team (GF/60, PP%/PK%, Corsi, high-danger chances, save%, GSAx, Edge speed/zone) normalized 0-100. Missing data defaults to the 50 midpoint.</div>
   </div>
   ${pre?`<div class="brow">
     <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${hn}','${an}','ML','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${hn}</div><div class="cho">${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
@@ -25377,6 +25468,90 @@ function loadMLSOptaStats(){
     .catch(function(e){console.warn('[CV] MLS Opta stats load failed:',e.message);return null;});
   return _mlsOptaLoading;
 }
+// Generic version of loadMLSOptaStats() for every league scrape_opta_
+// stats.py actually covers (pl/ita/bl/mls) — docs/{key}_opta_stats.json.
+// Previously only MLS's copy was ever written to docs/ (see the comment
+// in scrape_opta_stats.py), so PL/Serie A/Bundesliga's passing/pressing/
+// sequences/defending detail was scraped daily and discarded after only
+// updating _SOC_XG's xg/xga fallback numbers -- never reaching the
+// frontend. Cached per-league in window.__CV_OPTA[key]; also mirrors into
+// window.__CV_MLS_OPTA for 'mls' so the existing _mlsStyleFactor()/
+// _mlsLeagueAverages() consumers keep working unchanged. la Liga and
+// Champions League aren't in scrape_opta_stats.py's LEAGUES at all, so
+// this correctly resolves to null for those rather than guessing.
+window.__CV_OPTA=window.__CV_OPTA||{};
+var _leagueOptaLoading={};
+var _OPTA_LEAGUES=['pl','ita','bl','mls'];
+function loadLeagueOptaStats(key){
+  if(_OPTA_LEAGUES.indexOf(key)<0)return Promise.resolve(null);
+  if(window.__CV_OPTA[key])return Promise.resolve(window.__CV_OPTA[key]);
+  if(_leagueOptaLoading[key])return _leagueOptaLoading[key];
+  _leagueOptaLoading[key]=fetch(key+'_opta_stats.json',{cache:'no-cache'})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){
+      window.__CV_OPTA[key]=d;
+      if(key==='mls'&&d)window.__CV_MLS_OPTA=d;
+      return d;
+    })
+    .catch(function(e){console.warn('[CV] '+key+' Opta stats load failed:',e.message);return null;});
+  return _leagueOptaLoading[key];
+}
+// Looks a team up across attacking/passing/sequences/pressing/defending
+// by fuzzy name match, same tolerant matching _socXG's finder functions
+// already use (exact -> substring either direction).
+function _optaFindTeam(rows,name){
+  if(!rows||!name)return null;
+  var k=name.toLowerCase().trim();
+  return rows.find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;})||null;
+}
+// Real per-team offense-side signals from Opta's attacking/passing/
+// sequences categories, normalized 0-100. Missing data (league not
+// covered, or team not matched, or Opta hasn't loaded yet) falls back to
+// the 50 midpoint per axis -- same convention CFB/NHL's radars already use.
+function _socOffenseRadarValues(name,leagueKey){
+  var d=window.__CV_OPTA&&window.__CV_OPTA[leagueKey];
+  var clamp=function(v,lo,hi){return v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  if(!d)return[50,50,50,50,50,50];
+  var att=_optaFindTeam(d.attacking,name),pas=_optaFindTeam(d.passing,name),seq=_optaFindTeam(d.sequences,name);
+  var xgPg=(att&&att.played)?att.xg/att.played:null;
+  var shotConv=att?att.shot_conv:null;
+  var goalsVsXg=(att&&att.played)?(att.goals-att.xg)/att.played:null;
+  var posPerc=pas?pas.pos_perc:null;
+  var finalThirdPct=pas?pas.successful_final_third_passes_perc:null;
+  var directAttackGoals=(seq&&att&&att.played)?seq.direct_attack_goals/att.played:null;
+  return[
+    clamp(xgPg,0.6,2.4),
+    clamp(shotConv,8,22),
+    clamp(posPerc,35,65),
+    clamp(finalThirdPct,55,80),
+    clamp(directAttackGoals,0,0.6),
+    clamp(goalsVsXg,-0.4,0.4),
+  ];
+}
+// Real per-team defense-side signals from Opta's defending/pressing
+// categories, normalized 0-100 (inverted where lower-is-better, e.g.
+// goals conceded, so a higher chart value always reads as "better" like
+// every other radar in this app).
+function _socDefenseRadarValues(name,leagueKey){
+  var d=window.__CV_OPTA&&window.__CV_OPTA[leagueKey];
+  var clamp=function(v,lo,hi){return v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  if(!d)return[50,50,50,50,50,50];
+  var def=_optaFindTeam(d.defending,name),press=_optaFindTeam(d.pressing,name);
+  var xgaPg=(def&&def.played)?def.xg_against/def.played:null;
+  var gaPg=(def&&def.played)?def.goals_against/def.played:null;
+  var shotConvAgainst=def?def.shot_conv_against:null;
+  var goalsVsXgConceded=(def&&def.played)?(def.xg_against-def.goals_against)/def.played:null;
+  var ppda=press?press.ppda:null;
+  var defActionsPg=(press&&def&&def.played)?press.defensive_actions/def.played:null;
+  return[
+    100-clamp(xgaPg,0.6,2.4),
+    100-clamp(gaPg,0.5,2.5),
+    100-clamp(shotConvAgainst,8,22),
+    clamp(goalsVsXgConceded,-0.4,0.4),
+    100-clamp(ppda,7,16),
+    clamp(defActionsPg,15,35),
+  ];
+}
 var _MLS_OPTA_AVG=null;
 function _mlsLeagueAverages(){
   if(_MLS_OPTA_AVG)return _MLS_OPTA_AVG;
@@ -25678,12 +25853,26 @@ function _renderSocMatchCard(g,leagueKey){
     +'<div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">'
     +'<span style="color:#00f0ff">■ '+g.home+'</span><span style="color:#f000ff">■ '+g.away+'</span></div>'
     +(function(){try{
+      var socUid='soc_'+leagueKey+'_'+(g.hAbbr||g.home)+'_'+(g.aAbbr||g.away);
       var socClamp=function(v,lo,hi){return v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
       var hVals=[socClamp(hXG&&hXG.xg,0.6,2.4),100-socClamp(hXG&&hXG.xga,0.6,2.4),socClamp(hXG&&hXG.gf,0.5,2.5),100-socClamp(hXG&&hXG.ga,0.5,2.5)];
       var aVals=[socClamp(aXG&&aXG.xg,0.6,2.4),100-socClamp(aXG&&aXG.xga,0.6,2.4),socClamp(aXG&&aXG.gf,0.5,2.5),100-socClamp(aXG&&aXG.ga,0.5,2.5)];
-      return _matchupRadarSVG(['xG (attack)','xGA (defense)','Actual goals/g','Goals allowed/g'],hVals,aVals,'soc_'+leagueKey+'_'+(g.hAbbr||g.home)+'_'+(g.aAbbr||g.away));
+      var matchupSvg=_matchupRadarSVG(['xG (attack)','xGA (defense)','Actual goals/g','Goals allowed/g'],hVals,aVals,socUid+'_m');
+      // Offense/defense breakdown only for the 4 leagues scrape_opta_
+      // stats.py actually covers (pl/ita/bl/mls) -- La Liga and Champions
+      // League don't have this data at all, so they honestly keep just
+      // the 4-axis matchup view above rather than a fake breakdown.
+      if(_OPTA_LEAGUES.indexOf(leagueKey)<0){
+        return '<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Only 4 axes -- xG/xGA/actual-goals data is what this engine has real, per-team numbers for in '+leagueName+'. No offense/defense breakdown or possession/form axes since Opta detail isn\'t scraped for this league yet.</div>'+matchupSvg;
+      }
+      var offH=_socOffenseRadarValues(g.home,leagueKey),offA=_socOffenseRadarValues(g.away,leagueKey);
+      var defH=_socDefenseRadarValues(g.home,leagueKey),defA=_socDefenseRadarValues(g.away,leagueKey);
+      var offSvg=_matchupRadarSVG(['xG/game','Shot conv%','Possession%','Final-3rd pass%','Direct atk goals','Goals vs xG'],offH,offA,socUid+'_o');
+      var defSvg=_matchupRadarSVG(['xGA/game','Goals against/g','Opp shot conv%','Goals vs xG (def)','Press (PPDA)','Def actions/g'],defH,defA,socUid+'_d');
+      var hasOpta=!!(window.__CV_OPTA&&window.__CV_OPTA[leagueKey]);
+      return _radarTabPanelHTML(socUid,[{label:'MATCHUP',svg:matchupSvg},{label:'OFFENSE',svg:offSvg},{label:'DEFENSE',svg:defSvg}])
+        +(hasOpta?'':'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Offense/defense tabs are loading real Opta data for '+leagueName+' -- showing the 50 midpoint per axis until it lands (reopen COMPARE after the match list refreshes).</div>');
     }catch(e){return'';}})()
-    +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Only 4 axes -- xG/xGA/actual-goals data is what this engine has real, per-team numbers for. No possession/form/Elo axes are shown since this app does not track those for soccer yet, rather than filling them in with a guess.</div>'
     +'</div>'
     +scoreHtml
     +'<div class="brow">'
@@ -25791,6 +25980,21 @@ async function renderLeagueMatches(key){
   // leagues at once) — attached once, to MLS's container, rather than
   // duplicated identically across every league tab.
   if(key==='mls')loadStatMuse().then(()=>renderStatMuseInsights('soccer','mls-matches-list'));
+  // Prefetch this league's Opta detail (offense/defense radar breakdown)
+  // if it's one of the 4 covered leagues, then re-render once it lands --
+  // same prefetch-then-rerender pattern CFB's weather uses. Renders once
+  // immediately with whatever's already cached so this never blocks the
+  // initial paint on a network call. window.__CV_OPTA[key] is set before
+  // this .then() ever fires (loadLeagueOptaStats sets it, then resolves),
+  // so guarding on "wasn't cached yet when this call started" stops the
+  // second renderLeagueMatches() call from re-triggering this same
+  // already-resolved prefetch forever.
+  if(_OPTA_LEAGUES.indexOf(key)>=0&&window.__CV_OPTA[key]===undefined){
+    loadLeagueOptaStats(key).then(function(){
+      var stillEl=document.getElementById(key+'-matches-list');
+      if(stillEl&&window['_'+key+'Games'])renderLeagueMatches(key);
+    });
+  }
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING '+(_LEAGUE_CFG[key]&&_LEAGUE_CFG[key].name||key.toUpperCase())+' MATCHES…</div>';
   var games=key==='mls'?await _fetchMLSScheduleReal():null;
   if(!games)games=await _fetchLeagueScoreboard(key);
