@@ -4692,6 +4692,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
       </div>
       <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
       <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">6-MARKET SCAN: ${_allMktsSummary}</div>
+      ${(()=>{try{return _statmuseGameInsightsHTML('mlb',hA,[_TEAM_NAMES?.MLB?.[hA],hA],awA,[_TEAM_NAMES?.MLB?.[awA],awA]);}catch(e){return'';}})()}
     </div>
     <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
       <span class="mono" style="font-size:16px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnGame?.hML?' ESPN:blended':''}</span>
@@ -5846,6 +5847,10 @@ async function renderGoaliesFromBackend(){
 
 
 // ═══ NHL MODEL ════════════════════════════════════════════════
+// League-average reference points for the special-teams/shot-quality/
+// goaltending nudges below -- centering points only, not claimed as
+// precise constants, same role _CFB_MEDIAN_CAPACITY plays for CFB.
+const _NHL_LG_PP=.205,_NHL_LG_PK=.795,_NHL_LG_GA60=2.9;
 function nhlMC(hA,awA,n=25000){
   const h=NHL[hA],aw=NHL[awA];if(!h||!aw)return null;
   const hfa=.055;
@@ -5856,9 +5861,49 @@ function nhlMC(hA,awA,n=25000){
   const hSpd=h.edge?.avg_spd||h.edge?.spd||20.5,aSpd=aw.edge?.avg_spd||aw.edge?.spd||20.5;
   const hSadj=1+(hSpd-20.5)*.01,aSadj=1+(aSpd-20.5)*.01;
   const hMP=h.mp?.xgf_pct||50,aMP=aw.mp?.xgf_pct||50,mpAdj=(hMP-aMP)*.003;
-  const hGlv=Math.max(.87,Math.min(1.13,1-(aw.gsax/80))),aGlv=Math.max(.87,Math.min(1.13,1-(h.gsax/80)));
-  const hLam=Math.max(.4,hOff*.55*hGlv*(1+hfa)*hZadj*hSadj*(1+mpAdj));
-  const aLam=Math.max(.4,aOff*.55*aGlv*(1-hfa*.5)*aZadj*aSadj*(1-mpAdj));
+  // Special teams (pp%/pk%) and shot-quality (Corsi 5v5%/high-danger
+  // chances-for%) were real fields on the NHL team object that nothing
+  // in the sim actually read -- both folded in here as small, capped
+  // multipliers so they nudge rather than dominate the gf60/hv-based
+  // offense the sim already had. A team's own PP edge over the
+  // opponent's PK, and its shot-generation/quality profile, are genuine
+  // additive signal, not just noisier restatements of gf60.
+  const stAdj=v=>Math.max(.94,Math.min(1.06,1+v));
+  const hStAdj=stAdj(((h.pp??_NHL_LG_PP)-_NHL_LG_PP)*.5-((aw.pk??_NHL_LG_PK)-_NHL_LG_PK)*.5);
+  const aStAdj=stAdj(((aw.pp??_NHL_LG_PP)-_NHL_LG_PP)*.5-((h.pk??_NHL_LG_PK)-_NHL_LG_PK)*.5);
+  const sqAdj=v=>Math.max(.95,Math.min(1.05,1+v));
+  // Prefers MoneyPuck's live Corsi%/high-danger-chances% (all 32 teams,
+  // refreshed on every scheduled scrape) over the static table's frozen
+  // snapshot, same live-over-static preference nhlEns() already applies
+  // to its own mpBoost term.
+  const hLiveCf=_nhlLiveCf(hA),aLiveCf=_nhlLiveCf(awA);
+  const hCfVal=hLiveCf?.cfPct!=null?hLiveCf.cfPct*100:(h.cf5!=null?h.cf5*100:50);
+  const hHdcfVal=hLiveCf?.hdcfPct!=null?hLiveCf.hdcfPct*100:(h.hdcf??50);
+  const aCfVal=aLiveCf?.cfPct!=null?aLiveCf.cfPct*100:(aw.cf5!=null?aw.cf5*100:50);
+  const aHdcfVal=aLiveCf?.hdcfPct!=null?aLiveCf.hdcfPct*100:(aw.hdcf??50);
+  const hSqAdj=sqAdj(((hCfVal-50)+(hHdcfVal-50))/2*.002);
+  const aSqAdj=sqAdj(((aCfVal-50)+(aHdcfVal-50))/2*.002);
+  // Goaltending: gsax stays the primary driver (already the sim's own
+  // signal), but sv%/high-danger sv% now refine it into a composite
+  // instead of being scraped and never read -- a secondary 30% weight,
+  // not a replacement, since sv%/hdsv% are themselves largely what
+  // produces a goalie's gsax in the first place and shouldn't double it.
+  const goalieComposite=t=>{
+    const gsaxPart=(t.gsax??0)*.7;
+    const svPart=t.sv!=null?(t.sv-.91)*100*.18:0;
+    const hdsvPart=t.hdsv!=null?(t.hdsv-.90)*100*.12:0;
+    return gsaxPart+svPart+hdsvPart;
+  };
+  const hGlv=Math.max(.87,Math.min(1.13,1-(goalieComposite(aw)/80))),aGlv=Math.max(.87,Math.min(1.13,1-(goalieComposite(h)/80)));
+  // ga60 corroborates the opponent's own defensive strength on top of
+  // the hv.def qualitative rating already in hOff/aOff above -- a real,
+  // independently-scraped rate stat, kept small since hv.def already
+  // covers most of the same ground.
+  const gaAdj=v=>Math.max(.97,Math.min(1.03,1+v));
+  const hGaAdj=gaAdj(((aw.ga60??_NHL_LG_GA60)-_NHL_LG_GA60)*-.03);
+  const aGaAdj=gaAdj(((h.ga60??_NHL_LG_GA60)-_NHL_LG_GA60)*-.03);
+  const hLam=Math.max(.4,hOff*.55*hGlv*(1+hfa)*hZadj*hSadj*(1+mpAdj)*hStAdj*hSqAdj*hGaAdj);
+  const aLam=Math.max(.4,aOff*.55*aGlv*(1-hfa*.5)*aZadj*aSadj*(1-mpAdj)*aStAdj*aSqAdj*aGaAdj);
   const ouLine=TONIGHT.find(g=>(g.h===hA&&g.a===awA)||(g.h===awA&&g.a===hA))?.ou||5.5;
   let hw=0,aw2=0,ot=0,hT=0,aT=0,rT=0,ov=0,rl15h=0,rl15a=0;
   for(let i=0;i<n;i++){const hg=pois(hLam),ag=pois(aLam);hT+=hg;aT+=ag;rT+=hg+ag;if(hg+ag>ouLine)ov++;if(hg>ag){hw++;if(hg-ag>=2)rl15h++;}else if(ag>hg){aw2++;if(ag-hg>=2)rl15a++;}else{ot++;hw+=.5;aw2+=.5;}}
@@ -7466,19 +7511,38 @@ function _nhlRadarAxisValues(team,opp){
     xgShare,
   ];
 }
+// MoneyPuck's live CSV (fetch_moneypuck() -> patchMoneyPuck() ->
+// MONEYPUCK.teams, refreshed on every scheduled scrape, all 32 teams)
+// actually covers Corsi%/high-danger-chances%/xGF% -- this prefers that
+// live number over the static NHL[] table's frozen snapshot for exactly
+// those 3 fields, same live-over-static preference nhlEns() already
+// established for its own mpBoost calculation. PP%/PK%/save%/HD save%/
+// GAA have no live source anywhere in this app (MoneyPuck's team CSV
+// doesn't carry special-teams%, and save%/HD save% are per-goalie, not
+// team-level) -- those stay on the static table honestly, not faked
+// live, until a real scraper for them exists.
+function _nhlLiveCf(abbr){
+  const mp=MONEYPUCK.teams&&MONEYPUCK.teams[abbr]&&MONEYPUCK.teams[abbr]['5on5'];
+  if(!mp)return null;
+  return{cfPct:mp.cfPct,hdcfPct:mp.hdcfPct,xgfPct:mp.xgfPct};
+}
 // Finer-grained breakdown than the combined matchup radar's single
 // offense/defense axes -- uses the real per-team rate stats (gf60/ga60,
 // pp%/pk%, corsi/high-danger shares, save%) already sitting in the NHL
 // team data object but not previously read anywhere in the app, rather
 // than the qualitative -2..3 hv.off/hv.def scouting-style ratings.
-function _nhlOffenseRadarValues(team){
+function _nhlOffenseRadarValues(team,abbr){
   const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  const live=abbr?_nhlLiveCf(abbr):null;
+  const cf=live?.cfPct!=null?live.cfPct*100:(team.cf5!=null?team.cf5*100:null);
+  const hdcf=live?.hdcfPct!=null?live.hdcfPct*100:team.hdcf;
+  const xgf=live?.xgfPct!=null?live.xgfPct*100:(team.xgf5!=null?team.xgf5*100:null);
   return[
     clamp(team.gf60,2.0,3.8),
     clamp(team.pp!=null?team.pp*100:null,14,28),
-    clamp(team.cf5!=null?team.cf5*100:null,44,56),
-    clamp(team.hdcf,42,58),
-    clamp(team.xgf5!=null?team.xgf5*100:null,44,58),
+    clamp(cf,44,56),
+    clamp(hdcf,42,58),
+    clamp(xgf,44,58),
     clamp(team.hv?.fin,-2,3),
   ];
 }
@@ -7568,7 +7632,7 @@ function _nhlGameCard(espnEv){
     ${(()=>{try{
       return _radarTabPanelHTML('nhl_'+hn+'_'+an,[
         {label:'MATCHUP',svg:_matchupRadarSVG(['Offense','Defense','Goaltending','Special teams','Speed/zone','xG share'],_nhlRadarAxisValues(hNHL,aNHL),_nhlRadarAxisValues(aNHL,hNHL),'nhl_'+hn+'_'+an+'_m')},
-        {label:'OFFENSE',svg:_matchupRadarSVG(['GF/60','PP%','Corsi F%','HD chances%','xGF%','Finishing'],_nhlOffenseRadarValues(hNHL),_nhlOffenseRadarValues(aNHL),'nhl_'+hn+'_'+an+'_o')},
+        {label:'OFFENSE',svg:_matchupRadarSVG(['GF/60','PP%','Corsi F%','HD chances%','xGF%','Finishing'],_nhlOffenseRadarValues(hNHL,hn),_nhlOffenseRadarValues(aNHL,an),'nhl_'+hn+'_'+an+'_o')},
         {label:'DEFENSE',svg:_matchupRadarSVG(['GA/60','PK%','Save%','HD save%','GAA','GSAx'],_nhlDefenseRadarValues(hNHL),_nhlDefenseRadarValues(aNHL),'nhl_'+hn+'_'+an+'_d')},
       ]);
     }catch(e){return'';}})()}
@@ -9350,6 +9414,7 @@ function _nbaGameCard(espnEv){
     ${_mcProjBarHTML(nbaEnsD?.mcD,ouL||220,hn,an,{dec:1})}
     <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
     <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: ${_nmNBA.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+    ${(()=>{try{return _statmuseGameInsightsHTML('nba',hn,[_TEAM_NAMES?.NBA?.[hn],hn],an,[_TEAM_NAMES?.NBA?.[an],an]);}catch(e){return'';}})()}
   </div>
   <div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">
     <span class="mono" style="font-size:16px;color:var(--t3)">MC:${(ens.mc*100).toFixed(0)}% BAY:${(ens.bay*100).toFixed(0)}% ELO:${(ens.elo*100).toFixed(0)}%${espnHL?' ESPN:blended':''}</span>
@@ -23579,6 +23644,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +_mcProjBarHTML(Object.assign({},_wnbaMCResult,{overP:_wnbaOvP}),ouStr,hab,aab,{dec:1})
         +'<div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">'+rsn+'</div>'
         +'<div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: '+_wnbaMkts.mkts.map(function(m){return m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN];}).join(' · ')+'</div>'
+        +(function(){try{return _statmuseGameInsightsHTML('wnba',hab,[_TEAM_NAMES&&_TEAM_NAMES.WNBA&&_TEAM_NAMES.WNBA[hab],hab],aab,[_TEAM_NAMES&&_TEAM_NAMES.WNBA&&_TEAM_NAMES.WNBA[aab],aab]);}catch(e){return'';}})()
         +'</div>'
         +'<div style="display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap;padding:0 4px 4px">'
         +'<span class="mono" style="font-size:16px;color:var(--t3)">MC:'+Math.round(ens.mcP*100)+'% BAY:'+Math.round(ens.bayP*100)+'% ELO:'+Math.round(ens.eloP*100)+'%</span>'
@@ -25604,7 +25670,7 @@ function _socDefenseRadarValues(name,leagueKey){
     clamp(defActionsPg,15,35),
   ];
 }
-var _MLS_OPTA_AVG=null;
+var _MLS_OPTA_AVG=null; // kept for back-compat; _optaLeagueAverages(key) is the generalized version below
 function _mlsLeagueAverages(){
   if(_MLS_OPTA_AVG)return _MLS_OPTA_AVG;
   var d=window.__CV_MLS_OPTA;if(!d)return null;
@@ -25617,6 +25683,27 @@ function _mlsLeagueAverages(){
   };
   return _MLS_OPTA_AVG;
 }
+// Generalized version of _mlsLeagueAverages()/_mlsStyleFactor() for every
+// league scrape_opta_stats.py covers (pl/ita/bl/mls), not just MLS.
+// Previously PL/Serie A/Bundesliga's passing/pressing/sequences detail
+// was scraped daily, written to docs/{key}_opta_stats.json (once that was
+// fixed to happen for every league, not just MLS), but the MC engine
+// itself still only ever applied this style-factor adjustment for MLS --
+// the other 3 leagues' real data sat loaded and unused by the sim. Same
+// possession/press/transition-goals blend, capped +/-15%, just keyed off
+// window.__CV_OPTA[key] instead of the MLS-only global.
+var _OPTA_LEAGUE_AVG={};
+function _optaLeagueAverages(key){
+  if(_OPTA_LEAGUE_AVG[key])return _OPTA_LEAGUE_AVG[key];
+  var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d)return null;
+  var pass=d.passing||[],press=d.pressing||[],seq=d.sequences||[];
+  function avg(arr,f){var v=arr.map(function(t){return t[f]||0;}).filter(function(x){return x>0;});return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:0;}
+  return _OPTA_LEAGUE_AVG[key]={
+    posPerc:avg(pass,'pos_perc'),
+    ppda:avg(press,'ppda'),
+    seqGoals:avg(seq,'direct_attack_goals')+avg(seq,'build_up_goals'),
+  };
+}
 // Composite style multiplier from real passing/pressing/sequences data —
 // possession share (sustained control creates shot VOLUME xG alone doesn't
 // price in), PPDA (lower = more aggressive/disruptive press, inverted so
@@ -25625,9 +25712,9 @@ function _mlsLeagueAverages(){
 // quality). Weighted blend, clipped to +/-15% so it nudges the xG-based
 // estimate rather than overriding it — MC still runs on real xG/xGA at
 // its core, this just accounts for more of what a team's data actually says.
-function _mlsStyleFactor(name){
-  var d=window.__CV_MLS_OPTA;if(!d||!name)return 1;
-  var avgS=_mlsLeagueAverages();if(!avgS)return 1;
+function _optaStyleFactor(name,key){
+  var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d||!name)return 1;
+  var avgS=_optaLeagueAverages(key);if(!avgS)return 1;
   var k=name.toLowerCase().trim();
   function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
   var p=find(d.passing),pr=find(d.pressing),sq=find(d.sequences);
@@ -25639,6 +25726,9 @@ function _mlsStyleFactor(name){
   var raw=(possFactor*0.35+pressFactor*0.35+transFactor*0.30);
   return Math.max(0.85,Math.min(1.15,raw));
 }
+// Back-compat alias — old call sites/tests referencing the MLS-only name
+// still work, now just delegating to the generalized function.
+function _mlsStyleFactor(name){return _optaStyleFactor(name,'mls');}
 
 // Expected goals for a fixture, blending each side's own attack rate with
 // the opponent's defensive rate — every call site previously used a team's
@@ -25651,15 +25741,16 @@ function _mlsStyleFactor(name){
 // average a team's own attacking rate with the opponent's goals-conceded
 // rate, so a strong defense actually pulls the total down and a leaky one
 // pulls it up, instead of defense never entering the calculation at all.
-// leagueKey/homeName/awayName are optional — when leagueKey==='mls' and
-// names are given, applies _mlsStyleFactor() on top of the xG blend so
-// picks aren't driven by xG/xGA alone.
+// leagueKey/homeName/awayName are optional — when leagueKey is one of the
+// 4 Opta-covered leagues (pl/ita/bl/mls) and names are given, applies
+// _optaStyleFactor() on top of the xG blend so picks aren't driven by
+// xG/xGA alone. Previously this only ever fired for 'mls'.
 function _socExpectedGoals(homeXG,awayXG,leagueKey,homeName,awayName){
   let hxg=homeXG?((homeXG.hxg||homeXG.xg)+((awayXG&&awayXG.axga)??(homeXG.hxg||homeXG.xg)))/2:1.35;
   let axg=awayXG?((awayXG.axg||awayXG.xg)+((homeXG&&homeXG.hxga)??(awayXG.axg||awayXG.xg)))/2:1.15;
-  if(leagueKey==='mls'&&homeName&&awayName&&window.__CV_MLS_OPTA){
-    hxg*=_mlsStyleFactor(homeName);
-    axg*=_mlsStyleFactor(awayName);
+  if(_OPTA_LEAGUES.indexOf(leagueKey)>=0&&homeName&&awayName&&window.__CV_OPTA&&window.__CV_OPTA[leagueKey]){
+    hxg*=_optaStyleFactor(homeName,leagueKey);
+    axg*=_optaStyleFactor(awayName,leagueKey);
   }
   return{hxg,axg};
 }
