@@ -5095,6 +5095,15 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   else if(type==='KHL')sportTag='KHL';
   else if(type==='SHL')sportTag='SHL';
   else if(type==='LIIGA')sportTag='LIIGA';
+  // CBB/NCAAH have no lock button wired up anywhere in the app yet, but
+  // _classifyTeamsSport()'s fallback guesser (below) only knows WNBA/MLB/
+  // NHL/NBA -- with zero real KHL/SHL/LIIGA/NCAAH/CBB team-abbreviation
+  // coverage, so a future lock path for either of these that DOESN'T
+  // pass an explicit type would silently misclassify every single pick.
+  // Adding these branches now, ahead of any real caller, closes that off
+  // before it can ever happen rather than waiting to hit it.
+  else if(type==='CBB'||type==='NCAAB')sportTag='CBB';
+  else if(type==='NCAAH')sportTag='NCAAH';
   // Club soccer leagues — distinct sportTags so they don't collapse into
   // the World Cup bucket (stats/calibration) or collide with 'PL' already
   // meaning NHL puck-line above (hence 'PL_SOC', not 'PL', for Premier
@@ -5124,7 +5133,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   }
   // ── Derive league tag from sport ────────────────────────────────
   const _leagueMap={MLB:'MLB',NBA:'NBA',WNBA:'WNBA',NFL:'NFL',CFB:'CFB',NHL:'NHL',
-    KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CL:'CL',PL:'PL',LIGA:'LIGA',BUND:'BUND',MLS:'MLS',SERIEA:'SERIEA',SOC:'WORLD_CUP',
+    KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CBB:'CBB',NCAAH:'NCAAH',CL:'CL',PL:'PL',LIGA:'LIGA',BUND:'BUND',MLS:'MLS',SERIEA:'SERIEA',SOC:'WORLD_CUP',
     ATP:(typeof ATP_DB!=='undefined'&&ATP_DB[hA])?'ATP':(typeof WTA_DB!=='undefined'&&WTA_DB[hA])?'WTA':'ATP',
     WTA:'WTA',TEN:(typeof ATP_DB!=='undefined'&&ATP_DB[hA]?'ATP':typeof WTA_DB!=='undefined'&&WTA_DB[hA]?'WTA':'ATP')};
   const leagueTag=_leagueMap[sportTag]||sportTag;
@@ -11511,7 +11520,7 @@ function renderOverallVisuals(){
   // check never matched a single real settled Bundesliga bet, and SERIEA/CL
   // were missing from this list entirely (both are real _normSport outputs).
   const sDataRaw=['MLB','NBA','WNBA','CBB','NFL','CFB','NHL','NCAAH','SHL','LIIGA','KHL','SOC','WC','PL','LIGA','BUND','MLS','SERIEA','CL'].map(s=>{const sp=settled.filter(p=>_normSport(p)===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
-  const tenSp=settled.filter(p=>p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA');const tenW=tenSp.filter(p=>p.outcome==='win').length;
+  const tenSp=settled.filter(p=>_normSport(p)==='TEN');const tenW=tenSp.filter(p=>p.outcome==='win').length;
   const sData=[...sDataRaw,{s:'TENNIS',n:tenSp.length,w:tenW,pct:tenSp.length?tenW/tenSp.length:null}];
   const barW=260,barH=sData.length*22+10;
   const barSVG=`<svg width="${barW}" height="${barH}">
@@ -19961,7 +19970,14 @@ function _normSport(p){
   if(raw==='KHL')return'KHL';
   if(raw==='SHL')return'SHL';
   if(raw==='LIIGA')return'LIIGA';
-  if(raw==='NCAAH'||raw==='COLLEGE HOCKEY')return'NHL';
+  // Was returning 'NHL' -- silently merging every real NCAAH pick into
+  // NHL's win/loss stats (inflating/diluting the real NHL record) while
+  // leaving every "College Hockey" filter bucket permanently empty,
+  // since nothing tagged NCAAH ever actually resolved to that bucket.
+  // CBB (college basketball, two lines up) already gets its own distinct
+  // bucket instead of folding into NBA -- NCAAH now matches that same
+  // precedent instead of being the one inconsistent exception.
+  if(raw==='NCAAH'||raw==='COLLEGE HOCKEY')return'NCAAH';
   if(raw==='WC'||raw==='WORLDCUP'||raw==='WORLD_CUP'||raw==='WORLD CUP'||raw==='SOC')return'WC';
   if(raw==='PL'||raw==='PREMIER LEAGUE')return'PL';
   if(raw==='LIGA'||raw==='LA LIGA')return'LIGA';
