@@ -687,18 +687,67 @@ def fetch_mlb_statcast_team(batter_rosters: dict) -> dict:
 
 def fetch_nba_team_advanced() -> dict:
     """
-    Fetch team-level NBA playoff advanced stats from Basketball Reference.
+    Fetch team-level NBA advanced stats from Basketball Reference.
     Returns dict keyed by team abbreviation with ortg, drtg, pace, efg_pct, ts_pct.
     Used for probability adjustment in calculate_best_bets.
+
+    Two-phase, like fetch_wnba_team_stats(): the regular-season leagues
+    page's advanced-team table covers all 30 teams (BBRef's real full-
+    season numbers), scraped first as the base. The playoffs page's
+    misc_stats table -- previously the ONLY source here, hardcoded to an
+    18-team ABBR_MAP of "common playoff teams" -- is then overlaid on
+    top for whichever teams it has, since in-progress playoff performance
+    is a fresher signal than full-season averages for those specific
+    teams. Any of the other ~12 teams simply keep their real regular-
+    season numbers instead of having no live data at all.
     """
     log("NBA team advanced stats…")
     result: dict = {}
-    # BBRef abbreviation → ESPN abbreviation mapping (common playoff teams 2026)
+    # BBRef abbreviation → ESPN abbreviation mapping (differs for a few teams)
     ABBR_MAP = {
-        "NYK":"NY","CLE":"CLE","OKC":"OKC","SAS":"SA","BOS":"BOS","MIA":"MIA",
-        "MIN":"MIN","DEN":"DEN","GSW":"GS","PHX":"PHX","LAL":"LAL","LAC":"LAC",
-        "MIL":"MIL","PHI":"PHI","TOR":"TOR","CHI":"CHI","ATL":"ATL","MEM":"MEM",
+        "NYK":"NY","GSW":"GS","PHX":"PHX","SAS":"SA",
     }
+    try:
+        time.sleep(2)
+        soup0 = fetch_html(
+            "https://www.basketball-reference.com/leagues/NBA_2026.html",
+            timeout=25, ref=True
+        )
+        if soup0:
+            tbl0 = soup0.find("table", {"id": "advanced-team"})
+            if not tbl0:
+                from bs4 import Comment
+                for cmt in soup0.find_all(string=lambda t: isinstance(t, Comment)):
+                    if "advanced-team" in cmt:
+                        frag = BeautifulSoup(cmt, "lxml")
+                        tbl0 = frag.find("table", {"id": "advanced-team"})
+                        if tbl0: break
+            if tbl0:
+                for tr in tbl0.find_all("tr"):
+                    cells = {td.get("data-stat",""): td.get_text(strip=True)
+                             for td in tr.find_all(["td","th"])}
+                    tm = (cells.get("team_id") or cells.get("team_name") or "").strip().upper()
+                    if not tm or tm in ("TEAM","",):
+                        continue
+                    espn_abbr = ABBR_MAP.get(tm, tm)
+                    try:
+                        ortg = float(cells.get("off_rtg","") or 0)
+                        drtg = float(cells.get("def_rtg","") or 0)
+                        pace = float(cells.get("pace","") or 0)
+                        efg  = float(cells.get("efg_pct","") or 0)
+                        ts   = float(cells.get("ts_pct","") or 0)
+                        if ortg > 0:
+                            result[espn_abbr] = {
+                                "ortg": ortg, "drtg": drtg, "pace": pace,
+                                "efg_pct": efg, "ts_pct": ts,
+                                "net_rtg": ortg - drtg,
+                            }
+                    except (ValueError, TypeError):
+                        continue
+        log(f"  NBA advanced (full season): {len(result)} teams")
+    except Exception as exc:
+        log(f"NBA team advanced (full season): {exc}", "WARN")
+
     try:
         time.sleep(2)
         soup = fetch_html(
