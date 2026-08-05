@@ -9181,7 +9181,7 @@ async function doUpdate(){
           const hAbbr=home.team?.abbreviation,aAbbr=away.team?.abbreviation;
           const hSc=parseInt(home.score||0),aSc=parseInt(away.score||0);
           for(const p of preds){
-            if(p.outcome!=='pending'||p.sport!=='NBA')continue;
+            if(p.outcome!=='pending'||_normSport(p)!=='NBA')continue;
             if(p.date!==today())continue;
             const dupSameGame=(p.hA===hAbbr&&p.awA===aAbbr)||(p.hA===aAbbr&&p.awA===hAbbr);
             if(!dupSameGame)continue;
@@ -9408,7 +9408,7 @@ function nbaGetBayes(abbr){
   const liveStand=window.__CV_DATA?.nba?.standings?.[abbr];
   if(!t&&!liveStand)return{m:.5};
   let al=(t?t.pw:parseInt(liveStand?.w)||0)+1,bl=(t?t.pl:parseInt(liveStand?.l)||0)+1;
-  for(const p of getP()){if(p.outcome==='pending'||p.sport!=='NBA')continue;const iH=p.hA===abbr,iA=p.awA===abbr;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}
+  for(const p of getP()){if(p.outcome==='pending'||_normSport(p)!=='NBA')continue;const iH=p.hA===abbr,iA=p.awA===abbr;if(!iH&&!iA)continue;const w=(iH&&(p.hScore||0)>(p.aScore||0))||(iA&&(p.aScore||0)>(p.hScore||0));if(w)al++;else bl++;}
   return{m:al/(al+bl)};
 }
 function nbaEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
@@ -11431,8 +11431,12 @@ function renderOverallVisuals(){
     <circle cx="${px(pts.length-1).toFixed(1)}" cy="${py(pts[pts.length-1]).toFixed(1)}" r="3" fill="${pts[pts.length-1]>=0?'#00f0ff':'#ff2090'}" filter="url(#glow1)"/>
   </svg>`;
   // 2. Win Rate by Sport
-  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TENNIS:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff',SOC:'#00f0aa',PL:'#5b9bd5',LIGA:'#ff4400',BL:'#e00000',MLS:'#00c14b'};
-  const sDataRaw=['MLB','NBA','WNBA','CBB','NFL','CFB','NHL','NCAAH','SHL','LIIGA','KHL','SOC','WC','PL','LIGA','BL','MLS'].map(s=>{const sp=settled.filter(p=>p.sport===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
+  const sportColors={MLB:'#ff2090',NHL:'#00f0ff',NBA:'#ffdd00',TENNIS:'#bbff00',F1:'#ff7700',WNBA:'#6690ff',NCAAB:'#f000ff',SOC:'#00f0aa',PL:'#5b9bd5',LIGA:'#ff4400',BUND:'#e00000',MLS:'#00c14b',SERIEA:'#00b4d8',CL:'#9b5de5'};
+  // _normSport(p), not raw p.sport -- real Bundesliga picks are tagged
+  // league:'BUND' (BL was only ever a legacy alias), so a raw p.sport==='BL'
+  // check never matched a single real settled Bundesliga bet, and SERIEA/CL
+  // were missing from this list entirely (both are real _normSport outputs).
+  const sDataRaw=['MLB','NBA','WNBA','CBB','NFL','CFB','NHL','NCAAH','SHL','LIIGA','KHL','SOC','WC','PL','LIGA','BUND','MLS','SERIEA','CL'].map(s=>{const sp=settled.filter(p=>_normSport(p)===s);const w=sp.filter(p=>p.outcome==='win').length;return{s,n:sp.length,w,pct:sp.length?w/sp.length:null};});
   const tenSp=settled.filter(p=>p.sport==='TEN'||p.sport==='ATP'||p.sport==='WTA');const tenW=tenSp.filter(p=>p.outcome==='win').length;
   const sData=[...sDataRaw,{s:'TENNIS',n:tenSp.length,w:tenW,pct:tenSp.length?tenW/tenSp.length:null}];
   const barW=260,barH=sData.length*22+10;
@@ -13318,7 +13322,7 @@ async function autoSettleNBA(){
       const hn=h?.team?.abbreviation,an=a?.team?.abbreviation;
       const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
       for(const p of preds){
-        if(p.outcome!=='pending'||p.sport!=='NBA')continue;
+        if(p.outcome!=='pending'||_normSport(p)!=='NBA')continue;
         if(p.date!==today())continue;
         // Both teams must match (either home/away order) — the previous
         // OR check let a pending bet settle off any game sharing just
@@ -13458,13 +13462,18 @@ async function autoSettlePropsESPN(){
     NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3',
     NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
     MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
-    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100'
+    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100',
+    // WNBA box scores are the same flat single-statBlock shape as NBA's,
+    // so it reuses the existing NBA extractStat/statBlock[0] logic below --
+    // it only needed a URL entry, not new parsing logic.
+    WNBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?limit=100'
   };
   const summaryBase={
     NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=',
     NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=',
     MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=',
-    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event='
+    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=',
+    WNBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/summary?event='
   };
 
   // Parse "Victor Wembanyama OVER PTS 26.5" (NBA/NHL/MLB: stat before
@@ -23217,79 +23226,6 @@ STATMUSE_NHL={
 };
 
 // NHL team composite score 0-100
-
-// ═══ NBA DATA — 2025-26 PLAYOFFS ═════════════════════════════
-// Conference Finals: OKC vs SA (WCF starts 5/18), NY vs CLE (ECF starts 5/19)
-// Verified via ESPN API — all eliminated teams removed
-NBA_TEAMS={
-  OKC:{n:'Oklahoma City Thunder',conf:'West',seed:1,net:11.1,efg:.590,ts:.615,tov:12.1,reb:52.0,ppg:121.2,opp:104.6,pw:8,pl:1,color:'#007AC1',star:'Shai Gilgeous-Alexander',star2:'Jalen Williams',note:'WCF — SA LEADS 1-0. Lost G1 115-122 2OT. SGA/JWill still elite — bounce-back game expected May 20.'},
-  SA:{n:'San Antonio Spurs',conf:'West',seed:2,net:8.3,efg:.570,ts:.593,tov:12.8,reb:54.0,ppg:116.9,opp:109.4,pw:8,pl:4,color:'#C4CED4',star:'Victor Wembanyama',star2:"De'Aaron Fox",note:'WCF — SA LEADS 1-0. Won G1 122-115 in 2OT (May 18). Wemby 41 pts+24 reb. Fox elite late. G2 May 20.'},
-  NY:{n:'New York Knicks',conf:'East',seed:3,net:6.4,efg:.603,ts:.625,tov:13.2,reb:51.0,ppg:120.4,opp:112.8,pw:8,pl:2,color:'#F58426',star:'Jalen Brunson',star2:'Karl-Anthony Towns',note:'Brunson playoff mode elite. KAT dominant inside. Swept PHI 4-0 in R2.'},
-  CLE:{n:'Cleveland Cavaliers',conf:'East',seed:4,net:4.1,efg:.536,ts:.556,tov:11.8,reb:50.0,ppg:110.4,opp:107.6,pw:8,pl:6,color:'#6F263D',star:'Donovan Mitchell',star2:'Evan Mobley',note:'Battle-tested through two 7-game wars. Mitchell clutch. Mobley two-way anchor.'}
-};
-// June 13 2026: NBA FINALS G5 — NYK @ SA · 8:30 PM ET ESPN · NYK LEADS 3-1 · SA ELIMINATION
-NBA_TONIGHT=[
-  {h:'SA',a:'NY',hML:-124,aML:148,ou:212.5,hL:-2.5,ctx:'NBA FINALS G5 · June 13 2026 · 8:30 PM ET ESPN · AT&T Center, San Antonio · NYK LEADS 3-1 · SA ELIMINATION'}
-];
-// NBA_PLAYERS: Finals teams only — SA Spurs + NY Knicks
-NBA_PLAYERS=[
-  // NY Knicks (NBA Finals)
-  {n:'Jalen Brunson',t:'NY',ppg:30.4,rpg:4.1,apg:7.8,efg:.516,usage:33.8,rating:'PREMIUM'},
-  {n:'Karl-Anthony Towns',t:'NY',ppg:23.8,rpg:11.4,apg:3.2,efg:.558,usage:28.1,rating:'OPTIMAL'},
-  {n:'Mikal Bridges',t:'NY',ppg:18.4,rpg:5.2,apg:3.8,efg:.528,usage:24.6,rating:'GOOD'},
-  {n:'OG Anunoby',t:'NY',ppg:16.8,rpg:5.4,apg:1.8,efg:.544,usage:22.1,rating:'GOOD'},
-  {n:'Josh Hart',t:'NY',ppg:11.2,rpg:8.8,apg:4.4,efg:.502,usage:18.4,rating:'GOOD'},
-  {n:'Sam Merrill',t:'NY',ppg:9.4,rpg:2.1,apg:1.2,efg:.561,usage:14.2,rating:'FAIR'},
-  {n:'Mitchell Robinson',t:'NY',ppg:7.8,rpg:9.4,apg:0.8,efg:.648,usage:12.4,rating:'FAIR'},
-  // SA Spurs (NBA Finals)
-  {n:'Victor Wembanyama',t:'SA',ppg:26.8,rpg:11.2,apg:4.1,efg:.542,usage:31.2,rating:'PREMIUM'},
-  {n:"De'Aaron Fox",t:'SA',ppg:22.4,rpg:4.2,apg:8.8,efg:.521,usage:28.6,rating:'OPTIMAL'},
-  {n:'Stephon Castle',t:'SA',ppg:16.2,rpg:4.8,apg:5.4,efg:.511,usage:22.4,rating:'GOOD'},
-];
-
-// ═══ NBA BBREF 2025-26 PLAYOFFS — Per Game, Per 100 Poss, Totals, Advanced ═══
-// Source: basketball-reference.com/playoffs/NBA_2026.html (CF teams only)
-// Embedded 2026-05-18 — covers all rounds to Conference Finals
-NBA_BBREF={
-  OKC:{
-    pg:{pts:121.2,reb:44.8,ast:28.4,stl:8.6,blk:5.8,tov:14.2,fg_pct:.481,fg3_pct:.378,ft_pct:.812,orb:10.2,drb:34.6,pf:19.8},
-    opp_pg:{pts:104.6,reb:41.2,ast:22.4,stl:6.8,blk:4.2,tov:16.8,fg_pct:.429,fg3_pct:.318,ft_pct:.774},
-    p100:{ortg:120.4,drtg:104.2,nrtg:16.2,pace:98.8,ts_pct:.628,efg_pct:.590,tov_pct:12.1,orb_pct:27.4,ft_rate:.312,opp_efg:.512,opp_tov_pct:16.8,opp_orb_pct:18.2},
-    adv:{srs:11.1,sos:.2,off_rtg:120.4,def_rtg:104.2,net_rtg:16.2,pace:98.8,ts:.628,efg:.590,tov:12.1,orb:27.4,ft_rt:.312,pw:8,pl:0},
-    leaders:{pts:{n:'SGA',v:32.1},reb:{n:'Holmgren',v:8.8},ast:{n:'SGA',v:6.8},stl:{n:'SGA',v:2.1},blk:{n:'Holmgren',v:2.8},fg3:{n:'SGA',v:2.4},ts:{n:'SGA',v:.648}}
-  },
-  SA:{
-    pg:{pts:116.9,reb:46.2,ast:26.8,stl:7.8,blk:7.2,tov:14.8,fg_pct:.468,fg3_pct:.352,ft_pct:.796,orb:11.4,drb:34.8,pf:21.2},
-    opp_pg:{pts:109.4,reb:42.8,ast:24.2,stl:6.4,blk:5.4,tov:15.4,fg_pct:.442,fg3_pct:.338,ft_pct:.781},
-    p100:{ortg:116.8,drtg:109.2,nrtg:7.6,pace:99.2,ts_pct:.606,efg_pct:.570,tov_pct:12.8,orb_pct:28.8,ft_rate:.328,opp_efg:.534,opp_tov_pct:15.4,opp_orb_pct:22.4},
-    adv:{srs:8.3,sos:.4,off_rtg:116.8,def_rtg:109.2,net_rtg:7.6,pace:99.2,ts:.606,efg:.570,tov:12.8,orb:28.8,ft_rt:.328,pw:8,pl:4},
-    leaders:{pts:{n:'Wemby',v:26.8},reb:{n:'Wemby',v:11.2},ast:{n:'Fox',v:8.8},stl:{n:'Fox',v:2.4},blk:{n:'Wemby',v:4.1},fg3:{n:'Castle',v:2.1},ts:{n:'Wemby',v:.618}}
-  },
-  NY:{
-    pg:{pts:120.4,reb:43.6,ast:27.2,stl:7.2,blk:5.6,tov:14.8,fg_pct:.478,fg3_pct:.392,ft_pct:.832,orb:9.8,drb:33.8,pf:18.6},
-    opp_pg:{pts:112.8,reb:42.4,ast:25.6,stl:7.0,blk:4.8,tov:15.2,fg_pct:.448,fg3_pct:.348,ft_pct:.788},
-    p100:{ortg:119.2,drtg:111.8,nrtg:7.4,pace:101.2,ts_pct:.638,efg_pct:.603,tov_pct:13.2,orb_pct:24.8,ft_rate:.342,opp_efg:.548,opp_tov_pct:15.2,opp_orb_pct:22.8},
-    adv:{srs:6.4,sos:.6,off_rtg:119.2,def_rtg:111.8,net_rtg:7.4,pace:101.2,ts:.638,efg:.603,tov:13.2,orb:24.8,ft_rt:.342,pw:8,pl:2},
-    leaders:{pts:{n:'Brunson',v:30.4},reb:{n:'KAT',v:11.4},ast:{n:'Brunson',v:7.8},stl:{n:'Bridges',v:1.8},blk:{n:'KAT',v:1.4},fg3:{n:'Brunson',v:2.8},ts:{n:'KAT',v:.642}}
-  },
-  CLE:{
-    pg:{pts:110.4,reb:43.2,ast:24.8,stl:7.4,blk:5.8,tov:13.2,fg_pct:.456,fg3_pct:.358,ft_pct:.772,orb:10.4,drb:32.8,pf:21.8},
-    opp_pg:{pts:107.6,reb:42.6,ast:23.8,stl:6.6,blk:4.6,tov:15.8,fg_pct:.438,fg3_pct:.332,ft_pct:.768},
-    p100:{ortg:110.8,drtg:108.2,nrtg:2.6,pace:99.6,ts_pct:.568,efg_pct:.536,tov_pct:11.8,orb_pct:26.2,ft_rate:.298,opp_efg:.528,opp_tov_pct:15.8,opp_orb_pct:23.6},
-    adv:{srs:4.1,sos:.8,off_rtg:110.8,def_rtg:108.2,net_rtg:2.6,pace:99.6,ts:.568,efg:.536,tov:11.8,orb:26.2,ft_rt:.298,pw:8,pl:6},
-    leaders:{pts:{n:'Mitchell',v:28.6},reb:{n:'Mobley',v:9.6},ast:{n:'Harden',v:8.2},stl:{n:'Mitchell',v:1.8},blk:{n:'Mobley',v:2.6},fg3:{n:'Harden',v:2.4},ts:{n:'Mobley',v:.612}}
-  }
-};
-
-// NBA Playoff leaders (per game, NBA Finals eligible — SA + NYK only)
-NBA_LEADERS={
-  ppg:[{n:'Brunson',t:'NY',v:30.4},{n:'Wemby',t:'SA',v:26.8},{n:'KAT',t:'NY',v:23.8},{n:'Fox',t:'SA',v:22.4},{n:'Bridges',t:'NY',v:18.4},{n:'Castle',t:'SA',v:16.2}],
-  rpg:[{n:'KAT',t:'NY',v:11.4},{n:'Wemby',t:'SA',v:11.2},{n:'Hart',t:'NY',v:8.8},{n:'Fox',t:'SA',v:4.2},{n:'OG',t:'NY',v:5.4}],
-  apg:[{n:'Fox',t:'SA',v:8.8},{n:'Brunson',t:'NY',v:7.8},{n:'Castle',t:'SA',v:5.4}],
-  spg:[{n:'Fox',t:'SA',v:2.4},{n:'Bridges',t:'NY',v:1.8},{n:'Brunson',t:'NY',v:1.6},{n:'Castle',t:'SA',v:1.6}],
-  bpg:[{n:'Wemby',t:'SA',v:4.1},{n:'KAT',t:'NY',v:1.4},{n:'Bridges',t:'NY',v:1.1}],
-  fg3pg:[{n:'Brunson',t:'NY',v:2.8},{n:'Bridges',t:'NY',v:2.2},{n:'Castle',t:'SA',v:2.1}]
-};
 
 // NBA ELO ratings (updated post-WCF — SA WON 4-3 vs OKC, NY swept ECF)
 NBA_ELO={SA:1634,NY:1617,OKC:1660,CLE:1540}; // Updated after Finals G2: NYK won 105-104
