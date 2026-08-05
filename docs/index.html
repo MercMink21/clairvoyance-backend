@@ -775,18 +775,26 @@ body{line-height:1.5}
     </div></div>
   </div>
   <div id="fb-nfl" class="subp">
+    <!-- renderGenericWeek writes real NFL games into _genericWeekCache as a
+         side effect, which the Parlay tab's NFL leg-gathering reads
+         independently of this hidden div's own display — kept purely to
+         not break that; the real NFL module renders through
+         nfl2-games-list below instead. -->
+    <div id="nfl-week-list" style="display:none"></div>
     <nav class="snav" style="margin-bottom:8px">
-      <button class="sb2 act" id="nfl-innav-week" onclick="nflSubTab('week')">WEEK</button>
-      <button class="sb2" id="nfl-innav-props" onclick="nflSubTab('props')">PROPS</button>
+      <button class="sb2 act" id="nfl2-innav-games" onclick="nflSubTab2('games')">GAMES</button>
+      <button class="sb2" id="nfl2-innav-props" onclick="nflSubTab2('props')">PROPS</button>
+      <button class="sb2" id="nfl2-innav-model" onclick="nflSubTab2('model')">MODEL</button>
+      <button class="sb2" id="nfl2-innav-config" onclick="nflSubTab2('config')">CONFIG</button>
     </nav>
-    <div id="nfl-tab-week" class="subp act"><div class="sa"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 20px 10px;text-align:center">
-      <div style="font-family:var(--orb);font-size:27px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--vc),var(--ic));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">NFL MODULE</div>
-      <div style="font-family:var(--mono);font-size:15px;letter-spacing:3px;color:var(--t3);margin-bottom:12px">Full model activates: September 3, 2026 · 2026 Season Kickoff</div>
-      <div style="font-family:var(--mono);font-size:17px;color:var(--t3);max-width:320px;line-height:1.7">Full spread/total models, player props, and injury-adjusted ELO ratings come with kickoff. 7-day schedule + market odds below activate automatically as ESPN posts games (preseason may appear before Sep 3).</div>
-    </div>
-    <div id="nfl-week-list" style="padding:0 12px 12px"><div class="loading"><span class="spi"></span> LOADING…</div></div>
+    <div id="nfl2-tab-games" class="subp act"><div class="sa">
+      <div id="nfl2-games-filters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="nfl2-filter-week" onchange="renderNFLGames2()" style="padding:6px 8px;background:rgba(4,0,12,.9);border:1px solid rgba(0,120,255,.25);color:var(--t);font-family:var(--mono);font-size:15px;border-radius:2px"></select>
+      </div>
+      <div id="nfl2-games-list"><div class="loading"><span class="spi"></span> LOADING…</div></div>
     </div></div>
-    <div id="nfl-tab-props" class="subp" style="display:none"><div class="sa">
+    <div id="nfl2-tab-props" class="subp" style="display:none"><div class="sa">
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-bottom:10px">Sourced from the existing Linemate props feed (window._remoteNFLProps), not this session's new NFL model — the analytical passing/rushing/receiving/TD prop-likelihood build (using real ESPN player stats) is a planned phase 2.</div>
       <div id="nfl-props-filter" style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-o btn-sm act" onclick="renderNFLProps('all')">ALL</button>
         <button class="btn btn-o btn-sm" onclick="renderNFLProps('pass')">PASSING</button>
@@ -797,6 +805,28 @@ body{line-height:1.5}
       <div id="nfl-props"><div class="empty">NO NFL PROPS — OFF-SEASON</div></div>
       <div class="sh" style="margin-top:14px">LOCKED NFL PROPS</div>
       <div id="nfl-props-tracker"></div>
+    </div></div>
+    <div id="nfl2-tab-model" class="subp" style="display:none"><div class="sa">
+      <div class="sh"><span class="p"></span> MODEL ARCHITECTURE</div>
+      <div class="g3" style="margin-bottom:12px">
+        <div class="card ci"><div class="ct">MONTE CARLO</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">15K sims/game. Point-differential margin + capped yards/turnover/weather adjustments. Real per-venue forecast.</div></div>
+        <div class="card cp"><div class="ct">BAYESIAN</div><div style="font-size:19px;color:var(--t2);line-height:1.7;margin-top:3px;font-family:var(--mono)">Beta-binomial prior on this season's actual W-L record from real standings.</div></div>
+      </div>
+      <div class="sh"><span class="p"></span> WEIGHTS</div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="rr"><span class="rrl">MONTE CARLO</span><span class="rrv" id="nfl2-wmc">75%</span></div><input type="range" id="nfl2-w-mc" min="20" max="90" value="75" oninput="document.getElementById('nfl2-wmc').textContent=this.value+'%';renderNFLEW2()">
+        <div class="dv"></div>
+        <div class="rr"><span class="rrl">BAYESIAN</span><span class="rrv" id="nfl2-wbay">25%</span></div><input type="range" id="nfl2-w-bay" min="10" max="80" value="25" oninput="document.getElementById('nfl2-wbay').textContent=this.value+'%';renderNFLEW2()">
+        <div style="font-family:var(--mono);font-size:18px;margin-top:7px" id="nfl2-ews">SUM: 100%</div>
+        <div class="sh" style="margin-top:12px"><span class="p"></span> HOME FIELD ADVANTAGE</div>
+        <div class="rr"><span class="rrl">HFA (points)</span><span class="rrv" id="nfl2-whfa">1.8</span></div><input type="range" id="nfl2-w-hfa" min="0" max="4" step="0.1" value="1.8" oninput="document.getElementById('nfl2-whfa').textContent=this.value">
+        <button class="btn btn-p btn-sm" style="margin-top:7px" onclick="applyNFLWeights2()">APPLY</button>
+      </div>
+      <div class="sh" style="margin-top:14px"><span class="p"></span> POWER RANKING (POINT DIFFERENTIAL)</div>
+      <div id="nfl2-model-content"><div class="loading"><span class="spi"></span> LOADING…</div></div>
+    </div></div>
+    <div id="nfl2-tab-config" class="subp" style="display:none"><div class="sa">
+      <div id="nfl2-config-content"></div>
     </div></div>
   </div>
 </div>
@@ -7357,6 +7387,417 @@ function startCFBSettle(){
   if(_cfbSettleIv)clearInterval(_cfbSettleIv);
   autoSettleCFB();
   _cfbSettleIv=setInterval(autoSettleCFB,60000);
+}
+
+// ═══ NFL DATA LOADER + MC SIM ENGINE ═══════════════════════════════════
+// Phase 1 (scripts/fetch_nfl.py): teams/schedule/standings/team-stats/
+// injuries/transactions -- Games/Model/Config, weather, and settlement.
+// Player props (passing/rushing/receiving/TD) are a deliberate phase 2,
+// not built here -- scraping real per-player season stats well needs
+// its own pass, not a rushed add-on. The existing PROPS tab stub stays
+// as-is until that phase lands.
+//
+// No FPI-equivalent power rating exists from ESPN for NFL the way CFB
+// has one, so the margin driver here is each team's own point
+// differential per game (PF-PA from standings) -- a well-established,
+// honest power-rating proxy in its own right, not a downgrade dressed
+// up as equivalent. Weather reuses CFB's own weather functions directly
+// (_cfbFetchWeather/_cfbGeocode/cfbWeatherImpact) -- despite the name,
+// none of them actually read _CFB_DATA, they just take a game object's
+// venue/city/date, so there's no reason to duplicate that logic for NFL.
+let _NFL_DATA=null;
+function loadNFLData(){
+  if(_NFL_DATA)return Promise.resolve(_NFL_DATA);
+  return Promise.all([
+    fetch('nfl_teams.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_schedule.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_standings.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_team_stats.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_injuries.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch('nfl_transactions.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+  ]).then(([teams,schedule,standings,stats,injuries,transactions])=>{
+    const teamByAbbr={};
+    (teams?.teams||[]).forEach(t=>{teamByAbbr[t.abbr]=t;});
+    const standingsByAbbr={};
+    Object.values(standings?.conferences||{}).forEach(rows=>(rows||[]).forEach(r=>{standingsByAbbr[r.abbr]=r;}));
+    _NFL_DATA={
+      teams:teamByAbbr,
+      standings:standingsByAbbr,
+      stats:stats?.teams||{},
+      weeks:schedule?.weeks||{},
+      injuriesByTeam:injuries?.teams||{},
+      transactions:transactions?.items||[],
+      generatedAt:{teams:teams?.generated_at,schedule:schedule?.generated_at,standings:standings?.generated_at,stats:stats?.generated_at,injuries:injuries?.generated_at,transactions:transactions?.generated_at},
+    };
+    return _NFL_DATA;
+  });
+}
+loadNFLData();
+
+const _NFL_LG_TOTAL=44; // ~real modern NFL combined-score average, fallback only
+const _NFL_HFA_DEFAULT=1.8; // typical NFL home-field edge in points -- smaller than CFB's, well-established in betting-market research
+window.NFL_HFA_PTS=window.NFL_HFA_PTS??(typeof S!=='undefined'?S.g('nfl_hfa'):null)??_NFL_HFA_DEFAULT;
+function _nflHFA(){return window.NFL_HFA_PTS;}
+const _NFL_SIGMA_MARGIN=13.5,_NFL_SIGMA_TOTAL=10.0; // NFL's real game-to-game variance -- tighter than CFB's (fewer, more evenly-matched teams)
+window.NFL_ENS=window.NFL_ENS||(typeof S!=='undefined'?S.g('nfl_ens'):null)||{mc:.75,bay:.25};
+// NFL margin driver: each team's own point-differential-per-game (a real,
+// honest power-rating proxy -- not FPI, but not a guess either), plus
+// capped matchup-specific yardage/turnover adjustments (same technique
+// CFB's cfbMC uses), plus a real per-venue weather adjustment via CFB's
+// shared weather functions. Falls back to the market spread when a
+// team has no standings entry yet (very early season / bye-week gaps),
+// same "never block the card, use real market data instead" principle
+// CFB's FCS fallback established.
+function nflMC(hA,awA,n,ouLine,g){
+  const D=_NFL_DATA;if(!D)return null;
+  const hS=D.standings[hA],aS=D.standings[awA];
+  const _n=v=>{const x=parseFloat(v);return isNaN(x)?null:x;};
+  const hGames=(_n(hS?.wins)??0)+(_n(hS?.losses)??0)+(_n(hS?.ties)??0);
+  const aGames=(_n(aS?.wins)??0)+(_n(aS?.losses)??0)+(_n(aS?.ties)??0);
+  const hDiffPg=(hS&&hGames>0)?_n(hS.differential)/hGames:null;
+  const aDiffPg=(aS&&aGames>0)?_n(aS.differential)/aGames:null;
+  const hasDiff=hDiffPg!=null&&aDiffPg!=null;
+  const marketMargin=(g&&g.spread!=null)?-parseFloat(g.spread):null;
+  if(!hasDiff&&marketMargin==null)return null;
+  const hOff=D.stats[hA]?.offense||{},aOff=D.stats[awA]?.offense||{};
+  const hDefAllowed=D.stats[hA]?.defenseAllowed||{},aDefAllowed=D.stats[awA]?.defenseAllowed||{};
+  let yardsAdjPts=0;
+  const hOffYds=(_n(hOff.netPassingYardsPerGame)??0)+(_n(hOff.rushingYardsPerGame)??0);
+  const aDefYdsAllowed=(_n(aDefAllowed.yardsPerGame)??0);
+  const aOffYds=(_n(aOff.netPassingYardsPerGame)??0)+(_n(aOff.rushingYardsPerGame)??0);
+  const hDefYdsAllowed=(_n(hDefAllowed.yardsPerGame)??0);
+  if(hOffYds&&aDefYdsAllowed&&aOffYds&&hDefYdsAllowed){
+    const hEdgeYds=hOffYds-aDefYdsAllowed,aEdgeYds=aOffYds-hDefYdsAllowed;
+    yardsAdjPts=Math.max(-3,Math.min(3,(hEdgeYds-aEdgeYds)/16));
+  }
+  let toAdjPts=0;
+  const hTO=_n(hDefAllowed.totalTakeaways),aTO=_n(aDefAllowed.totalTakeaways);
+  if(hTO!=null&&aTO!=null)toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
+  const hfaApplied=g?.neutralSite?0:_nflHFA();
+  const margin0=hasDiff?((hDiffPg-aDiffPg)+hfaApplied+yardsAdjPts+toAdjPts):(marketMargin+yardsAdjPts+toAdjPts);
+  const hAllowed=_n(hDefAllowed.totalPointsPerGame),aAllowed=_n(aDefAllowed.totalPointsPerGame);
+  let baseTotal=(hAllowed!=null&&aAllowed!=null)?(hAllowed+aAllowed):_NFL_LG_TOTAL;
+  const wxKey=g&&(g.id||(g.city+g.date));
+  const wx=wxKey?_CFB_WX_CACHE[wxKey]:null; // shared weather cache — see note above on why CFB's weather fns are reused as-is
+  const wxImpact=wx?cfbWeatherImpact(wx):{totalAdj:0,label:''};
+  baseTotal=Math.max(20,baseTotal+wxImpact.totalAdj);
+  const finalOU=ouLine!=null?parseFloat(ouLine):parseFloat(_forceHalfLine(baseTotal));
+  n=n||15000;
+  let hw=0,ov=0,marginSum=0,totalSum=0;
+  for(let i=0;i<n;i++){
+    const simMargin=margin0+_boxMullerZ()*_NFL_SIGMA_MARGIN;
+    const simTotal=Math.max(20,baseTotal+_boxMullerZ()*_NFL_SIGMA_TOTAL);
+    marginSum+=simMargin;totalSum+=simTotal;
+    if(simMargin>0)hw++;
+    if(simTotal>finalOU)ov++;
+  }
+  const avgMargin=marginSum/n,avgTotal=totalSum/n;
+  return{
+    hwP:hw/n,avgMargin:+avgMargin.toFixed(1),avgTotal:+avgTotal.toFixed(1),
+    avgH:+((avgTotal+avgMargin)/2).toFixed(1),avgA:+((avgTotal-avgMargin)/2).toFixed(1),
+    overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),n,wx,wxImpact,hasDiff,marketMargin,
+  };
+}
+// Beta-binomial posterior on this season's actual W-L record (standings-
+// derived, real), same family as MLB/CFB's Bayesian components.
+function _nflBayes(abbr){
+  const D=_NFL_DATA;const s=D?.standings?.[abbr];
+  const w=parseFloat(s?.wins)||0,l=parseFloat(s?.losses)||0;
+  return{m:(w+1)/(w+l+2),w,l};
+}
+function nflEns(hA,awA,ouLine,g){
+  const mc=nflMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,mcD:null};
+  const hBay=_nflBayes(hA),aBay=_nflBayes(awA);
+  const bayP=Math.min(.92,Math.max(.08,hBay.m/(hBay.m+aBay.m)+.015));
+  const W=window.NFL_ENS||{mc:.75,bay:.25};
+  let p=mc.hwP*W.mc+bayP*W.bay;
+  p=Math.min(.92,Math.max(.08,p));
+  p=typeof sportCalibrate==='function'?sportCalibrate(p,'NFL'):p;
+  return{p,mc:mc.hwP,bay:bayP,mcD:mc};
+}
+function _nflRankLabel(abbr){
+  const D=_NFL_DATA;const s=D?.standings?.[abbr];
+  return s?.divisionRank?`#${s.divisionRank} `:'';
+}
+window._nflActiveTab='games';
+function nflSubTab2(tab){
+  window._nflActiveTab=tab;
+  ['games','props','model','config'].forEach(t=>{
+    const nav=document.getElementById('nfl2-innav-'+t),panel=document.getElementById('nfl2-tab-'+t);
+    if(nav)nav.classList.toggle('act',t===tab);
+    if(panel){panel.classList.toggle('act',t===tab);panel.style.display=t===tab?'':'none';}
+  });
+  if(tab==='games')loadNFLData().then(()=>{_nflPopulateWeekFilter();renderNFLGames2();});
+  else if(tab==='props')renderNFLProps(window._nflPropFilter||'all');
+  else if(tab==='model')loadNFLData().then(renderNFLModel2);
+  else if(tab==='config')renderNFLConfig2();
+}
+function _nflPopulateWeekFilter(){
+  const D=_NFL_DATA;const sel=document.getElementById('nfl2-filter-week');if(!D||!sel)return;
+  const weeks=Object.keys(D.weeks);
+  if(sel.options.length===weeks.length)return;
+  sel.innerHTML=weeks.map(w=>`<option value="${w}">${w.toUpperCase()}</option>`).join('');
+  // Default to the first week that still has an unplayed game, not
+  // always Week 1 -- so opening the tab mid-season lands on something
+  // relevant instead of a fully-final week.
+  const upcoming=weeks.find(w=>(D.weeks[w]||[]).some(g=>g.state!=='post'));
+  if(upcoming)sel.value=upcoming;
+}
+function _nflGameCard2(g){
+  const D=_NFL_DATA;
+  const ens=nflEns(g.home,g.away,g.overUnder,g);
+  const mc=ens.mcD;
+  const hP=ens.p,aP=1-hP;
+  const hML=p2ml(hP),aML=p2ml(aP);
+  const hD=ml2d(hML),aD=ml2d(aML);
+  const dt=g.date?new Date(g.date):null;
+  const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
+  if(!mc){
+    const hMissing=D.standings[g.home]==null,aMissing=D.standings[g.away]==null;
+    const reason=(hMissing&&aMissing)?`Neither ${g.home} nor ${g.away} has a standings entry yet`:hMissing?`${g.home} has no standings entry yet`:aMissing?`${g.away} has no standings entry yet`:null;
+    return`<div class="card" style="margin-bottom:12px">
+      <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_nflRankLabel(g.away)}${g.away} @ ${_nflRankLabel(g.home)}${g.home}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr} · ${g.venue||''}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">${reason?reason+' — and no market spread posted yet to fall back to.':'Insufficient data for this matchup yet.'} No model projection is generated without one.</div>
+    </div>`;
+  }
+  const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
+  const baseSpread=g.spread!=null?Math.abs(g.spread):Math.abs(mc.avgMargin);
+  const spreadFav=g.spread!=null?(g.spread<0?g.home:g.away):(mc.avgMargin>0?g.home:g.away);
+  const spreadDog=spreadFav===g.home?g.away:g.home;
+  const favIsHome=spreadFav===g.home;
+  const favMarginMean=favIsHome?mc.avgMargin:-mc.avgMargin;
+  const favCoverP=Math.min(.95,Math.max(.05,_cfbCoverProb(favMarginMean,_NFL_SIGMA_MARGIN,baseSpread)));
+  const dogCoverP=1-favCoverP;
+  const ouL=mc.ouLine;
+  const overP=Math.min(.95,Math.max(.05,_cfbCoverProb(mc.avgTotal,_NFL_SIGMA_TOTAL,ouL)));
+  const underP=1-overP;
+  const gidSafe=(g.home+'_'+g.away).replace(/[^A-Za-z0-9_]/g,'');
+  const rawMkts=[
+    {label:`${g.home} ML`,prob:hP,dec:hD,ml:hML,side:'mlFav'},
+    {label:`${g.away} ML`,prob:aP,dec:aD,ml:aML,side:'mlDog'},
+    {label:`${spreadFav} -${baseSpread.toFixed(1)}`,prob:favCoverP,dec:1.909,ml:'-110',side:'sprdFav'},
+    {label:`${spreadDog} +${baseSpread.toFixed(1)}`,prob:dogCoverP,dec:1.909,ml:'-110',side:'sprdDog'},
+    {label:`OVER ${ouL.toFixed(1)}`,prob:overP,dec:1.909,ml:'-110',side:'over'},
+    {label:`UNDER ${ouL.toFixed(1)}`,prob:underP,dec:1.909,ml:'-110',side:'under'},
+  ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
+  const nm=_evalMkts(rawMkts);
+  const hS=D.standings[g.home]||{},aS=D.standings[g.away]||{};
+  const injH=(D.injuriesByTeam[g.home]||[]).filter(i=>i.status&&i.status.toLowerCase()!=='active');
+  const injA=(D.injuriesByTeam[g.away]||[]).filter(i=>i.status&&i.status.toLowerCase()!=='active');
+  const reasoning=`FPI-equivalent here is each team's own point differential: ${g.home} ${hS.differential!=null?(hS.differential>=0?'+':'')+hS.differential:'—'} (${hS.wins??'—'}-${hS.losses??'—'}), ${g.away} ${aS.differential!=null?(aS.differential>=0?'+':'')+aS.differential:'—'} (${aS.wins??'—'}-${aS.losses??'—'}). `
+    +(g.neutralSite?`Neutral site — no home-field adjustment applied. `:`${g.home} is home, getting the model's ${_nflHFA()}-point default home-field edge. `)
+    +(mc.hasDiff?'':'One team has no standings-based differential yet, so this projection falls back to the market spread instead. ')
+    +(mc.wx?`Real forecast at ${g.venue||g.city||'the venue'}: ${mc.wx.temp}°F, ${mc.wx.wind}mph wind${mc.wx.snow>0?`, ${mc.wx.snow}"/hr snow`:''} — folded into the total as a ${mc.wxImpact.totalAdj>=0?'+':''}${mc.wxImpact.totalAdj}-pt adjustment. `:g.indoor?`${g.venue||'This venue'} is indoors — no weather factor applies. `:'No forecast loaded yet for this venue (too far out, or location unresolved) — total is weather-neutral for now. ')
+    +(injH.length?`${g.home} injury notes: ${injH.slice(0,2).map(i=>i.player+' ('+i.status+(i.injury?', '+i.injury:'')+')').join('; ')}. `:'')
+    +(injA.length?`${g.away} injury notes: ${injA.slice(0,2).map(i=>i.player+' ('+i.status+(i.injury?', '+i.injury:'')+')').join('; ')}. `:'')
+    +`MC sim (${mc.n.toLocaleString()} runs): proj ${g.away} ${mc.avgA} – ${g.home} ${mc.avgH} (${mc.avgTotal} total).`;
+  return`<div class="gc" style="border-left:2px solid rgba(0,120,255,.4)">
+    <div class="gch">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="gtm" style="color:${aP>=hP?'var(--pc)':'var(--t2)'}">${_nflRankLabel(g.away)}${g.away}</span>
+          <span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>
+          <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${_nflRankLabel(g.home)}${g.home}</span>
+        </div>
+        <div class="gsp">${g.venue||''}${g.neutralSite?' (Neutral)':''}${g.week?' · '+g.week:''}</div>
+        ${g.spreadDetails?`<div class="gsp">Market: ${g.spreadDetails}${g.overUnder!=null?' · O/U '+g.overUnder:''}</div>`:''}
+      </div>
+      <div style="text-align:right"><div class="np mono" style="font-size:19px">${timeStr}</div></div>
+    </div>
+    ${mc.wx?weatherBadge(mc.wx,g.home):''}
+    <div class="brow">
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockNFLGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockNFLGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+      <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('sprd_nfl2_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="-${baseSpread.toFixed(1)}" id="sprd_nfl2_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)"><button onclick="event.stopPropagation();_adjV('sprd_nfl2_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:2px;width:100%"><button onclick="event.stopPropagation();_nflSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_nfl2_${gidSafe}','FAV')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadFav}</div><div id="fav_sprd_nfl2_${gidSafe}" style="font-size:11px;opacity:.85">-${baseSpread.toFixed(1)}</div></button><button onclick="event.stopPropagation();_nflSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_nfl2_${gidSafe}','DOG')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadDog}</div><div id="dog_sprd_nfl2_${gidSafe}" style="font-size:11px;opacity:.85">+${baseSpread.toFixed(1)}</div></button></div></div>
+      <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_nfl2_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL.toFixed(1)}" id="ouinp_nfl2_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_nfl2_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_nflOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_nfl2_${gidSafe}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_nflOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_nfl2_${gidSafe}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
+    </div>
+    <div style="padding:8px 10px;background:rgba(0,120,255,.04);border-top:1px solid rgba(0,120,255,.1)">
+      ${_mcProjBarHTML({avgH:mc.avgH,avgA:mc.avgA,avgT:mc.avgTotal,overP:overP},ouL.toFixed(1),g.home,g.away,{n:mc.n,dec:1})}
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${nm.col};color:${nm.col};border-radius:2px">${nm.lbl}</span>
+        <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">BEST MARKET: <strong style="color:var(--t2)">${nm.best.label}</strong> · ${(nm.best.prob*100).toFixed(1)}% · EV ${nm.best.evVal>=0?'+':''}${(nm.best.evVal*100).toFixed(1)}%</span>
+      </div>
+      <div style="margin-bottom:8px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px">MARKET SCAN: ${nm.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6">${reasoning}</div>
+      ${(()=>{try{return _statmuseGameInsightsHTML('nfl',g.home,[g.homeName,g.home],g.away,[g.awayName,g.away]);}catch(e){return'';}})()}
+    </div>
+  </div>`;
+}
+function _nflSpreadLockDir(hA,awA,favN,dogN,baseFavP,baseSprd,inputId,dir){
+  const inp=document.getElementById(inputId);
+  let ns=inp?parseFloat(inp.value):parseFloat(baseSprd);
+  if(isNaN(ns))ns=parseFloat(baseSprd);
+  const delta=Math.abs(ns)-Math.abs(parseFloat(baseSprd));
+  const p=dir==='FAV'?Math.max(.05,Math.min(.95,baseFavP-delta*0.045)):Math.max(.05,Math.min(.95,(1-baseFavP)+delta*0.045));
+  const label=dir==='FAV'?favN+' -'+Math.abs(ns).toFixed(1):dogN+' +'+Math.abs(ns).toFixed(1);
+  lockNFLGame(hA,awA,'SPREAD',label,'-110',p);
+}
+function _nflOuLockDir(hA,awA,baseOverP,baseL,inputId,dir){
+  const inp=document.getElementById(inputId);
+  let nl=inp?parseFloat(inp.value):parseFloat(baseL);
+  if(isNaN(nl))nl=parseFloat(baseL);
+  const delta=nl-parseFloat(baseL);
+  const np=Math.min(.95,Math.max(.05,baseOverP-delta*0.07));
+  const p=dir==='OVER'?np:1-np;
+  lockNFLGame(hA,awA,'OU',dir+' '+nl.toFixed(1),'-110',p,nl);
+}
+function renderNFLGames2(){
+  const el=document.getElementById('nfl2-games-list');if(!el)return;
+  const D=_NFL_DATA;
+  if(!D){el.innerHTML='<div class="loading"><span class="spi"></span> LOADING…</div>';loadNFLData().then(renderNFLGames2);return;}
+  const week=document.getElementById('nfl2-filter-week')?.value;
+  let games=(D.weeks[week]||[]).slice();
+  if(!games.length){el.innerHTML='<div class="empty">NO GAMES MATCH THESE FILTERS</div>';return;}
+  games.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  el.innerHTML=games.map(_nflGameCard2).join('');
+  _cfbPrefetchWeather(games).then(()=>{ // shared weather prefetch — see module comment above
+    const stillEl=document.getElementById('nfl2-games-list');
+    if(stillEl)stillEl.innerHTML=games.map(_nflGameCard2).join('');
+  });
+}
+function renderNFLEW2(){
+  const mc=+document.getElementById('nfl2-w-mc')?.value||75,bay=+document.getElementById('nfl2-w-bay')?.value||25;
+  const sum=mc+bay;const el=document.getElementById('nfl2-ews');
+  if(el){el.textContent=`SUM: ${sum}% ${sum!==100?'// NORMALIZES':'✓'}`;el.style.color=sum===100?'var(--nc)':'var(--vc)';}
+}
+function applyNFLWeights2(){
+  const mc=+document.getElementById('nfl2-w-mc')?.value||75,bay=+document.getElementById('nfl2-w-bay')?.value||25;
+  const s=mc+bay||100;
+  window.NFL_ENS={mc:mc/s,bay:bay/s};
+  if(typeof S!=='undefined')S.s('nfl_ens',window.NFL_ENS);
+  const hfaVal=parseFloat(document.getElementById('nfl2-w-hfa')?.value);
+  window.NFL_HFA_PTS=isNaN(hfaVal)?_NFL_HFA_DEFAULT:hfaVal;
+  if(typeof S!=='undefined')S.s('nfl_hfa',window.NFL_HFA_PTS);
+  toast('// NFL WEIGHTS APPLIED');
+  if(window._nflActiveTab==='games')renderNFLGames2();
+}
+function renderNFLModel2(){
+  const el=document.getElementById('nfl2-model-content');if(!el)return;
+  const D=_NFL_DATA;if(!D){el.innerHTML='<div class="loading"><span class="spi"></span></div>';return;}
+  const W=window.NFL_ENS||{mc:.75,bay:.25};
+  const mcEl=document.getElementById('nfl2-w-mc'),bayEl=document.getElementById('nfl2-w-bay'),hfaEl=document.getElementById('nfl2-w-hfa');
+  if(mcEl){mcEl.value=Math.round(W.mc*100);document.getElementById('nfl2-wmc').textContent=mcEl.value+'%';}
+  if(bayEl){bayEl.value=Math.round(W.bay*100);document.getElementById('nfl2-wbay').textContent=bayEl.value+'%';}
+  if(hfaEl){hfaEl.value=_nflHFA();document.getElementById('nfl2-whfa').textContent=_nflHFA();}
+  renderNFLEW2();
+  const rows=Object.entries(D.standings).map(([abbr,s])=>({abbr,...s}))
+    .filter(r=>r.differential!=null).sort((a,b)=>parseFloat(b.differential)-parseFloat(a.differential)).slice(0,50);
+  el.innerHTML=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:10px">Power ranking by point differential (PF-PA), the model's own margin driver — not an ESPN-published index. Data updates every Tuesday.</div>
+  ${rows.map((r,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <span style="font-family:var(--mono);font-size:15px;color:var(--t3);width:36px">#${i+1}</span>
+    <span style="font-family:var(--orb);font-size:16px;font-weight:700;flex:1">${r.abbr}</span>
+    <span style="font-family:var(--mono);font-size:15px;color:var(--ic)">${r.differential>=0?'+':''}${r.differential}</span>
+    <span style="font-family:var(--mono);font-size:14px;color:var(--t3);width:90px;text-align:right">${r.wins}-${r.losses}${r.ties?'-'+r.ties:''}</span>
+  </div>`).join('')}`;
+}
+function renderNFLConfig2(){
+  const el=document.getElementById('nfl2-config-content');if(!el)return;
+  const D=_NFL_DATA;
+  const W=window.NFL_ENS||{mc:.75,bay:.25};
+  el.innerHTML=`<div class="sh" style="margin-bottom:8px">DATA SOURCES</div>
+  <div style="font-family:var(--mono);font-size:15px;color:var(--t2);line-height:2">
+    Rosters/Divisions: ${D?.generatedAt?.teams||'not loaded'}<br>
+    Schedule/Lines: ${D?.generatedAt?.schedule||'not loaded'}<br>
+    Standings: ${D?.generatedAt?.standings||'not loaded'}<br>
+    Team Stats (offense/defense/special teams): ${D?.generatedAt?.stats||'not loaded'}<br>
+    Injuries: ${D?.generatedAt?.injuries||'not loaded'}<br>
+    Transactions: ${D?.generatedAt?.transactions||'not loaded'}
+  </div>
+  <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:12px;line-height:1.8">
+    Refresh cadence: team stats + standings every Tuesday (right after Monday Night Football closes the week) · schedule/lines daily · injuries/transactions daily · roster/divisions monthly.<br><br>
+    Win probability: MC/Bayesian blend, weighted MC ${Math.round(W.mc*100)}% / BAY ${Math.round(W.bay*100)}% (adjustable on the MODEL tab).<br><br>
+    MC sim margin: each team's own point-differential-per-game (PF-PA from real standings) -- NFL has no ESPN-published power index the way CFB has FPI, so this is the honest substitute, not a downgrade dressed up as equivalent -- plus capped matchup-specific yardage/turnover and real per-venue weather adjustments. Falls back to the market spread when a team has no standings entry yet.<br><br>
+    Totals: each team's own points-allowed average, adjusted for the real forecast at the actual game venue.<br><br>
+    Player props (passing/rushing/receiving/TD) are a planned phase 2, not built yet -- the PROPS tab stays as its current placeholder until real per-player stat scraping is built out properly.
+  </div>`;
+}
+function lockNFLGame(hA,awA,betType,betOn,ml,winProb,ouLine){
+  const dec=ml2d(ml);
+  const id=`nfl_${today()}_${hA}_${awA}_${betType}_${betOn.replace(/\s+/g,'')}`;
+  const pred={id,date:today(),hA,awA,sport:'FOOTBALL',league:'NFL',betType,betOn,winProb,ml,decOdds:dec,
+    ou:ouLine!=null?ouLine:null,wager:0,outcome:'pending',lockedAt:Date.now()};
+  const preds=getP();if(!preds.find(p=>p.id===id)){preds.push(pred);saveP(preds);}
+  updHdr();
+  toast('// NFL LOCKED: '+betOn);
+  try{window.showBetPopup({type:'lock',betOn,sport:'FOOTBALL',league:'NFL',betType,ml,prob:winProb,decOdds:dec});}catch(e){}
+}
+// Same settlement shape/fixes established for CFB's autoSettleCFB (AND-
+// logic same-game match, today-only, case-insensitive OVER, trailing-
+// number extraction for SPREAD's signed line).
+async function autoSettleNFL2(){
+  try{
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100');
+    if(!r.ok)return;
+    const d=await r.json();
+    const preds=getP();let changed=false;
+    for(const ev of(d.events||[])){
+      const comp=(ev.competitions||[{}])[0];
+      if(comp.status?.type?.state!=='post')continue;
+      const home=comp.competitors?.find(c=>c.homeAway==='home');
+      const away=comp.competitors?.find(c=>c.homeAway==='away');
+      const hn=home?.team?.abbreviation,an=away?.team?.abbreviation;
+      const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
+      for(const p of preds){
+        if(p.outcome!=='pending'||_normSport(p)!=='NFL')continue;
+        if(p.date!==today())continue;
+        const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+        if(!sameGame)continue;
+        let outcome=null;
+        if(p.betType==='ML'){
+          if(p.betOn===hn)outcome=hs>as?'win':'loss';
+          else if(p.betOn===an)outcome=as>hs?'win':'loss';
+        }else if(p.betType==='SPREAD'){
+          const m=(p.betOn||'').match(/(-?\d+\.?\d*)\s*$/);
+          const line=m?parseFloat(m[1]):NaN;
+          const favTeam=(p.betOn||'').split(' ')[0];
+          if(!isNaN(line)){
+            const favIsHome=favTeam===hn;
+            const diff=favIsHome?(hs-as):(as-hs);
+            const covered=diff+line;
+            outcome=covered>0?'win':covered<0?'loss':'push';
+          }
+        }else if(p.betType==='OU'){
+          const total=hs+as;const ou=parseFloat(p.ou);
+          if(!isNaN(ou))outcome=total===ou?'push':(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        }
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
+          try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'FOOTBALL',league:'NFL',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
+        }
+      }
+    }
+    if(changed){saveP(preds);updHdr();}
+  }catch(e){console.warn('NFL settle:',e);}
+}
+let _nflSettleIv2=null;
+function startNFLSettle2(){
+  if(_nflSettleIv2)clearInterval(_nflSettleIv2);
+  autoSettleNFL2();
+  _nflSettleIv2=setInterval(autoSettleNFL2,60000);
+}
+// NFL news feed: injuries (real status/estimated return) + transactions
+// (trades/signings/releases), same real-data-only principle as
+// everything else -- returns '' when nothing's loaded rather than a
+// placeholder.
+function renderNFLInjuryTransactionNews(containerId){
+  const el=document.getElementById(containerId);if(!el)return;
+  const D=_NFL_DATA;if(!D){el.innerHTML='<div class="loading"><span class="spi"></span></div>';loadNFLData().then(()=>renderNFLInjuryTransactionNews(containerId));return;}
+  const injuryRows=Object.entries(D.injuriesByTeam||{}).flatMap(([abbr,rows])=>(rows||[]).map(r=>({...r,team:abbr})))
+    .filter(r=>r.status&&r.status.toLowerCase()!=='active').slice(0,40);
+  const txRows=(D.transactions||[]).slice(0,40);
+  const injuryHtml=injuryRows.length?`<div class="sh" style="margin-bottom:6px"><span style="color:var(--hc)">⚠</span> NFL INJURY REPORT</div>`+
+    injuryRows.map(r=>`<div class="card" style="border-left:2px solid var(--hc);margin-bottom:5px;padding:8px 10px">
+      <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--hc)">${r.team} — ${r.player||'Unknown'} (${r.position||''})</div>
+      <div style="font-size:15px;color:var(--t2);margin-top:3px">${r.status}${r.injury?' · '+r.injury:''}${r.estimatedReturn?' · Est. return: '+r.estimatedReturn:''}</div>
+      ${r.comment?`<div style="font-size:14px;color:var(--t3);margin-top:2px">${r.comment}</div>`:''}
+    </div>`).join(''):'';
+  const txHtml=txRows.length?`<div class="sh" style="margin:14px 0 6px"><span style="color:var(--ic)">◆</span> NFL TRANSACTIONS</div>`+
+    txRows.map(r=>`<div class="card" style="border-left:2px solid var(--ic);margin-bottom:5px;padding:8px 10px">
+      <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--t1)">${r.team||''} ${r.teamName?'· '+r.teamName:''}</div>
+      <div style="font-size:15px;color:var(--t2);margin-top:3px">${r.description||''}</div>
+      <div style="font-size:13px;color:var(--t3);margin-top:2px">${r.date||''}</div>
+    </div>`).join(''):'';
+  el.innerHTML=injuryHtml+txHtml||'<div class="empty">NO NFL INJURY/TRANSACTION DATA LOADED YET</div>';
 }
 
 function renderStatMuseInsights(section, anchorId, limit){
@@ -14201,7 +14642,7 @@ function setSub(sport,sub){
   // too, but only to keep _genericWeekCache warm for the Parlay tab's CFB
   // leg-gathering, which reads that cache independently.
   if(sport==='fb'&&sub==='cfb'){try{renderGenericWeek('cfb-week-list','football/college-football','CFB');cfbSubTab(window._cfbActiveTab||'games');loadStatMuse().then(()=>renderStatMuseInsights('cfb','cfb-games-list'));}catch(e){}}
-  if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');loadStatMuse().then(()=>renderStatMuseInsights('nfl','nfl-week-list'));}catch(e){}}
+  if(sport==='fb'&&sub==='nfl'){try{renderGenericWeek('nfl-week-list','football/nfl','NFL');nflSubTab2(window._nflActiveTab||'games');}catch(e){}}
 }
 
 // ═══ NFL PLAYER PROPS ══════════════════════════════════════════
@@ -14211,14 +14652,6 @@ function setSub(sport,sub){
 // the same way NHL props are. Genuinely empty until the season starts
 // (matches this module's own "activates September 3, 2026" messaging
 // above) — the panel says so rather than pretending there's data.
-function nflSubTab(tab){
-  ['week','props'].forEach(t=>{
-    const nav=document.getElementById('nfl-innav-'+t),panel=document.getElementById('nfl-tab-'+t);
-    if(nav)nav.classList.toggle('act',t===tab);
-    if(panel){panel.classList.toggle('act',t===tab);panel.style.display=t===tab?'':'none';}
-  });
-  if(tab==='props')renderNFLProps(window._nflPropFilter||'all');
-}
 function renderNFLProps(filter){
   window._nflPropFilter=filter||'all';
   const el=document.getElementById('nfl-props');if(!el)return;
@@ -18500,7 +18933,7 @@ function patchLinemateProps(linemate){
   try{const hp=document.getElementById('nhl-tab-props');if(hp&&hp.classList.contains('act')){renderProps();renderNHLPropsLive(window._nhlPropFilter||'all');}}catch(e){}
   // NFL: linemate.props.nfl is the real bundle shape (linemate:{props:{nfl:[...]}})
   if(linemate?.props?.nfl?.length)window._remoteNFLProps=linemate.props.nfl;
-  try{const np=document.getElementById('nfl-tab-props');if(np&&np.classList.contains('act'))renderNFLProps(window._nflPropFilter||'all');}catch(e){}
+  try{const np=document.getElementById('nfl2-tab-props');if(np&&np.classList.contains('act'))renderNFLProps(window._nflPropFilter||'all');}catch(e){}
 }
 function exportLockedProps(){
   const props=getP();
@@ -21619,6 +22052,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{startNHLLive();}catch(e){console.error('nhlLive',e);}
   try{startNBALive();}catch(e){console.error('nbaLive',e);}
   try{startCFBSettle();}catch(e){console.error('cfbSettle',e);}
+  try{startNFLSettle2();}catch(e){console.error('nflSettle',e);}
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}
   try{renderOverallHistory();}catch(e){console.error('renderOverallHistory',e);}
@@ -31985,8 +32419,10 @@ function trainerExportInsights() {
 <div id="navd-fb" class="nav-drop-fixed" onmouseenter="cancelHideND()" onmouseleave="startHideND()">
   <div class="ndl"><button onclick="SS('fb');setSub('fb','nfl');hideAllND()">NFL</button>
     <div class="ndl-sub">
-      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab('week');hideAllND()">Week</button>
-      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab('props');hideAllND()">Props</button>
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab2('games');hideAllND()">Games</button>
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab2('props');hideAllND()">Props</button>
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab2('model');hideAllND()">Model</button>
+      <button onclick="SS('fb');setSub('fb','nfl');nflSubTab2('config');hideAllND()">Config</button>
     </div>
   </div>
   <div class="ndl"><button onclick="SS('fb');setSub('fb','cfb');hideAllND()">College Football</button>

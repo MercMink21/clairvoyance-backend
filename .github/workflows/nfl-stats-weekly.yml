@@ -1,0 +1,41 @@
+name: NFL Team Stats + Standings Refresh
+
+# User's explicit cadence request: scrape every Tuesday, right after
+# Monday Night Football closes out the week, so the following week's
+# stats/standings are locked in and updated before Thursday's next
+# kickoff. A single Tuesday-morning run covers both team stats
+# (offense/defense/special-teams) and standings (W-L/PF/PA/diff) --
+# both only meaningfully change once a week's games are all final.
+
+on:
+  schedule:
+    # Tuesday 7:00 AM MT = 13:00 UTC (MDT) / 14:00 UTC (MST)
+    - cron: '0 13 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-nfl-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -q requests
+      - name: Refresh stats + standings and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/fetch_nfl.py --mode stats --push
+          python3 scripts/fetch_nfl.py --mode standings --push
