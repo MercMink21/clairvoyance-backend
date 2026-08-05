@@ -9546,6 +9546,52 @@ function renderNBALockedBets(){
     </div>`;
   }).join('');
 }
+// NBA matchup radar -- same 3-tab MATCHUP/OFFENSE/DEFENSE pattern as
+// CFB/NHL/soccer/NFL, built from real NBA_BBREF per-game/per-100/advanced
+// stats. NBA_BBREF/NBA_TEAMS currently only have the 4 current playoff
+// teams (a known, temporary, season-state-tied limitation -- not
+// something this radar tries to paper over); any other team's axes
+// fall back to the neutral 50 midpoint via the same clamp(null)=>50
+// rule every other radar in this codebase already uses, not a guess.
+function _nbaMatchupRadarValues(abbr){
+  const adv=NBA_BBREF[abbr]?.adv||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    clamp(adv.off_rtg,105,125),
+    100-clamp(adv.def_rtg,100,120),
+    clamp(adv.net_rtg,-5,15),
+    clamp(adv.pace,92,104),
+    clamp(adv.ts,.54,.64),
+    100-clamp(adv.tov,10,16),
+  ];
+}
+function _nbaOffenseRadarValues(abbr){
+  const pg=NBA_BBREF[abbr]?.pg||{};
+  const p100=NBA_BBREF[abbr]?.p100||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    clamp(pg.pts,105,125),
+    clamp(p100.efg_pct,.50,.62),
+    clamp(pg.fg3_pct,.33,.42),
+    clamp(pg.ast,20,30),
+    clamp(p100.orb_pct,20,32),
+    clamp(p100.ft_rate,.20,.36),
+  ];
+}
+function _nbaDefenseRadarValues(abbr){
+  const opp=NBA_BBREF[abbr]?.opp_pg||{};
+  const p100=NBA_BBREF[abbr]?.p100||{};
+  const pg=NBA_BBREF[abbr]?.pg||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    100-clamp(opp.pts,100,120),
+    100-clamp(p100.opp_efg,.48,.58),
+    clamp(pg.stl,6,10),
+    clamp(pg.blk,3.5,7),
+    clamp(pg.drb,32,38),
+    clamp(p100.opp_tov_pct,13,19),
+  ];
+}
 function _nbaGameCard(espnEv){
       const c=espnEv.competitions?.[0];if(!c)return'';
       const h=c.competitors?.find(t=>t.homeAway==='home'),a=c.competitors?.find(t=>t.homeAway==='away');
@@ -9573,6 +9619,14 @@ function _nbaGameCard(espnEv){
       const hCS=chipC(hP,hEV);const aCS=chipC(aP,aEV);
       // Spread chip — use MC projected margin vs actual line (normal distribution model)
       const espnSprdDetails=espnOdds?.details||'';const espnSprdNum=espnSprdDetails?parseFloat(espnSprdDetails.replace(/^[A-Z\s]+/,'')):(function(){var d=Math.round(Math.log((hP>=aP?hP:aP)/((hP>=aP?aP:hP)))*14*2)/2;return hP>=aP?-d:d;})();const sprdFav=hP>=aP?hn:an;const sprdLbl=sprdFav+' '+(espnSprdNum>0?'+':'')+espnSprdNum;
+      // O/U chip — use MC overP when available, pass ESPN line to ensemble.
+      // Moved above the spread block since it computes nbaEnsD, which the
+      // spread block's mcProjSpread reads -- nbaEnsD used to be declared
+      // (let) seven lines AFTER this first read of it, a real temporal-
+      // dead-zone ReferenceError that crashed _nbaGameCard (uncaught,
+      // no try/catch at the call site) for every single NBA game.
+      let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
+      const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
       // Projected margin from MC (positive = home favored)
       const mcProjSpread=nbaEnsD?.mcD?.spread||0;
       const favProjMargin=Math.abs(mcProjSpread);const lineMargin=Math.abs(espnSprdNum);
@@ -9580,9 +9634,6 @@ function _nbaGameCard(espnEv){
       const _nbaSigma=11.5;
       const sprdP=Math.min(0.82,Math.max(0.18,normalCDF((favProjMargin-lineMargin)/_nbaSigma+0.015)));
       const sprdD=ml2d('-115');const sprdCS=chipC(sprdP,ev(sprdP,sprdD));
-      // O/U chip — use MC overP when available, pass ESPN line to ensemble
-      let nbaEnsD=null;try{nbaEnsD=nbaEns(hn,an,ouL?{ou:ouL}:null);}catch(e2){}
-      const ouP=nbaEnsD?.mcD?.overP??0.50;const ouD=ml2d('-110');const ouCS=chipC(ouP,ev(ouP,ouD));
       // Engine reasoning — best-market evaluation across ML, spread, O/U
       const _nbaFav=hP>=aP?hn:an,_nbaDog=hP>=aP?an:hn;
       const _nbaFavP=Math.max(hP,aP),_nbaDogP=Math.min(hP,aP);
@@ -9659,8 +9710,8 @@ function _nbaGameCard(espnEv){
           const _sizeNBA=_nmNBA.size+'-unit play';
           if(_bmNBA.side==='mlFav')explanation=`Best market: <strong>${_nbaFav} ML</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`${_nbaCtxLine}. `+`${_nbaProjLine}. Pace avg ${(parseFloat(_hPace)+parseFloat(_aPace)/2).toFixed(1)} — ${parseFloat(_hPace)>100?'up-tempo':parseFloat(_hPace)<97?'half-court':'normal pace'} game. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
           else if(_bmNBA.side==='mlDog')explanation=`Best market: <strong>${_nbaDog} ML</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Underdog value: ${_dogNbaN} net ${_dogNet} / DRtg ${_dogDrtg} / eFG ${_dogEFG}% — metrics don't justify the line. ${_nbaCtxLine}. ${_nbaProjLine}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
-          else if(_bmNBA.side==='sprdFav'){const _nbaFavCoverPct=(sprdP*100).toFixed(1),_nbaDogCoverPct=((1-sprdP)*100).toFixed(1);explanation=`Best market: <strong>${_nbaFav} -ATS (${espnSprdLbl})</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Fav covers -${Math.abs(espnSprdNum)} in ${_nbaFavCoverPct}% of simulations. ${_projSprdDisp}-pt proj margin vs ${espnSprdNum} line (+${(parseFloat(_projSprdDisp)-Math.abs(espnSprdNum)).toFixed(1)} value). MC cover rate: ${_nbaFavCoverPct}% fav / ${_nbaDogCoverPct}% dog. ${_nbaCtxLine}. eFG ${_favEFG}% vs opp-allowed ${_favOppEFG}%. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;}
-          else if(_bmNBA.side==='sprdDog'){const _nbaFavCoverPct=(sprdP*100).toFixed(1),_nbaDogCoverPct=((1-sprdP)*100).toFixed(1);explanation=`Best market: <strong>${_nbaDog} +ATS (${espnSprdLbl})</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Dog covers +${Math.abs(espnSprdNum)} in ${_nbaDogCoverPct}% of simulations. ${_projSprdDisp}-pt proj margin vs ${espnSprdNum} line — fav falls short by ${(Math.abs(espnSprdNum)-Math.abs(parseFloat(_projSprdDisp))).toFixed(1)} pts. MC cover rate: ${_nbaFavCoverPct}% fav / ${_nbaDogCoverPct}% dog. ${_nbaCtxLine}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;}
+          else if(_bmNBA.side==='sprdFav'){const _nbaFavCoverPct=(sprdP*100).toFixed(1),_nbaDogCoverPct=((1-sprdP)*100).toFixed(1);explanation=`Best market: <strong>${_nbaFav} -ATS (${sprdLbl})</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Fav covers -${Math.abs(espnSprdNum)} in ${_nbaFavCoverPct}% of simulations. ${_projSprdDisp}-pt proj margin vs ${espnSprdNum} line (+${(parseFloat(_projSprdDisp)-Math.abs(espnSprdNum)).toFixed(1)} value). MC cover rate: ${_nbaFavCoverPct}% fav / ${_nbaDogCoverPct}% dog. ${_nbaCtxLine}. eFG ${_favEFG}% vs opp-allowed ${_favOppEFG}%. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;}
+          else if(_bmNBA.side==='sprdDog'){const _nbaFavCoverPct=(sprdP*100).toFixed(1),_nbaDogCoverPct=((1-sprdP)*100).toFixed(1);explanation=`Best market: <strong>${_nbaDog} +ATS (${sprdLbl})</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Dog covers +${Math.abs(espnSprdNum)} in ${_nbaDogCoverPct}% of simulations. ${_projSprdDisp}-pt proj margin vs ${espnSprdNum} line — fav falls short by ${(Math.abs(espnSprdNum)-Math.abs(parseFloat(_projSprdDisp))).toFixed(1)} pts. MC cover rate: ${_nbaFavCoverPct}% fav / ${_nbaDogCoverPct}% dog. ${_nbaCtxLine}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;}
           else if(_bmNBA.side==='over')explanation=`Best market: <strong>OVER ${ouL}</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Totals play: projected combined ${(parseFloat(_projHScr)+parseFloat(_projAScr)).toFixed(1)} vs ${ouL} line. Pace: ${_hPace}/${_aPace} (avg ${((parseFloat(_hPace)+parseFloat(_aPace))/2).toFixed(1)} pos/game). eFG: ${_hEFG}%/${_aEFG}% — above-average efficiency both sides. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
           else explanation=`Best market: <strong>UNDER ${ouL}</strong> · ${topTierLabel} · ${_bpNBA}% · EV +${evPct}% · edge +${(_nbaEdge*100).toFixed(1)}pp. `+`Under play: projected ${(parseFloat(_projHScr)+parseFloat(_projAScr)).toFixed(1)} combined vs ${ouL} line. DRtg: ${_hDrtg}/${_aDrtg} — elite defensive resistance limiting efficient scoring. TOV%: ${_hTOV}/${_aTOV}. ${_nbaEnsStr} (${_nbaSigStr}). Kelly ${_nbaKelly}%. ${_sizeNBA}${_nmNBA.secStr}.`;
         }
@@ -9668,6 +9719,7 @@ function _nbaGameCard(espnEv){
       else{explanation=`FINAL — ${as2>hs?an:hn} WIN · ${Math.max(as2,hs)}-${Math.min(as2,hs)}.`;}
       // Parlay button
       const parlayBtn=`<button class="btn btn-o" style="padding:2px 6px;font-size:15px;margin-left:auto" onclick="T('nba','parlay');toast('// SELECT BET FOR ${an} at ${hn}')">+PAR</button>`;
+      const _nbaGidSafe=String(espnEv.id||(hn+'_'+an)).replace(/[^a-zA-Z0-9]/g,'');
       return`<div class="gc" style="border-left:2px solid rgba(240,0,255,.4)">
   <div class="gch">
     <div>
@@ -9675,10 +9727,24 @@ function _nbaGameCard(espnEv){
         <span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${an}</span>
         <span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>
         <span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${hn}</span>
+        <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px" onclick="event.stopPropagation();_toggleMatchupRadar('nba_${_nbaGidSafe}')">COMPARE</button>
       </div>
       ${espnHL?`<div class="gsp">ESPN: <span style="color:var(--pc)">${hn} ${espnHL>0?'+':''}${espnHL}</span> \xb7 <span style="color:var(--t2)">${an} ${espnAL>0?'+':''}${espnAL}</span>${ouL?` \xb7 <span style="color:var(--vc)">O/U ${ouL}</span>`:''}</div>`:''}
     </div>
     <div style="text-align:right"><div class="np mono" style="font-size:19px">${statusDot}${statusTxt}</div></div>
+  </div>
+  <div id="radar_nba_${_nbaGidSafe}" style="display:none;padding:8px 10px 4px;border-bottom:1px solid rgba(240,0,255,.1)">
+    <div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">
+      <span style="color:#00f0ff">■ ${hn}</span><span style="color:#f000ff">■ ${an}</span>
+    </div>
+    ${(()=>{try{
+      return _radarTabPanelHTML('nba_'+_nbaGidSafe,[
+        {label:'MATCHUP',svg:_matchupRadarSVG(['Off Rating','Def Rating','Net Rating','Pace','TS%','Turnover%'],_nbaMatchupRadarValues(hn),_nbaMatchupRadarValues(an),'nba_'+_nbaGidSafe+'_m')},
+        {label:'OFFENSE',svg:_matchupRadarSVG(['PPG','eFG%','3PT%','AST','ORB%','FT Rate'],_nbaOffenseRadarValues(hn),_nbaOffenseRadarValues(an),'nba_'+_nbaGidSafe+'_o')},
+        {label:'DEFENSE',svg:_matchupRadarSVG(['Pts Allowed','eFG% Allowed','STL','BLK','DRB','Opp TOV%'],_nbaDefenseRadarValues(hn),_nbaDefenseRadarValues(an),'nba_'+_nbaGidSafe+'_d')},
+      ]);
+    }catch(e){return'';}})()}
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). Built from NBA_BBREF, currently populated for the active playoff/Finals teams -- other teams read as neutral until the regular-season dataset is rebuilt.</div>
   </div>
   ${pre?`<div class="brow">
     <div class="${hCS.c} chip" style="flex:1" onclick="lockPick('${hn}','${an}','NBA','${hn}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)},'${today()}')"><div class="cht">ML ${hn}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
@@ -23623,6 +23689,27 @@ function _wnbaKey(abbr){
   var a=abbr.trim();
   return WNBA_ABBR_MAP[a]||a;
 }
+// WNBA matchup radar -- single MATCHUP tab only, not the 3-tab MATCHUP/
+// OFFENSE/DEFENSE split CFB/NHL/soccer/NFL/NBA use. window.__CV_DATA.wnba.teamStats
+// only carries 4 real fields per team (ortg/drtg/pace/net) -- there's no
+// real offense/defense sub-breakdown (eFG%/AST/STL/BLK-style categories)
+// to split into two more tabs honestly, so this doesn't fake one.
+function _wnbaMatchupRadarValues(abbr){
+  var D=window.__CV_DATA||{};
+  var ts=(D.wnba&&D.wnba.teamStats)||{};
+  var k=_wnbaKey(abbr);
+  var t=ts[k]||ts[abbr]||{};
+  var clamp=function(v,lo,hi){return v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));};
+  var ortg=t.ortg!=null?t.ortg:t.offRtg;
+  var drtg=t.drtg!=null?t.drtg:t.defRtg;
+  var net=t.net!=null?t.net:(ortg!=null&&drtg!=null?ortg-drtg:null);
+  return[
+    clamp(ortg,92,108),
+    100-clamp(drtg,92,108),
+    clamp(net,-10,10),
+    clamp(t.pace,86,96),
+  ];
+}
 function wnbaEloWP(r1,r2){return 1/(1+Math.pow(10,(r2-r1)/400));}
 function wnbaMC(hA,awA,n=25000){
   var hk=_wnbaKey(hA),ak=_wnbaKey(awA);
@@ -24072,6 +24159,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var csOU=chipC(0.5,-0.045);
       var _gameState=game.state||'pre';
       var _statusTxt=(_gameState==='in'||_gameState==='STATUS_IN_PROGRESS')?'● LIVE':(_gameState==='STATUS_FINAL'||_gameState==='post')?'FINAL':game.date?new Date(game.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'UPCOMING';
+      var _wnbaGidSafe=String(gameKey||(hab+'_'+aab)).replace(/[^a-zA-Z0-9]/g,'');
       htmlParts.push('<div class="gc" style="border-left:2px solid rgba(187,255,0,.4)">'
         +'<div class="gch">'
         +'<div>'
@@ -24079,6 +24167,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'<span class="gtm" style="color:'+(aP>=hP?'var(--pc)':'var(--t2)')+'">'+aab+'</span>'
         +'<span style="color:var(--t3);font-size:15px;font-family:var(--mono)">at</span>'
         +'<span class="gtm" style="color:'+(hP>aP?'var(--pc)':'var(--t2)')+'">'+hab+'</span>'
+        +'<button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px" onclick="event.stopPropagation();_toggleMatchupRadar(\'wnba_'+_wnbaGidSafe+'\')">COMPARE</button>'
         +liveBadge
         +'</div>'
         +'<div class="gsp">NET: '+hab+' '+hNetStr+' / '+aab+' '+aNetStr+'</div>'
@@ -24086,6 +24175,15 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +timeNet
         +'</div>'
         +'<div style="text-align:right"><div class="np mono" style="font-size:19px">'+_statusTxt+'</div></div>'
+        +'</div>'
+        +'<div id="radar_wnba_'+_wnbaGidSafe+'" style="display:none;padding:8px 10px 4px;border-bottom:1px solid rgba(187,255,0,.1)">'
+        +'<div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px"><span style="color:#00f0ff">■ '+hab+'</span><span style="color:#f000ff">■ '+aab+'</span></div>'
+        +(function(){try{
+          return _radarTabPanelHTML('wnba_'+_wnbaGidSafe,[
+            {label:'MATCHUP',svg:_matchupRadarSVG(['Off Rating','Def Rating','Net Rating','Pace'],_wnbaMatchupRadarValues(hab),_wnbaMatchupRadarValues(aab),'wnba_'+_wnbaGidSafe+'_m')},
+          ]);
+        }catch(e){return'';}})()
+        +'<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real stat normalized 0-100 (missing data defaults to the 50 midpoint, not guessed). Only 4 real team-level fields exist for WNBA today, so this is one MATCHUP tab, not a separate offense/defense breakdown.</div>'
         +'</div>'
         +'<div class="brow">'
         +'<div class="'+csH.c+' chip" style="flex:1" onclick="lockPick(\''+hab+'\',\''+aab+'\',\'WNBA\',\''+hab+' ML\','+hP.toFixed(4)+','+hMLn+','+hDec+',typeof today===\'function\'?today():\'\')">'
