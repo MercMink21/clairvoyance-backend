@@ -13457,19 +13457,68 @@ async function autoSettlePropsESPN(){
   const scoreboards={
     NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3',
     NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
-    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard'
+    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100'
   };
   const summaryBase={
     NBA:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=',
     NHL:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=',
-    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event='
+    MLB:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=',
+    NFL:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event='
   };
 
-  // Parse "Victor Wembanyama OVER PTS 26.5" → {player, direction, stat, line}
+  // Parse "Victor Wembanyama OVER PTS 26.5" (NBA/NHL/MLB: stat before
+  // line) OR "Josh Allen OVER 0.5 Passing TDs" (NFL model/Linemate
+  // props: line before stat, multi-word stat label) → {player,
+  // direction, stat, line}. Tries the original order first so
+  // NBA/NHL/MLB parsing is completely unchanged, only falls through to
+  // the NFL order when the first pattern doesn't match.
   function parsePropBetOn(bon){
-    const m=bon.match(/^(.+?)\s+(OVER|UNDER)\s+([A-Z+%]+)\s+([\d.]+)$/i);
-    if(!m)return null;
-    return{player:m[1].trim(),direction:m[2].toUpperCase(),stat:m[3].toUpperCase(),line:parseFloat(m[4])};
+    let m=bon.match(/^(.+?)\s+(OVER|UNDER)\s+([A-Z+%]+)\s+([\d.]+)$/i);
+    if(m)return{player:m[1].trim(),direction:m[2].toUpperCase(),stat:m[3].toUpperCase(),line:parseFloat(m[4])};
+    m=bon.match(/^(.+?)\s+(OVER|UNDER)\s+([\d.]+)\s+(.+)$/i);
+    if(m)return{player:m[1].trim(),direction:m[2].toUpperCase(),stat:m[4].trim().toUpperCase(),line:parseFloat(m[3])};
+    return null;
+  }
+  // NFL stat label (from _NFL_PROP_CATS' cat.label, or a Linemate raw
+  // label) → {category, statLabel} in ESPN's NFL boxscore shape, which
+  // (unlike NBA/NHL/MLB) splits a team's stats into several category
+  // blocks (passing/rushing/receiving) rather than one flat block.
+  const NFL_STAT_MAP=[
+    {kw:['passing yards','pass yds','passyds'],category:'passing',statLabel:'YDS'},
+    {kw:['passing tds','passing touchdowns','pass td'],category:'passing',statLabel:'TD'},
+    {kw:['rushing yards','rush yds','rushyds'],category:'rushing',statLabel:'YDS'},
+    {kw:['rushing tds','rushing touchdowns','rush td'],category:'rushing',statLabel:'TD'},
+    {kw:['receiving yards','rec yds','recyds'],category:'receiving',statLabel:'YDS'},
+    {kw:['receiving tds','receiving touchdowns','rec td'],category:'receiving',statLabel:'TD'},
+    {kw:['receptions','rec'],category:'receiving',statLabel:'REC'},
+  ];
+  // Searches one team's box score for propPlayer within the ONE category
+  // block that matches the requested stat (e.g. a rushing-yards prop
+  // only looks in the "rushing" block) -- a player who appears in
+  // multiple category blocks (a scrambling QB in both passing and
+  // rushing) is matched against the right one, not whichever block
+  // happens to list them first.
+  function extractNFLStat(teamData,propPlayer,statWordsUpper){
+    const sw=statWordsUpper.toLowerCase();
+    const match=NFL_STAT_MAP.find(m=>m.kw.some(k=>sw===k||sw.includes(k)));
+    if(!match)return null; // unrecognized stat label -> don't guess
+    for(const statBlock of teamData.statistics||[]){
+      const blockName=(statBlock.name||statBlock.displayName||'').toLowerCase();
+      if(!blockName.includes(match.category))continue;
+      const names=statBlock.names||[];
+      const idx=names.findIndex(n=>(n||'').toUpperCase()===match.statLabel);
+      if(idx<0)continue;
+      for(const ath of statBlock.athletes||[]){
+        const dName=ath.athlete?.displayName||'';
+        if(!nameMatch(dName,propPlayer))continue;
+        const raw=(ath.stats||[])[idx];
+        if(raw==null)return null;
+        const val=parseFloat(raw);
+        return isNaN(val)?null:{dName,val};
+      }
+    }
+    return null; // player not found in the matching category block -- didn't play it, or box score incomplete
   }
 
   // Stat type → box score label mapping
@@ -13504,10 +13553,14 @@ async function autoSettlePropsESPN(){
     return false;
   }
 
-  // Group props by sport
+  // Group props by sport -- via _normSport(), not the raw p.sport field.
+  // NFL/CFB props are correctly tagged sport:'FOOTBALL'/league:'NFL' (the
+  // established convention, matching lockNFLGame/lockCFBGame), so a raw
+  // p.sport read would group them under 'FOOTBALL', which has no
+  // scoreboard entry below and silently skips every one of them forever.
   const bySport={};
   for(const p of pending){
-    const sp=p.sport||'NBA';
+    const sp=_normSport(p)||p.sport||'NBA';
     if(!bySport[sp])bySport[sp]=[];
     bySport[sp].push(p);
   }
@@ -13556,17 +13609,27 @@ async function autoSettlePropsESPN(){
       const bs=bsCache[targetEvent.id];
       if(!bs?.boxscore?.players)continue;
 
-      // Build player stat lookup
+      // Build player stat lookup. NFL box scores split a team's stats
+      // into several category blocks (passing/rushing/receiving) instead
+      // of one flat block, so it needs its own lookup (extractNFLStat)
+      // rather than the single-statBlock logic NBA/NHL/MLB share below.
       let foundStat=null,foundPlayer=null;
-      outer:for(const teamData of bs.boxscore.players){
-        const statBlock=teamData.statistics?.[0];if(!statBlock)continue;
-        const names=statBlock.names||[];
-        for(const ath of(statBlock.athletes||[])){
-          const dName=ath.athlete?.displayName||'';
-          if(!nameMatch(dName,parsed.player))continue;
-          foundPlayer=dName;
-          foundStat=extractStat(names,ath.stats||[],parsed.stat);
-          break outer;
+      if(sport==='NFL'){
+        outer:for(const teamData of bs.boxscore.players){
+          const hit=extractNFLStat(teamData,parsed.player,parsed.stat);
+          if(hit){foundPlayer=hit.dName;foundStat=hit.val;break outer;}
+        }
+      }else{
+        outer:for(const teamData of bs.boxscore.players){
+          const statBlock=teamData.statistics?.[0];if(!statBlock)continue;
+          const names=statBlock.names||[];
+          for(const ath of(statBlock.athletes||[])){
+            const dName=ath.athlete?.displayName||'';
+            if(!nameMatch(dName,parsed.player))continue;
+            foundPlayer=dName;
+            foundStat=extractStat(names,ath.stats||[],parsed.stat);
+            break outer;
+          }
         }
       }
       if(foundStat===null)continue;
@@ -14566,7 +14629,7 @@ function _nflOppDefFactor(oppAbbr,cat,games){
   if(cat.defKey==null)return{factor:0,note:'no opponent defensive category tracked for this stat'};
   const D=_NFL_DATA;
   const oppDef=D?.stats?.[oppAbbr]?.defenseAllowed;
-  const s=D.standings?.[oppAbbr];
+  const s=D?.standings?.[oppAbbr];
   const fallbackGames=s?((s.wins||0)+(s.losses||0)+(s.ties||0)):games;
   const perGame=_nflDefPerGame(oppDef,cat,fallbackGames);
   if(perGame==null)return{factor:0,note:'no opponent defensive data yet'};
@@ -14615,7 +14678,10 @@ function _nflBuildPropRow(player,teamAbbr,oppAbbr,cat){
     const pick=likelihood>=50?'OVER':'UNDER';
     const conf=pick==='OVER'?likelihood:100-likelihood;
     const adjustor=+(adjMean-perGame).toFixed(2);
-    const grade=_nflPropGrade(conf,games);
+    // Same "no real edge -> SKIP" guard the yardage branch applies below --
+    // without an opponent defensive signal (adjustor~0), a near-coinflip
+    // Poisson rate shouldn't be dressed up as PREMIUM/OPTIMAL/LEAN.
+    const grade=(Math.abs(adjustor)<0.02&&Math.abs(likelihood-50)<4)?'SKIP':_nflPropGrade(conf,games);
     const reasoning=`${player.name} has ${base} ${cat.label.toLowerCase()} in ${games} games this season (${perGame.toFixed(2)}/gm). `+
       (note?`No real opponent defensive data available for ${oppAbbr} in this category yet — rate is season-average only, no matchup adjustment applied. `:
         _nflDefNote(oppAbbr,cat,factor,oppPerGame,leagueAvg,rank,total,realAvg,adjustor,'/gm'))+
@@ -14706,6 +14772,11 @@ function lockNFLModelProp(idx){
   const dec=1/Math.max(0.01,r.likelihood/100);
   const prop={id:`prop_nfl_model_${Date.now()}`,team:r.team,player:r.player,line:r.line,over:r.pick==='OVER',conf:r.likelihood/100,
     lockedAt:Date.now(),outcome:'pending',date:today(),sport:'FOOTBALL',league:'NFL',betType:'PROP',
+    // hA/awA -- without these autoSettlePropsESPN's event-matching loop
+    // can never locate the game this prop belongs to, and it sits
+    // pending forever (real bug, fixed alongside NFL support in
+    // autoSettlePropsESPN itself).
+    hA:r.team,awA:r.opp||r.team,
     betOn:`${r.player} ${r.pick} ${r.line} ${r.cat}`,winProb:r.likelihood/100,decOdds:dec,wager:0};
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
@@ -14766,6 +14837,7 @@ function lockNFLProp(idx){
   const dec=p.ml?ml2d(p.ml):(1/Math.max(0.01,(p.conf||55)/100));
   const prop={id:`prop_nfl_${Date.now()}`,team:p.team,player:p.player,line:p.line,over:p.over,conf:(p.conf||55)/100,
     lockedAt:Date.now(),outcome:'pending',date:today(),sport:'FOOTBALL',league:'NFL',betType:'PROP',
+    hA:p.team,awA:p.opp||p.team,
     betOn:`${p.player} ${p.over?'OVER':'UNDER'} ${p.line} ${p.stat}`,winProb:(p.conf||55)/100,decOdds:dec,wager:0};
   LOCKED_PROPS.push(prop);
   localStorage.setItem('locked_props',JSON.stringify(LOCKED_PROPS));
