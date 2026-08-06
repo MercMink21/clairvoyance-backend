@@ -3512,6 +3512,39 @@ function _mlbTier(p,e,sigmaV){
 }
 function chipC(p,e){const t=tier(p,e);if(t===3)return{c:'chip-g',pl:'pg',lb:'PREMIUM'};if(t===2)return{c:'chip-p',pl:'pp',lb:'// OPTIMAL'};if(t===1)return{c:'chip-n',pl:'pn',lb:'// LEAN'};return{c:'chip-h',pl:'ph',lb:'// SKIP'};}
 /* Generic prop Monte Carlo — normal distribution */
+// Shared opponent-defense adjustment for NBA/WNBA/NHL player props --
+// same "capped nudge off a REAL, dynamically-computed league average"
+// pattern the NFL props engine established (_nflOppDefFactor), not a
+// hardcoded assumed constant. Needs >=8 teams' worth of real data
+// loaded before trusting a computed average (early season / partial
+// load falls back to a rough static constant, disclosed as such).
+function _propOppDefFactor(sport,oppAbbr){
+  const D=window.__CV_DATA||{};
+  let raw=null,rows=[],lgFallback=null;
+  if(sport==='NBA'){
+    const adv=D.nba?.teamAdv||{};
+    raw=adv[oppAbbr]?.drtg;
+    rows=Object.values(adv).map(t=>t?.drtg).filter(v=>v!=null);
+    lgFallback=114.5; // matches nbaMC's own LG_DRTG constant
+  }else if(sport==='WNBA'){
+    const ts=(D.wnba&&D.wnba.teamStats)||{};
+    const k=typeof _wnbaKey==='function'?_wnbaKey(oppAbbr):oppAbbr;
+    raw=(ts[k]||ts[oppAbbr])?.drtg;
+    rows=Object.values(ts).map(t=>t?.drtg).filter(v=>v!=null&&v>0);
+    lgFallback=98;
+  }else if(sport==='NHL'){
+    const t=(typeof NHL!=='undefined'?NHL[oppAbbr]:null);
+    raw=t?.ga60;
+    rows=(typeof NHL!=='undefined'?Object.values(NHL):[]).map(t2=>t2?.ga60).filter(v=>v!=null);
+    lgFallback=(typeof _NHL_LG_GA60!=='undefined')?_NHL_LG_GA60:2.9;
+  }
+  if(raw==null)return{factor:0,note:'no real opponent defensive data yet'};
+  const haveLeague=rows.length>=8;
+  const lgAvg=haveLeague?(rows.reduce((s,v)=>s+v,0)/rows.length):lgFallback;
+  const pct=(raw-lgAvg)/lgAvg; // higher drtg/ga60 = worse defense = boosts offense
+  const factor=Math.max(-0.12,Math.min(0.12,pct));
+  return{factor,raw,lgAvg,realAvg:haveLeague,note:null};
+}
 function propMC(mu,sigma,line,n){
   if(!n)n=25000;if(mu<=0)return{overP:0.5,hitRate:50,avgStat:mu};
   if(!sigma||sigma<=0)sigma=Math.max(0.5,mu*0.4);
@@ -10484,14 +10517,26 @@ async function _fetchNBAPlayerStats(){
   }catch(e){console.warn('[CV] NBA stats fetch err:',e);return null;}
 }
 
+// Shared PREMIUM/OPTIMAL/LEAN/SKIP grader -- conf is the probability of
+// the SIDE ACTUALLY PICKED (always >=50), same thresholds the NFL/soccer/
+// Linemate prop panels already use, for consistency across every sport's
+// props in this app.
+function _propGradeByConf(conf){return conf>=67?'PREMIUM':conf>=62?'OPTIMAL':conf>=55?'LEAN':'SKIP';}
 function _generateNBAProps(games,statsData){
   if(!statsData)return[];
   var props=[];
   var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
   var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
-  var gradeP=function(p){return p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';};
   var players=Object.values(statsData);
 
+  // Real opponent-defense adjustment (via _propOppDefFactor) + real
+  // UNDER support -- both previously missing here (OVER-only, no
+  // matchup context beyond the player's own season average). Same
+  // "book-style line at the real season average, model-adjusted
+  // projection compared against it" pattern the NFL props engine uses:
+  // the LINE stays the player's own unadjusted average (what a real
+  // book would post), the PROJECTION is what actually moves off the
+  // opponent's real defensive rating.
   (games||[]).forEach(function(g){
     var hn=g.h||g.hA||g.home,an=g.a||g.awA||g.away;if(!hn||!an)return;
     var gamePlayers=players.filter(function(p){
@@ -10499,45 +10544,32 @@ function _generateNBAProps(games,statsData){
     }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,6);
     var seen=new Set();
     gamePlayers.forEach(function(pl){
-      // Points prop
-      if(pl.ppg>=12&&!seen.has(pl.name+'_pts')){seen.add(pl.name+'_pts');
-        var ppgN=_statmuseFormNudge(pl.name,'PPG',pl.ppg);
-        var line=parseFloat(_forceHalfLine(ppgN));
-        var sigma=Math.max(4,ppgN*0.38);
-        var mc=propMC(ppgN,sigma,line,5000);
-        var grade=gradeP(mc.overP);if(grade==='SKIP')return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Guard/Forward',stat:'PTS',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade,hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.ppg+'PPG / '+pl.gp+'G · MC sim: '+mc.hitRate+'% over '+line});
+      var opp=pl.team===hn?an:hn;
+      var oppDef=_propOppDefFactor('NBA',opp);
+      var factor=oppDef.factor;
+      var oppNote=oppDef.note?'No real opponent defensive rating available for '+opp+' yet — projection uses season average only, no matchup adjustment applied. '
+        :'Opp '+opp+' DRtg '+oppDef.raw.toFixed(1)+' vs a '+oppDef.lgAvg.toFixed(1)+' league average'+(oppDef.realAvg?' computed from every currently-loaded team':' (assumed baseline — not enough teams loaded yet for a real computed average)')+', a '+(factor*100).toFixed(0)+'% '+(factor>=0?'boost':'reduction')+' folded into the projection. ';
+      function push(statKey,label,minAvg,cv){
+        var pKey=pl.name+'_'+statKey;if(seen.has(pKey))return;
+        var base=pl[statKey];if(base==null||base<minAvg)return;
+        seen.add(pKey);
+        var baseN=_statmuseFormNudge(pl.name,label,base);
+        var line=parseFloat(_forceHalfLine(baseN));
+        var adjMu=Math.max(0.1,baseN*(1+factor));
+        var sigma=Math.max(minAvg*0.3,baseN*cv);
+        var mc=propMC(adjMu,sigma,line,5000);
+        var pick=adjMu>=line?'OVER':'UNDER';
+        var conf=pick==='OVER'?mc.overP*100:(1-mc.overP)*100;
+        var grade=(Math.abs(factor)<0.01&&Math.abs(conf-50)<4)?'SKIP':_propGradeByConf(conf);
+        var ml=p2ml(pick==='OVER'?mc.overP:1-mc.overP);
+        props.push({player:pl.name,team:pl.team,opp:opp,hA:hn,awA:an,
+          stat:statKey,line:line,over:pick==='OVER',ml:mlStr(ml),prob:conf/100,
+          grade:grade,hitRate:Math.round(conf)+'%',adjustor:+(adjMu-baseN).toFixed(1),
+          basis:pl.name+' averages '+baseN.toFixed(1)+' '+statKey+' across '+pl.gp+' games this season. '+oppNote+'No head-to-head history vs '+opp+' this season or historically is factored in yet — likelihood is directional (modeled variance assumption), not a market-calibrated probability.'});
       }
-      // Rebounds prop
-      if(pl.rpg>=6&&!seen.has(pl.name+'_reb')){seen.add(pl.name+'_reb');
-        var rpgN=_statmuseFormNudge(pl.name,'RPG',pl.rpg);
-        var line=parseFloat(_forceHalfLine(rpgN));
-        var sigma=Math.max(2,rpgN*0.45);
-        var mc=propMC(rpgN,sigma,line,5000);
-        if(mc.overP<0.55)return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Forward/Center',stat:'REB',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.rpg+'RPG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
-      // Assists prop
-      if(pl.apg>=5&&!seen.has(pl.name+'_ast')){seen.add(pl.name+'_ast');
-        var apgN=_statmuseFormNudge(pl.name,'APG',pl.apg);
-        var line=parseFloat(_forceHalfLine(apgN));
-        var sigma=Math.max(1.5,apgN*0.50);
-        var mc=propMC(apgN,sigma,line,5000);
-        if(mc.overP<0.55)return;
-        var ml=p2ml(mc.overP);
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          pos:'Guard',stat:'AST',line:line,over:true,ml:mlStr(ml),prob:mc.overP,
-          grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.apg+'APG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
+      push('ppg','PPG',12,0.38);
+      push('rpg','RPG',6,0.45);
+      push('apg','APG',5,0.50);
     });
   });
   return props.sort(function(a,b){return b.prob-a.prob;});
@@ -10558,6 +10590,9 @@ async function renderNBADailyProps(){
     +_nbaDPData.map(function(p,i){
     var c=gradeC[p.grade]||'var(--t3)';
     var mlStr=p.ml;
+    var isOver=p.over!==false;
+    var dirC=isOver?'var(--nc)':'var(--hc)';
+    var adjStr=p.adjustor!=null?' · adj '+(p.adjustor>=0?'+':'')+p.adjustor:'';
     return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+c+'">'
       +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">'
       +'<div><span style="font-family:var(--orb);font-size:22px;font-weight:700">'+p.player+'</span>'
@@ -10566,11 +10601,11 @@ async function renderNBADailyProps(){
       +'<span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">MC:'+p.hitRate+'</span>'
       +'<span style="font-family:var(--mono);font-size:16px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
       +'</div></div>'
-      +'<div style="font-family:var(--mono);font-size:22px;color:var(--nc);margin-bottom:3px">▲ OVER '+p.line+' '+p.stat+' <span style="color:var(--t2);font-size:18px">· '+mlStr+' · '+(p.prob*100).toFixed(0)+'% MODEL</span></div>'
+      +'<div style="font-family:var(--mono);font-size:22px;color:'+dirC+';margin-bottom:3px">'+(isOver?'▲ OVER':'▼ UNDER')+' '+p.line+' '+p.stat+' <span style="color:var(--t2);font-size:18px">· '+mlStr+' · '+(p.prob*100).toFixed(0)+'% MODEL'+adjStr+'</span></div>'
       +'<div style="font-family:var(--mono);font-size:17px;color:var(--t2);margin-bottom:4px">'+p.basis+'</div>'
       +'<div style="display:flex;justify-content:space-between;align-items:center">'
       +'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ESPN Stats + MC Sim (5k)</span>'
-      +'<button class="btn btn-o btn-sm" onclick="lockProp(\''+p.team+'\',\''+p.player+'\',\''+p.line+'\',true,'+p.prob.toFixed(2)+',\''+p.ml+'\',\'NBA\',\''+p.opp+'\')">LOCK</button>'
+      +'<button class="btn btn-o btn-sm" onclick="lockProp(\''+p.team+'\',\''+p.player+'\',\''+p.line+'\','+isOver+','+p.prob.toFixed(2)+',\''+p.ml+'\',\'NBA\',\''+p.opp+'\')">LOCK</button>'
       +'</div>'
     +'</div>';
   }).join('');
