@@ -5164,10 +5164,27 @@ def main() -> None:
         bundle["linemate"].setdefault("form", {})
         for sport in ["mlb","nba","nhl","nfl"]:
             if S in (sport,"all"):
-                bundle["linemate"]["props"][sport]  = fetch_linemate_props(sport)
+                props = fetch_linemate_props(sport)
+                # This fast-path never applied validate_props_against_schedule()
+                # at all -- the real fix for Linemate's regex-based team-tag
+                # extraction silently mis-assigning a prop to the wrong
+                # matchup only ever ran in the full sync path. Since NBA/NFL/
+                # NHL's actual daily props workflows call --mode props (this
+                # exact code path), every real daily refresh for those three
+                # sports was missing this protection. NFL's schedule spans a
+                # week rather than "today" like the others, so it needs its
+                # own fresh weekly fetch; MLB/NBA/NHL validate against
+                # whatever real schedule the last full sync already cached
+                # in this same bundle, avoiding an extra fetch here.
+                if sport == "nfl":
+                    props = validate_props_against_schedule(props, fetch_week_schedule("football/nfl","nfl"))
+                else:
+                    props = validate_props_against_schedule(props, (bundle.get(sport) or {}).get("today") or [])
+                bundle["linemate"]["props"][sport]  = props
                 bundle["linemate"]["trends"][sport] = fetch_linemate_trends(sport)
                 bundle["linemate"]["form"][sport]   = fetch_linemate_cheatsheet(sport)
                 time.sleep(1)
+        bundle["linemate"]["generatedAt"] = TS_DISPLAY
         write_data_json(bundle)
         if args.push: git_push("props-only refresh")
         return
