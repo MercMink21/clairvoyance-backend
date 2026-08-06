@@ -443,11 +443,19 @@ def generate_cards(page, out_dir: Path, period: str, prefix_extra: str = "") -> 
           // w/l/pct inline via its own cP() closure, which isn't reachable
           // from here, so replicate that same win/loss/settled-only logic
           // directly against the raw array.
+          //
+          // lockedCount previously summed bets.length (every bet in the
+          // window, including pending/void) instead of only settled ones --
+          // so it never matched w+l the way the card's own PICKS LOCKED
+          // label implies. It should equal the total settled count for the
+          // period (same number w+l always sums to), not the raw count of
+          // everything that happened to be locked in that window regardless
+          // of whether it ever resolved.
           let lockedCount = 0;
           const bySport = (d.sportList || []).map(s => {
             const bets = (d.bySport && d.bySport[s]) || [];
-            lockedCount += bets.length;
             const settled = bets.filter(p => p.outcome === 'win' || p.outcome === 'loss');
+            lockedCount += settled.length;
             const w = settled.filter(p => p.outcome === 'win').length;
             const l = settled.length - w;
             const units = settled.reduce((a, p) => {
@@ -739,7 +747,10 @@ def get_year_stats(page, year: int) -> dict:
             }, 0);
             return { label: s, w: wS, l: lS, n: settledS.length, pct: settledS.length ? wS / settledS.length : null, units: unitsS };
           }).filter(s => s.n);
-          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units, lockedCount: inYear.length, bySport };
+          // Same fix as generate_cards()'s stats block -- lockedCount must
+          // be the settled count (what PICKS LOCKED implies), not every
+          // bet locked in the window regardless of whether it resolved.
+          return { w, l, n: settled.length, pct: settled.length ? w / settled.length : null, units, lockedCount: settled.length, bySport };
         }
         """,
         year,
