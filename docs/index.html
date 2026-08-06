@@ -10525,9 +10525,9 @@ function renderNBAProps(){
         <div style="display:flex;gap:5px;align-items:center">
           <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">LINE</span>
           <input type="number" step="0.5" value="${p.line}" id="padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:17px;padding:2px 6px;border-radius:2px;text-align:center">
-          <button class="btn btn-o btn-sm" style="font-size:14px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">-½</button>
-          <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▲O</button><button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">▼U</button>
-          <button class="btn btn-o btn-sm" style="font-size:14px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}')">+½</button>
+          <button class="btn btn-o btn-sm" style="font-size:14px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',-0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}','NBA','${p.t==='SA'?'NYK':'SA'}')">-½</button>
+          <button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}','NBA','${p.t==='SA'?'NYK':'SA'}')">▲O</button><button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}','${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${(p.conf/100).toFixed(2)},'${p.ml||'-110'}','NBA','${p.t==='SA'?'NYK':'SA'}')">▼U</button>
+          <button class="btn btn-o btn-sm" style="font-size:14px;padding:2px 5px" onclick="_adjLockDelta('padj_nhl_${p.player.replace(/\W+/g,'_')}_${p.stat}',0.5,'${p.t}','${p.player.replace(/'/g,"\\'")}','${p.stat}',${p.over},${(p.conf/100).toFixed(2)},'${p.ml||'-110'}','NBA','${p.t==='SA'?'NYK':'SA'}')">+½</button>
         </div>
       </div>
     </div>`;
@@ -15811,11 +15811,15 @@ function lockProp(team,player,line,over,conf,ml,sport,opp){
   // Prefer the sport the caller actually knows it's rendering (every
   // call site is itself sport-specific — the WNBA props tab knows it's
   // WNBA, the NBA tab knows it's NBA) over guessing from the team
-  // abbreviation, which silently mislabeled every WNBA (and any other
-  // non-NBA/NHL) prop as UNKNOWN since no WNBA_TEAMS map exists to check
-  // against. Falls back to the old inference only if no sport was passed
-  // (older/adjacent callers), never blind-defaulting to NBA.
-  sport=sport||(NBA_TEAMS[team]?'NBA':NHL[team]?'NHL':'UNKNOWN');
+  // abbreviation. The fallback used to only check NBA_TEAMS/NHL, which
+  // silently mislabeled every WNBA (and any other non-NBA/NHL) prop as
+  // UNKNOWN since no WNBA_TEAMS map exists to check against -- 3 real
+  // settled WNBA props were found tagged UNKNOWN this way and had to be
+  // retagged after the fact. Now reuses _classifyTeamsSport, the same
+  // MLB/NHL/NBA/WNBA classifier lockPick's own fallback already relies
+  // on (single source of truth, see its own comment above), instead of
+  // duplicating a narrower inline guess here.
+  sport=sport||_classifyTeamsSport(team,opp||team);
   if(sport==='UNKNOWN'){try{console.warn('[lockProp] unclassified team — tagged UNKNOWN:',team);}catch(e){}}
   const dec=ml>0?ml/100+1:100/Math.abs(ml)+1;
   const prop={id:`prop_${Date.now()}`,team,player,line,over,conf,ml,lockedAt:Date.now(),outcome:'pending',date:today(),
