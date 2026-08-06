@@ -479,8 +479,21 @@ def git_push(paths: list[str], message: str) -> None:
     if r.returncode != 0:
         _log(f"  nothing to commit ({r.stdout.strip()[:120]})")
         return
-    subprocess.run(["git", "push"], cwd=ROOT, check=True)
-    _log("  pushed")
+    # Main gets pushed to constantly (a live-score bot pushes every ~3min,
+    # plus other scheduled scrapers) -- a bare push with no retry fails
+    # instantly on any non-fast-forward race, which is exactly what was
+    # happening here (this had zero pull/rebase at all, unlike fetch_cfb.py's
+    # git_push). Rebase onto the latest remote and retry a few times before
+    # giving up, same pattern as fetch_cfb.py.
+    for attempt in range(5):
+        subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=ROOT, capture_output=True)
+        push = subprocess.run(["git", "push", "origin", "main"], cwd=ROOT, capture_output=True, text=True)
+        if push.returncode == 0:
+            _log("  pushed")
+            return
+        _log(f"  push attempt {attempt+1}/5 failed, retrying: {push.stderr.strip()[:160]}")
+        time.sleep(3 + attempt * 2)
+    raise RuntimeError("git push failed after 5 retries")
 
 
 if __name__ == "__main__":

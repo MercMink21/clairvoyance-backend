@@ -408,9 +408,19 @@ def git_push(paths: list[str], message: str) -> None:
         _log("git: nothing to commit")
         return
     subprocess.run(["git", "-C", str(ROOT), "commit", "-m", message], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(ROOT), "pull", "--rebase", "origin", "main"], check=False, capture_output=True)
-    subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], check=True, capture_output=True)
-    _log("git push → main ✓")
+    # A single rebase-then-push attempt still races: CFB and NFL's schedule
+    # workflows fire on the same cron, plus a live-score bot pushes to main
+    # every ~3min, so another push can land between this rebase and this
+    # push. Retry with a fresh rebase each time instead of failing outright.
+    for attempt in range(5):
+        subprocess.run(["git", "-C", str(ROOT), "pull", "--rebase", "origin", "main"], capture_output=True)
+        push = subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True, text=True)
+        if push.returncode == 0:
+            _log("git push → main ✓")
+            return
+        _log(f"git push attempt {attempt+1}/5 failed, retrying: {push.stderr.strip()[:160]}")
+        time.sleep(3 + attempt * 2)
+    raise RuntimeError("git push failed after 5 retries")
 
 
 if __name__ == "__main__":
