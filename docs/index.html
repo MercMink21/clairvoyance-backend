@@ -4405,6 +4405,45 @@ function applyMLB(data,type){
   }
   if(updated>0)buildMLB();
 }
+// Real season batting/pitching splits (TEAMS[abbr].bat/.pit, updated live
+// via applyMLB from the actual MLB Stats API) normalized 0-100 for the
+// same radar-chart pattern NBA/WNBA/NFL/NHL/CFB/Soccer already use.
+function _mlbOffenseRadarValues(abbr){
+  const b=TEAMS[abbr]?.bat||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    clamp(b.OBP,.290,.360),
+    clamp(b.SLG,.380,.480),
+    clamp(b.Op??b.wRC,80,120),
+    clamp(b.RG,3.5,5.5),
+    clamp(b.BB_pct,6,11),
+    100-clamp(b.K_pct,18,26),
+  ];
+}
+function _mlbPitchingRadarValues(abbr){
+  const p=TEAMS[abbr]?.pit||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    100-clamp(p.ERA,3.00,5.00),
+    100-clamp(p.W,1.10,1.45),
+    clamp(p.K9,7,10),
+    100-clamp(p.B9,2.5,4.0),
+    100-clamp(p.RAG,3.5,5.5),
+    100-clamp(p.HR9,0.9,1.6),
+  ];
+}
+function _mlbMatchupRadarValues(abbr){
+  const b=TEAMS[abbr]?.bat||{},p=TEAMS[abbr]?.pit||{};
+  const clamp=(v,lo,hi)=>v==null?50:Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+  return[
+    clamp(b.Op??b.wRC,80,120),
+    100-clamp(p.ERA,3.00,5.00),
+    clamp((b.RG||0)-(p.RAG||0),-1.5,1.5),
+    clamp(b.OBP,.290,.360),
+    100-clamp(p.W,1.10,1.45),
+    100-clamp(p.HR9,0.9,1.6),
+  ];
+}
 function mlbCard(hA,awA,gt,date,espnGame){
   const h=TEAMS[hA],aw=TEAMS[awA];if(!h||!aw)return'';
   const ens=mlbEns(hA,awA,espnGame);const mc=ens.mc2;
@@ -4557,7 +4596,20 @@ function mlbCard(hA,awA,gt,date,espnGame){
         <div class="gsp">${aPit} (${aPitERA} ERA) vs ${hPit} (${hPitERA} ERA)</div>
         ${espnGame?.hML?`<div class="gsp">ESPN: <span style="color:var(--pc)">${hA} ${hML>0?'+':''}${hML}</span> · <span style="color:var(--t2)">${awA} ${aML>0?'+':''}${aML}</span> · <span style="color:var(--vc)">O/U ${ouL}</span></div>`:''}
       </div>
-      <div style="text-align:right"><div class="np mono" style="font-size:19px">${statusDot}${statusTxt}</div></div>
+      <div style="text-align:right"><div class="np mono" style="font-size:19px">${statusDot}${statusTxt}</div><button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px;margin-top:3px" onclick="event.stopPropagation();_toggleMatchupRadar('mlb_${hA}_${awA}')">COMPARE</button></div>
+    </div>
+    <div id="radar_mlb_${hA}_${awA}" style="display:none;padding:8px 10px 4px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;justify-content:center;gap:14px;margin-bottom:2px;font-family:var(--mono);font-size:12px">
+        <span style="color:#00f0ff">■ ${hA}</span><span style="color:#f000ff">■ ${awA}</span>
+      </div>
+      ${(()=>{try{
+        return _radarTabPanelHTML('mlb_'+hA+'_'+awA,[
+          {label:'MATCHUP',svg:_matchupRadarSVG(['Offense (wRC+)','Pitching (ERA)','Run diff','OBP','WHIP','HR/9'],_mlbMatchupRadarValues(hA),_mlbMatchupRadarValues(awA),'mlb_'+hA+'_'+awA+'_m')},
+          {label:'OFFENSE',svg:_matchupRadarSVG(['OBP','SLG','wRC+','Runs/gm','BB%','K% (inv)'],_mlbOffenseRadarValues(hA),_mlbOffenseRadarValues(awA),'mlb_'+hA+'_'+awA+'_o')},
+          {label:'PITCHING',svg:_matchupRadarSVG(['ERA','WHIP','K/9','BB/9','Runs allowed/gm','HR/9'],_mlbPitchingRadarValues(hA),_mlbPitchingRadarValues(awA),'mlb_'+hA+'_'+awA+'_d')},
+        ]);
+      }catch(e){return'';}})()}
+      <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;margin-top:2px">Each axis is a real season split this app already has for this team (OBP/SLG/wRC+, ERA/WHIP/K9/BB9/HR9) normalized 0-100. Missing data defaults to the 50 midpoint.</div>
     </div>
     ${weatherBadge(_WX_CACHE[hA],hA)}
     </div>
