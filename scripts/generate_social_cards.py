@@ -578,8 +578,14 @@ def get_free_pick(page) -> dict | None:
           if (!(window.ESPN_GAMES && window.ESPN_GAMES.length) && typeof loadGames === 'function') {
             warmups.push(loadGames().catch(() => {}));
           }
-          if (typeof renderWNBAWeek === 'function') {
-            try { renderWNBAWeek(); } catch (e) {}
+          // renderWNBAWeek() was retired (WNBA's 7-day schedule view got
+          // removed) -- this call silently no-op'd via the typeof guard
+          // ever since, so window._wnbaGameData never got populated here
+          // and WNBA could never produce a Pick of Day leg. renderWNBAGames()
+          // is the real modern replacement (same one the live WNBA props
+          // engine awaits) and is what actually sets window._wnbaGameData.
+          if (typeof renderWNBAGames === 'function') {
+            warmups.push(renderWNBAGames().catch(() => {}));
           }
           await Promise.allSettled(warmups);
           if (typeof _epGatherLegs !== 'function') return null;
@@ -606,8 +612,22 @@ def get_free_pick(page) -> dict | None:
             (l.type === 'PROP' && l.sport === 'MLB')
           );
           if (typeof mlbEns === 'function' && typeof p2ml === 'function') {
-            const mlbGames = (window.ESPN_GAMES || window._mlbGames || [])
-              .filter(g => { const s = (g.status || '').toUpperCase(); return g.hA && g.awA && s !== 'FINAL' && s !== 'F'; })
+            // Two real bugs here: (1) `window.ESPN_GAMES || window._mlbGames`
+            // -- an empty array is truthy in JS, so whenever ESPN_GAMES was
+            // [] (the common case; nothing else in this headless warmup
+            // path ever populates it) the || short-circuited to [] and
+            // window._mlbGames's real games were never reached at all, so
+            // this block silently produced zero MLB legs every single run.
+            // (2) the finished-game filter checked status against 'FINAL'/
+            // 'F', but real game objects use status:'post' (ESPN's actual
+            // state value) -- so finished games were never excluded either.
+            const _espnGames = (window.ESPN_GAMES && window.ESPN_GAMES.length) ? window.ESPN_GAMES : (window._mlbGames || []);
+            const mlbGames = _espnGames
+              .filter(g => {
+                const s = (g.status || '').toUpperCase();
+                const sn = (g.statusName || '').toUpperCase();
+                return g.hA && g.awA && s !== 'POST' && s !== 'FINAL' && s !== 'F' && sn !== 'STATUS_FINAL';
+              })
               .slice(0, 15);
             const _grade = p => p >= 0.67 ? 'PREMIUM' : p >= 0.62 ? 'OPTIMAL' : p >= 0.55 ? 'LEAN' : 'SKIP';
             mlbGames.forEach(g => {
