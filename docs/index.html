@@ -10587,6 +10587,52 @@ function _recPropLineHTML(modelLine,mktMatch,statLabel){
       :'<span style="color:var(--t3)">MARKET — no book line posted yet for this player/stat</span>')
     +'</div>';
 }
+// Computes a real model-recommended line for a REAL market prop (Linemate)
+// using the same per-day cached season-average + _propOppDefFactor
+// opponent adjustment the live MC engines use, so the primary Linemate
+// panels (where p.line already IS the market line) can also show a real
+// independently-computed model line next to it instead of only doing that
+// comparison when Linemate's own coverage was thin. Returns null if the
+// stats cache for that sport hasn't loaded yet (panel discloses that).
+function _modelLineForProp(sport,player,statLabel,opp){
+  var cache=sport==='nba'?_nbaStatsCache:sport==='wnba'?_wnbaStatsCache:sport==='nhl'?_nhlStatsCache:null;
+  if(!cache)return null;
+  var p=cache[(player||'').toLowerCase().trim()];if(!p)return null;
+  var stat=_propStatNorm(statLabel);
+  var factor=opp?_propOppDefFactor(sport.toUpperCase(),opp).factor:0;
+  var base=null;
+  if(stat==='pra')base=(p.ppg||0)+(p.rpg||0)+(p.apg||0);
+  else if(stat==='pts')base=p.ppg;
+  else if(stat==='reb')base=p.rpg;
+  else if(stat==='ast')base=p.apg;
+  else if(stat==='goal')base=p.gpg;
+  else if(stat==='shot')base=p.shpg;
+  if(base==null||!base)return null;
+  return parseFloat(_forceHalfLine(Math.max(0.05,base*(1+factor))));
+}
+// NFL equivalent -- reuses the existing model-props machinery
+// (_NFL_PROP_CATS/_nflBuildPropRow) rather than duplicating it, looking
+// the player up by name across every team's cached playerStats and
+// resolving their opponent from this week's schedule.
+function _nflModelLineForPlayer(playerName,statLabel){
+  var D=window._NFL_DATA;if(!D||!D.playerStats)return null;
+  var pName=(playerName||'').toLowerCase().trim();if(!pName)return null;
+  var wantStat=_propStatNorm(statLabel);
+  var cat=_NFL_PROP_CATS.find(function(c){return _propStatNorm(c.label)===wantStat;});
+  if(!cat)return null;
+  for(var teamAbbr in D.playerStats){
+    var players=D.playerStats[teamAbbr]||[];
+    var pl=players.find(function(p){return(p.name||'').toLowerCase().trim()===pName;});
+    if(!pl)continue;
+    var opp=null;
+    Object.values(D.weeks||{}).forEach(function(list){(list||[]).forEach(function(g){
+      if(g.home===teamAbbr)opp=g.away;if(g.away===teamAbbr)opp=g.home;
+    });});
+    if(!opp)return null;
+    try{var row=_nflBuildPropRow(pl,teamAbbr,opp,cat);return row?row.line:null;}catch(e){return null;}
+  }
+  return null;
+}
 function _generateNBAProps(games,statsData){
   if(!statsData)return[];
   var props=[];
@@ -15113,6 +15159,7 @@ function renderNFLProps(filter){
         ${p.hitRate?`<span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid var(--t3);color:var(--t3);border-radius:2px">HIT:${p.hitRate}</span>`:''}
       </div>
       <div style="font-family:var(--mono);font-size:22px;color:${dirColor};margin-bottom:3px">${p.over?'▲ OVER':'▼ UNDER'} ${p.line||''} ${p.stat||''} <span style="color:var(--t2);font-size:18px">· ${p.conf||55}% CONF</span></div>
+      ${_recPropLineHTML(_nflModelLineForPlayer(p.player,p.stat),{line:p.line,ml:p.ml},p.stat||'')}
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ${p.src||'Linemate'}</span>
         <button class="btn btn-o btn-sm" onclick="lockNFLProp(${i})">LOCK</button>
@@ -15569,6 +15616,10 @@ async function renderNHLPropsLive(filter){
     grade:p.grade||_propGradeByConf(p.conf!=null?p.conf:55),
     hitRate:p.hitRate||p.l10||p.l5||'--',basis:p.basis||'',opp:p.opp,src:p.src||'Linemate'
   }));
+  // Warmed regardless of tier -- even when real Linemate props cover the
+  // slate, _modelLineForProp still needs this cache to show a real
+  // independently-computed model line next to each real market prop below.
+  _fetchNHLPlayerStats().catch(()=>{});
   // Live ESPN+MC fallback tier -- same threshold/pattern as WNBA's 3-tier
   // system: when Linemate doesn't have enough real market props loaded,
   // fall back to a real model-generated slate instead of an empty tab.
@@ -15639,7 +15690,7 @@ async function renderNHLPropsLive(filter){
           <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${ev>=0?'var(--nc)':'var(--hc)'}">${ev>=0?'+':''}${ev.toFixed(1)}%</div>
         </div>
       </div>
-      ${p.src&&p.src.indexOf('MC Sim')>=0?_recPropLineHTML(p.line,_findMarketProp('nhl',p.player,p.stat),p.stat):''}
+      ${p.src&&p.src.indexOf('MC Sim')>=0?_recPropLineHTML(p.line,_findMarketProp('nhl',p.player,p.stat),p.stat):_recPropLineHTML(_modelLineForProp('nhl',p.player,p.stat,p.opp),{line:p.line,ml:p.ml},p.stat)}
       <div style="font-family:var(--mono);font-size:17px;color:var(--t2);line-height:1.7;margin-bottom:6px">${p.basis}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
         <span style="font-family:var(--mono);font-size:15px;color:var(--t3)">SRC: ${p.src||'Linemate'} \u00b7 vs ${p.opp||'\u2014'}</span>
@@ -24770,6 +24821,12 @@ async function renderWNBAProps(){
   var wnbaD=D.wnba||{};
   var players=wnbaD.players||[];
   var ts=wnbaD.teamStats||{};
+  // Awaited here so _modelLineForProp has real season-average data ready
+  // by the time the primary Linemate branch below renders -- that branch
+  // used to show market-only cards with no independently computed model
+  // line since the live-stats fetch previously only ran in the fallback
+  // tier further down.
+  await _fetchWNBAPlayerStats().catch(function(){});
   // Try linemate WNBA data first (requires ≥3 valid props from scraper)
   var lmRaw=(D.linemate&&D.linemate.wnba_props)||[];
   var lmProps=lmRaw.filter(function(p){return p.player&&/^[A-Z][a-z]+\s+[A-Z]/.test(p.player)&&p.line!=null;});
@@ -24816,6 +24873,7 @@ async function renderWNBAProps(){
         +'<div style="font-family:var(--orb);font-size:26px;font-weight:700;color:'+confCol+'">'+conf+'%</div>'
         +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden">'
         +'<div style="width:'+Math.min(100,conf)+'%;height:100%;background:'+confCol+';border-radius:1px;transition:width .4s"></div></div></div>'
+        +_recPropLineHTML(_modelLineForProp('wnba',p.player,statDisp,p.opp),{line:p.line,ml:mlStr},statDisp)
         +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">'
         +'<span style="font-family:var(--mono);font-size:15px;color:var(--t3)">SRC: Linemate.io/wnba</span>'
         +'<div style="display:flex;gap:5px;align-items:center">'
