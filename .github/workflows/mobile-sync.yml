@@ -17,6 +17,20 @@ on:
       - 'scripts/mobile_transform.py'
   workflow_dispatch: {}
 
+# A live-score service pushes docs/live_data.json every ~3min, and each
+# push here re-triggers this workflow -- on a busy day (e.g. a burst of
+# manual commits landing close together) that's enough concurrent runs to
+# exhaust the account's available runner slots, and everything past the
+# first gets cancelled with no runner ever assigned (confirmed via the
+# Actions API: runner_id 0 on the cancelled runs). Since only the LATEST
+# push's state is ever meaningful to sync, cancelling an in-flight run
+# when a newer one arrives is correct behavior here, not data loss --
+# collapses a burst of N pushes into one real sync instead of N racing
+# runs.
+concurrency:
+  group: mobile-sync
+  cancel-in-progress: true
+
 jobs:
   sync-mobile:
     runs-on: ubuntu-latest

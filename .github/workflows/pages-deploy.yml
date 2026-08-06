@@ -1,0 +1,58 @@
+name: Deploy Pages
+
+# Replaces GitHub's legacy "Deploy from a branch" auto-deploy, which has
+# no real concurrency control -- a newer push to main just kills whatever
+# deploy was already in flight, which is exactly what was showing up as
+# recurring "pages build and deployment" failures (confirmed via the
+# Actions API: cancelled runs with no runner ever assigned, clustering
+# whenever pushes to main landed close together -- a live-score service
+# pushes every ~3min on top of normal scheduled/manual commits).
+#
+# actions/deploy-pages has a built-in `concurrency: group: "pages"` with
+# cancel-in-progress: false, so bursts of pushes queue and run in order
+# instead of racing each other for a runner and losing.
+#
+# NOTE: activating this requires a one-time manual step this workflow file
+# alone can't do -- in the repo's Settings -> Pages, change "Source" from
+# "Deploy from a branch" to "GitHub Actions". Until that's flipped, GitHub
+# keeps using the legacy auto-deploy (the thing causing the failures) and
+# this workflow, while harmless to leave in the repo, won't be the one
+# actually serving Pages.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
