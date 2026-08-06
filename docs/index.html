@@ -10522,6 +10522,63 @@ async function _fetchNBAPlayerStats(){
 // Linemate prop panels already use, for consistency across every sport's
 // props in this app.
 function _propGradeByConf(conf){return conf>=67?'PREMIUM':conf>=62?'OPTIMAL':conf>=55?'LEAN':'SKIP';}
+// Normalizes a stat label/category string from either a model prop (PTS/REB/AST/PRA
+// for NBA-WNBA, PASS YDS/RUSH YDS/REC/TD for NFL, GOALS/ASSISTS/POINTS for NHL) or a
+// raw Linemate category string down to a small comparable token, so a model prop and
+// a real market prop for the same player+stat can be matched even when their label
+// text doesn't match exactly (e.g. "Points" vs "PTS", "Rushing Yards" vs "RUSH YDS").
+function _propStatNorm(s){
+  s=(s||'').toLowerCase();
+  if(s.includes('pra')||(s.includes('pt')&&s.includes('reb')&&s.includes('ast')))return'pra';
+  if(s.includes('pass')&&(s.includes('yd')||s.includes('yard')))return'passyd';
+  if(s.includes('rush')&&(s.includes('yd')||s.includes('yard')))return'rushyd';
+  if(s.includes('rec')&&(s.includes('yd')||s.includes('yard')))return'recyd';
+  if(s.includes('recept')||s==='rec')return'rec';
+  if(s.includes('td')||s.includes('touchdown'))return'td';
+  if(s.includes('goal'))return'goal';
+  if(s.includes('shot'))return'shot';
+  if(s.includes('save'))return'save';
+  if(s.includes('pt')||s.includes('point'))return'pts';
+  if(s.includes('reb'))return'reb';
+  if(s.includes('ast'))return'ast';
+  return s.slice(0,5);
+}
+// Looks up a real market prop (Linemate) for the same player+stat as a model-generated
+// prop, so the UI can show the model's recommended line right next to the actual book
+// line the same way _recommendedLineHTML does for game spreads/totals. Returns null
+// (honestly disclosed by the caller) when no matching market prop is loaded yet.
+function _findMarketProp(sport,player,statLabel){
+  var arr=(window.__CV_DATA&&window.__CV_DATA.linemate&&window.__CV_DATA.linemate.props&&window.__CV_DATA.linemate.props[sport])
+    ||window['_remote'+sport.toUpperCase()+'Props']||[];
+  if(!arr||!arr.length)return null;
+  var pName=(player||'').toLowerCase().trim();
+  var wantStat=_propStatNorm(statLabel);
+  var hit=arr.find(function(p){
+    var pn=(p.player||p.name||'').toLowerCase().trim();
+    if(pn!==pName)return false;
+    return _propStatNorm(p.stat||p.category||p.prop||'')===wantStat;
+  });
+  if(!hit)return null;
+  var line=hit.line!=null?hit.line:hit.threshold;
+  if(line==null)return null;
+  return{line:parseFloat(line),ml:hit.ml};
+}
+// Shared "model recommended line vs real market line" panel for player props --
+// mirrors _recommendedLineHTML's game-line pattern at the individual-prop level.
+function _recPropLineHTML(modelLine,mktMatch,statLabel){
+  if(modelLine==null)return'';
+  var mktLine=mktMatch?mktMatch.line:null;
+  var mlStr=mktMatch&&mktMatch.ml!=null?(parseFloat(mktMatch.ml)>0?'+'+mktMatch.ml:mktMatch.ml):'';
+  var diff=mktLine!=null?+(modelLine-mktLine).toFixed(1):null;
+  var diffNote=(diff!=null&&Math.abs(diff)>=1)?'<span style="color:var(--vc)"> · model diverges '+(diff>0?'+':'')+diff+' from market</span>':'';
+  return'<div style="display:flex;gap:10px;align-items:center;margin:5px 0;padding:5px 8px;background:rgba(255,255,255,.03);border-radius:2px;border:1px solid rgba(255,255,255,.06);font-family:var(--mono);font-size:14px;flex-wrap:wrap">'
+    +'<span style="color:var(--t3)">MODEL LINE</span><span style="color:var(--nc);font-weight:700">'+modelLine+' '+statLabel+'</span>'
+    +'<span style="width:1px;height:16px;background:rgba(255,255,255,.1)"></span>'
+    +(mktLine!=null
+      ?'<span style="color:var(--t3)">MARKET</span><span style="color:var(--t2);font-weight:700">'+mktLine+' '+statLabel+(mlStr?' '+mlStr:'')+'</span>'+diffNote
+      :'<span style="color:var(--t3)">MARKET — no book line posted yet for this player/stat</span>')
+    +'</div>';
+}
 function _generateNBAProps(games,statsData){
   if(!statsData)return[];
   var props=[];
@@ -10602,6 +10659,7 @@ async function renderNBADailyProps(){
       +'<span style="font-family:var(--mono);font-size:16px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px">'+p.grade+'</span>'
       +'</div></div>'
       +'<div style="font-family:var(--mono);font-size:22px;color:'+dirC+';margin-bottom:3px">'+(isOver?'▲ OVER':'▼ UNDER')+' '+p.line+' '+p.stat+' <span style="color:var(--t2);font-size:18px">· '+mlStr+' · '+(p.prob*100).toFixed(0)+'% MODEL'+adjStr+'</span></div>'
+      +_recPropLineHTML(p.line,_findMarketProp('nba',p.player,p.stat),p.stat)
       +'<div style="font-family:var(--mono);font-size:17px;color:var(--t2);margin-bottom:4px">'+p.basis+'</div>'
       +'<div style="display:flex;justify-content:space-between;align-items:center">'
       +'<span style="font-family:var(--mono);font-size:16px;color:var(--t3)">SRC: ESPN Stats + MC Sim (5k)</span>'
@@ -14981,6 +15039,7 @@ function renderNFLModelProps(filter){
         <span style="font-family:var(--mono);font-size:16px;padding:2px 5px;border:1px solid ${gc};color:${gc};border-radius:2px">${r.grade}</span>
       </div>
       <div style="font-family:var(--mono);font-size:22px;color:${dirColor};margin-bottom:3px">${r.pick==='OVER'?'▲ OVER':'▼ UNDER'} ${r.line} ${r.cat} <span style="color:var(--t2);font-size:18px">· ${r.likelihood}% LIKELIHOOD</span></div>
+      ${_recPropLineHTML(r.line,_findMarketProp('nfl',r.player,r.cat),r.cat)}
       <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:5px">Adjustor: ${r.adjustor>=0?'+':''}${r.adjustor} vs season avg · ${r.games} games sampled</div>
       <div style="font-family:var(--mono);font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:6px">${r.reasoning}</div>
       <div style="display:flex;justify-content:flex-end">
@@ -15402,7 +15461,24 @@ function renderNHLPropsLive(filter){
   const dateEl=document.getElementById('nhl-props-date-line');
   const gradeC={PREMIUM:'var(--gc)',OPTIMAL:'var(--nc)',LEAN:'var(--ic)',SKIP:'var(--hc)'};
   const gradeOrder={PREMIUM:0,OPTIMAL:1,LEAN:2,SKIP:4};
-  let data=typeof NHL_PROPS_DATA!=='undefined'?[...NHL_PROPS_DATA]:[];
+  // NHL_PROPS_DATA is a permanently-empty hardcoded const (no SCF-era hand
+  // curation exists this season) -- the real feed is Linemate via
+  // window._remoteNHLProps / __CV_DATA.linemate.props.nhl, exactly like the
+  // NBA/WNBA/NFL Linemate panels already read. Reading only the empty const
+  // meant this tab showed "NO NHL PROPS" every single day regardless of
+  // whether real data had loaded.
+  let data=(window._remoteNHLProps&&window._remoteNHLProps.length)?[...window._remoteNHLProps]
+    :(window.__CV_DATA?.linemate?.props?.nhl&&window.__CV_DATA.linemate.props.nhl.length)?[...window.__CV_DATA.linemate.props.nhl]
+    :(typeof NHL_PROPS_DATA!=='undefined'?[...NHL_PROPS_DATA]:[]);
+  data=data.map(p=>({
+    player:p.player||p.name,t:p.t||p.team,pos:p.pos||'',
+    stat:p.stat||p.category||p.prop||'',
+    line:p.line!=null?p.line:p.threshold,
+    over:p.over!=null?p.over:(p.bet||p.direction||'OVER').toUpperCase()==='OVER',
+    ml:p.ml,conf:p.conf!=null?p.conf:(p.prob!=null?Math.round(p.prob*100):55),
+    grade:p.grade||_propGradeByConf(p.conf!=null?p.conf:55),
+    hitRate:p.hitRate||p.l10||p.l5||'--',basis:p.basis||'',opp:p.opp,src:p.src||'Linemate'
+  }));
   if(filter==='points')data=data.filter(p=>(p.stat||'').toLowerCase().includes('point'));
   else if(filter==='goals')data=data.filter(p=>(p.stat||'').toLowerCase().includes('goal'));
   else if(filter==='saves')data=data.filter(p=>(p.stat||'').toLowerCase().includes('save'));
@@ -24667,7 +24743,10 @@ async function renderWNBAProps(){
           var c=_gradeC2[p.grade]||'var(--t2)';
           var pKey=p.player.replace(/[\s']/g,'_')+'_'+p.stat;
           var mlNum=parseInt(String(p.ml||'-110').replace('+',''))||(-110);
-          _parlayLive.push({label:p.player+' O'+p.line+' '+p.stat,ml:mlNum,prob:p.prob,key:pKey,line:p.line,player:p.player,stat:p.stat,over:true,team:p.team});
+          var isOverL=p.over!==false;
+          var dirDispL=isOverL?'▲ OVER':'▼ UNDER';
+          var dirColL=isOverL?'var(--gc)':'var(--pc)';
+          _parlayLive.push({label:p.player+' '+(isOverL?'O':'U')+p.line+' '+p.stat,ml:mlNum,prob:p.prob,key:pKey,line:p.line,player:p.player,stat:p.stat,over:isOverL,team:p.team});
           return'<div class="card" style="margin-bottom:9px;border-left:3px solid '+c+'">'
             +'<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:5px">'
             +'<div><span style="font-family:var(--orb);font-size:23px;font-weight:700">'+p.player+'</span>'
@@ -24676,16 +24755,17 @@ async function renderWNBAProps(){
             +'<span style="font-family:var(--mono);font-size:15px;padding:2px 5px;border:1px solid rgba(255,255,255,.15);color:var(--t3);border-radius:2px">MC:'+p.hitRate+'</span>'
             +'<span style="font-family:var(--mono);font-size:16px;padding:2px 6px;border:1px solid '+c+';color:'+c+';border-radius:2px;font-weight:700">'+p.grade+'</span>'
             +'</div></div>'
-            +'<div style="font-family:var(--mono);font-size:23px;color:var(--gc);margin-bottom:4px;font-weight:700">▲ OVER '+p.line+' '+p.stat+' <span style="font-size:18px;font-weight:400;color:var(--t3)">'+p.ml+'</span></div>'
+            +'<div style="font-family:var(--mono);font-size:23px;color:'+dirColL+';margin-bottom:4px;font-weight:700">'+dirDispL+' '+p.line+' '+p.stat+' <span style="font-size:18px;font-weight:400;color:var(--t3)">'+p.ml+'</span></div>'
             +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
             +'<div style="font-family:var(--orb);font-size:26px;font-weight:700;color:'+c+'">'+p.conf+'%</div>'
             +'<div style="flex:1;background:rgba(255,255,255,.06);border-radius:1px;height:4px;overflow:hidden"><div style="width:'+Math.min(100,p.conf)+'%;height:100%;background:'+c+';border-radius:1px;transition:width .4s"></div></div></div>'
+            +_recPropLineHTML(p.line,_findMarketProp('wnba',p.player,p.stat),p.stat)
             +(p.basis?'<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:6px">'+p.basis+'</div>':'')
             +'<div style="display:flex;justify-content:flex-end;gap:5px">'
             +'<input type="number" step="0.5" value="'+p.line+'" id="padj_wnba_'+pKey+'" style="width:58px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:17px;padding:2px 6px;border-radius:2px;text-align:center">'
             +'<button class="btn btn-n btn-sm" style="color:var(--nc)" onclick="_adjLockO(\'padj_wnba_'+pKey+'\',\''+p.team+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.prob.toFixed(3)+',\''+p.ml+'\',\'WNBA\',\''+(p.opp||'')+'\')">▲O</button>'
             +'<button class="btn btn-o btn-sm" style="color:var(--hc)" onclick="_adjLockU(\'padj_wnba_'+pKey+'\',\''+p.team+'\',\''+p.player.replace(/'/g,"\\'")+'\',\''+p.stat+'\','+p.prob.toFixed(3)+',\''+p.ml+'\',\'WNBA\',\''+(p.opp||'')+'\')">▼U</button>'
-            +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' O'+p.line+' '+p.stat+'\','+mlNum+','+p.prob.toFixed(3)+',\''+p.team+' PROP\',\'PROP\')">+PAR</button>'
+            +'<button class="btn btn-o btn-sm" onclick="cvParlayAddLeg(\'wnba\',\''+p.player.replace(/'/g,"\\'")+' '+(isOverL?'O':'U')+p.line+' '+p.stat+'\','+mlNum+','+p.prob.toFixed(3)+',\''+p.team+' PROP\',\'PROP\')">+PAR</button>'
             +'</div></div>';
         }).join('');
         var ppList=document.getElementById('wnba-par-props-list');
