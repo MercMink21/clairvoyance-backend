@@ -3625,6 +3625,34 @@ function _switchRadarTab(uid,idx){
 }
 
 // ── MC PROJ bar — shared across all sport game cards ─────────────────────────
+// Shared "model recommended line vs market" panel -- same pattern CFB
+// originated (see the inline block that used to live only in CFB's card),
+// generalized so every sport's own real MC projection and real ESPN-
+// scraped market spread/total can feed the same display instead of
+// duplicating this block per sport. spreadLabel lets a sport use its own
+// real market-type name (MLB/NHL's run/puck line convention vs a
+// point-spread), defaulting to 'SPREAD'. Any market value left null
+// renders "no market line posted yet" instead of guessing.
+function _recommendedLineHTML(o){
+  const{recSpreadFav,recSpreadNum,recOU,mktSpreadFav,mktSpreadNum,mktOU,spreadLabel}=o;
+  const lbl=spreadLabel||'SPREAD';
+  const spreadGap=(mktSpreadNum!=null&&recSpreadNum!=null)?Math.abs(parseFloat(recSpreadNum)-parseFloat(mktSpreadNum)):null;
+  const ouGap=(mktOU!=null&&recOU!=null)?Math.abs(parseFloat(recOU)-parseFloat(mktOU)):null;
+  const spreadNote=recSpreadNum==null?'':mktSpreadNum==null?`No market ${lbl.toLowerCase()} posted yet — this is the only number available.`
+    :spreadGap>=1.5?`Model disagrees with the market by ${spreadGap.toFixed(1)} pts — worth a look at whatever number the book is actually offering, since real books sometimes shade off the model consensus for liability/juice reasons.`
+    :'Close to the market — no meaningful edge in taking a different number.';
+  const ouNote=recOU==null?'':mktOU==null?'No market total posted yet — this is the only number available.'
+    :ouGap>=1.5?`Model disagrees with the market by ${ouGap.toFixed(1)} pts — the market's ${mktOU} may be shaded off the model's own ${recOU} projection.`
+    :'Close to the market — no meaningful edge in taking a different number.';
+  if(recSpreadNum==null&&recOU==null)return'';
+  return`<div style="margin-bottom:8px;padding:6px 9px;background:rgba(0,0,0,.25);border-radius:3px;border:1px solid rgba(255,200,0,.15)">
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:5px">MODEL RECOMMENDED LINE (vs market)</div>
+    ${recSpreadNum!=null?`<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:3px"><strong style="color:var(--gc)">${lbl}</strong> — model: ${recSpreadFav} -${recSpreadNum}${mktSpreadNum!=null?` &nbsp;·&nbsp; market: ${mktSpreadFav} -${mktSpreadNum}`:''}</div>
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-bottom:6px">${spreadNote}</div>`:''}
+    ${recOU!=null?`<div style="font-family:var(--mono);font-size:14px;color:var(--t2);margin-bottom:3px"><strong style="color:var(--nc)">O/U</strong> — model: ${recOU}${mktOU!=null?` &nbsp;·&nbsp; market: ${mktOU}`:''}</div>
+    <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${ouNote}</div>`:''}
+  </div>`;
+}
 function _mcProjBarHTML(mc,ouL,hTeam,aTeam,opts){
   if(!mc)return'';
   const avgH=mc.avgH??mc.hExp;const avgA=mc.avgA??mc.aExp;
@@ -4508,6 +4536,13 @@ function mlbCard(hA,awA,gt,date,espnGame){
     </div>
     <div style="padding:8px 10px;background:rgba(255,200,0,.04);border-top:1px solid rgba(255,200,0,.1)">
       ${mc?`<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:5px 8px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(255,255,255,.06);flex-wrap:wrap"><span style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">MC PROJ (${(mc.n||5000)/1000|0}k sims)</span><span style="font-family:var(--mono);font-size:16px;color:var(--nc);font-weight:700">${mc.avgH.toFixed(1)} – ${mc.avgA.toFixed(1)}</span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Total: <span style="color:var(--vc);font-weight:700">${mc.avgT.toFixed(1)}</span> vs line <span style="color:var(--t2)">${ouL}</span></span><span style="font-family:var(--mono);font-size:14px;color:var(--t3)">Margin: <span style="color:${(mc.avgH-mc.avgA)>=0?'var(--nc)':'var(--t2)'}">${(mc.avgH-mc.avgA)>=0?'+':''}${(mc.avgH-mc.avgA).toFixed(1)} (${hA})</span></span>${mc.outlierPct!=null?`<span style="font-family:var(--mono);font-size:13px;color:${mc.outlierPct>=0.03?'var(--vc)':'var(--t3)'}" title="Blowout sims (|margin|≥${mc.outlierMargin} runs) still count fully toward win%/O-U above -- only downweighted (30% weight) for this displayed average, so a handful of extreme sims can't drag the projected score by themselves.">⚠ ${(mc.outlierPct*100).toFixed(1)}% blowout sims (≥${mc.outlierMargin}R, downweighted) · raw avg ${mc.rawAvgH.toFixed(1)}–${mc.rawAvgA.toFixed(1)}</span>`:''}</div>`:''}
+      ${mc?_recommendedLineHTML({
+        recSpreadFav:mc.avgH>=mc.avgA?hA:awA,recSpreadNum:_forceHalfLine(Math.abs(mc.avgH-mc.avgA)),
+        recOU:_forceHalfLine(mc.avgT),
+        mktSpreadFav:favTeam,mktSpreadNum:'1.5', // MLB run line is fixed by convention, not a variable market number the way a point spread is
+        mktOU:espnGame?.ou!=null?parseFloat(espnGame.ou).toFixed(1):null,
+        spreadLabel:'RUN LINE',
+      }):''}
       <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">RUN LINE ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const mcProjH=mc?mc.avgH.toFixed(1):'—';const mcProjA=mc?mc.avgA.toFixed(1):'—';const mcMargin=mc?Math.abs(mc.avgH-mc.avgA).toFixed(1):'—';const mcFavScore=hP>=.5?(mc?mc.avgH.toFixed(1):'—'):(mc?mc.avgA.toFixed(1):'—');const mcDogScore=hP>=.5?(mc?mc.avgA.toFixed(1):'—'):(mc?mc.avgH.toFixed(1):'—');const mcMarginNum=mc?mc.avgH-mc.avgA:0;const mcFavMargin=hP>=.5?mcMarginNum:-mcMarginNum;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV,'SPREAD');const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV,'SPREAD');const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const rlReason=rlTier>=2?`${favRL} -1.5: MC proj margin ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} runs (${mcFavScore}–${mcDogScore}). Covers -1.5 in ${(rlP*100).toFixed(0)}% of 5k sims. ERA: ${favPit} ${favERA} vs ${dogPit} ${dogERA}.`:`${favRL} -1.5: MC margin only ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} (${mcFavScore}–${mcDogScore}). ${(rlP*100).toFixed(0)}% cover prob insufficient — ERA gap thin (${favERA} vs ${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5: MC projects fav margin ${mcFavMargin.toFixed(1)} — within 1 run in enough sims. Dog covers in ${(dogRLP*100).toFixed(0)}% of 5k sims. ${dogPit} (${dogERA} ERA) limits blowout risk.`:`${dogRL} +1.5: Fav MC margin ${mcFavMargin.toFixed(1)} runs exceeds 1.5-run line in too many sims (${(dogRLP*100).toFixed(0)}% dog cover).`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
@@ -7975,6 +8010,15 @@ function _nhlGameCard(espnEv){
       <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ENGINE REASONING</span>
     </div>
     ${(()=>{try{return _mcProjBarHTML(nhlEns(hn,an)?.mcD,nhlOuL,hn,an,{dec:2});}catch(e){return'';}})()}
+    ${(()=>{try{
+      const _mcD=nhlEns(hn,an)?.mcD;if(!_mcD)return'';
+      return _recommendedLineHTML({
+        recSpreadFav:null,recSpreadNum:null, // NHL puck line is fixed at 1.5 by convention, not a variable market number
+        recOU:_forceHalfLine(_mcD.avgT??((_mcD.avgH??0)+(_mcD.avgA??0))),
+        mktSpreadFav:null,mktSpreadNum:null,
+        mktOU:_liveNHL?.ou!=null?parseFloat(_liveNHL.ou).toFixed(1):null,
+      });
+    }catch(e){return'';}})()}
     <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
     <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: ${_nm3.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
     ${(()=>{try{return _statmuseGameInsightsHTML('nhl',hn,[_TEAM_NAMES?.NHL?.[hn],hn],an,[_TEAM_NAMES?.NHL?.[an],an]);}catch(e){return'';}})()}
@@ -9811,6 +9855,12 @@ function _nbaGameCard(espnEv){
       <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ENGINE REASONING</span>
     </div>
     ${_mcProjBarHTML(nbaEnsD?.mcD,ouL||220,hn,an,{dec:1})}
+    ${nbaEnsD?.mcD?_recommendedLineHTML({
+      recSpreadFav:(nbaEnsD.mcD.spread||0)>=0?hn:an,recSpreadNum:_forceHalfLine(Math.abs(nbaEnsD.mcD.spread||0)),
+      recOU:_forceHalfLine(nbaEnsD.mcD.avgT),
+      mktSpreadFav:espnSprdNum!=null?(espnSprdNum<0?hn:an):null,mktSpreadNum:espnSprdNum!=null?Math.abs(espnSprdNum).toFixed(1):null,
+      mktOU:ouL!=null?parseFloat(ouL).toFixed(1):null,
+    }):''}
     <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
     <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: ${_nmNBA.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
     ${(()=>{try{return _statmuseGameInsightsHTML('nba',hn,[_TEAM_NAMES?.NBA?.[hn],hn],an,[_TEAM_NAMES?.NBA?.[an],an]);}catch(e){return'';}})()}
@@ -24306,6 +24356,12 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-left:6px">SIZE: '+sz+'</span>'
         +'</div>'
         +_mcProjBarHTML(Object.assign({},_wnbaMCResult,{overP:_wnbaOvP}),ouStr,hab,aab,{dec:1})
+        +_recommendedLineHTML({
+          recSpreadFav:(_wnbaMCResult.spread||0)>=0?hab:aab,recSpreadNum:_forceHalfLine(Math.abs(_wnbaMCResult.spread||0)),
+          recOU:_forceHalfLine(_wnbaMCResult.avgT),
+          mktSpreadFav:spread!=null?(parseFloat(spread)<0?hab:aab):null,mktSpreadNum:spread!=null?Math.abs(parseFloat(spread)).toFixed(1):null,
+          mktOU:ou!=null?parseFloat(ou).toFixed(1):null,
+        })
         +'<div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">'+rsn+'</div>'
         +'<div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: '+_wnbaMkts.mkts.map(function(m){return m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN];}).join(' · ')+'</div>'
         +(function(){try{return _statmuseGameInsightsHTML('wnba',hab,[_TEAM_NAMES&&_TEAM_NAMES.WNBA&&_TEAM_NAMES.WNBA[hab],hab],aab,[_TEAM_NAMES&&_TEAM_NAMES.WNBA&&_TEAM_NAMES.WNBA[aab],aab]);}catch(e){return'';}})()
@@ -26762,6 +26818,12 @@ function _renderSocMatchCard(g,leagueKey){
     +'<span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ENGINE REASONING</span>'
     +'</div>'
     +_mcProjBarHTML(mc,ouL,g.home,g.away,{dec:2})
+    +_recommendedLineHTML({
+      recSpreadFav:null,recSpreadNum:null, // soccer's 3-way ML/draw market has no point-spread equivalent
+      recOU:_forceHalfLine(mc.avgT),
+      mktSpreadFav:null,mktSpreadNum:null,
+      mktOU:g.ou!=null?parseFloat(g.ou).toFixed(1):null,
+    })
     +'<div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">'+explanation+'</div>'
     +'<div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: '+_mkts.mkts.map(function(m){return m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN];}).join(' · ')+'</div>'
     +(function(){try{return _statmuseGameInsightsHTML('soccer',hc,[g.home],ac,[g.away]);}catch(e){return'';}})()
