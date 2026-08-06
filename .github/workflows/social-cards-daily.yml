@@ -2,15 +2,16 @@ name: Daily Social Cards Email
 
 on:
   schedule:
-    # Target 9:30 MT = 15:30 UTC (MDT) / 16:30 UTC (MST), but offset to :22
-    # rather than the exact :30 mark — GitHub's scheduled-workflow queue is
-    # heavily congested at round minutes (every repo on the platform cron'd
-    # for :00/:15/:30/:45 piles in at once), which is why this run has
-    # consistently landed 55-95 min late for the past 9+ days despite never
-    # actually failing. An off-peak minute is a known, low-risk way to cut
-    # that queueing delay — GitHub still doesn't guarantee exact timing on
-    # shared runners, but this should land noticeably closer to 9:30 MT.
-    - cron: '22 15 * * *'
+    # Target ~9:30 MT, offset to :52 rather than :22 -- the :22 slot sat
+    # only 22min after scheduled-refresh.yml's 15:00 UTC run (0 15 * * *),
+    # which is itself a heavy Playwright job with a 20min budget. On
+    # 2026-08-06 this job queued for the full 15min and was cancelled
+    # having NEVER been assigned a runner (runner_id 0) -- not a script
+    # failure, queue starvation from two Playwright-heavy jobs clustering
+    # 22min apart. :52 gives a real ~50min buffer past scheduled-refresh's
+    # start instead of 22, well clear of its execution window even
+    # accounting for GitHub's own queueing delay on top of it.
+    - cron: '52 15 * * *'
   workflow_dispatch:
     inputs:
       force:
