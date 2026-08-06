@@ -24495,7 +24495,6 @@ function _generateWNBAPropsLive(games,statsData){
   var props=[];
   var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
   var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
-  var gradeP=function(p){return p>=.67?'PREMIUM':p>=.62?'OPTIMAL':p>=.55?'LEAN':'SKIP';};
   var players=Object.values(statsData);
   games.forEach(function(g){
     var hn=g.hA||g.h||g.home,an=g.awA||g.a||g.away;if(!hn||!an)return;
@@ -24504,48 +24503,49 @@ function _generateWNBAPropsLive(games,statsData){
     }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,8);
     var seen=new Set();
     gamePlayers.forEach(function(pl){
-      // PTS prop
-      if(pl.ppg>=8&&!seen.has(pl.name+'_pts')){seen.add(pl.name+'_pts');
-        var ppgN=_statmuseFormNudge(pl.name,'PPG',pl.ppg);
-        var line=parseFloat(_forceHalfLine(ppgN));
-        var mc=propMC(ppgN,Math.max(3,ppgN*0.38),line,5000);
-        var grade=gradeP(mc.overP);if(grade==='SKIP')return;
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          stat:'PTS',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
-          conf:Math.round(mc.overP*100),grade,hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.ppg+'PPG / '+pl.gp+'G · MC sim: '+mc.hitRate+'% over '+line+' · ESPN 2026 season stats'});
+      var opp=pl.team===hn?an:hn;
+      var oppDef=_propOppDefFactor('WNBA',opp);
+      var factor=oppDef.factor;
+      var oppNote=oppDef.note?'No real opponent defensive rating available for '+opp+' yet — projection uses season average only, no matchup adjustment applied. '
+        :'Opp '+opp+' DRtg '+oppDef.raw.toFixed(1)+' vs a '+oppDef.lgAvg.toFixed(1)+' league average'+(oppDef.realAvg?' computed from every currently-loaded team':' (assumed baseline — not enough teams loaded yet for a real computed average)')+', a '+(factor*100).toFixed(0)+'% '+(factor>=0?'boost':'reduction')+' folded into the projection. ';
+      function push(statKey,minAvg,cv){
+        var pKey=pl.name+'_'+statKey;if(seen.has(pKey))return;
+        var base=pl[statKey];if(base==null||base<minAvg)return;
+        seen.add(pKey);
+        var baseN=_statmuseFormNudge(pl.name,statKey.toUpperCase(),base);
+        var line=parseFloat(_forceHalfLine(baseN));
+        var adjMu=Math.max(0.1,baseN*(1+factor));
+        var sigma=Math.max(minAvg*0.3,baseN*cv);
+        var mc=propMC(adjMu,sigma,line,5000);
+        var pick=adjMu>=line?'OVER':'UNDER';
+        var conf=pick==='OVER'?mc.overP*100:(1-mc.overP)*100;
+        var grade=(Math.abs(factor)<0.01&&Math.abs(conf-50)<4)?'SKIP':_propGradeByConf(conf);
+        var ml=p2ml(pick==='OVER'?mc.overP:1-mc.overP);
+        var statLabel=statKey==='ppg'?'PTS':statKey==='rpg'?'REB':statKey==='apg'?'AST':'PRA';
+        props.push({player:pl.name,team:pl.team,opp:opp,hA:hn,awA:an,
+          stat:statLabel,line:line,over:pick==='OVER',ml:mlStr(ml),prob:conf/100,
+          grade:grade,hitRate:Math.round(conf)+'%',adjustor:+(adjMu-baseN).toFixed(1),
+          basis:pl.name+' averages '+baseN.toFixed(1)+' '+statLabel+' across '+pl.gp+' games this season. '+oppNote+'No head-to-head history vs '+opp+' this season or historically is factored in yet — likelihood is directional (modeled variance assumption), not a market-calibrated probability.'});
       }
-      // REB prop
-      if(pl.rpg>=5&&!seen.has(pl.name+'_reb')){seen.add(pl.name+'_reb');
-        var rpgN=_statmuseFormNudge(pl.name,'RPG',pl.rpg);
-        var line=parseFloat(_forceHalfLine(rpgN));
-        var mc=propMC(rpgN,Math.max(2,rpgN*0.45),line,5000);
-        if(mc.overP<0.55)return;
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          stat:'REB',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
-          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.rpg+'RPG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
-      // AST prop
-      if(pl.apg>=4&&!seen.has(pl.name+'_ast')){seen.add(pl.name+'_ast');
-        var apgN=_statmuseFormNudge(pl.name,'APG',pl.apg);
-        var line=parseFloat(_forceHalfLine(apgN));
-        var mc=propMC(apgN,Math.max(1.5,apgN*0.50),line,5000);
-        if(mc.overP<0.55)return;
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          stat:'AST',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
-          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.apg+'APG / '+pl.gp+'G · MC: '+mc.hitRate+'% over '+line});
-      }
-      // PRA combo
-      if((pl.ppg+pl.rpg+pl.apg)>=18&&!seen.has(pl.name+'_pra')){seen.add(pl.name+'_pra');
-        var mu=pl.ppg+pl.rpg+pl.apg;var line=parseFloat(_forceHalfLine(mu));
-        var mc=propMC(mu,Math.max(4,mu*0.32),line,5000);
-        if(mc.overP<0.57)return;
-        props.push({player:pl.name,team:pl.team,opp:pl.team===hn?an:hn,hA:hn,awA:an,
-          stat:'PRA',line,over:true,ml:mlStr(p2ml(mc.overP)),prob:mc.overP,
-          conf:Math.round(mc.overP*100),grade:gradeP(mc.overP),hitRate:mc.hitRate+'%',
-          basis:pl.name+' · '+pl.ppg+'/'+pl.rpg+'/'+pl.apg+' PRA avg '+mu.toFixed(1)+'/G · MC: '+mc.hitRate+'% over '+line});
+      push('ppg',8,0.38);
+      push('rpg',5,0.45);
+      push('apg',4,0.50);
+      if(pl.ppg+pl.rpg+pl.apg>=18){
+        var prKey=pl.name+'_pra';
+        if(!seen.has(prKey)){
+          seen.add(prKey);
+          var mu=pl.ppg+pl.rpg+pl.apg;
+          var line=parseFloat(_forceHalfLine(mu));
+          var adjMu=Math.max(0.1,mu*(1+factor));
+          var mc=propMC(adjMu,Math.max(6,mu*0.32),line,5000);
+          var pick=adjMu>=line?'OVER':'UNDER';
+          var conf=pick==='OVER'?mc.overP*100:(1-mc.overP)*100;
+          var grade=(Math.abs(factor)<0.01&&Math.abs(conf-50)<4)?'SKIP':_propGradeByConf(conf);
+          props.push({player:pl.name,team:pl.team,opp:opp,hA:hn,awA:an,
+            stat:'PRA',line:line,over:pick==='OVER',ml:mlStr(p2ml(pick==='OVER'?mc.overP:1-mc.overP)),prob:conf/100,
+            grade:grade,hitRate:Math.round(conf)+'%',adjustor:+(adjMu-mu).toFixed(1),
+            basis:pl.name+' averages '+mu.toFixed(1)+' PRA ('+pl.ppg+'/'+pl.rpg+'/'+pl.apg+') across '+pl.gp+' games. '+oppNote+'No head-to-head history vs '+opp+' factored in yet.'});
+        }
       }
     });
   });
