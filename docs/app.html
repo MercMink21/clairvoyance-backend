@@ -24594,7 +24594,18 @@ async function renderWNBAProps(){
     var seen=new Set();
     var uniq=lmProps.filter(function(p){var k=p.player+'_'+p.stat+'_'+p.line;if(seen.has(k))return false;seen.add(k);return true;});
     uniq.sort(function(a,b){return(b.conf||55)-(a.conf||55);});
-    var srcHdr='<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:16px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">LINEMATE.IO/WNBA · '+uniq.length+' PLAYER PROPS</div><div style="color:var(--t3);font-size:15px">Live consensus odds · Hit rates from recent form</div></div>';
+    // Real staleness check -- D.linemate.generatedAt is a real "YYYY-MM-DD
+    // HH:MM MT" timestamp from the actual scrape (previously this block had
+    // NO freshness signal at all, unlike the WNBA_PROPS_DATA fallback below,
+    // which already warns when its own date doesn't match today). Comparing
+    // just the date portion (not exact hours) avoids timezone-parsing
+    // ambiguity between the server's MT stamp and the browser's local clock.
+    var _lmGenAt=(D.linemate&&D.linemate.generatedAt)||'';
+    var _lmGenDate=_lmGenAt.slice(0,10);
+    var _todayKeyLM=typeof today==='function'?today():'';
+    var _lmStale=_lmGenDate&&_todayKeyLM&&_lmGenDate!==_todayKeyLM;
+    var _lmStaleBanner=_lmStale?'<div style="font-family:var(--mono);font-size:15px;color:var(--hc);background:rgba(255,0,68,.07);border:1px solid rgba(255,0,68,.3);border-radius:3px;padding:6px 10px;margin-bottom:8px">⚠ PROPS SCRAPED '+_lmGenAt+' — MAY NOT REFLECT TODAY\'S MATCHUPS YET</div>':'';
+    var srcHdr=_lmStaleBanner+'<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:16px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">LINEMATE.IO/WNBA · '+uniq.length+' PLAYER PROPS</div><div style="color:var(--t3);font-size:15px">Live consensus odds · Hit rates from recent form'+(_lmGenAt&&!_lmStale?' · Updated '+_lmGenAt:'')+'</div></div>';
     var parlayProps=[];
     el.innerHTML=srcHdr+uniq.map(function(p){
       var prob=Math.min(.99,Math.max(.01,(p.conf||55)/100));
@@ -24693,7 +24704,7 @@ async function renderWNBAProps(){
     var gameGroups={};
     WNBA_PROPS_DATA.forEach(function(p){var gk=p.game||p.team+'_'+p.opp;if(!gameGroups[gk])gameGroups[gk]=[];gameGroups[gk].push(p);});
     var _wStaleBanner=_wnbaStale?'<div style="font-family:var(--mono);font-size:15px;color:var(--hc);background:rgba(255,0,68,.07);border:1px solid rgba(255,0,68,.3);border-radius:3px;padding:6px 10px;margin-bottom:8px">⚠ PROP DATA FROM '+_wnbaPropsDate+' — REFRESH FOR '+_todayKeyW+'</div>':'';
-    var srcHdr=_wStaleBanner+'<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:16px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">WNBA PLAYER PROPS · '+WNBA_PROPS_DATA.length+' PROPS</div><div style="color:var(--t3);font-size:15px">Engine analysis · 2026 season stats + matchup · June 11</div></div>';
+    var srcHdr=_wStaleBanner+'<div style="background:rgba(187,255,0,.05);border:1px solid rgba(187,255,0,.2);border-radius:3px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:16px"><div style="color:var(--vc);font-weight:700;margin-bottom:3px;letter-spacing:1.5px">WNBA PLAYER PROPS · '+WNBA_PROPS_DATA.length+' PROPS</div><div style="color:var(--t3);font-size:15px">Engine analysis · 2026 season stats + matchup · generated '+_wnbaPropsDate+'</div></div>';
     var gameHtml=Object.keys(gameGroups).map(function(gk){
       var gProps=gameGroups[gk];
       var gHdr=gProps[0]?'<div style="font-family:var(--mono);font-size:15px;letter-spacing:1px;color:var(--vc);padding:6px 8px;background:rgba(6,0,15,.9);border:1px solid rgba(187,255,0,.25);border-radius:2px;margin-bottom:8px">'+gk.replace('_',' vs ')+'</div>':'';

@@ -5569,6 +5569,13 @@ def main() -> None:
             "form":   lm_form,
             "wnba_props":  lm_props.get("wnba", []),
             "wnba_trends": lm_trends.get("wnba", []),
+            # No timestamp existed anywhere on this block before -- the
+            # frontend had zero way to tell how fresh a Linemate scrape
+            # actually was, unlike the WNBA_PROPS_DATA fallback (which
+            # already shows a real "stale, refresh" banner off its own
+            # date). Real props showing a wrong/old matchup with no
+            # staleness disclosure at all was exactly the gap this closes.
+            "generatedAt": TS_DISPLAY,
         },
         "bestBets":      best_bets,
         "heroPicksForDay": surface_best_bets_for_day(best_bets),
