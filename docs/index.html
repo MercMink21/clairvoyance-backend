@@ -8096,6 +8096,14 @@ async function renderNHLGames(day){
   const events=await fetchESPNNHL(dateStr);
   if(events?.length){
     el.innerHTML=events.map(_nhlGameCard).join('');
+    // Cached for _generateNHLPropsLive, same pattern as
+    // window._nbaTodayGames/window._wnbaGameData -- without this the live
+    // NHL props engine has no real matchup list to build props from.
+    window._nhlTodayGames=events.map(ev=>{
+      const c=ev.competitions?.[0];if(!c)return null;
+      const hE=c.competitors?.find(t=>t.homeAway==='home'),aE=c.competitors?.find(t=>t.homeAway==='away');
+      return{h:hE?.team?.abbreviation,a:aE?.team?.abbreviation};
+    }).filter(g=>g&&g.h&&g.a);
     try{renderNHLSeriesAndProps();}catch(e){}
     return;
   }
@@ -15451,7 +15459,88 @@ function startNHLLive(){if(_nhlLiveIv)clearInterval(_nhlLiveIv);refreshNHLLive()
 function renderNHLSCFProps(){/* superseded by renderNHLPropsLive */}
 
 // ── NHL Props Live ───────────────────────────────────────────────────────────
-function renderNHLPropsLive(filter){
+// ═══ NHL PLAYER PROPS — LIVE (ESPN + MC) ══════════════════════
+// Mirrors _fetchNBAPlayerStats/_generateNBAProps and their WNBA twins:
+// a client-side ESPN stats fetch feeding a Monte Carlo prop sim with real
+// opponent-defense adjustment (_propOppDefFactor('NHL',...), already built
+// this session off the real 32-team patchNHLStandings expansion) and real
+// UNDER support. NHL never had ANY model-generated props before this --
+// only a hand-curated (permanently empty) NHL_PROPS_DATA const and
+// whatever Linemate happened to have. This is the live fallback tier,
+// used exactly like WNBA's when Linemate doesn't have enough real props.
+var _nhlStatsCache=null,_nhlStatsCacheDate='';
+async function _fetchNHLPlayerStats(){
+  var td=typeof today==='function'?today():'';
+  if(_nhlStatsCacheDate===td&&_nhlStatsCache)return _nhlStatsCache;
+  try{
+    var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/statistics?limit=300',{signal:ctrl.signal});
+    var d=await r.json();
+    var byName={};
+    (d.athletes||[]).forEach(function(a){
+      var name=a.athlete&&a.athlete.displayName;if(!name)return;
+      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
+      var stats={};(a.categories||[]).forEach(function(cat){
+        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
+      });
+      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
+      var goals=stats.goals||stats.G||0,assists=stats.assists||stats.A||0;
+      var points=stats.points||stats.PTS||(goals+assists);
+      byName[name.toLowerCase()]={name,team,gp,
+        gpg:+((goals/gp)).toFixed(2),
+        apg:+((assists/gp)).toFixed(2),
+        ppg:+((points/gp)).toFixed(2),
+        shpg:+((stats.shots||stats.SOG||0)/gp).toFixed(1)
+      };
+    });
+    _nhlStatsCache=byName;_nhlStatsCacheDate=td;
+    console.log('[CV] NHL stats loaded: '+Object.keys(byName).length+' players');
+    return byName;
+  }catch(e){console.warn('[CV] NHL stats fetch err:',e);return null;}
+}
+function _generateNHLPropsLive(games,statsData){
+  if(!statsData||!games||!games.length)return[];
+  var props=[];
+  var p2ml=function(p){return p>=.5?Math.round(-p/(1-p)*100):Math.round((1-p)/p*100);};
+  var mlStr=function(ml){return ml>0?'+'+ml:''+ml;};
+  var players=Object.values(statsData);
+  games.forEach(function(g){
+    var hn=g.h||g.hA||g.home,an=g.a||g.awA||g.away;if(!hn||!an)return;
+    var gamePlayers=players.filter(function(p){
+      return(p.team===hn||p.team===an)&&p.gp>=5;
+    }).sort(function(a,b){return b.ppg-a.ppg;}).slice(0,10);
+    var seen=new Set();
+    gamePlayers.forEach(function(pl){
+      var opp=pl.team===hn?an:hn;
+      var oppDef=_propOppDefFactor('NHL',opp);
+      var factor=oppDef.factor;
+      var oppNote=oppDef.note?'No real opponent defensive data available for '+opp+' yet — projection uses season average only, no matchup adjustment applied. '
+        :'Opp '+opp+' GA/60 '+oppDef.raw.toFixed(2)+' vs a '+oppDef.lgAvg.toFixed(2)+' league average'+(oppDef.realAvg?' computed from every currently-loaded team':' (assumed baseline)')+', a '+(factor*100).toFixed(0)+'% '+(factor>=0?'boost':'reduction')+' folded into the projection. ';
+      function push(statKey,label,minAvg,cv){
+        var pKey=pl.name+'_'+statKey;if(seen.has(pKey))return;
+        var base=pl[statKey];if(base==null||base<minAvg)return;
+        seen.add(pKey);
+        var line=parseFloat(_forceHalfLine(base));
+        var adjMu=Math.max(0.05,base*(1+factor));
+        var sigma=Math.max(minAvg*0.5,base*cv);
+        var mc=propMC(adjMu,sigma,line,5000);
+        var pick=adjMu>=line?'OVER':'UNDER';
+        var conf=pick==='OVER'?mc.overP*100:(1-mc.overP)*100;
+        var grade=(Math.abs(factor)<0.01&&Math.abs(conf-50)<4)?'SKIP':_propGradeByConf(conf);
+        var ml=p2ml(pick==='OVER'?mc.overP:1-mc.overP);
+        props.push({player:pl.name,t:pl.team,team:pl.team,opp,hA:hn,awA:an,
+          stat:label,line,over:pick==='OVER',ml:mlStr(ml),prob:conf/100,conf:Math.round(conf),
+          grade,hitRate:mc.hitRate+'%',adjustor:+(adjMu-base).toFixed(2),src:'ESPN Stats + MC Sim (5k)',
+          basis:pl.name+' averages '+base.toFixed(2)+' '+label+' across '+pl.gp+' games this season. '+oppNote+'No head-to-head history vs '+opp+' this season is factored in yet — likelihood is directional (modeled variance assumption), not a market-calibrated probability.'});
+      }
+      push('ppg','POINTS',0.5,0.7);
+      push('gpg','GOALS',0.25,0.9);
+      push('apg','ASSISTS',0.25,0.9);
+    });
+  });
+  return props.sort(function(a,b){return b.prob-a.prob;});
+}
+async function renderNHLPropsLive(filter){
   window._nhlPropFilter=filter||'all';
   const el=document.getElementById('nhl-scf-props');if(!el)return;
   document.querySelectorAll('#nhl-props-filter button').forEach(b=>{
@@ -15467,6 +15556,7 @@ function renderNHLPropsLive(filter){
   // NBA/WNBA/NFL Linemate panels already read. Reading only the empty const
   // meant this tab showed "NO NHL PROPS" every single day regardless of
   // whether real data had loaded.
+  let src='Linemate';
   let data=(window._remoteNHLProps&&window._remoteNHLProps.length)?[...window._remoteNHLProps]
     :(window.__CV_DATA?.linemate?.props?.nhl&&window.__CV_DATA.linemate.props.nhl.length)?[...window.__CV_DATA.linemate.props.nhl]
     :(typeof NHL_PROPS_DATA!=='undefined'?[...NHL_PROPS_DATA]:[]);
@@ -15479,13 +15569,29 @@ function renderNHLPropsLive(filter){
     grade:p.grade||_propGradeByConf(p.conf!=null?p.conf:55),
     hitRate:p.hitRate||p.l10||p.l5||'--',basis:p.basis||'',opp:p.opp,src:p.src||'Linemate'
   }));
+  // Live ESPN+MC fallback tier -- same threshold/pattern as WNBA's 3-tier
+  // system: when Linemate doesn't have enough real market props loaded,
+  // fall back to a real model-generated slate instead of an empty tab.
+  if(data.length<3){
+    try{
+      let liveGames=window._nhlTodayGames||[];
+      if(!liveGames.length){try{await renderNHLGames();liveGames=window._nhlTodayGames||[];}catch(e){}}
+      if(liveGames.length){
+        const liveStats=await _fetchNHLPlayerStats();
+        if(liveStats&&Object.keys(liveStats).length){
+          const liveProps=_generateNHLPropsLive(liveGames,liveStats);
+          if(liveProps.length>data.length){data=liveProps;src='ESPN Stats + MC Sim (5k)';}
+        }
+      }
+    }catch(e){console.warn('[CV] NHL live props fallback err:',e);}
+  }
   if(filter==='points')data=data.filter(p=>(p.stat||'').toLowerCase().includes('point'));
   else if(filter==='goals')data=data.filter(p=>(p.stat||'').toLowerCase().includes('goal'));
   else if(filter==='saves')data=data.filter(p=>(p.stat||'').toLowerCase().includes('save'));
   else if(filter==='shots')data=data.filter(p=>(p.stat||'').toLowerCase().includes('shot'));
   else if(filter==='top')data=data.filter(p=>p.grade==='PREMIUM'||p.grade==='OPTIMAL');
   data.sort((a,b)=>(gradeOrder[a.grade]||3)-(gradeOrder[b.grade]||3)||b.conf-a.conf);
-  if(dateEl)dateEl.textContent='SOURCE: LINEMATE.IO/NHL · TRENDS · LIVE MATCHUP ANALYSIS';
+  if(dateEl)dateEl.textContent=src==='Linemate'?'SOURCE: LINEMATE.IO/NHL · TRENDS · LIVE MATCHUP ANALYSIS':'SOURCE: ESPN 2026 SEASON STATS · MONTE CARLO 5K SIMS';
   if(!data.length){el.innerHTML='<div class="empty">NO NHL PROPS — OFFSEASON</div>';try{renderPropsTracker();}catch(e){}return;}
   const banner='';
   const top=data.filter(p=>p.grade==='PREMIUM'||p.grade==='OPTIMAL').slice(0,3);
@@ -15533,6 +15639,7 @@ function renderNHLPropsLive(filter){
           <div style="font-family:var(--orb);font-size:19px;font-weight:700;color:${ev>=0?'var(--nc)':'var(--hc)'}">${ev>=0?'+':''}${ev.toFixed(1)}%</div>
         </div>
       </div>
+      ${p.src&&p.src.indexOf('MC Sim')>=0?_recPropLineHTML(p.line,_findMarketProp('nhl',p.player,p.stat),p.stat):''}
       <div style="font-family:var(--mono);font-size:17px;color:var(--t2);line-height:1.7;margin-bottom:6px">${p.basis}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
         <span style="font-family:var(--mono);font-size:15px;color:var(--t3)">SRC: ${p.src||'Linemate'} \u00b7 vs ${p.opp||'\u2014'}</span>
