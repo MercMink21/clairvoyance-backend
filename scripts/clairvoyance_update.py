@@ -2003,7 +2003,11 @@ def fetch_tennis_rankings_espn() -> dict:
     result: dict = {"atp": [], "wta": []}
     for tour, path in [("atp","tennis/rankings"),("wta","tennis/rankings/_/type/wta")]:
         try:
-            soup = fetch_html(f"https://www.espn.com/{path}")
+            # www.espn.com (the website) is the opposite of site.api.espn.com
+            # (the JSON API): it 403s a request with NO custom User-Agent and
+            # needs a real browser one -- ref=True routes through
+            # _ref_session (REF_HEADERS), which already carries one.
+            soup = fetch_html(f"https://www.espn.com/{path}", ref=True)
             if not soup: continue
             for row in soup.select("tr.Table__TR"):
                 cells = row.find_all("td")
@@ -2080,7 +2084,10 @@ def fetch_tennis_schedule_full() -> dict:
     # Also try ESPN for live schedule supplement
     for tour, path in [("atp","tennis/schedule"),("wta","tennis/schedule/_/type/wta")]:
         try:
-            soup = fetch_html(f"https://www.espn.com/{path}")
+            # ref=True -- see fetch_tennis_rankings_espn's comment on why
+            # www.espn.com needs the real browser UA (_ref_session), unlike
+            # site.api.espn.com which needs none at all.
+            soup = fetch_html(f"https://www.espn.com/{path}", ref=True)
             if not soup: continue
             espn_events = []
             for row in soup.select("tr.Table__TR"):

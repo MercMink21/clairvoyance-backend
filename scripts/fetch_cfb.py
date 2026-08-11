@@ -29,6 +29,13 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-foot
 # custom header at all -- passes through fine). Empty dict, not removed
 # entirely, so call sites don't need to change.
 HEADERS: dict = {}
+# www.espn.com (the actual website, used only by _fetch_fpi_view below) is
+# the OPPOSITE of site.api.espn.com: it 403s a request with no custom
+# User-Agent and needs a real browser one. Verified directly.
+WWW_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+}
 
 # The 9 conferences this engine tracks, keyed by ESPN's own group id
 # (confirmed via GET .../standings?group=80's children listing).
@@ -338,7 +345,7 @@ def _fetch_fpi_view(view: str | None = None) -> dict:
     server-side JSON. Genuinely useful even now, in preseason — FPI/Resume/
     Efficiencies projections already exist ahead of Week 1."""
     url = "https://www.espn.com/college-football/fpi" + (f"/_/view/{view}" if view else "")
-    r = requests.get(url, headers=HEADERS, timeout=20)
+    r = requests.get(url, headers=WWW_HEADERS, timeout=20)
     r.raise_for_status()
     m = _ESPNFITT_RE.search(r.text)
     if not m:
