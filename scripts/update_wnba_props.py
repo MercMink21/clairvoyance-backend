@@ -36,10 +36,10 @@ except ImportError:
     from bs4 import BeautifulSoup
 
 # ── utils ─────────────────────────────────────────────────────────────────────
-HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-}
+# ESPN's site.api.espn.com now 403s any request carrying a custom
+# User-Agent (verified directly against the live endpoint) -- dropped so
+# requests falls back to its own default UA, which passes through fine.
+HEADERS: dict = {}
 
 def log(msg: str, lvl: str = "INFO") -> None:
     ts = datetime.now().strftime("%H:%M:%S")

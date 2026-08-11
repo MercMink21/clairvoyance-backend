@@ -82,11 +82,16 @@ for _d in (DATA, LOGS):
 BET_HISTORY_JSON = DATA / "bet_history.json"
 BET_HISTORY_CSV  = DATA / "bet_history.csv"
 
+# ESPN's site.api.espn.com now 403s any request carrying a custom
+# User-Agent, browser-spoofed or not (verified directly: dropping the
+# User-Agent header entirely -- keeping Accept/Accept-Language -- is what
+# actually gets through; requests' own default "python-requests/x.x" UA
+# is what a bare request without this header sends). _session below
+# applies this dict to every ESPN call in the whole pipeline (MLB/NBA/
+# NHL/WNBA schedules, scores, odds), so this one change unblocks all of
+# them. Only REF_HEADERS (Sports-Reference, a different site entirely,
+# unaffected by this) still sends a browser UA.
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json, text/html, */*",
     "Accept-Language": "en-US,en;q=0.9",
 }

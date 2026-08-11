@@ -40,8 +40,10 @@ FE_LIVE = ROOT / "frontend" / "live_data.json"
 DC_LIVE = ROOT / "docs"    / "live_data.json"
 DATA    = ROOT / "data"
 
+# ESPN's site.api.espn.com now 403s any request carrying a custom
+# User-Agent (verified directly against the live endpoint) -- dropped so
+# requests falls back to its own default UA, which passes through fine.
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Accept": "application/json, */*",
 }
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"

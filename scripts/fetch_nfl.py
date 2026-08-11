@@ -41,7 +41,12 @@ PLAYER_STATS_OUT = ROOT / "docs" / "nfl_player_stats.json"
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
 ESPN_WEB_BASE = "https://site.web.api.espn.com/apis/v2/sports/football/nfl"
 ESPN_CORE_BASE = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ClairvoyanceBot/1.0)"}
+# ESPN's site.api.espn.com now 403s any request carrying a custom
+# User-Agent (verified: both this bot-labeled UA and a spoofed browser UA
+# get blocked; requests' own default "python-requests/x.x" UA -- i.e. no
+# custom header at all -- passes through fine). Empty dict, not removed
+# entirely, so call sites don't need to change.
+HEADERS: dict = {}
 
 # NFL regular season is 18 weeks; Thursday of week N through Monday of
 # week N (Thu/Sun/Mon, per the user's explicit "Thursday night starts

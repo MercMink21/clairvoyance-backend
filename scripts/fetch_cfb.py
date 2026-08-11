@@ -23,7 +23,12 @@ OUT_PATH = ROOT / "docs" / "cfb_teams.json"
 POWER_OUT_PATH = ROOT / "docs" / "cfb_power.json"
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ClairvoyanceBot/1.0)"}
+# ESPN's site.api.espn.com now 403s any request carrying a custom
+# User-Agent (verified: both this bot-labeled UA and a spoofed browser UA
+# get blocked; requests' own default "python-requests/x.x" UA -- i.e. no
+# custom header at all -- passes through fine). Empty dict, not removed
+# entirely, so call sites don't need to change.
+HEADERS: dict = {}
 
 # The 9 conferences this engine tracks, keyed by ESPN's own group id
 # (confirmed via GET .../standings?group=80's children listing).
