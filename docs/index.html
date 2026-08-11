@@ -11483,10 +11483,6 @@ function renderOverall(){
     ${periodCard('SINCE LAUNCH (JUL 1, 2026)',sinceLaunchPerf,'var(--hc)')}
     ${periodCard('ALL TIME',allTimePerf,'rgba(255,221,0,.9)')}
   </div>
-  <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:rgba(0,218,136,.9);margin:12px 0 6px">PICK OF THE DAY PERFORMANCE <span style="color:var(--t3);letter-spacing:1px">— FREE DAILY PICK, TRACKED SEPARATELY FROM THE REAL LEDGER ABOVE</span></div>
-  <div id="ovr-pick-of-day-perf" style="margin-bottom:10px"></div>
-  <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--t3);margin-bottom:6px">PENDING</div>
-  <div id="ovr-pick-of-day" class="card" style="padding:10px;margin-bottom:14px"><div class="empty" style="font-size:15px">LOADING…</div></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
     <span style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:var(--t3)">FILTER BY MONTH:</span>
     <select id="ovr-month-select" onchange="window._ovrSelectedMonth=this.value;renderOverall()" style="background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);color:var(--t);font-family:var(--mono);font-size:15px;padding:4px 8px;border-radius:2px">
@@ -11679,111 +11675,6 @@ function renderOverall(){
   </div>`;
 
   el.innerHTML=h;
-  renderOverallPickOfDayHistory();
-  loadPickOfDay().then(renderOverallPickOfDayHistory);
-}
-
-// Manual Pick of Day settlement — the daily workflow auto-settles most
-// picks against the real score the next morning, but that's a once-a-
-// day check; a pick can sit shown as PENDING here for hours after it's
-// actually final. These write straight to docs/pick_of_day.json via the
-// same GitHub Contents API path savePicksToGitHub() already uses for
-// the real ledger (requires the same stored GH token), so a manual
-// settle here persists and won't get clobbered by tomorrow's run.
-async function _potdSaveToGitHub(ledger){
-  const tok=getGHToken();
-  if(!tok){toast('// SET A GITHUB TOKEN (SYNC SETTINGS) TO SAVE');return false;}
-  try{
-    if(!window._gh_potd_sha){
-      const cur=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/docs/pick_of_day.json',
-        {headers:{'Authorization':'token '+tok}});
-      if(cur.ok){const cd=await cur.json();window._gh_potd_sha=cd.sha;}
-    }
-    const body={message:'pick-of-day: manual settle '+new Date().toISOString().slice(0,16)+' UTC',
-      content:btoa(unescape(encodeURIComponent(JSON.stringify(ledger,null,2)))),branch:'main'};
-    if(window._gh_potd_sha)body.sha=window._gh_potd_sha;
-    const r=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/docs/pick_of_day.json',
-      {method:'PUT',headers:{'Authorization':'token '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.ok){const d=await r.json();window._gh_potd_sha=d.content?.sha;toast('// PICK OF DAY SAVED');return true;}
-    toast('// SAVE FAILED — CHECK GITHUB TOKEN');return false;
-  }catch(e){console.warn('[CV] potd save:',e.message);toast('// SAVE FAILED');return false;}
-}
-function potdSettle(dateKey,outcome){
-  var ledger=window.__CV_POTD||[];
-  var e=ledger.find(function(x){return x.date===dateKey;});
-  if(!e)return;
-  e.outcome=outcome;e.settledAt=Date.now();
-  _potdSaveToGitHub(ledger);
-  renderOverallPickOfDayHistory();
-  try{renderPickOfDayTile();}catch(err){}
-}
-function potdRemove(dateKey){
-  if(typeof window.confirm==='function'&&!confirm('Remove this Pick of Day entry? This cannot be undone.'))return;
-  window.__CV_POTD=(window.__CV_POTD||[]).filter(function(x){return x.date!==dateKey;});
-  _potdSaveToGitHub(window.__CV_POTD);
-  renderOverallPickOfDayHistory();
-  try{renderPickOfDayTile();}catch(err){}
-}
-function renderOverallPickOfDayPerf(){
-  var el=document.getElementById('ovr-pick-of-day-perf');
-  if(!el)return;
-  var ledger=window.__CV_POTD||[];
-  var perf=_potdStats(ledger);
-  var accColorFn=typeof accColor==='function'?accColor:function(a){return a===null?'var(--t3)':a>=.62?'var(--nc)':a>=.50?'var(--vc)':'var(--hc)';};
-  var unitColorFn=typeof unitColor==='function'?unitColor:function(u){return u>=0?'var(--nc)':'var(--hc)';};
-  var empty=perf.n===0;
-  el.innerHTML=`<div class="card period-card" style="padding:10px;border-top:2px solid rgba(0,218,136,.9)">
-      <div class="period-card-hdr" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:7px;flex-wrap:wrap">
-        <div class="period-card-lbl" style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:rgba(0,218,136,.9)">PICK OF THE DAY PERFORMANCE</div>
-        <div class="period-card-locked" style="font-family:var(--mono);font-size:16px;color:var(--t3);white-space:nowrap">${ledger.length} PICKS · ${perf.n} SETTLED</div>
-      </div>
-      <div class="period-card-stats" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <div style="text-align:center;min-width:44px">
-          <div class="period-card-val" style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':accColorFn(perf.pct)}">${empty?'N/A':perf.pct!==null?(perf.pct*100).toFixed(0)+'%':'--'}</div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">WIN%</div>
-        </div>
-        <div style="text-align:center;min-width:60px">
-          <div class="period-card-val" style="font-family:var(--orb);font-size:22px;font-weight:700;white-space:nowrap">${perf.w}W-${perf.l}L</div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">RECORD</div>
-        </div>
-        <div style="text-align:center;min-width:44px">
-          <div class="period-card-val" style="font-family:var(--orb);font-size:24px;font-weight:700;color:${empty?'var(--t3)':unitColorFn(perf.units)}">${empty?'N/A':(perf.units>=0?'+':'')+perf.units.toFixed(1)}</div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">UNITS</div>
-        </div>
-        <div style="text-align:center;min-width:44px">
-          <div class="period-card-val" style="font-family:var(--orb);font-size:24px;font-weight:700;color:var(--t1)">${perf.n}</div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">PICKS LOCKED</div>
-        </div>
-      </div>
-    </div>`;
-}
-function renderOverallPickOfDayHistory(){
-  renderOverallPickOfDayPerf();
-  var el=document.getElementById('ovr-pick-of-day');
-  if(!el)return;
-  // Only pending picks show here — once settled, a pick drops out of this
-  // "needs action" list entirely and lives only in _potdStats()'s
-  // aggregated win%/record/units/picks-locked (rendered by
-  // renderPickOfDayTile() above this section), matching how the real bet
-  // ledger's pending-vs-settled split already works elsewhere.
-  var ledger=(window.__CV_POTD||[]).filter(function(e){return e.outcome==='pending';}).sort(function(a,b){return a.date<b.date?1:-1;});
-  if(!ledger.length){el.innerHTML='<div class="empty" style="font-size:15px">NO PENDING PICK OF DAY — SEE RECORD ABOVE</div>';return;}
-  var gCol=function(g){return g==='PREMIUM'?'#ffcc00':g==='OPTIMAL'?'var(--ic)':g==='LEAN'?'var(--pc)':'var(--t3)';};
-  var rows=ledger.slice(0,30).map(function(e){
-    var actions=`<button class="btn btn-n btn-sm" onclick="potdSettle('${e.date}','win')">WIN</button>
-        <button class="btn btn-o btn-sm" style="color:var(--hc);border-color:var(--hc)" onclick="potdSettle('${e.date}','loss')">LOSS</button>
-        <button class="btn btn-sm" style="color:rgba(220,190,255,.35);border-color:rgba(220,190,255,.2);font-size:14px;padding:2px 7px" onclick="potdRemove('${e.date}')">× REMOVE</button>`;
-    return`<div style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <div style="flex:1;min-width:0">
-        <div style="font-family:var(--mono);font-size:15px;color:var(--t1);font-weight:700">${e.pick}</div>
-        <div style="font-family:var(--mono);font-size:13px;color:var(--t3)">${e.date} · ${e.matchup} · ${e.sport}${e.league&&e.league!==e.sport?' / '+e.league:''} · ${e.betType||'ML'}</div>
-      </div>
-      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${gCol(e.grade)}">${e.grade}</span>
-      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--t3);min-width:60px;text-align:right">PENDING</span>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">${actions}</div>
-    </div>`;
-  }).join('');
-  el.innerHTML=rows;
 }
 
 // ─── OVERALL ANALYTICS ───────────────────────────────────────────────────────
@@ -12322,39 +12213,8 @@ function buildAlyFilters(allRaw,F){
 }
 
 
-// Matches a real bet (getP() entry) against the Pick of Day ledger so
-// "all bets" views can tag whichever locked bet was also that day's free
-// pick — by date + picked team abbreviation for ML picks, or by date +
-// player-name substring for O/U prop picks. No write-back to either
-// ledger, purely a display-time cross-reference.
-function _potdTagFor(p){
-  const ledger=window.__CV_POTD||[];
-  if(!ledger.length||!p.date)return null;
-  return ledger.find(e=>{
-    if(e.date!==p.date)return false;
-    // Must match the exact selection that was the free pick, not just
-    // any bet from the same game — a same-game spread or O/U bet on the
-    // picked team used to get tagged FREE PICK too, since this only
-    // checked whether the team appeared in the matchup at all.
-    if(e.pickedAbbr){
-      return (p.betType||'').toUpperCase()==='ML'
-        && (p.betOn||'').trim().toUpperCase()===e.pickedAbbr.toUpperCase();
-    }
-    if(e.player){
-      const betOnL=(p.betOn||'').toLowerCase();
-      if((p.betType||'').toUpperCase()!=='PROP')return false;
-      if(betOnL.indexOf(e.player.toLowerCase())<0)return false;
-      if(e.stat&&betOnL.indexOf(String(e.stat).toLowerCase())<0)return false;
-      if(e.line!=null&&betOnL.indexOf(String(e.line))<0)return false;
-      return true;
-    }
-    return false;
-  })||null;
-}
-
 function renderOverallHistory(sportFilter,dateFrom,dateTo){
   const el=document.getElementById('ovr-history-list');if(!el)return;
-  if(!window.__CV_POTD){loadPickOfDay().then(()=>renderOverallHistory());}
   let all=[...getP()].sort((a,b)=>(b.lockedAt||0)-(a.lockedAt||0));
   // ── PENDING BETS — always shown at top regardless of filters ──────────────
   const pendingAll=all.filter(p=>p.outcome==='pending');
@@ -12369,7 +12229,6 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
             ${_sportBadgeHtml(p.sport,()=>sc)}
             <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
             ${_gradeChipHtml(p)}
-            ${_potdTagFor(p)?`<span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid rgba(0,218,136,.6);color:rgba(0,218,136,.9);border-radius:2px;letter-spacing:1px;white-space:nowrap">FREE PICK</span>`:''}
             <span style="font-family:var(--mono);font-size:15px;color:var(--t3)">${p.date||''}</span>
           </div>
           <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||p.betType,p.sport)}</div>
@@ -12525,8 +12384,6 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
     const mu=_gameTitle(p.hA,p.awA,p.sport);
     const rawBetOn=_expandBetOn(p.betOn||'',p.sport);
     const parlayLegs=_parlayLegs(p);
-    const potdTag=_potdTagFor(p);
-    const potdBadge=potdTag?`<span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid rgba(0,218,136,.6);color:rgba(0,218,136,.9);border-radius:2px;letter-spacing:1px;white-space:nowrap">FREE PICK</span>`:'';
     const legHtml=parlayLegs
       ?parlayLegs.map(({leg})=>{
           return`<div style="display:flex;align-items:center;gap:5px;padding:2px 0"><span style="font-family:var(--mono);font-size:15px;color:var(--t2)">${leg}</span></div>`;
@@ -12540,7 +12397,6 @@ function renderOverallHistory(sportFilter,dateFrom,dateTo){
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
             ${_sportBadgeHtml(p.sport,()=>sc)}
             <span style="font-family:var(--mono);font-size:15px;color:var(--t2)">${parlayHeader||mu}</span>
-            ${potdBadge}
           </div>
           <div style="margin-bottom:2px">${legHtml}</div>
           <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${p.betType||''}${p.ml?' · '+p.ml:''}${p.winProb?' · '+(p.winProb*100).toFixed(0)+'%':''}</div>
@@ -14229,83 +14085,6 @@ function _scanCrossSportPicks(){
   });
   return out;
 }
-// ── PICK OF THE DAY ─────────────────────────────────────────────────────────
-// docs/pick_of_day.json is written + git-committed daily by
-// scripts/generate_social_cards.py (same "highest win-probability leg
-// across every sport" pick that goes out in the daily social email's
-// free-pick video) — one entry per day: {date,sport,league,type,betType,
-// pick,matchup,prob,ml,grade,pickedAbbr,outcome,settledAt}. outcome is
-// 'pending' until the next day's run settles it against the real ESPN
-// final score. Fetched once per session, same cache pattern as
-// loadMLSOptaStats().
-var _potdLoading=null;
-function loadPickOfDay(){
-  if(window.__CV_POTD)return Promise.resolve(window.__CV_POTD);
-  if(_potdLoading)return _potdLoading;
-  _potdLoading=fetch('pick_of_day.json',{cache:'no-cache'})
-    .then(function(r){return r.ok?r.json():Promise.reject(new Error('HTTP '+r.status));})
-    .then(function(d){window.__CV_POTD=Array.isArray(d)?d:[];return window.__CV_POTD;})
-    .catch(function(e){
-      // Don't cache a failed load as window.__CV_POTD — an empty array is
-      // truthy, so the short-circuit above would treat a transient fetch
-      // failure as "already loaded, nothing pending" for the rest of the
-      // session (perf boxes elsewhere read getP()-derived data separately
-      // and could still show real settled counts, making an empty pending
-      // list here look like a data bug rather than a network blip).
-      // Leaving window.__CV_POTD unset lets the next loadPickOfDay() call
-      // retry instead of getting stuck.
-      console.warn('[CV] Pick of Day load failed:',e.message);
-      _potdLoading=null;
-      return [];
-    });
-  return _potdLoading;
-}
-function _potdStats(ledger){
-  var settled=ledger.filter(function(e){return e.outcome==='win'||e.outcome==='loss';});
-  var w=settled.filter(function(e){return e.outcome==='win';}).length;
-  var l=settled.length-w;
-  var units=settled.reduce(function(a,e){
-    if(e.outcome==='win'){var m=parseFloat(String(e.ml).replace('+',''));var dec=m>0?m/100+1:100/Math.abs(m)+1;return a+dec-1;}
-    return a-1;
-  },0);
-  return{w:w,l:l,n:settled.length,pct:settled.length?w/settled.length:null,units:units};
-}
-function renderPickOfDayTile(){
-  var el=document.getElementById('home-pick-of-day');
-  if(!el)return;
-  var ledger=window.__CV_POTD||[];
-  var perf=_potdStats(ledger);
-  var today=ledger.length?ledger[ledger.length-1]:null;
-  var pCol=function(p){return p===null?'var(--t3)':p>=.62?'var(--nc)':p>=.50?'var(--vc)':'var(--hc)';};
-  var uCol=function(u){return u>=0?'var(--nc)':'var(--hc)';};
-  var gCol=function(g){return g==='PREMIUM'?'#ffcc00':g==='OPTIMAL'?'var(--ic)':g==='LEAN'?'var(--pc)':'var(--t3)';};
-  var pc=pCol(perf.pct),uc=uCol(perf.units);
-  var barW=perf.n?Math.round((perf.pct||0)*100):0;
-  var todayHtml=today?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-family:var(--mono);font-size:14px;color:var(--t3)">
-      TODAY (${today.date}): <span style="color:var(--t1)">${today.pick}</span>
-      <span style="color:var(--t3)">(${today.matchup})</span>
-      · <span style="color:${gCol(today.grade)}">${today.grade}</span>
-      · <span style="color:var(--t3)">${today.sport}${today.league&&today.league!==today.sport?' / '+today.league:''}</span>
-      · <span style="color:${today.outcome==='win'?'var(--nc)':today.outcome==='loss'?'var(--hc)':'var(--t3)'}">${today.outcome.toUpperCase()}</span>
-    </div>`:'';
-  el.innerHTML=`<div class="card perf-card" style="padding:11px 12px;border-top:2px solid rgba(0,218,136,.9);min-width:0">
-    <div class="perf-card-hdr" style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:rgba(0,218,136,.9);margin-bottom:8px;white-space:nowrap">PICK OF DAY<span style="color:var(--t3);margin-left:4px">FREE · ONE PICK/DAY</span></div>
-    ${perf.n?`
-    <div class="perf-card-row" style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-      <span class="perf-card-rec" style="font-family:var(--orb);font-size:24px;font-weight:900;color:var(--t1);white-space:nowrap">${perf.w}W<span style="color:var(--t3);font-size:18px">-</span>${perf.l}L</span>
-    </div>
-    <div style="height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-bottom:6px">
-      <div style="width:${barW}%;height:100%;background:${pc};border-radius:2px"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-family:var(--mono);font-size:17px;font-weight:700;color:${pc}">${perf.pct!==null?(perf.pct*100).toFixed(1)+'%':'--'}</span>
-      <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:${uc}">${perf.units>=0?'+':''}${perf.units.toFixed(1)}u</span>
-    </div>`
-    :`<div class="empty" style="font-size:15px">NO PICKS SETTLED YET</div>`}
-    ${todayHtml}
-  </div>`;
-}
-
 function renderHomePage(){
   const allBets=getP();
   const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
@@ -14343,27 +14122,14 @@ function renderHomePage(){
       return{w,l,n:s.length,pct:s.length?w/s.length:null,units:u};
     };
 
-    // Pick of Day picks are tracked in their own ledger (docs/pick_of_day.json,
-    // separate from the real bet ledger so re-locking never collides with
-    // it), but should still roll into the same period totals everyone
-    // sees here — converted to the same bet shape hCalc expects (date/
-    // outcome/decOdds/lockedAt) and concatenated in per-period, not
-    // written into allBets itself.
-    if(!window.__CV_POTD){loadPickOfDay().then(renderHomePage);}
-    const potdAsBets=(window.__CV_POTD||[]).map(function(e){
-      var m=parseFloat(String(e.ml).replace('+',''));
-      var dec=m>0?m/100+1:100/Math.abs(m)+1;
-      return{date:e.date,outcome:e.outcome,decOdds:dec,lockedAt:new Date(e.date+'T12:00:00').getTime()};
-    });
-
-    const rtd  = hCalc(allBets.filter(p=>p.date===todayStr).concat(potdAsBets.filter(p=>p.date===todayStr)));
-    const ry   = hCalc(allBets.filter(p=>p.date===yd).concat(potdAsBets.filter(p=>p.date===yd)));
-    const r7   = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts).concat(potdAsBets.filter(p=>p.lockedAt>=wk7ts)));
-    const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()).concat(potdAsBets.filter(p=>p.lockedAt>=firstOfMonth.getTime())));
-    const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()).concat(potdAsBets.filter(p=>p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime())));
-    const rAll = hCalc(allBets.concat(potdAsBets));
+    const rtd  = hCalc(allBets.filter(p=>p.date===todayStr));
+    const ry   = hCalc(allBets.filter(p=>p.date===yd));
+    const r7   = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7ts));
+    const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
+    const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
+    const rAll = hCalc(allBets);
     const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime();
-    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS).concat(potdAsBets.filter(p=>p.lockedAt>=LAUNCH_TS)));
+    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;
@@ -14401,16 +14167,12 @@ function renderHomePage(){
       ${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}
       ${perfCard('SINCE LAUNCH',rLaunch,'rgba(255,32,144,.9)','JUL 1, 2026')}
       <div style="grid-column:1/-1">${perfCard('ALL TIME',rAll,'rgba(255,221,0,.9)')}</div>
-    </div>
-    <div id="home-pick-of-day" style="margin-top:8px"></div>`;
-    renderPickOfDayTile();
-    loadPickOfDay().then(renderPickOfDayTile);
+    </div>`;
   }
 
   // ── TODAY'S PENDING PICKS ────────────────────────────────────────────────────
   const pendEl=document.getElementById('home-pending-bets');
   if(pendEl){
-    if(!window.__CV_POTD){loadPickOfDay().then(renderHomePage);}
     const todayPending=pending.filter(p=>p.date===todayStr);
     if(!todayPending.length){
       pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// TODAY'S PICKS</div>
@@ -14420,14 +14182,12 @@ function renderHomePage(){
       const rows=todayPending.map(p=>{
         const mu=_gameTitle(p.hA,p.awA,p.sport)||p.betOn||'';
         const conf=p.winProb?`${(p.winProb*100).toFixed(0)}%`:'';
-        const potdBadge=_potdTagFor(p)?`<span style="font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid rgba(0,218,136,.6);color:rgba(0,218,136,.9);border-radius:2px;letter-spacing:1px;white-space:nowrap">FREE PICK</span>`:'';
         return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
               ${_sportBadgeHtml(p.sport,sc)}
               <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
               ${_gradeChipHtml(p)}
-              ${potdBadge}
             </div>
             <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
             <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:1px">${p.ml||''} · ${p.betType}${conf?' · '+conf:''}</div>
@@ -29150,19 +28910,20 @@ function _epGatherLegs(){
   var _val=function(ml,p,ev){return parseFloat(ml)>0&&p>=0.35&&ev>=0.08;};
 
   /* ── MLB TODAY (ESPN_GAMES — live API data) ────────────────── */
-  // Odds-only, on purpose — this function also drives the live Parlay
-  // tab's "engine recommended" slates (renderEngineParlays), so it has
-  // to stay fast for every user, every time. A Monte Carlo fallback for
-  // days the odds feed comes back empty exists, but only in the daily
-  // Pick of Day picker (generate_social_cards.py's get_free_pick, via a
-  // dedicated one-off page.evaluate) — that path runs once a day, headless,
-  // with no user waiting on it, so it can afford real simulation cost.
-  // Do not add mlbEns()/Monte Carlo calls here: a single call measured
+  // Odds-only, on purpose — this function drives the live Parlay tab's
+  // "engine recommended" slates (renderEngineParlays), so it has to stay
+  // fast for every user, every time. Do not add mlbEns()/Monte Carlo calls
+  // here: a single call measured
   // ~3s+ against live team data, and multiplying that across a slate
   // inside a function called on every Parlay tab open/refresh froze the
   // page during testing.
-  var mlbGames=(window.ESPN_GAMES||window._mlbGames||[])
-    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F';});
+  // window.ESPN_GAMES||window._mlbGames -- an empty array is truthy in JS,
+  // so whenever ESPN_GAMES was [] (common; nothing else on this tab
+  // guarantees it's populated) this silently short-circuited to [] and
+  // window._mlbGames's real games were never reached, same root-cause
+  // same empty-array-truthy bug class found elsewhere in this codebase.
+  var mlbGames=((window.ESPN_GAMES&&window.ESPN_GAMES.length)?window.ESPN_GAMES:(window._mlbGames||[]))
+    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F'&&s!=='POST';});
   mlbGames.forEach(function(g){
     var hmlRaw=g.hML||g.homeML,amlRaw=g.aML||g.awayML;
     if(!hmlRaw||!amlRaw)return;
@@ -29336,8 +29097,13 @@ function _epGatherMoonLegs(){
   var seen=new Set(legs.map(function(l){return l.name;}));
 
   /* MLB underdogs and lean game lines */
-  var mlbGames=(window.ESPN_GAMES||window._mlbGames||[])
-    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F';});
+  // window.ESPN_GAMES||window._mlbGames -- an empty array is truthy in JS,
+  // so whenever ESPN_GAMES was [] (common; nothing else on this tab
+  // guarantees it's populated) this silently short-circuited to [] and
+  // window._mlbGames's real games were never reached, same root-cause
+  // same empty-array-truthy bug class found elsewhere in this codebase.
+  var mlbGames=((window.ESPN_GAMES&&window.ESPN_GAMES.length)?window.ESPN_GAMES:(window._mlbGames||[]))
+    .filter(function(g){var s=(g.status||'').toUpperCase();return g.hA&&g.awA&&s!=='FINAL'&&s!=='F'&&s!=='POST';});
   mlbGames.forEach(function(g){
     var hmlRaw=g.hML||g.homeML,amlRaw=g.aML||g.awayML;if(!hmlRaw||!amlRaw)return;
     var hP=_epImp(hmlRaw),aP=_epImp(amlRaw);
