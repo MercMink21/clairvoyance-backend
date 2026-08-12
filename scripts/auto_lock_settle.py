@@ -299,11 +299,24 @@ def gather_legs(page) -> dict:
           // real data instead of nothing.
           try {
             const mlbToday = (window.__CV_DATA && window.__CV_DATA.mlb && window.__CV_DATA.mlb.today) || [];
+            const todayIso = typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10);
             if (mlbToday.length && typeof mlbCard === 'function' && typeof TEAMS !== 'undefined') {
               mlbToday.forEach(g => {
                 if (!g.home || !g.away || !TEAMS[g.home] || !TEAMS[g.away]) return;
                 if (g.state === 'post') return; // already final, nothing to lock
-                const dateStr = (g.date || '').slice(0, 10);
+                // __CV_DATA.mlb.today is only as fresh as the last pipeline
+                // refresh -- if it ran before midnight MT rolled over (or
+                // hasn't run yet today), this array is still yesterday's
+                // slate. Only render games actually dated today (Denver
+                // time, same as today()/lockPick's own date stamp) instead
+                // of trusting the array's "today" label blindly. Parse+
+                // convert rather than a raw slice(0,10) -- g.date is a UTC
+                // timestamp, and a raw slice would misdate any game whose
+                // UTC date differs from its Denver-local date (any night
+                // game past ~6pm MT).
+                const gd = new Date(g.date);
+                const dateStr = isNaN(gd) ? (g.date || '').slice(0, 10) : gd.toLocaleDateString('sv-SE', { timeZone: 'America/Denver' });
+                if (dateStr !== todayIso) return;
                 const espnGame = { hML: g.homeML, aML: g.awayML, ou: g.ou, status: g.state };
                 try { mlbCard(g.home, g.away, '', dateStr, espnGame); } catch (e) {}
               });

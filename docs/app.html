@@ -2614,6 +2614,16 @@ function syncBetsToSupabase(){
   clearTimeout(_supabaseSyncTimer);
   _supabaseSyncTimer=setTimeout(async()=>{
     try{
+      // Pull latest FIRST. Without this, a device with stale local state
+      // (e.g. a bet it hasn't learned was settled elsewhere yet) would
+      // re-upload its own outdated 'pending' snapshot on the very next
+      // saveP() and clobber the already-correct settled row on Supabase —
+      // last-write-wins with no protection, since this upsert overwrites
+      // every column including outcome. syncPicksFromSupabase() only ever
+      // pulls a settlement IN (never regresses a local settled record), so
+      // reconciling first guarantees this device only ever pushes its own
+      // genuinely-known state, not a stale echo of an old one.
+      try{if(typeof syncPicksFromSupabase==='function')await syncPicksFromSupabase();}catch(e){}
       const bets=(typeof getP==='function'?getP():[]).filter(p=>p&&p.id);
       if(!bets.length)return;
       const rows=bets.map(_supabaseBetRow);
@@ -4165,7 +4175,7 @@ async function autoSettleNHL(){
           const total=hs+as;const ou=parseFloat(p.ou||5.5);
           outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
         }
-        if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NHL',outcome});}catch(ex){}}
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NHL',outcome,score:`${p.hA} ${hs} – ${p.awA} ${as}`});}catch(ex){}}
       }
     }
     if(changed){saveP(preds);updHdr();}
@@ -8555,8 +8565,18 @@ function removePick(id){
 // ── Clear ALL pending bets ──
 function clearAllPending(){
   if(!confirm('Remove ALL pending bets? This cannot be undone.'))return;
-  const preds=getP().filter(p=>p.outcome!=='pending');
+  const all=getP();
+  const removedIds=all.filter(p=>p.outcome==='pending').map(p=>p.id).filter(Boolean);
+  const preds=all.filter(p=>p.outcome!=='pending');
   saveP(preds);
+  // Without this, cleared bets were never soft-deleted from Supabase (only
+  // removePick() did that) — the next periodic pull silently re-added every
+  // one of them back into pending, making "clear all" appear to do nothing
+  // permanent.
+  if(removedIds.length){
+    _addWipedIds(removedIds);
+    try{_deleteBetsFromSupabase(removedIds);}catch(e){}
+  }
   try{updHdr();}catch(e){}
   try{renderOverall();}catch(e){}
   try{renderHistory();}catch(e){}
@@ -9407,7 +9427,7 @@ async function doUpdate(){
             let outcome=null;
             if(p.betType==='ML'){if(p.betOn===hAbbr)outcome=hSc>aSc?'win':'loss';else if(p.betOn===aAbbr)outcome=aSc>hSc?'win':'loss';}
             else if(p.betType==='OU'){const total=hSc+aSc;const ou=parseFloat(p.ou||0);if(ou>0)outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';}
-            if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;toast(`NBA SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
+            if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hSc;p.aScore=aSc;changed=true;toast(`NBA SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);}
           }
           if(changed){saveP(preds);updHdr();try{setTimeout(()=>adaptiveTick(),500);}catch(e){}}
         }
