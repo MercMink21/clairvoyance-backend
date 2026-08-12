@@ -137,7 +137,7 @@ def flush_to_supabase(page) -> None:
 # ─────────────────────────────────────────────────────────────────────────
 # SETTLE
 # ─────────────────────────────────────────────────────────────────────────
-def run_settle(page, live: bool) -> None:
+def run_settle(page, live: bool) -> list[dict]:
     log("=== AUTO-SETTLE ===")
     before = page.evaluate("() => getP().filter(p => p.outcome === 'pending').length")
     log(f"Pending bets before settle: {before}")
@@ -180,11 +180,16 @@ def run_settle(page, live: bool) -> None:
     settled_count = before - after
     log(f"Pending bets after settle: {after} ({settled_count} newly settled)")
 
+    newly: list[dict] = []
     if settled_count > 0:
         newly = page.evaluate(
             """
             () => getP().filter(p => p.outcome !== 'pending' && p.settledAt && (Date.now() - p.settledAt) < 180000)
-              .map(p => ({ betOn: p.betOn, sport: p.sport, outcome: p.outcome }))
+              .map(p => ({
+                betOn: p.betOn, sport: p.sport, outcome: p.outcome, date: p.date,
+                hA: p.hA, awA: p.awA, hScore: p.hScore, aScore: p.aScore,
+                playerResult: p.playerResult,
+              }))
             """
         )
         for b in newly:
@@ -195,6 +200,78 @@ def run_settle(page, live: bool) -> None:
         log("Flushed settlement results to Supabase")
     elif settled_count > 0:
         log("[DRY RUN] Would sync these settlements to Supabase (pass --live to write)")
+
+    return newly
+
+
+def _settle_result_line(b: dict) -> str:
+    """One human-readable result line per settled bet: what happened
+    (score for game bets, actual stat value for props) alongside the
+    win/loss/push outcome, so the email doubles as a same-day reference
+    for the picks that were locked and have now completed."""
+    outcome = (b.get("outcome") or "").upper()
+    if b.get("hScore") is not None and b.get("aScore") is not None:
+        result = f"{b.get('hA')} {b['hScore']} – {b.get('awA')} {b['aScore']}"
+    elif b.get("playerResult") is not None:
+        result = f"actual: {b['playerResult']}"
+    else:
+        result = "no score/result captured"
+    return f"{b.get('betOn')} — {outcome} ({result})"
+
+
+def build_settlement_email_body(settled: list[dict]) -> str:
+    by_sport: dict[str, list[dict]] = {}
+    for b in settled:
+        by_sport.setdefault(b.get("sport") or "?", []).append(b)
+
+    wins = sum(1 for b in settled if b.get("outcome") == "win")
+    losses = sum(1 for b in settled if b.get("outcome") == "loss")
+    pushes = sum(1 for b in settled if b.get("outcome") not in ("win", "loss"))
+    lines = [f"{len(settled)} bets settled — {wins}W-{losses}L" + (f"-{pushes}P" if pushes else ""), ""]
+    if not settled:
+        lines.append("No bets settled this run.")
+        return "\n".join(lines)
+
+    for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
+        bets = by_sport[sport]
+        sw = sum(1 for b in bets if b.get("outcome") == "win")
+        sl = sum(1 for b in bets if b.get("outcome") == "loss")
+        lines.append(f"=== {SPORT_DISPLAY_NAME.get(sport, sport)} ({sw}W-{sl}L) ===")
+        for b in bets:
+            lines.append(f"  • {_settle_result_line(b)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def send_settlement_email(settled: list[dict], live: bool) -> None:
+    if not RESEND_API_KEY or not LOCKS_EMAIL_TO:
+        log("RESEND_API_KEY/LOCKS_EMAIL_TO not set — skipping settlement email")
+        return
+    if not settled:
+        log("Nothing settled this run — skipping settlement email")
+        return
+    body_text = build_settlement_email_body(settled)
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    wins = sum(1 for b in settled if b.get("outcome") == "win")
+    losses = sum(1 for b in settled if b.get("outcome") == "loss")
+    prefix = "" if live else "[DRY RUN] "
+    subject = f"Clairvoyance — {prefix}Settled {date_str}: {wins}W-{losses}L ({len(settled)})"
+    body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
+        body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            json={"from": "Clairvoyance Engine <onboarding@resend.dev>", "to": [LOCKS_EMAIL_TO],
+                  "subject": subject, "html": body_html},
+            timeout=30,
+        )
+        if resp.status_code >= 300:
+            log(f"Settlement email send failed: HTTP {resp.status_code} {resp.text[:300]}")
+        else:
+            log(f"Settlement email sent to {LOCKS_EMAIL_TO}")
+    except Exception as exc:
+        log(f"Settlement email send failed: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -555,7 +632,8 @@ def main() -> None:
         log(f"Loaded {bet_count} real bets from Supabase into headless session")
 
         if do_settle:
-            run_settle(page, args.live)
+            settled = run_settle(page, args.live)
+            send_settlement_email(settled, args.live)
         if do_lock:
             run_lock(page, args.live)
 

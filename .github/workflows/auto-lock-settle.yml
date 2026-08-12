@@ -8,10 +8,16 @@ name: Auto Lock + Settle
 # ever actually wrote). See scripts/auto_lock_settle.py's module
 # docstring for the full design.
 #
-# SAFETY: scheduled runs below default to dry-run (no --live flag) --
-# they log exactly what WOULD be locked/settled and write nothing. Once
-# dry-run output has been reviewed for real, add --live to the scheduled
-# steps below to go live. workflow_dispatch always lets you choose.
+# SAFETY: scheduled runs default to dry-run (no --live flag) -- they log
+# exactly what WOULD be locked/settled and write nothing.
+#
+# GREEN-LIGHTING LIVE RUNS: once you've reviewed enough dry-run output,
+# go to Settings -> Secrets and variables -> Actions -> Variables and add
+# a repo variable named LIVE_MODE with value "true". Every scheduled run
+# (lock and settle) will then pass --live automatically -- no workflow
+# file edit needed. Set it back to "false" (or delete it) to return to
+# dry-run at any time. workflow_dispatch always lets you choose live/dry
+# per-run regardless of this variable.
 
 on:
   schedule:
@@ -71,10 +77,10 @@ jobs:
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "15 16 * * *" ]; then
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
-            echo "live_flag=" >> "$GITHUB_OUTPUT"
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           else
             echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
-            echo "live_flag=" >> "$GITHUB_OUTPUT"
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run auto-lock / auto-settle
