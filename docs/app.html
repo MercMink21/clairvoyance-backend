@@ -24036,7 +24036,12 @@ async function renderWNBAGames(force){
     console.warn('WNBA render err',e);
     // Nuclear fallback: render directly from data.json without any computation
     try{
-      var D2=window.__CV_DATA||{};var fb2=(D2.wnba&&D2.wnba.today)||[];
+      var D2=window.__CV_DATA||{};var todayStr2=typeof today==='function'?today():new Date().toISOString().slice(0,10);
+      var fb2=((D2.wnba&&D2.wnba.today)||[]).filter(function(g){
+        var gd2=new Date(g.date);
+        var localIso2=isNaN(gd2)?(g.date||'').slice(0,10):gd2.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+        return localIso2===todayStr2;
+      });
       if(fb2.length&&el){
         el.innerHTML=fb2.map(function(g){
           var hk=g.home||'HOME';var ak=g.away||'AWAY';
@@ -24069,8 +24074,18 @@ async function _renderWNBAGamesInner(el,dateEl,force){
   if(dateEl){
     try{var dt=new Date(todayStr+'T12:00:00');dateEl.textContent=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}catch(ex){}
   }
-  // Always use data.json as primary source — ESPN fetch supplements live scores only
-  var fbGames=(D.wnba&&D.wnba.today)||[];
+  // Always use data.json as primary source — ESPN fetch supplements live scores only.
+  // D.wnba.today is only as fresh as the last pipeline refresh -- if that
+  // ran before today's date rolled over (or hasn't run yet today), this
+  // array can still be yesterday's slate. Filter to games actually dated
+  // today (Denver-local, same convention used elsewhere for this exact
+  // staleness class of bug) instead of trusting the "today" label blindly.
+  var fbGamesRaw=(D.wnba&&D.wnba.today)||[];
+  var fbGames=fbGamesRaw.filter(function(g){
+    var gd=new Date(g.date);
+    var localIso=isNaN(gd)?(g.date||'').slice(0,10):gd.toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+    return localIso===todayStr;
+  });
   var normalizedGames=fbGames.map(function(g){
     var liveW=(typeof _clvGetLiveOdds==='function')?_clvGetLiveOdds('WNBA',g.home||g.homeName||'',g.away||g.awayName||''):null;
     return{_src:'local',
