@@ -16904,6 +16904,27 @@ function renderTennisRankings(tour,sortBy,filterStr){
   const _els=[document.getElementById(elId),document.getElementById(elId+'-2')].filter(Boolean);
   if(!_els.length)return;const el=_els[0];
   const db=getDB(tour);let players=Object.entries(db);
+  // ESPN's official ATP/WTA ranking-points rankings — a different
+  // methodology from TennisAbstract's Elo (which is what p.rank above
+  // actually is), used here purely as a validation cross-check. A
+  // player whose Elo-derived rank and ESPN official rank diverge a lot
+  // is worth a second look before trusting the model on them, not proof
+  // either source is wrong.
+  const espnRk=(window.__CV_DATA||{}).tennis?.rankings||{};
+  const espnList=espnRk[tour]||[];
+  const espnByName=new Map(espnList.map(r=>[r.name,r.rank]));
+  const espnUpdated=espnRk[`${tour}Updated`];
+  let staleBanner='';
+  if(espnUpdated){
+    const ageMs=Date.now()-new Date(espnUpdated).getTime();
+    const ageDays=Math.floor(ageMs/86400000);
+    // ATP/WTA publish official rankings weekly (Mondays) — flag if this
+    // is more than one cycle old rather than silently showing stale data.
+    const stale=ageDays>9;
+    staleBanner=`<div style="font-family:var(--mono);font-size:13px;color:${stale?'var(--hc)':'var(--t3)'};margin-bottom:6px">
+      ESPN official rankings (validation ref) updated ${ageDays}d ago${stale?' — STALE, check weekly refresh':''}
+    </div>`;
+  }
   // Filter by search string if provided
   if(filterStr&&filterStr.trim()){
     const q=filterStr.trim().toLowerCase();
@@ -16925,7 +16946,7 @@ function renderTennisRankings(tour,sortBy,filterStr){
   const eloColor=(s)=>s==='clay'?'var(--mc)':s==='grass'?'var(--nc)':s==='form'?'var(--vc)':s==='serve'?'var(--pc)':s==='return'?'var(--hc)':'var(--ic)';
   const searchId=tour==='atp'?'atp-search':'wta-search';
   const existing=document.getElementById(searchId)?.value||filterStr||'';
-  let html=`<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+  let html=staleBanner+`<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
     <input id="${searchId}" class="fi" placeholder="🔍 SEARCH PLAYER / COUNTRY" value="${existing}" oninput="renderTennisRankings('${tour}','${sortBy}',this.value)" style="flex:1;padding:5px 8px;font-size:17px"/>
     <span style="font-family:var(--mono);font-size:16px;color:var(--t3)">${players.length} PLAYERS</span>
   </div>
@@ -16942,9 +16963,18 @@ function renderTennisRankings(tour,sortBy,filterStr){
       <th onclick="renderTennisRankings('${tour}','return','${existing}')" style="cursor:pointer">RET</th>
       <th>HOLD</th><th>BRK</th><th>ACE</th>
     </tr>
-    ${players.map(([name,p],i)=>{const eloV=eloFn(p,sortBy);const ec=eloColor(sortBy);const rcDir=p.rankChange>0?'↑':p.rankChange<0?'↓':'';const rcColor=p.rankChange>0?'var(--nc)':p.rankChange<0?'var(--hc)':'var(--t3)';return`<tr>
+    ${players.map(([name,p],i)=>{const eloV=eloFn(p,sortBy);const ec=eloColor(sortBy);const rcDir=p.rankChange>0?'↑':p.rankChange<0?'↓':'';const rcColor=p.rankChange>0?'var(--nc)':p.rankChange<0?'var(--hc)':'var(--t3)';
+      // ESPN official rank cross-check — flag when it diverges sharply
+      // (>15 spots) from the TennisAbstract Elo-derived rank stored as
+      // p.rank, since that gap is worth a second look before trusting
+      // the model on this player (recent injury/layoff/hot streak the
+      // Elo hasn't caught up to yet, etc).
+      const espnR=espnByName.get(name);
+      const espnDiff=espnR!=null?Math.abs(espnR-p.rank):null;
+      const espnBadge=espnR!=null?`<span style="font-size:11px;padding:0 3px;border:1px solid ${espnDiff>15?'rgba(255,26,26,.5)':'rgba(255,255,255,.2)'};color:${espnDiff>15?'var(--hc)':'var(--t3)'};border-radius:1px" title="ESPN official rank (validation ref)">ESPN #${espnR}</span>`:'';
+      return`<tr>
       <td style="color:var(--t3)">${i+1}</td>
-      <td><div style="font-family:var(--orb);font-size:19px;font-weight:700;white-space:nowrap">${name}${p.rankChange?`<span style="font-family:var(--mono);font-size:14px;color:${rcColor};margin-left:4px">${rcDir}${Math.abs(p.rankChange)}</span>`:''}</div><div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${p.cty} · R${p.rank}</div><div style="display:flex;gap:2px;margin-top:2px"><span style="font-size:11px;padding:0 3px;border:1px solid rgba(102,144,255,.4);color:var(--ic);border-radius:1px">H:${p.hardElo}</span><span style="font-size:11px;padding:0 3px;border:1px solid rgba(255,119,0,.4);color:var(--mc);border-radius:1px">C:${p.clayElo}</span><span style="font-size:11px;padding:0 3px;border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:1px">G:${p.grassElo}</span></div></td>
+      <td><div style="font-family:var(--orb);font-size:19px;font-weight:700;white-space:nowrap">${name}${p.rankChange?`<span style="font-family:var(--mono);font-size:14px;color:${rcColor};margin-left:4px">${rcDir}${Math.abs(p.rankChange)}</span>`:''}</div><div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${p.cty} · R${p.rank}</div><div style="display:flex;gap:2px;margin-top:2px"><span style="font-size:11px;padding:0 3px;border:1px solid rgba(102,144,255,.4);color:var(--ic);border-radius:1px">H:${p.hardElo}</span><span style="font-size:11px;padding:0 3px;border:1px solid rgba(255,119,0,.4);color:var(--mc);border-radius:1px">C:${p.clayElo}</span><span style="font-size:11px;padding:0 3px;border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:1px">G:${p.grassElo}</span>${espnBadge}</div></td>
       <td style="color:${ec};font-weight:700">${eloV}</td>
       <td style="color:var(--ic)">${p.hardElo}</td>
       <td style="color:var(--mc)">${p.clayElo}</td>
@@ -22960,6 +22990,27 @@ function renderTennisToday(filterTour){
   const surfCol={hard:'var(--ic)',clay:'var(--mc)',grass:'var(--nc)',indoor:'var(--pc)'};
   let html='';
 
+  // ── Injury / withdrawal watch ────────────────────────────────────────────
+  // There's no individual-athlete injury API for tennis (ESPN's /injuries
+  // endpoint is team-roster-shaped — see fetch_injuries_all's docstring in
+  // the pipeline), so a real in-match retirement or walkover — flagged
+  // server-side in fetch_tennis_schedule() via the ESPN status text
+  // ("Ret.", "W/O", "Walkover") — is the closest real signal available
+  // that a player may be carrying an injury into their next match.
+  try{
+    const liveSched=(window.__CV_DATA||{}).tennis?.schedule||[];
+    const retirements=liveSched.filter(m=>m.retirement);
+    if(retirements.length){
+      html+=`<div style="background:rgba(255,26,26,.06);border:1px solid rgba(255,26,26,.3);border-radius:3px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:var(--hc);margin-bottom:6px">⚠ INJURY / WITHDRAWAL WATCH</div>
+        ${retirements.map(m=>`<div style="font-family:var(--mono);font-size:15px;color:var(--t2);padding:3px 0">
+          <span style="color:var(--hc)">${m.tour}</span> · ${m.player1} vs ${m.player2} — ${m.statusText} <span style="color:var(--t3)">(${m.tournament||''})</span>
+        </div>`).join('')}
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:6px">Watch these players' next scheduled match for a possible carry-over injury.</div>
+      </div>`;
+    }
+  }catch(e){}
+
   for(const tourney of TEN_TOURNAMENTS){
     // Fully-complete tournaments (every round done, incl. the final) drop
     // out of Matches entirely — no header, no "NO MATCHUPS SET YET" box —
@@ -27573,7 +27624,7 @@ function renderTennisDrawAnalysis(tournament,tour){
 function renderTournamentDetail(name){
   const el=document.getElementById('slam-content');if(!el)return;
   const surfMap={'Australian Open':'Hard','Indian Wells':'Hard','Madrid Open':'Clay','Italian Open':'Clay','Roland Garros':'Clay','Eastbourne':'Grass','Wimbledon':'Grass','Cincinnati Open':'Hard','US Open':'Hard','ATP Finals':'Hard (Indoor)','WTA Finals':'Hard (Indoor)'};
-  const dateMap={'Australian Open':'Jan 12–26','Indian Wells':'Mar 5–16','Madrid Open':'Apr 22–May 4','Italian Open':'May 6–18','Roland Garros':'May 25–Jun 8','Eastbourne':'Jun 21–28','Wimbledon':'Jun 29–Jul 12','Cincinnati Open':'Aug 10–18','US Open':'Aug 25–Sep 7','ATP Finals':'Nov 9–16','WTA Finals':'Oct 22–29'};
+  const dateMap={'Australian Open':'Jan 12–26','Indian Wells':'Mar 5–16','Madrid Open':'Apr 22–May 4','Italian Open':'May 6–18','Roland Garros':'May 25–Jun 8','Eastbourne':'Jun 21–28','Wimbledon':'Jun 29–Jul 12','Cincinnati Open':'Aug 14–23','US Open':'Aug 25–Sep 7','ATP Finals':'Nov 9–16','WTA Finals':'Oct 22–29'};
   const surf=surfMap[name]||'Hard';const dates=dateMap[name]||'TBD';
   const surfColor=surf.includes('Clay')?'var(--mc)':surf.includes('Grass')?'var(--nc)':'var(--ic)';
   el.innerHTML=`<div style="background:rgba(10,0,24,.85);border:1px solid ${surfColor};border-left:3px solid ${surfColor};border-radius:3px;padding:12px 14px;margin-top:8px">

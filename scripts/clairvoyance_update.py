@@ -1981,13 +1981,25 @@ def fetch_tennis_schedule() -> list[dict]:
                 p2  = (players[1].get("athlete") or {}).get("displayName","TBD") if len(players)>1 else "TBD"
                 st  = comp.get("status",{})
                 state = st.get("type",{}).get("state","pre")
+                statusText = st.get("type",{}).get("shortDetail","")
+                # ESPN's tennis status text marks in-match retirements/
+                # walkovers directly (e.g. "Ret.", "W/O", "Walkover") --
+                # there's no individual-athlete injury API for tennis (the
+                # /injuries endpoint is team-roster-shaped, see
+                # fetch_injuries_all's docstring), so a real retirement or
+                # walkover happening right now is the closest real signal
+                # this pipeline can get to "this player may be hurt" —
+                # surfaced separately so app.html can flag it as an
+                # injury/withdrawal watch item instead of just a final score.
+                is_retirement = bool(re.search(r"\bret\.?\b|walkover|\bw/?o\b", statusText, re.I))
                 matches.append({
                     "tour":       tour.upper(),
                     "player1":    p1, "player2": p2,
                     "state":      state,
                     "score1":     players[0].get("score","") if players else "",
                     "score2":     players[1].get("score","") if len(players)>1 else "",
-                    "statusText": st.get("type",{}).get("shortDetail",""),
+                    "statusText": statusText,
+                    "retirement": is_retirement,
                     "tournament": (comp.get("venue") or {}).get("fullName",""),
                     "date":       ev.get("date",""),
                     "network":    ((comp.get("broadcasts") or [{}])[0].get("names") or [""])[0],
@@ -1998,28 +2010,47 @@ def fetch_tennis_schedule() -> list[dict]:
     return matches
 
 def fetch_tennis_rankings_espn() -> dict:
-    """Fetch ATP + WTA top-100 rankings from ESPN."""
+    """Fetch ATP + WTA rankings from ESPN as a secondary validation
+    reference alongside the primary TennisAbstract Elo ratings (different
+    methodology -- ATP/WTA's own official ranking-points system rather
+    than an Elo model -- so a player whose Elo diverges sharply from
+    their ESPN rank is worth a second look, not proof either source is
+    wrong).
+
+    Uses ESPN's JSON API (site.api.espn.com/.../rankings), NOT the HTML
+    page at espn.com/tennis/rankings the URL a human would visit --
+    confirmed directly that the HTML page now serves a JS bot-challenge
+    ("JavaScript is disabled... we need to verify you're not a robot")
+    to this pipeline's requests-based fetch regardless of User-Agent, so
+    the previous tr.Table__TR scrape always silently returned zero rows.
+    The JSON endpoint has no such gate and additionally exposes the
+    same "last updated" date ESPN shows at the bottom of the HTML page
+    (rankings.update), letting callers check staleness -- ATP/WTA update
+    rankings weekly (Mondays), so treat this as stale if update is more
+    than ~9 days old.
+    """
     log("ESPN tennis rankings…")
-    result: dict = {"atp": [], "wta": []}
-    for tour, path in [("atp","tennis/rankings"),("wta","tennis/rankings/_/type/wta")]:
+    result: dict = {"atp": [], "wta": [], "atpUpdated": None, "wtaUpdated": None}
+    for tour in ("atp", "wta"):
         try:
-            # www.espn.com (the website) is the opposite of site.api.espn.com
-            # (the JSON API): it 403s a request with NO custom User-Agent and
-            # needs a real browser one -- ref=True routes through
-            # _ref_session (REF_HEADERS), which already carries one.
-            soup = fetch_html(f"https://www.espn.com/{path}", ref=True)
-            if not soup: continue
-            for row in soup.select("tr.Table__TR"):
-                cells = row.find_all("td")
-                if len(cells) >= 3:
-                    result[tour].append({
-                        "rank":   cells[0].get_text(strip=True),
-                        "name":   cells[1].get_text(strip=True),
-                        "points": cells[2].get_text(strip=True) if len(cells) > 2 else "",
-                    })
+            r = _session.get(f"https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}/rankings", timeout=15)
+            if not r.ok:
+                log(f"ESPN tennis rankings {tour}: HTTP {r.status_code}", "WARN")
+                continue
+            d = r.json()
+            rk = (d.get("rankings") or [{}])[0]
+            result[f"{tour}Updated"] = rk.get("update")
+            for row in rk.get("ranks") or []:
+                ath = row.get("athlete") or {}
+                result[tour].append({
+                    "rank": row.get("current"), "previous": row.get("previous"),
+                    "trend": row.get("trend"), "points": row.get("points"),
+                    "name": ath.get("displayName", ""),
+                })
         except Exception as exc:
             log(f"ESPN tennis rankings {tour}: {exc}", "WARN")
-    vlog(f"  ATP rankings: {len(result['atp'])} | WTA: {len(result['wta'])}")
+    vlog(f"  ATP rankings: {len(result['atp'])} (updated {result['atpUpdated']}) | "
+         f"WTA: {len(result['wta'])} (updated {result['wtaUpdated']})")
     return result
 
 def fetch_tennis_schedule_full() -> dict:
@@ -2049,7 +2080,7 @@ def fetch_tennis_schedule_full() -> dict:
         {"name":"Madrid Open","dates":"Apr 25–May 4","startDate":"2026-04-25","endDate":"2026-05-04","location":"Madrid","surface":"Clay","category":"ATP Masters 1000"},
         {"name":"Italian Open (Rome)","dates":"May 6–18","startDate":"2026-05-06","endDate":"2026-05-18","location":"Rome","surface":"Clay","category":"ATP Masters 1000"},
         {"name":"Canadian Open (Montreal)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Montreal","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Cincinnati Masters","dates":"Aug 6–17","startDate":"2026-08-06","endDate":"2026-08-17","location":"Cincinnati","surface":"Hard","category":"ATP Masters 1000"},
+        {"name":"Cincinnati Masters","dates":"Aug 14–23","startDate":"2026-08-14","endDate":"2026-08-23","location":"Cincinnati","surface":"Hard","category":"ATP Masters 1000"},
         {"name":"Shanghai Masters","dates":"Oct 6–13","startDate":"2026-10-06","endDate":"2026-10-13","location":"Shanghai","surface":"Hard","category":"ATP Masters 1000"},
         {"name":"Paris Masters","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Paris","surface":"Indoor Hard","category":"ATP Masters 1000"},
         {"name":"ATP Finals","dates":"Nov 9–16","startDate":"2026-11-09","endDate":"2026-11-16","location":"Turin","surface":"Indoor Hard","category":"ATP Finals"},
@@ -2067,7 +2098,7 @@ def fetch_tennis_schedule_full() -> dict:
         {"name":"Bad Homburg/Berlin","dates":"Jun 16–22","startDate":"2026-06-16","endDate":"2026-06-22","location":"Germany","surface":"Grass","category":"WTA 500"},
         {"name":"Eastbourne","dates":"Jun 21–28","startDate":"2026-06-21","endDate":"2026-06-28","location":"Eastbourne","surface":"Grass","category":"WTA 500"},
         {"name":"Canadian Open (Toronto)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Toronto","surface":"Hard","category":"WTA 1000"},
-        {"name":"Cincinnati","dates":"Aug 6–17","startDate":"2026-08-06","endDate":"2026-08-17","location":"Cincinnati","surface":"Hard","category":"WTA 1000"},
+        {"name":"Cincinnati","dates":"Aug 14–23","startDate":"2026-08-14","endDate":"2026-08-23","location":"Cincinnati","surface":"Hard","category":"WTA 1000"},
         {"name":"Beijing","dates":"Sep 22–Oct 5","startDate":"2026-09-22","endDate":"2026-10-05","location":"Beijing","surface":"Hard","category":"WTA 1000"},
         {"name":"WTA Finals","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Riyadh","surface":"Indoor Hard","category":"WTA Finals"},
     ]
