@@ -3756,9 +3756,17 @@ function _mfScore(p,e,edgePP,sigmaV,kFrac){
 // grading drifting from what a user actually sees on screen. Pure
 // logging; never changes what any card renders or returns.
 window._autoLockLegs=window._autoLockLegs||[];
-function _autoLockCapture(sport,hA,awA,nm){
+// mcSummary: an optional short plain-text line describing the real MC/
+// model projection behind this game's numbers (e.g. real simulated
+// score, expected goals, projected margin) -- whatever that sport's own
+// card already shows in its MC PROJ / ENGINE REASONING section. Passed
+// straight through to the daily locks email so a pick isn't just a bare
+// "TEAM -3.5", it shows the real model output that produced it, same
+// transparency the live UI already gives a human looking at the card.
+function _autoLockCapture(sport,hA,awA,nm,mcSummary){
   try{
-    window._autoLockLegs.push({sport,hA,awA,
+    window._autoLockLegs.push({sport,hA,awA,mcSummary:mcSummary||null,
+      best:nm.best?{label:nm.best.label,side:nm.best.side,tierN:nm.tierN}:null,
       markets:(nm.mkts||[]).map(m=>({label:m.label,side:m.side,prob:m.prob,evVal:m.evVal,dec:m.dec,ml:m.ml,tierN:m.tierN}))});
   }catch(e){}
 }
@@ -4504,7 +4512,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
     {label:`UNDER ${ouL}`,prob:unP,dec:ouDec,ml:'-110',side:'under'},
   ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
   const _nm=_evalMkts(_rawMkts); // ranks by composite mfScore, not just tier+EV
-  _autoLockCapture('MLB',hA,awA,_nm);
+  _autoLockCapture('MLB',hA,awA,_nm,mc?`MC PROJ: ${awA} ${mc.avgA.toFixed(1)} – ${hA} ${mc.avgH.toFixed(1)} (Total ${mc.avgT.toFixed(1)}, ${(mc.n||5000)/1000|0}k sims)`:null);
   const bestMkt=_nm.best;
   // Use MLB-specific tighter tier for the card-level grade (with ensemble sigma)
   const topTier=_mlbTier(bestMkt.prob,bestMkt.evVal,_ensSigEarly);
@@ -7065,7 +7073,7 @@ function _cfbGameCard(g){
     {label:`UNDER ${ouL.toFixed(1)}`,prob:underP,dec:1.909,ml:'-110',side:'under'},
   ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
   const nm=_evalMkts(rawMkts);
-  _autoLockCapture('CFB',g.home,g.away,nm);
+  _autoLockCapture('CFB',g.home,g.away,nm,`MC PROJ TOTAL: ${mc.avgTotal.toFixed(1)} · ${spreadFav} projected -${baseSpread.toFixed(1)}`);
   const _mktGrade=side=>{const m=nm.mkts.find(x=>x.side===side);const lbl=['SKIP','LEAN','OPTIMAL','PREMIUM'][m.tierN];const col=m.tierN===3?'var(--gc)':m.tierN===2?'var(--nc)':m.tierN===1?'var(--ic)':'var(--t3)';return{m,lbl,col};};
   const mlGrade=hP>=aP?_mktGrade('mlFav'):_mktGrade('mlDog');
   const sprdGrade=favCoverP>=dogCoverP?_mktGrade('sprdFav'):_mktGrade('sprdDog');
@@ -7587,7 +7595,7 @@ function _nflGameCard2(g){
     {label:`UNDER ${ouL.toFixed(1)}`,prob:underP,dec:1.909,ml:'-110',side:'under'},
   ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
   const nm=_evalMkts(rawMkts);
-  _autoLockCapture('NFL',g.home,g.away,nm);
+  _autoLockCapture('NFL',g.home,g.away,nm,`MC PROJ TOTAL: ${mc.avgTotal.toFixed(1)} · ${spreadFav} projected -${baseSpread.toFixed(1)}`);
   const hS=D.standings[g.home]||{},aS=D.standings[g.away]||{};
   const injH=(D.injuriesByTeam[g.home]||[]).filter(i=>i.status&&i.status.toLowerCase()!=='active');
   const injA=(D.injuriesByTeam[g.away]||[]).filter(i=>i.status&&i.status.toLowerCase()!=='active');
@@ -8067,7 +8075,7 @@ function _nhlGameCard(espnEv){
         {label:`OVER ${nhlOuL}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
         {label:`UNDER ${nhlOuL}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
       ]);
-      _autoLockCapture('NHL',hn,an,_nm3);
+      _autoLockCapture('NHL',hn,an,_nm3,_ensStr3);
       const topTier=_nm3.tierN,topTierLabel=_nm3.lbl,topTierCol=_nm3.col;
       const _bm3=_nm3.best,_topP3=_nhlFavP3;
       let explanation='';
@@ -9871,7 +9879,7 @@ function _nbaGameCard(espnEv){
         ]:[]),
       ];
       const _nmNBA=_evalMkts(_nbaMkts);
-      _autoLockCapture('NBA',hn,an,_nmNBA);
+      _autoLockCapture('NBA',hn,an,_nmNBA,`${_nbaEnsStr}${mcProjSpread?' · Proj margin: '+(mcProjSpread>=0?'+':'')+mcProjSpread.toFixed(1)+' ('+hn+')':''}`);
       const topTier=_nmNBA.tierN,topTierLabel=_nmNBA.lbl,topTierCol=_nmNBA.col;
       const _bmNBA=_nmNBA.best,evPct=(_bmNBA.evVal*100).toFixed(1);
       let explanation='';
@@ -24290,7 +24298,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         {label:'OVER '+ouStr,prob:_wnbaOvP,evVal:ev(_wnbaOvP,1.91),side:'over'},
         {label:'UNDER '+ouStr,prob:_wnbaUnP,evVal:ev(_wnbaUnP,1.91),side:'under'},
       ]);
-      _autoLockCapture('WNBA',hab,aab,_wnbaMkts);
+      _autoLockCapture('WNBA',hab,aab,_wnbaMkts,_wnbaEnsStr+' · '+_wnbaSprdStr);
       var _wnbaTier=_wnbaMkts.tierN;
       var _wnbaBM=_wnbaMkts.best,_wnbaBP=(_wnbaBM.prob*100).toFixed(1),_wnbaBE=(_wnbaBM.evVal*100).toFixed(1);
       var _wnbaNetCtx='Net rating: '+_wnbaFav+' '+hNetStr+' vs '+_wnbaDogT+' '+aNetStr+' (+'+netDiff+' pts/100)';
@@ -26822,7 +26830,7 @@ function _renderSocMatchCard(g,leagueKey){
     {label:'OVER '+ouL,prob:ouP,evVal:ev(ouP,1.909),side:'over'},
     {label:'UNDER '+ouL,prob:unP,evVal:ev(unP,1.909),side:'under'},
   ]);
-  _autoLockCapture('SOC_'+leagueKey.toUpperCase(),g.home,g.away,_mkts);
+  _autoLockCapture('SOC_'+leagueKey.toUpperCase(),g.home,g.away,_mkts,'xG PROJ: '+g.home+' '+hxg.toFixed(2)+' – '+g.away+' '+axg.toFixed(2));
   var topT=_mkts.tierN,topLabel=_mkts.lbl,topCol=_mkts.col;
   var _bm=_mkts.best,_bp=Math.round(_bm.prob*100),_be=(_bm.evVal*100).toFixed(1);
   var _implied=1/ml2d(_bm.side==='home'?hML:_bm.side==='draw'?dML:_bm.side==='away'?aML:1.909);
@@ -27398,7 +27406,7 @@ function renderTennisScheduleOdds(filterTour='all'){
       ]:[]),
     ];
     const _tenMkts=_evalMkts(_tenAllMkts);
-    _autoLockCapture(m.tour||'TEN',m.p1,m.p2,_tenMkts);
+    _autoLockCapture(m.tour||'TEN',m.p1,m.p2,_tenMkts,`ELO model: ${m.p1} ${(modelP1*100).toFixed(0)}% – ${m.p2} ${(modelP2*100).toFixed(0)}% · Sets line ${_tenSetLine} (${(_tenSetOverP*100).toFixed(0)}% over)`);
     const _tenBM=_tenMkts.best,_tenTopTier=_tenMkts.tierN,_tenTopLbl=_tenMkts.lbl,_tenTopCol=_tenMkts.col;
     // ── Chips ─────────────────────────────────────────────────
     function _tenChip(p,d,lbl,ml){const t=tier(p,ev(p,d));const c=t===3?'chip-g':t===2?'chip-p':t===1?'chip-n':'chip-h';const pl=t===3?'pg':t===2?'pp':t===1?'pn':'ph';const lb=t===3?'PREMIUM':t===2?'OPTIMAL':t===1?'LEAN':'SKIP';return`<div class="${c} chip" style="flex:1"><div class="cht">${lbl}</div><div class="cho">${ml>0?'+':''}${ml}</div><div class="chp">${(p*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${pl}">${lb}</span></div></div>`;}

@@ -205,6 +205,53 @@ def gather_legs(page) -> dict:
         """
         async () => {
           window._autoLockLegs = [];
+          // ESPN's site.api.espn.com blocks fetch() calls made from an
+          // automated/headless browser context (confirmed: identical
+          // failure in a real GitHub Actions run with unrestricted
+          // network, and even with a real installed Chrome channel --
+          // this isn't a sandbox artifact, it's ESPN detecting the
+          // automation fingerprint itself, e.g. navigator.webdriver).
+          // loadGames()/renderGenericWeek()/etc. all depend entirely on
+          // that live cross-origin fetch with no same-origin fallback, so
+          // they silently produce zero games here. Where real game data
+          // is already bundled server-side (window.__CV_DATA, written by
+          // the Python pipeline's own successful requests-based ESPN
+          // calls, a completely different, unblocked code path) this
+          // pre-step feeds it into the same card-render function a real
+          // page load would use, so _autoLockCapture still fires with
+          // real data instead of nothing.
+          try {
+            const mlbToday = (window.__CV_DATA && window.__CV_DATA.mlb && window.__CV_DATA.mlb.today) || [];
+            if (mlbToday.length && typeof mlbCard === 'function' && typeof TEAMS !== 'undefined') {
+              mlbToday.forEach(g => {
+                if (!g.home || !g.away || !TEAMS[g.home] || !TEAMS[g.away]) return;
+                if (g.state === 'post') return; // already final, nothing to lock
+                const dateStr = (g.date || '').slice(0, 10);
+                const espnGame = { hML: g.homeML, aML: g.awayML, ou: g.ou, status: g.state };
+                try { mlbCard(g.home, g.away, '', dateStr, espnGame); } catch (e) {}
+              });
+            }
+          } catch (e) {}
+          // cfb_schedule.json is a same-origin static file the Python
+          // pipeline already publishes (unlike NFL, which currently has
+          // no equivalent published file) -- same unblocked fetch as
+          // window.__CV_DATA, just a separate file rather than bundled
+          // into data.json.
+          try {
+            if (typeof _cfbGameCard === 'function') {
+              const r = await fetch('cfb_schedule.json');
+              if (r.ok) {
+                const sched = await r.json();
+                const todayIso = typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10);
+                Object.values(sched.weeks || {}).forEach(week => (week || []).forEach(g => {
+                  const d = new Date(g.date);
+                  const localIso = isNaN(d) ? (g.date || '').slice(0, 10) : d.toLocaleDateString('sv-SE', { timeZone: 'America/Denver' });
+                  if (localIso !== todayIso || g.state === 'post') return;
+                  try { _cfbGameCard(g); } catch (e) {}
+                }));
+              }
+            }
+          } catch (e) {}
           const warmups = [];
           if (typeof loadGames === 'function') warmups.push(loadGames().catch(() => {}));
           if (typeof renderMLBGames === 'function') { try { renderMLBGames(); } catch (e) {} }
@@ -274,6 +321,11 @@ def build_qualifying(result: dict) -> list[dict]:
                     "kind": "GAME", "sport": sport, "hA": gl.get("hA"), "awA": gl.get("awA"),
                     "side": m.get("side"), "label": m.get("label"), "prob": m.get("prob"),
                     "ml": m.get("ml"), "dec": m.get("dec"), "tierN": tier_n,
+                    # Same for every qualifying market on this game -- carried
+                    # per-leg (not de-duped) so build_locks_email_body can
+                    # regroup by matchup without needing a second pass over
+                    # gameLegs.
+                    "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
                 })
     for p in result.get("propLegs") or []:
         if p.get("grade") in ("PREMIUM", "OPTIMAL"):
@@ -362,14 +414,25 @@ def _leg_line(q: dict) -> str:
             f"— {leg.get('grade')} · {(prob or 0)*100:.0f}% · {leg.get('ml') or ''}")
 
 
+def _prop_matchup_key(leg: dict) -> str:
+    team = leg.get("team") or leg.get("hA") or ""
+    opp = leg.get("opp") or leg.get("awA") or ""
+    return f"{team} vs {opp}" if opp else team
+
+
 def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int | None = None) -> str:
-    """Groups qualifying legs by sport/league for a personal daily
-    reference email — not the public social content pipeline, just a
-    plain readable rundown of what the engine locked (or would lock)
-    today, for the user's own betting reference."""
-    by_sport: dict[str, list[dict]] = {}
+    """Groups qualifying legs by sport/league, then by matchup within each
+    sport, for a personal daily reference email — not the public social
+    content pipeline, just a plain readable rundown of what the engine
+    locked (or would lock) today: the matchup, every qualifying pick for
+    it, the real MC/model projection behind it, and the single best-value
+    market on that game (not necessarily one of the qualifying picks
+    itself -- shown either way as useful context)."""
+    by_sport: dict[str, dict[str, list[dict]]] = {}
     for q in qualifying:
-        by_sport.setdefault(q["sport"], []).append(q)
+        sport = q["sport"]
+        matchup = f"{q['awA']} @ {q['hA']}" if q["kind"] == "GAME" else _prop_matchup_key(q["leg"])
+        by_sport.setdefault(sport, {}).setdefault(matchup, []).append(q)
 
     status_line = (
         f"LIVE — {locked_count} of {len(qualifying)} legs actually locked"
@@ -379,12 +442,23 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
     lines = [status_line, ""]
     if not qualifying:
         lines.append("No PREMIUM/OPTIMAL legs cleared the bar today.")
-    else:
-        for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
-            legs = by_sport[sport]
-            lines.append(f"{SPORT_DISPLAY_NAME.get(sport, sport)} ({len(legs)})")
+        return "\n".join(lines)
+
+    for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
+        matchups = by_sport[sport]
+        total_legs = sum(len(v) for v in matchups.values())
+        lines.append(f"=== {SPORT_DISPLAY_NAME.get(sport, sport)} ({total_legs}) ===")
+        for matchup, legs in matchups.items():
+            lines.append(f"{matchup}")
+            mc_summary = next((l.get("mcSummary") for l in legs if l.get("mcSummary")), None)
+            if mc_summary:
+                lines.append(f"  {mc_summary}")
+            best = next((l.get("best") for l in legs if l.get("best")), None)
+            if best:
+                lines.append(f"  Best market value: {best['label']} ({TIER_LABEL.get(best.get('tierN'), '?')})")
+            lines.append("  Picks meeting PREMIUM/OPTIMAL:")
             for q in legs:
-                lines.append(f"  • {_leg_line(q)}")
+                lines.append(f"    • {_leg_line(q)}")
             lines.append("")
     return "\n".join(lines)
 
