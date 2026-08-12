@@ -569,17 +569,8 @@ body{line-height:1.5}
   <div class="sa" style="padding:16px">
     <!-- Engine performance section -->
     <div id="home-engine-record" style="margin-bottom:14px"></div>
-    <!-- Daily briefing -->
-    <!-- Today's top picks ticker — removed per request; kept as a hidden
-         stub so the render function's `if(tpEl)` guard still no-ops safely. -->
-    <div id="home-top-picks" style="display:none"></div>
     <!-- Today's pending bets -->
     <div id="home-pending-bets" style="margin-bottom:14px"></div>
-    <!-- Utility buttons -->
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px">
-      <button class="btn btn-n btn-sm" onclick="showImportModal()">IMPORT BET</button>
-      <button class="btn btn-o btn-sm" onclick="exportBetHistoryCSV()">EXPORT BET HISTORY</button>
-    </div>
     <!-- Hidden stubs — keep IDs so legacy JS calls don't crash -->
     <div id="home-live-games"        style="display:none"></div>
     <div id="home-streak-tracker"    style="display:none"></div>
@@ -13444,7 +13435,11 @@ function renderEngineOps(){
       ${['Bundesliga','Champions League','La Liga','MLS','Premier League','Serie A'].join(' · ')}
     </div>
   </div>`;
-  el.innerHTML=tabBar+propSection+statSection+schedSection+runAll+swSection+histSection;
+  const betDataSection=sec('BET DATA','var(--gc)','ops-betdata',
+    `<div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-bottom:10px">Import a bet manually, or export the full bet history to CSV.</div>
+    ${btnRow(btn('IMPORT BET','showImportModal()','btn-n'),btn('EXPORT BET HISTORY','exportBetHistoryCSV()','btn-o'))}`);
+
+  el.innerHTML=tabBar+propSection+statSection+schedSection+runAll+swSection+betDataSection+histSection;
 }
 
 // ── OPS HELPERS ───────────────────────────────────────────────────────────────
@@ -14252,168 +14247,6 @@ function renderHomePage(){
       <div style="border:1px solid rgba(0,240,255,.2);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6)">
         ${rows}
       </div>`;
-    }
-  }
-
-  // ── Today's Top Picks — oscillating ticker ────────────────────────────────
-  const tpEl=document.getElementById('home-top-picks');
-  if(tpEl){
-    const todayAll=allBets.filter(p=>p.date===todayStr&&p.winProb!=null);
-    const mlEV=(wp,dec)=>wp*(dec||2)-1;
-    const premiumPicks=[];const darkHorsePicks=[];
-    for(const p of todayAll){
-      const wp=p.winProb||0;const dec=parseFloat(p.decOdds)||2;const evVal=mlEV(wp,dec);
-      const mlNum=parseFloat(String(p.ml||'').replace('+',''))||0;
-      if(wp>=0.67&&evVal>0.03)premiumPicks.push({...p,_evVal:evVal,_bucket:'PREMIUM'});
-      else if(mlNum>0&&wp>=0.47&&evVal>0.04)darkHorsePicks.push({...p,_evVal:evVal,_bucket:'SLEEPER'});
-    }
-    premiumPicks.sort((a,b)=>b._evVal-a._evVal);
-    darkHorsePicks.sort((a,b)=>b._evVal-a._evVal);
-    let lockedPicks=[...premiumPicks,...darkHorsePicks];
-    let allPicks=lockedPicks.slice();
-    let _tpAllSportsMode=false;
-    // ALWAYS scan all sports/leagues for PREMIUM/OPTIMAL moves and merge them in,
-    // so the ticker auto-populates without needing any locked picks.
-    {
-      const bbSrc=window.__CV_DATA?.bestBets||[];
-      const bbMapped=bbSrc.map(b=>{
-        if(!b)return null;
-        // prob may be 0-1 (fraction) or 0-100 (percent) depending on source shape
-        let prob=b.prob!=null?b.prob:(b.confidence!=null?b.confidence:55);
-        if(prob>1)prob=prob/100;
-        const mlNumForDec=parseFloat((b.ml||'').toString().replace('+',''))||0;
-        const dec=parseFloat(b.decOdds)||(mlNumForDec>0?(mlNumForDec/100+1):mlNumForDec<0?(100/Math.abs(mlNumForDec)+1):1.91);
-        // ev may already be provided as a percent number (e.g. 5.7 = 5.7%) or computed via ML
-        let evVal=b.ev!=null?b.ev/100:mlEV(prob,dec);
-        const sport=_normSport(b)||b.sport||'MISC';
-        const gameParts=(b.game||'').split(/\s+(?:vs|@|at)\s+/i);
-        // Classify: honor explicit PREMIUM/OPTIMAL grade labels when present,
-        // otherwise fall back to evGrade letter or prob/EV thresholds
-        const g=(b.grade||'').toUpperCase(),eg=(b.evGrade||'').toUpperCase();
-        let bucket=null;
-        if(g==='PREMIUM'||g==='ELITE'||eg==='A+'||eg==='A')bucket='PREMIUM';
-        else if(g==='OPTIMAL'||eg==='B'||(prob>=.67&&evVal>0.03))bucket='PREMIUM';
-        else if(evVal>0.02||prob>=.55)bucket='SLEEPER';
-        if(!bucket)return null;
-        return{hA:gameParts[0]||'',awA:gameParts[1]||'',sport,winProb:prob,decOdds:dec,ml:b.ml||'',
-          betOn:b.pick||b.betOn||'',basis:b.note||b.basis||'',grade:b.grade,date:b.date||todayStr,
-          _evVal:evVal,_bucket:bucket,_muOverride:b.game||''};
-      }).filter(p=>p&&p.betOn);
-      bbMapped.sort((a,b)=>b._evVal-a._evVal);
-      let _crossSport=[];
-      try{_crossSport=_scanCrossSportPicks();}catch(e){}
-      const _combined=[...bbMapped,..._crossSport].sort((a,b)=>b._evVal-a._evVal);
-      // Merge scanned picks with any locked picks (dedup by pick+matchup)
-      const _seen=new Set(lockedPicks.map(p=>(p.betOn||'')+'|'+(p.hA||'')));
-      for(const _p of _combined){const _k=(_p.betOn||'')+'|'+(_p.hA||'');if(!_seen.has(_k)){_seen.add(_k);allPicks.push(_p);}}
-      allPicks=allPicks.slice(0,24);
-      _tpAllSportsMode=_combined.length>0;
-    }
-    if(!allPicks.length){tpEl.innerHTML='';tpEl.style.display='none';}
-    else{
-      tpEl.style.display='';
-      const sc=s=>({MLB:'var(--hc)',NHL:'var(--ic)',NBA:'var(--pc)',WNBA:'var(--pc)',TEN:'var(--mc)',SOC:'var(--nc)',WC:'var(--nc)'}[s]||'var(--t3)');
-      const bc=b=>b==='PREMIUM'?'var(--gc)':'var(--hc)';
-      const mkTickerCard=(p)=>{
-        const mu=p._muOverride||_gameTitle(p.hA,p.awA,p.sport)||`${p.hA||''} vs ${p.awA||''}`;
-        const conf=p.winProb?(p.winProb*100).toFixed(0)+'%':'';
-        const mlStr=p.ml?String(p.ml).replace(/^\+/,'').replace(/^(-?)(\d)/,'$1+$2').replace('+-','-').replace(/^\+/,'+'):'';
-        const evPct=p._evVal!=null?(p._evVal*100).toFixed(1)+'%':'';
-        const col=bc(p._bucket);
-        const bet=(_expandBetOn(p.betOn||'',p.sport)||p.betOn||'').slice(0,38);
-        const isSleeper=p._bucket==='SLEEPER';
-        const isPremium=p._bucket==='PREMIUM';
-        // Reasoning for premium cards
-        const reasonParts=[];
-        if(p.basis)reasonParts.push(p.basis.slice(0,90));
-        else{
-          if(p.winProb)reasonParts.push(`${(p.winProb*100).toFixed(0)}% win probability`);
-          if(p._evVal!=null)reasonParts.push(`+${(p._evVal*100).toFixed(1)}% expected value edge`);
-          const mlN=parseFloat((p.ml||'').replace('+',''))||0;
-          if(mlN<0)reasonParts.push('favourite play');
-          else if(mlN>0)reasonParts.push('underdog value spot');
-          if(p.grade&&p.grade!=='LEAN')reasonParts.push(p.grade+' tier');
-        }
-        const reasonText=reasonParts.join(' · ').slice(0,110);
-        return`<div style="flex-shrink:0;width:272px;background:rgba(4,0,12,.85);border:1px solid ${col}${isSleeper?'66':'44'};border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;cursor:default;transition:border-color .2s${isSleeper?';box-shadow:0 0 8px '+col+'22':''}" onmouseenter="this.style.borderColor='${col}99'" onmouseleave="this.style.borderColor='${col}${isSleeper?'66':'44'}'">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-            ${_sportBadgeHtml(p.sport,sc)}
-            ${isSleeper
-              ?`<span style="font-family:var(--mono);font-size:11px;padding:1px 6px;background:${col}22;border:1px solid ${col};color:${col};border-radius:2px;letter-spacing:1px;display:flex;align-items:center;gap:3px"><span style="font-size:14px">⚡</span>SLEEPER</span>`
-              :`<span style="font-family:var(--mono);font-size:11px;padding:1px 5px;background:${col}22;border:1px solid ${col};color:${col};border-radius:2px;letter-spacing:1px">◆ PREMIUM</span>`
-            }
-          </div>
-          <div style="font-family:var(--mono);font-size:13px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mu}</div>
-          <div style="font-family:var(--mono);font-size:16px;color:var(--t1);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${bet}</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-top:1px">
-            ${p.ml?`<span style="font-family:var(--mono);font-size:16px;color:${col};font-weight:700">${p.ml}</span>`:''}
-            ${conf?`<span style="font-family:var(--mono);font-size:13px;color:var(--t3)">${conf}</span>`:''}
-            ${evPct?`<span style="font-family:var(--mono);font-size:13px;color:var(--nc);margin-left:auto">${evPct} EV</span>`:''}
-          </div>
-          ${reasonText?`<div style="border-top:1px solid rgba(255,255,255,.07);margin-top:2px;padding-top:5px"><div style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:${col}99;margin-bottom:2px">${isSleeper?'WHY SLEEPER':'REASONING'}</div><div style="font-family:var(--mono);font-size:13px;color:var(--t3);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${reasonText}</div></div>`:''}
-        </div>`;
-      };
-      // Duplicate picks for seamless oscillation feel (fill space generously)
-      const cards=allPicks.map(mkTickerCard).join('');
-      const premCount=_tpAllSportsMode?allPicks.filter(p=>p._bucket==='PREMIUM').length:premiumPicks.length;
-      const dhCount=_tpAllSportsMode?allPicks.filter(p=>p._bucket==='SLEEPER').length:darkHorsePicks.length;
-      const titleHtml=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
-        <div style="font-family:var(--mono);font-size:13px;letter-spacing:2px;color:var(--t3)">
-          ${_tpAllSportsMode?`<span style="color:var(--nc)">⟲ ALL-SPORTS SCAN</span><span style="color:rgba(255,255,255,.2)"> · </span>`:''}
-          ${premCount?`<span style="color:var(--gc)">◆ ${premCount} PREMIUM</span>`:''}
-          ${premCount&&dhCount?`<span style="color:rgba(255,255,255,.2)"> · </span>`:''}
-          ${dhCount?`<span style="color:var(--hc)">⚡ ${dhCount} SLEEPER</span>`:''}
-        </div>
-        <div style="display:flex;gap:5px;align-items:center">
-          <button id="tp-btn-slow" onclick="window._tpSpeedStep&&window._tpSpeedStep(-1)" title="Slow down" style="font-family:var(--mono);font-size:14px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t3);border-radius:2px;cursor:pointer">‹‹</button>
-          <button id="tp-btn-pause" onclick="window._tpTogglePause&&window._tpTogglePause()" title="Pause/Resume" style="font-family:var(--mono);font-size:14px;padding:2px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t2);border-radius:2px;cursor:pointer">⏸</button>
-          <button id="tp-btn-fast" onclick="window._tpSpeedStep&&window._tpSpeedStep(1)" title="Speed up" style="font-family:var(--mono);font-size:14px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:var(--t3);border-radius:2px;cursor:pointer">››</button>
-        </div>
-      </div>`;
-      // Outer: fade edges via mask
-      tpEl.innerHTML=titleHtml+`<div id="tp-mask" style="position:relative;border-radius:4px;overflow:hidden">
-        <div id="tp-track" style="display:flex;gap:10px;overflow-x:auto;scroll-behavior:auto;padding:4px 2px 10px;scrollbar-width:none;-ms-overflow-style:none;cursor:grab;user-select:none">${cards}</div>
-      </div>`;
-      // Hide native scrollbar
-      const trackEl=document.getElementById('tp-track');
-      if(trackEl){
-        trackEl.style.cssText+=';scrollbar-width:none;-ms-overflow-style:none;';
-        // Ticker oscillation engine
-        if(!window._tpEngine){
-          let _speed=1.4,_dir=1,_paused=false,_dragging=false,_dragStart=0,_dragSL=0;
-          const speeds=[0.5,0.9,1.4,2.2,3.5,5.5];let _sIdx=2;
-          window._tpSpeedStep=(d)=>{_sIdx=Math.max(0,Math.min(speeds.length-1,_sIdx+d));_speed=speeds[_sIdx];};
-          window._tpTogglePause=()=>{
-            _paused=!_paused;
-            const btn=document.getElementById('tp-btn-pause');
-            if(btn)btn.textContent=_paused?'▶':'⏸';
-          };
-          // Drag-to-scroll (mouse)
-          document.addEventListener('mousedown',e=>{const t=e.target.closest('#tp-track');if(!t)return;_dragging=true;_dragStart=e.clientX;_dragSL=t.scrollLeft;t.style.cursor='grabbing';e.preventDefault();});
-          document.addEventListener('mousemove',e=>{if(!_dragging)return;const t=document.getElementById('tp-track');if(t){t.scrollLeft=_dragSL-(e.clientX-_dragStart);}});
-          document.addEventListener('mouseup',()=>{_dragging=false;const t=document.getElementById('tp-track');if(t)t.style.cursor='grab';});
-          // Touch support
-          document.addEventListener('touchstart',e=>{const t=e.target.closest('#tp-track');if(!t)return;_dragging=true;_dragStart=e.touches[0].clientX;_dragSL=t.scrollLeft;},{passive:true});
-          document.addEventListener('touchmove',e=>{if(!_dragging)return;const t=document.getElementById('tp-track');if(t){t.scrollLeft=_dragSL-(e.touches[0].clientX-_dragStart);}},{passive:true});
-          document.addEventListener('touchend',()=>{_dragging=false;});
-          // Pause on hover
-          document.addEventListener('mouseover',e=>{if(e.target.closest('#tp-track'))window._tpHover=true;});
-          document.addEventListener('mouseout',e=>{if(e.target.closest('#tp-track'))window._tpHover=false;});
-          let _dwell=0;// frames to hold at boundary before reversing
-          window._tpEngine=setInterval(()=>{
-            if(_paused||_dragging||window._tpHover)return;
-            const el=document.getElementById('tp-track');
-            if(!el)return;
-            const max=el.scrollWidth-el.clientWidth;
-            if(max<=0)return;
-            if(_dwell>0){_dwell--;return;}
-            const next=el.scrollLeft+_dir*_speed;
-            if(next>=max){el.scrollLeft=max;_dir=-1;_dwell=40;}// ~640ms pause at right end
-            else if(next<=0){el.scrollLeft=0;_dir=1;_dwell=40;}// ~640ms pause at left end
-            else{el.scrollLeft=next;}
-          },16);
-        }
-      }
     }
   }
 
