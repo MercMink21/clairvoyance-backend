@@ -8193,12 +8193,19 @@ async function renderNHLGames(day){
 }
 function renderNHLGamesOffline(){
   const el=document.getElementById('nhl-games');if(!el)return;
-  if(!TONIGHT.length){
+  // TONIGHT is a hardcoded placeholder (currently a single fixed 2026-05-30
+  // Stanley Cup Finals game) — this function only runs when both the
+  // backend API and the live ESPN fetch have already failed, so it used
+  // to dump that stale game unconditionally regardless of the actual
+  // date, showing a real user a months-old matchup as if it were tonight's
+  // slate. Only ever show entries whose own date field is actually today.
+  const todayGames=TONIGHT.filter(g=>g.date===today());
+  if(!todayGames.length){
     el.innerHTML='<div class="empty">NO NHL GAMES TONIGHT</div>';
     return;
   }
   let html='';
-  for(const g of TONIGHT){
+  for(const g of todayGames){
     const h=NHL[g.h],aw=NHL[g.a];if(!h||!aw)continue;
     const ens=nhlEns(g.h,g.a);const mc=ens.mcD;
     const hP=ens.p,aP=1-ens.p;
