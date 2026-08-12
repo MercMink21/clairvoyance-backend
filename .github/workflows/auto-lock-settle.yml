@@ -1,0 +1,92 @@
+name: Auto Lock + Settle
+
+# Server-side auto-lock (PREMIUM/OPTIMAL picks -- ML/spread/O-U for every
+# sport/league with a real proprietary model, plus player props for NFL/
+# NHL/NBA/WNBA) and auto-settle (checks every pending bet against real
+# final scores/boxscores), replacing the dead file-based settlement path
+# in clairvoyance_update.py's auto_settle() (depended on a file nothing
+# ever actually wrote). See scripts/auto_lock_settle.py's module
+# docstring for the full design.
+#
+# SAFETY: scheduled runs below default to dry-run (no --live flag) --
+# they log exactly what WOULD be locked/settled and write nothing. Once
+# dry-run output has been reviewed for real, add --live to the scheduled
+# steps below to go live. workflow_dispatch always lets you choose.
+
+on:
+  schedule:
+    # Lock: once daily, mid-morning MT, after that day's schedules/odds
+    # are loaded and before early games start. 10:15 MT = 16:15 UTC (MDT).
+    - cron: '15 16 * * *'
+    # Settle: 3x daily, staggered off scheduled-refresh.yml's own cron
+    # times (0 15/21/5) to avoid the same runner-contention pattern that
+    # caused the queue-starvation failures fixed earlier this session.
+    - cron: '20 15 * * *'
+    - cron: '20 21 * * *'
+    - cron: '20 5 * * *'
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Actually write to Supabase (unchecked = dry-run, logs only)'
+        required: false
+        type: boolean
+        default: false
+      mode:
+        description: 'Which step(s) to run'
+        required: false
+        type: choice
+        options: ['both', 'lock', 'settle']
+        default: 'both'
+
+permissions:
+  contents: read
+
+jobs:
+  auto-lock-settle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
+
+      - name: Determine step flags from trigger
+        id: flags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ inputs.mode }}" in
+              lock)   echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
+              settle) echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
+              *)      echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
+            esac
+            echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "15 16 * * *" ]; then
+            echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
+            echo "live_flag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
+            echo "live_flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run auto-lock / auto-settle
+        env:
+          TZ: America/Denver
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Personal daily locked-picks breakdown -- separate secret from
+          # SOCIAL_CARD_EMAIL_TO on purpose (this is a private betting
+          # reference, not public social content). Falls back to
+          # SOCIAL_CARD_EMAIL_TO in the script if unset, but add a
+          # dedicated LOCKS_EMAIL_TO repo secret to send it somewhere else.
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/auto_lock_settle.py ${{ steps.flags.outputs.step_flags }} ${{ steps.flags.outputs.live_flag }}
