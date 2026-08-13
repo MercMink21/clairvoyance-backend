@@ -2053,6 +2053,56 @@ def fetch_tennis_rankings_espn() -> dict:
          f"WTA: {len(result['wta'])} (updated {result['wtaUpdated']})")
     return result
 
+def fetch_cincinnati_open() -> dict:
+    """Real live ATP+WTA Cincinnati Open draw (Aug 14-23, 2026) via ESPN's
+    tournament scoreboard (eventId 718-2026 -- both tours' men's/women's
+    singles come back from one call to the ATP-path endpoint, confirmed
+    live). Unlike Wimbledon/Roland Garros's hand-authored historical
+    draws elsewhere in this codebase (built after the fact, once real
+    results were known), Cincinnati is still in progress as of this
+    write -- so this only ever carries real ESPN data: real scores for
+    completed matches (round, players, final score), and real scheduled
+    pairings for upcoming ones (no results, since none exist yet).
+    """
+    log("Cincinnati Open draw (ESPN)…")
+    result: dict = {"men": [], "women": [], "lastUpdated": datetime.now(timezone.utc).isoformat()}
+    try:
+        data = fetch_json(
+            "https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard",
+            params={"event": "718-2026"},
+        )
+        events = (data or {}).get("events") or []
+        cin = next((e for e in events if "Cincinnati" in (e.get("name") or "")), None)
+        if not cin:
+            log("Cincinnati Open: event not found in ESPN scoreboard", "WARN")
+            return result
+        for grp in cin.get("groupings") or []:
+            slug = (grp.get("grouping") or {}).get("slug", "")
+            if slug not in ("mens-singles", "womens-singles"):
+                continue
+            key = "men" if slug == "mens-singles" else "women"
+            for c in grp.get("competitions") or []:
+                comps = c.get("competitors") or []
+                p1 = next((x for x in comps if x.get("order") == 1), comps[0] if comps else {})
+                p2 = next((x for x in comps if x.get("order") == 2), comps[1] if len(comps) > 1 else {})
+                st = (c.get("status") or {}).get("type") or {}
+                result[key].append({
+                    "round":     (c.get("round") or {}).get("displayName", ""),
+                    "date":      c.get("date", ""),
+                    "state":     st.get("state", "pre"),
+                    "completed": bool(st.get("completed")),
+                    "p1":        (p1.get("athlete") or {}).get("displayName", "TBD"),
+                    "p2":        (p2.get("athlete") or {}).get("displayName", "TBD"),
+                    "p1Winner":  bool(p1.get("winner")),
+                    "p2Winner":  bool(p2.get("winner")),
+                    "score":     ((c.get("notes") or [{}])[0]).get("text", ""),
+                    "court":     (c.get("venue") or {}).get("court", ""),
+                })
+    except Exception as exc:
+        log(f"Cincinnati Open: {exc}", "WARN")
+    log(f"  Cincinnati Open: {len(result['men'])} men's, {len(result['women'])} women's matches")
+    return result
+
 def fetch_tennis_schedule_full() -> dict:
     """Return comprehensive 2026 ATP/WTA tournament calendar (hardcoded + ESPN live)."""
     log("Tennis full schedule (2026 calendar)…")
@@ -5278,6 +5328,7 @@ def main() -> None:
     tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
     tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
+    cincinnati_open   = fetch_cincinnati_open()       if S in ("tennis","all") else {}
 
     # F1 is no longer tracked in the engine — purged from the daily fetch.
     # Bundle keys are kept (empty) below so the frontend's d.get('f1',...)
@@ -5607,6 +5658,7 @@ def main() -> None:
             "schedule":      tennis_schedule,
             "scheduleFull":  tennis_sched_full,
             "rankings":      tennis_rankings,
+            "cincinnati":    cincinnati_open,
             "scheduleDate":  TODAY_ISO,
             "rolandGarros":  roland_garros,
             "oddsMatches":   tennis_odds.get("matches", []),

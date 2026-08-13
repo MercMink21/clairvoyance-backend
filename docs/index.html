@@ -23018,6 +23018,144 @@ function renderTennisToday(filterTour){
     }
   }catch(e){}
 
+  // ── Cincinnati Open (Aug 14–23, 2026) ────────────────────────────────────
+  // Real ATP+WTA draw via ESPN's tournament scoreboard (eventId 718-2026,
+  // fetch_cincinnati_open() in the pipeline) -- unlike the hand-authored
+  // historical draws below (Wimbledon etc., built after the fact once
+  // real results existed), this tournament is in progress, so completed
+  // matches use ESPN's own real score text and upcoming ones get a model
+  // favorite from real TennisAbstract Elo (no invented results).
+  try{
+    if(AF==='ALL'||AF==='ATP'||AF==='WTA'){
+      const cin=(window.__CV_DATA||{}).tennis?.cincinnati;
+      if(cin&&((cin.men||[]).length||(cin.women||[]).length)){
+        const ROUND_ORDER=['Round 1','Round 2','Round 3','Quarterfinal','Semifinal','Final',
+          'Qualifying Final','Qualifying 2nd Round','Qualifying 1st Round'];
+        const roundIdx=r=>{const i=ROUND_ORDER.indexOf(r);return i<0?ROUND_ORDER.length:i;};
+        const atpElo=(window.__CV_DATA||{}).tennis?.atpElo||[];
+        const wtaElo=(window.__CV_DATA||{}).tennis?.wtaElo||[];
+        const _cinEloLookup=(name,db)=>{
+          const lower=(name||'').toLowerCase();
+          return db.find(p=>{const pn=(p.name||'').toLowerCase();return pn===lower||pn.includes(lower)||lower.includes(pn.split(' ').pop()||'');});
+        };
+        const _cinWinProb=(e1,e2)=>1/(1+Math.pow(10,(e2-e1)/400));
+        // ATP_DB/WTA_DB (the full-stat player objects tennisMatchWinProbFull/
+        // tennisSimGames need -- serve/return/form Elo, not just overall Elo)
+        // are keyed like 'J.Sinner', but ESPN gives full names like "Jannik
+        // Sinner" -- match by last name (+ first initial as a tiebreak when
+        // multiple DB entries share a last name). Cincinnati's ~130-deep
+        // field goes well past the ~50-100 players hand-curated into these
+        // DBs, so most matches will miss this and fall back to the
+        // TennisAbstract Elo-only estimate below -- still real data, just
+        // lower-fidelity (no full games-O/U MC without the full stat line).
+        const _cinFindDBPlayer=(fullName,db)=>{
+          const parts=(fullName||'').trim().split(/\s+/);if(!parts.length)return null;
+          const last=parts[parts.length-1].toLowerCase();
+          const firstInit=(parts[0]||'')[0]?.toLowerCase()||'';
+          let weak=null;
+          for(const key in db){
+            const kp=key.split('.');if(kp.length<2)continue;
+            const kLast=kp[1].toLowerCase(),kInit=kp[0].toLowerCase();
+            if(kLast===last){
+              if(kInit===firstInit)return db[key];
+              weak=weak||db[key];
+            }
+          }
+          return weak;
+        };
+        const sections=[];
+        if(AF==='ALL'||AF==='ATP')sections.push({label:'ATP',matches:cin.men||[],db:atpElo,fullDB:ATP_DB,gender:'M'});
+        if(AF==='ALL'||AF==='WTA')sections.push({label:'WTA',matches:cin.women||[],db:wtaElo,fullDB:WTA_DB,gender:'W'});
+        html+=`<div style="background:rgba(0,240,255,.04);border:1px solid rgba(0,240,255,.12);border-radius:3px;padding:10px 12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+            <div>
+              <div style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--ic)">Cincinnati Open</div>
+              <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">Aug 14–23, 2026 · Cincinnati, OH · <span style="color:var(--ic)">HARD</span></div>
+            </div>
+          </div>
+        </div>`;
+        for(const sec of sections){
+          // Main-draw rounds only by default -- qualifying rounds are
+          // real too but would bury the matches players actually care
+          // about under dozens of qualifier matchups.
+          const mainDraw=sec.matches.filter(m=>!m.round.startsWith('Qualifying'));
+          const shown=mainDraw.length?mainDraw:sec.matches;
+          const grouped={};
+          shown.forEach(m=>{(grouped[m.round]=grouped[m.round]||[]).push(m);});
+          const roundNames=Object.keys(grouped).sort((a,b)=>roundIdx(a)-roundIdx(b));
+          if(!roundNames.length)continue;
+          html+=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:2px;color:var(--ic);margin:10px 0 4px">${sec.label}</div>`;
+          for(const rn of roundNames){
+            html+=`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px;margin:6px 0 3px">${rn.toUpperCase()}</div>`;
+            for(const m of grouped[rn]){
+              if(m.completed){
+                html+=`<div class="card" style="border-left:2px solid var(--t3);margin-bottom:6px;padding:8px 10px">
+                  <div style="font-family:var(--mono);font-size:15px;color:var(--t2)">${m.score||`${m.p1} def. ${m.p2}`}</div>
+                </div>`;
+              }else if(m.p2==='TBD'){
+                // Later-round slot whose opponent isn't decided yet (prior
+                // round still in progress) -- nothing to model.
+                const timeStr=m.date?new Date(m.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+' ET':'';
+                html+=`<div class="card" style="border-left:2px solid var(--t3);margin-bottom:6px;padding:8px 10px">
+                  <div style="font-family:var(--orb);font-size:18px;font-weight:700">${m.p1} vs TBD</div>
+                  <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${timeStr}${m.court?' · '+m.court:''} · opponent TBD</div>
+                </div>`;
+              }else{
+                // Masters 1000 (Cincinnati) is always best-of-3 for both
+                // tours -- best-of-5 only applies at the four Slams.
+                const bo5=false,surface='hard';
+                const fd1=_cinFindDBPlayer(m.p1,sec.fullDB),fd2=_cinFindDBPlayer(m.p2,sec.fullDB);
+                let p1Win=null,gLine=null,setsOU=null,fullModel=false;
+                if(fd1&&fd2){
+                  try{
+                    p1Win=tennisMatchWinProbFull(fd1,fd2,surface,bo5);
+                    const gSim=tennisSimGames(fd1,fd2,surface,bo5,5000);
+                    gLine=tennisGamesLine(gSim,bo5);
+                    fullModel=true;
+                  }catch(e){}
+                }
+                if(p1Win==null){
+                  const e1=_cinEloLookup(m.p1,sec.db),e2=_cinEloLookup(m.p2,sec.db);
+                  if(e1||e2){
+                    const elo1=e1?.eloHard||e1?.elo||1800,elo2=e2?.eloHard||e2?.elo||1800;
+                    p1Win=_cinWinProb(elo1,elo2);
+                  }
+                }
+                const timeStr=m.date?new Date(m.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+' ET':'';
+                if(p1Win==null){
+                  html+=`<div class="card" style="border-left:2px solid var(--nc);margin-bottom:6px;padding:8px 10px">
+                    <div style="font-family:var(--orb);font-size:18px;font-weight:700">${m.p1} vs ${m.p2}</div>
+                    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${timeStr}${m.court?' · '+m.court:''}</div>
+                    <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">No Elo data for either player yet</div>
+                  </div>`;
+                  continue;
+                }
+                const p2Win=1-p1Win;
+                const p1ml=p2ml(p1Win),p2mlv=p2ml(p2Win);
+                if(!setsOU)setsOU=_tennisSetOU(p1Win,sec.gender);
+                const setsMain=bo5?(setsOU.find(s=>s.line===3.5)||setsOU[0]):setsOU[0];
+                const setsOverP=setsMain?setsMain.overP:0.5,setsUnderP=1-setsOverP;
+                html+=`<div class="card" style="border-left:2px solid var(--nc);margin-bottom:6px;padding:8px 10px">
+                  <div style="font-family:var(--orb);font-size:18px;font-weight:700">${m.p1} vs ${m.p2}</div>
+                  <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${timeStr}${m.court?' · '+m.court:''}${fullModel?' · 5K MC SIM':' · Elo-only estimate'}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-family:var(--mono);font-size:14px">
+                    <span style="padding:2px 7px;border:1px solid rgba(0,240,255,.35);border-radius:2px;color:var(--nc)">${m.p1} ML ${p1ml} (${(p1Win*100).toFixed(0)}%)</span>
+                    <span style="padding:2px 7px;border:1px solid rgba(255,255,255,.18);border-radius:2px;color:var(--t2)">${m.p2} ML ${p2mlv} (${(p2Win*100).toFixed(0)}%)</span>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px;font-family:var(--mono);font-size:14px">
+                    <span style="padding:2px 7px;border:1px solid rgba(240,0,255,.3);border-radius:2px;color:var(--pc)">SETS O${setsMain?setsMain.line:''} ${(setsOverP*100).toFixed(0)}% / U${setsMain?setsMain.line:''} ${(setsUnderP*100).toFixed(0)}%</span>
+                    ${gLine?`<span style="padding:2px 7px;border:1px solid rgba(0,218,136,.3);border-radius:2px;color:var(--gc)">GAMES O${gLine.line} ${(gLine.overP*100).toFixed(0)}% / U${gLine.line} ${(gLine.underP*100).toFixed(0)}%</span>`
+                      :`<span style="padding:2px 7px;border:1px solid rgba(255,255,255,.14);border-radius:2px;color:var(--t3)">GAMES O/U unavailable (needs full stat line for both players)</span>`}
+                  </div>
+                </div>`;
+              }
+            }
+          }
+        }
+      }
+    }
+  }catch(e){}
+
   for(const tourney of TEN_TOURNAMENTS){
     // Fully-complete tournaments (every round done, incl. the final) drop
     // out of Matches entirely — no header, no "NO MATCHUPS SET YET" box —
