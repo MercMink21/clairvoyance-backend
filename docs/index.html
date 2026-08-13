@@ -16111,6 +16111,50 @@ const WTA_DB={
  'S.Williams':       {rank:200,hardElo:2100,clayElo:2050,grassElo:2080,formElo:1900,serveElo:2100,returnElo:2000,fs:.63,fsw:.73,ssw:.54,ace:5.0,df:3.5,hold:.80,brk:.43,retw:.43,hw:.80,cw:.76,gw:.82,age:44,cty:'USA',fat:3},
 };
 
+// ── Auto-growing DB: find-or-create + tour-average defaults ─────────────────
+// ATP_DB/WTA_DB above were hand-curated once (~112/113 players) and never
+// grew on their own -- patchATPElo/patchWTAElo (below) only ever patched
+// EXISTING entries via a broken ATP_DB.find() call (ATP_DB is a plain
+// object, not an array -- .find() doesn't exist on it, so every call threw
+// and silently killed everything scheduled after it in loadRemoteData()'s
+// shared try block, including patchWTAElo, weather, and dashboard renders).
+// Fixed by (1) correct key lookup and (2) auto-creating a new DB entry for
+// any player the live TennisAbstract Elo feed knows about but this DB
+// doesn't -- so the full Monte Carlo model (tennisMatchWinProbFull/
+// tennisSimGames, which need the full stat line: fs/fsw/ssw/hold/brk/etc,
+// not just Elo) can actually run for players outside the original curated
+// list, using tour-average defaults for the fields TennisAbstract's Elo
+// report doesn't carry. This is what lets Cincinnati (and any future
+// tournament) auto-grow real MC coverage over time instead of being capped
+// at the original hand-picked names forever.
+const _TEN_TOUR_AVG={
+  atp:{fs:.62,fsw:.73,ssw:.53,ace:4.0,df:2.4,hold:.80,brk:.40,retw:.40,hw:.60,cw:.55,gw:.55,age:25,fat:1,serveElo:1800,returnElo:1800},
+  wta:{fs:.61,fsw:.66,ssw:.47,ace:2.5,df:3.0,hold:.68,brk:.36,retw:.36,hw:.55,cw:.53,gw:.55,age:24,fat:1,serveElo:1800,returnElo:1800},
+};
+function _tenFindOrCreateDBEntry(fullName,db,tour){
+  const parts=(fullName||'').trim().split(/\s+/);if(!parts.length)return null;
+  const last=parts[parts.length-1],lastLower=last.toLowerCase();
+  const firstInit=(parts[0]||'')[0]?.toLowerCase()||'';
+  let weak=null,weakKey=null;
+  for(const key in db){
+    const kp=key.split('.');if(kp.length<2)continue;
+    const kLast=kp[1].toLowerCase(),kInit=kp[0].toLowerCase();
+    if(kLast===lastLower){
+      if(kInit===firstInit)return{key,entry:db[key]};
+      if(!weak){weak=db[key];weakKey=key;}
+    }
+  }
+  if(weak)return{key:weakKey,entry:weak};
+  // No entry anywhere in the DB for this player -- create one seeded with
+  // tour-average defaults so the full MC engine has every field it reads
+  // unconditionally (fs/fsw/ssw in particular have no null-guard in
+  // tennisServeWinRate). Real Elo/rank get overlaid on top by the caller.
+  const newKey=`${(parts[0]||'')[0]||'?'}.${last}`;
+  const avg=_TEN_TOUR_AVG[tour]||_TEN_TOUR_AVG.atp;
+  db[newKey]={rank:999,hardElo:1800,clayElo:1800,grassElo:1800,formElo:1800,...avg,cty:'',_autoCreated:true};
+  return{key:newKey,entry:db[newKey]};
+}
+
 // ── yELO (Year-to-date ELO) — Source: tennisabstract.com, June 2026 ──
 const _YELO_ATP={
  'J.Sinner':2289,'C.Alcaraz':2133,'A.Zverev':2155,'A.Fils':2062,'R.Jodar':2026,
@@ -19063,6 +19107,8 @@ async function loadRemoteData(force=false){
     if(d.tennis?.atpElo?.length) patchATPElo(d.tennis.atpElo);
     if(d.tennis?.wtaElo?.length) patchWTAElo(d.tennis.wtaElo);
     if(d.tennis?.atpYelo?.length)window._remoteATPYelo=d.tennis.atpYelo;
+    if(d.tennis?.atpRecentForm?.length) patchRecentForm(d.tennis.atpRecentForm,ATP_DB,'atp');
+    if(d.tennis?.wtaRecentForm?.length) patchRecentForm(d.tennis.wtaRecentForm,WTA_DB,'wta');
     if(d.weather)             patchWeather(d.weather);
     if(d.bestBets?.length){renderBestBetsFromRemote(d.bestBets);try{renderMLBEnginePicks();}catch(e){}}
     if(d.heroPicksForDay||d.bestBets) try{renderHomeBestBets();}catch(e){}
@@ -19225,19 +19271,43 @@ function patchMoneyPuck(goalies,teams){
 }
 function patchATPElo(players){
   for(const p of players){
-    const m=ATP_DB.find(a=>a.n===p.name);
-    if(m){m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;if(p.rank)m.rank=p.rank;}
+    if(!p.name)continue;
+    const found=_tenFindOrCreateDBEntry(p.name,ATP_DB,'atp');
+    if(!found)continue;
+    const m=found.entry;
+    m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;
+    if(p.rank)m.rank=p.rank;
+    if(m._autoCreated)delete m._autoCreated; // real Elo landed -- no longer a bare placeholder
   }
   window._remoteATPElo=players;
   try{renderTennisRankings('atp','elo','');}catch(e){}
 }
 function patchWTAElo(players){
   for(const p of players){
-    const m=WTA_DB.find(a=>a.n===p.name);
-    if(m){m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;if(p.rank)m.rank=p.rank;}
+    if(!p.name)continue;
+    const found=_tenFindOrCreateDBEntry(p.name,WTA_DB,'wta');
+    if(!found)continue;
+    const m=found.entry;
+    m.elo=p.elo||m.elo;m.hardElo=p.eloHard||m.hardElo;m.clayElo=p.eloClay||m.clayElo;m.grassElo=p.eloGrass||m.grassElo;
+    if(p.rank)m.rank=p.rank;
+    if(m._autoCreated)delete m._autoCreated;
   }
   window._remoteWTAElo=players;
   try{renderTennisRankings('wta','elo','');}catch(e){}
+}
+// TennisAbstract's 52-week recent-form Elo (fetch_tennis_recent_form in
+// the pipeline) -- fetched live daily but never actually applied to either
+// DB until now, so formElo (used for the recent-form component of the
+// win-probability blend) was frozen at whatever it was hand-authored to
+// months ago regardless of how a player's form had actually changed.
+function patchRecentForm(players,db,tour){
+  for(const p of players){
+    if(!p.name||p.recentElo==null)continue;
+    const found=_tenFindOrCreateDBEntry(p.name,db,tour);
+    if(!found)continue;
+    found.entry.formElo=p.recentElo;
+    if(found.entry._autoCreated)delete found.entry._autoCreated;
+  }
 }
 function patchWeather(weather){
   window._remoteWeather=weather;
@@ -23490,6 +23560,8 @@ async function _applyFreshData(d){
   safe(d.mp?.goalies?.length, ()=>patchMoneyPuck(d.mp.goalies,d.mp.teams||{}));
   safe(d.tennis?.atpElo?.length,()=>patchATPElo(d.tennis.atpElo));
   safe(d.tennis?.wtaElo?.length,()=>patchWTAElo(d.tennis.wtaElo));
+  safe(d.tennis?.atpRecentForm?.length,()=>patchRecentForm(d.tennis.atpRecentForm,ATP_DB,'atp'));
+  safe(d.tennis?.wtaRecentForm?.length,()=>patchRecentForm(d.tennis.wtaRecentForm,WTA_DB,'wta'));
   safe(d.weather,             ()=>patchWeather(d.weather));
   safe(d.bestBets?.length,    ()=>renderBestBetsFromRemote(d.bestBets));
   safe(d.settled?.length,     ()=>applyServerSettlements(d.settled));
