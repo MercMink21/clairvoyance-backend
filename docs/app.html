@@ -23079,7 +23079,12 @@ function renderTennisToday(filterTour){
           // real too but would bury the matches players actually care
           // about under dozens of qualifier matchups.
           const mainDraw=sec.matches.filter(m=>!m.round.startsWith('Qualifying'));
-          const shown=mainDraw.length?mainDraw:sec.matches;
+          const preFiltered=mainDraw.length?mainDraw:sec.matches;
+          // Drop fully-unseeded slots (both sides still TBD) before
+          // grouping, not just when rendering each match -- otherwise a
+          // round whose every match is TBD-vs-TBD still gets a round
+          // header printed above zero actual match cards.
+          const shown=preFiltered.filter(m=>!(m.p1==='TBD'&&m.p2==='TBD'));
           const grouped={};
           shown.forEach(m=>{(grouped[m.round]=grouped[m.round]||[]).push(m);});
           const roundNames=Object.keys(grouped).sort((a,b)=>roundIdx(a)-roundIdx(b));
@@ -23092,12 +23097,31 @@ function renderTennisToday(filterTour){
                 html+=`<div class="card" style="border-left:2px solid var(--t3);margin-bottom:6px;padding:8px 10px">
                   <div style="font-family:var(--mono);font-size:15px;color:var(--t2)">${m.score||`${m.p1} def. ${m.p2}`}</div>
                 </div>`;
-              }else if(m.p2==='TBD'){
-                // Later-round slot whose opponent isn't decided yet (prior
-                // round still in progress) -- nothing to model.
+              }else if(m.state==='in'){
+                // Live in-progress match -- ESPN's state:'in' still carries
+                // completed:false (only 'post' sets that), but m.score is
+                // already a real partial-score status string ("X leads Y
+                // 6-4 3-1" / "X is tied with Y ..."). Show that instead of
+                // running a pre-match prediction against a match that's
+                // already underway.
+                html+=`<div class="card" style="border-left:2px solid var(--gc);margin-bottom:6px;padding:8px 10px">
+                  <div style="font-family:var(--mono);font-size:13px;letter-spacing:1px;color:var(--gc);margin-bottom:2px">● LIVE</div>
+                  <div style="font-family:var(--mono);font-size:15px;color:var(--t2)">${m.score||`${m.p1} vs ${m.p2}`}</div>
+                  ${m.court?`<div style="font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:2px">${m.court}</div>`:''}
+                </div>`;
+              }else if(m.p1==='TBD'&&m.p2==='TBD'){
+                // Later-round slot not yet seeded from either side (both
+                // feeder matches still pending) -- nothing real to show at
+                // all, so drop it entirely rather than render an empty
+                // "TBD vs TBD" card with no data behind it.
+                continue;
+              }else if(m.p1==='TBD'||m.p2==='TBD'){
+                // One side decided, other still pending -- nothing to
+                // model yet, but worth showing who's already through.
+                const known=m.p1==='TBD'?m.p2:m.p1;
                 const timeStr=m.date?new Date(m.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+' ET':'';
                 html+=`<div class="card" style="border-left:2px solid var(--t3);margin-bottom:6px;padding:8px 10px">
-                  <div style="font-family:var(--orb);font-size:18px;font-weight:700">${m.p1} vs TBD</div>
+                  <div style="font-family:var(--orb);font-size:18px;font-weight:700">${known} vs TBD</div>
                   <div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">${timeStr}${m.court?' · '+m.court:''} · opponent TBD</div>
                 </div>`;
               }else{
