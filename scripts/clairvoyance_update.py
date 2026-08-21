@@ -3095,12 +3095,22 @@ def fetch_espn_soccer_league(key: str) -> dict:
                     "mp": int(mp),
                     "poss": flat.get("possessionPct", 0) or 0,
                     "gf": gf,
-                    "xg": round(gf / mp, 2) if mp else 0,       # proxy, not true xG
-                    "npxg": round(gf / mp, 2) if mp else 0,      # proxy, not true xG
-                    "xag": round((flat.get("goalAssists", 0) or 0) / mp, 2) if mp else 0,
+                    # Season totals, NOT per-game — matches fetch_fbref_league()'s
+                    # real-FBref schema (its "xg" column is a season total too),
+                    # which is what the frontend's _socXGFromFBref() expects: it
+                    # divides by mp itself (t.xg/mp) to get the per-game rate. This
+                    # used to pre-divide by mp here, so the frontend's own division
+                    # divided twice -- expected goals came out ~mp times too small
+                    # (e.g. a 38-game season made every match project close to 0-0),
+                    # silently wrecking every non-MLS league's ML/draw/O-U while MLS
+                    # (fetch_mls_team_stats(), a genuinely different source that
+                    # already stored season totals) stayed correct.
+                    "xg": round(gf, 2),               # proxy, not true xG
+                    "npxg": round(gf, 2),              # proxy, not true xG
+                    "xag": round(flat.get("goalAssists", 0) or 0, 2),
                     "prg_passes": flat.get("accuratePasses", 0) or 0,
                     "ga": ga,
-                    "xga": round(ga / mp, 2) if mp else 0,       # proxy, not true xG
+                    "xga": round(ga, 2),               # proxy, not true xG
                     "shots_pg": round((flat.get("totalShots", 0) or 0) / mp, 2) if mp else None,
                     "sot_pg": round((flat.get("shotsOnTarget", 0) or 0) / mp, 2) if mp else None,
                     "src": "espn",
