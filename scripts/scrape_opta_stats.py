@@ -1,22 +1,38 @@
 #!/usr/bin/env python3
 """
-scrape_opta_stats.py — Daily team-stats refresh for BL/PL/Serie A/MLS.
+scrape_opta_stats.py — Daily team-stats + power-rankings refresh for
+BL/PL/Serie A/La Liga/MLS.
 
 Pulls real team totals (attacking, passing, pressing, sequences, defending)
-from theanalyst.com's (Opta) public tournament-stats JSON API for the 4
-leagues whose static _SOC_XG fallback table in docs/app.html was hand-
-calibrated against real 2025/26 data in an earlier session. This script
-re-fetches that same data on a schedule so the fallback table — and the
-win-probability model that reads it (_socXG/_soccerMC) — never goes stale
-the way it had (rosters still listing relegated Ipswich/Venezia/Bochum,
+plus Opta's own team-strength Power Rankings (a 0-100 rolling rating,
+updated as the season plays out) from theanalyst.com's public soccerdata
+JSON API. This script re-fetches that data on a schedule so the frontend's
+_SOC_XG fallback table and _socXG/_soccerMC's live blend never go stale
+the way they had (rosters still listing relegated Ipswich/Venezia/Bochum,
 xG figures frozen at whatever a human typed in months ago).
 
+tmcl (tournament/competition-season id) is per-season, not permanent —
+each league's tmcl here was re-confirmed against the live 2026/27-season
+page on 2026-08-21 (PL/Serie A/Bundesliga's previous tmcls were still
+pinned to the completed 2025/26 season and had frozen there; La Liga
+added new this session). When a season rolls over, re-derive the new
+tmcl the same way: load https://theanalyst.com/competition/{slug}/stats
+and grep the page for `tmcl":"..."` in the
+`wp-block-sdapi-blocks-stats-page` block's embedded config — the same
+tmcl also serves /power-rankings and /table for that league-season, so
+one lookup covers every soccerdata resource for that competition.
+
 Writes:
-  - data/opta_reference/{league}_team_stats_2025_26.json  (full scrape:
-    attacking/passing/pressing/sequences/defending, not just xg/xga)
+  - data/opta_reference/{league}_team_stats_2026_27.json  (full scrape:
+    attacking/passing/pressing/sequences/defending/powerRankings)
+  - docs/{league}_opta_stats.json — same payload, served straight to the
+    frontend (loadLeagueOptaStats() in app.html)
   - Regenerates the corresponding block inside docs/app.html's _SOC_XG
     object (per-game xg/xga/gf/ga, +/-10% home-away split — same
     convention that table already used before this script existed).
+    Power Rankings aren't part of _SOC_XG (that table only ever held
+    xg/xga) — they're consumed live from docs/{league}_opta_stats.json
+    by _optaPowerRankFactors() in app.html instead.
 
 Usage:
   python3 scripts/scrape_opta_stats.py            # scrape + write, no push
@@ -33,18 +49,25 @@ INDEX = ROOT / "docs" / "index.html"
 REF_DIR = ROOT / "data" / "opta_reference"
 REF_DIR.mkdir(parents=True, exist_ok=True)
 
-API = "https://theanalyst.com/wp-json/sdapi/v1/soccerdata/tournamentstats"
+API_BASE = "https://theanalyst.com/wp-json/sdapi/v1/soccerdata"
+API = f"{API_BASE}/tournamentstats"
+POWER_API = f"{API_BASE}/seasonpowerrankings"
 
-# league key -> (tmcl competition id, referer page + _meta_post_id the API
-# checks against — requests without a matching Referer 401, since this
-# endpoint is meant to be called from within the page it's embedded on,
-# not hit directly), real team-name -> _SOC_XG key map
+# league key -> (tmcl competition-season id, referer page + _meta_post_id
+# the API checks against — requests without a matching Referer 401, since
+# this endpoint is meant to be called from within the page it's embedded
+# on, not hit directly), real team-name -> _SOC_XG key map, and whether to
+# also pull Power Rankings for this league (MLS has its own real-xG
+# first-party pipeline already and isn't one of Opta's tracked Power
+# Rankings competitions the way the 4 European leagues are).
 LEAGUES: dict[str, dict] = {
     "pl": {
-        "tmcl": "51r6ph2woavlbbpk8f29nynf8",
+        "tmcl": "6pdwluctev9iebv00r4qqukno",
         "referer": "https://theanalyst.com/competition/premier-league/stats",
+        "power_referer": "https://theanalyst.com/competition/premier-league/power-rankings",
         "meta_post_id": "135731",
-        "file": "premier_league_team_stats_2025_26.json",
+        "file": "premier_league_team_stats_2026_27.json",
+        "power": True,
         "name_map": {
             "Man Utd": "manchester united", "Leeds": "leeds", "Arsenal": "arsenal",
             "Newcastle": "newcastle", "Spurs": "tottenham", "Villa": "aston villa",
@@ -55,11 +78,30 @@ LEAGUES: dict[str, dict] = {
             "Bournemouth": "bournemouth", "Brentford": "brentford",
         },
     },
+    "liga": {
+        "tmcl": "830epggffy1nfkfyrtpqdwhlg",
+        "referer": "https://theanalyst.com/competition/la-liga/stats",
+        "power_referer": "https://theanalyst.com/competition/la-liga/power-rankings",
+        "meta_post_id": "135739",
+        "file": "la_liga_team_stats_2026_27.json",
+        "power": True,
+        "name_map": {
+            "Barcelona": "barcelona", "Real Madrid": "real madrid", "Atlético": "atlético madrid",
+            "Villarreal": "villarreal", "Betis": "real betis", "Valencia": "valencia",
+            "Celta": "celta vigo", "Rayo": "rayo vallecano", "Alavés": "alavés",
+            "Real Sociedad": "real sociedad", "Athletic": "athletic club", "Osasuna": "osasuna",
+            "Getafe": "getafe", "Espanyol": "espanyol", "Levante": "levante", "Sevilla": "sevilla",
+            "Santander": "racing santander", "Elche": "elche", "Málaga": "málaga",
+            "Deportivo": "deportivo",
+        },
+    },
     "ita": {
-        "tmcl": "emdmtfr1v8rey2qru3xzfwges",
+        "tmcl": "60cryos85i4bp5ul34tt0brx0",
         "referer": "https://theanalyst.com/competition/serie-a/stats",
+        "power_referer": "https://theanalyst.com/competition/serie-a/power-rankings",
         "meta_post_id": "135738",
-        "file": "serie_a_team_stats_2025_26.json",
+        "file": "serie_a_team_stats_2026_27.json",
+        "power": True,
         "name_map": {
             "Inter": "inter milan", "Napoli": "napoli", "Juventus": "juventus", "Milan": "ac milan",
             "Atalanta": "atalanta", "Roma": "roma", "Lazio": "lazio", "Fiorentina": "fiorentina",
@@ -69,10 +111,12 @@ LEAGUES: dict[str, dict] = {
         },
     },
     "bl": {
-        "tmcl": "2bchmrj23l9u42d68ntcekob8",
+        "tmcl": "8h5xijv2u4mlf5028gso6kw7o",
         "referer": "https://theanalyst.com/competition/bundesliga/stats",
+        "power_referer": "https://theanalyst.com/competition/bundesliga/power-rankings",
         "meta_post_id": "135740",
-        "file": "bundesliga_team_stats_2025_26.json",
+        "file": "bundesliga_team_stats_2026_27.json",
+        "power": True,
         "name_map": {
             "FC Bayern": "bayern munich", "Bayer 04": "bayer leverkusen",
             "Dortmund": "borussia dortmund", "Leipzig": "rb leipzig",
@@ -89,6 +133,7 @@ LEAGUES: dict[str, dict] = {
         "referer": "https://theanalyst.com/competition/mls/stats",
         "meta_post_id": "202451",
         "file": "mls_team_stats_2026.json",
+        "power": False,
         # MLS already has a dedicated first-party stats pipeline
         # (fetch_mls_team_stats() in clairvoyance_update.py) that feeds
         # docs/data.json / _socXG's live path — this scrape is saved as
@@ -116,6 +161,45 @@ def fetch_tournament_stats(page, tmcl: str, referer: str, meta_post_id: str) -> 
     except Exception as exc:
         print(f"[WARN] fetch failed for tmcl={tmcl}: {exc}", file=sys.stderr)
         return None
+
+
+def fetch_power_rankings(page, tmcl: str, referer: str, meta_post_id: str) -> dict | None:
+    """Same session-cookie-via-real-page-load trick as fetch_tournament_stats,
+    against the seasonpowerrankings resource instead. Opta's Power Rankings
+    are a rolling 0-100 team-strength rating (same system their own
+    Supercomputer predictor uses to seed match-outcome probabilities before
+    simulating a season) -- this is what changes week to week as results
+    come in, unlike the season-cumulative attacking/defending totals above."""
+    url = f"{POWER_API}?tmcl={tmcl}&_meta_post_id={meta_post_id}&_meta_subpage=power-rankings"
+    try:
+        page.goto(referer, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(2000)
+        result = page.evaluate(f"""
+            fetch({json.dumps(url)}).then(r => r.ok ? r.json() : null)
+        """)
+        return result
+    except Exception as exc:
+        print(f"[WARN] power-rankings fetch failed for tmcl={tmcl}: {exc}", file=sys.stderr)
+        return None
+
+
+def slim_power_rankings(raw: dict) -> list[dict]:
+    """Flattens the 'global' division ranking block down to just what the
+    frontend blend (_optaPowerRankFactors in app.html) actually needs: team
+    name + its current rating. Keeps rank/globalRank too since they're free
+    and useful for display even though the blend itself only uses rating."""
+    divisions = raw.get("division") or []
+    global_div = next((d for d in divisions if d.get("type") == "global"), divisions[0] if divisions else {})
+    ranking = global_div.get("ranking") or []
+    return [
+        {
+            "team": r.get("contestantShortName") or r.get("contestantName"),
+            "rating": r.get("currentRating"),
+            "rank": int(r["rank"]) if r.get("rank") is not None else None,
+            "globalRank": int(r["currentGlobalRank"]) if r.get("currentGlobalRank") is not None else None,
+        }
+        for r in ranking
+    ]
 
 
 def slim_categories(team_block: dict) -> dict:
@@ -239,6 +323,16 @@ def main() -> None:
             slim["lastUpdated"] = raw["team"].get("lastUpdated")
             slim["source"] = "theanalyst.com (Opta) tournament stats API"
 
+            if cfg.get("power"):
+                print(f"[INFO] {lg_key}: fetching power rankings…")
+                power_raw = fetch_power_rankings(page, cfg["tmcl"], cfg["power_referer"], cfg["meta_post_id"])
+                if power_raw and power_raw.get("division"):
+                    slim["powerRankings"] = slim_power_rankings(power_raw)
+                    slim["powerRankingsUpdated"] = power_raw.get("lastUpdated")
+                    print(f"[INFO]   {len(slim['powerRankings'])} teams ranked")
+                else:
+                    print(f"[WARN] {lg_key}: no power-rankings data returned", file=sys.stderr)
+
             out_path = REF_DIR / cfg["file"]
             if args.dry_run:
                 print(f"[DRY-RUN] would write {out_path} ({len(slim['attacking'])} teams)")
@@ -291,7 +385,7 @@ def main() -> None:
         print("[INFO] Validator: all checks passed")
 
     if args.push and (any_changes or any_json_written) and not args.dry_run:
-        msg = "chore: refresh BL/PL/Serie A/MLS Opta team stats"
+        msg = "chore: refresh BL/PL/Serie A/La Liga/MLS Opta team stats + power rankings"
         add_paths = ["docs/app.html", "docs/index.html", "data/opta_reference"]
         add_paths += [f"docs/{lg_key}_opta_stats.json" for lg_key in LEAGUES]
         subprocess.run(["git", "add", *add_paths], cwd=ROOT, check=True)
