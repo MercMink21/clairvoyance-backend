@@ -561,4 +561,10 @@ if __name__ == "__main__":
     if args.push:
         paths = ["docs/nfl_teams.json", "docs/nfl_schedule.json", "docs/nfl_standings.json",
                   "docs/nfl_team_stats.json", "docs/nfl_player_stats.json", "docs/nfl_injuries.json", "docs/nfl_transactions.json"]
-        git_push(paths, f"chore: refresh NFL {args.mode} data")
+        # Each --mode run only writes its own file(s) -- `git add` on the others,
+        # which don't exist yet on a fresh checkout, fails the whole pathspec and
+        # aborts the script before anything (including the file that DID get
+        # written) is ever committed. Only add files that actually exist.
+        paths = [p for p in paths if (ROOT / p).exists()]
+        if paths:
+            git_push(paths, f"chore: refresh NFL {args.mode} data")
