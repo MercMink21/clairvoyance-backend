@@ -25,6 +25,33 @@ on:
     paths:
       - 'docs/**'
   workflow_dispatch: {}
+  # Every data-refresh workflow below checks out+pushes with the default
+  # GITHUB_TOKEN. GitHub does not let GITHUB_TOKEN-authored pushes trigger
+  # other `push`-based workflows (anti-recursion rule) -- so none of these
+  # ever fired the `push` trigger above, and Pages silently never picked up
+  # their commits until some unrelated human/PAT-authored push happened to
+  # land on main. `workflow_run` is exempt from that restriction, so this
+  # fires a redeploy explicitly once each one finishes.
+  workflow_run:
+    workflows:
+      - "CFB Rankings + FPI Refresh"
+      - "CFB Roster Refresh"
+      - "CFB Schedule + Lines Refresh"
+      - "CFB Team Stats Refresh"
+      - "Manual Data Sync"
+      - "Daily NBA Player Props Refresh"
+      - "NFL Injuries + Transactions Refresh"
+      - "Daily NFL Player Props Refresh"
+      - "NFL Roster Refresh"
+      - "NFL Schedule + Lines Refresh"
+      - "NFL Team Stats + Standings Refresh"
+      - "Daily NHL Player Props Refresh"
+      - "Daily Opta Soccer Stats Refresh"
+      - "Scheduled Data Refresh"
+      - "Daily Social Cards Email"
+      - "StatMuse Insights Refresh"
+      - "Daily WNBA Player Props Refresh"
+    types: [completed]
 
 permissions:
   contents: read
@@ -37,6 +64,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -44,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
