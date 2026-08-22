@@ -131,9 +131,18 @@ LEAGUES: dict[str, dict] = {
     "mls": {
         "tmcl": "6i6n0jkbh9zzij6s8htfjh2j8",
         "referer": "https://theanalyst.com/competition/mls/stats",
+        "power_referer": "https://theanalyst.com/competition/mls/power-rankings",
         "meta_post_id": "202451",
         "file": "mls_team_stats_2026.json",
-        "power": False,
+        # MLS IS one of Opta's tracked Power Rankings competitions after
+        # all (confirmed live at theanalyst.com/competition/mls/power-
+        # rankings, same tmcl/meta_post_id as its stats page) — just not a
+        # tournament-stats source, since mlssoccer.com's own real xG
+        # already covers that. Power Rankings is a genuinely different,
+        # independent signal (whole-squad Elo-style rating vs this
+        # season's own goals), so it's still additive even though MLS
+        # already has the best base xG of all 6 leagues.
+        "power": True,
         # MLS already has a dedicated first-party stats pipeline
         # (fetch_mls_team_stats() in clairvoyance_update.py) that feeds
         # docs/data.json / _socXG's live path — this scrape is saved as
@@ -236,6 +245,13 @@ def slim_categories(team_block: dict) -> dict:
     }
 
 
+# Matches _SOC_HOME_ADV.default in docs/app.html — keep these in sync.
+# MLS gets a distinctly larger boost there (0.16 vs 0.10), but MLS's
+# name_map is None so it never reaches this function (only pl/liga/ita/bl
+# do — see main()'s `if cfg["name_map"]:` gate), so there's no MLS case
+# to handle here.
+SOC_HOME_ADV = 0.10
+
 def build_soc_xg_lines(slim: dict, name_map: dict) -> list[str]:
     """Per-game xg/xga/gf/ga with the same +/-10% home-away split
     convention _SOC_XG already used before this script existed."""
@@ -252,8 +268,8 @@ def build_soc_xg_lines(slim: dict, name_map: dict) -> list[str]:
         xga_pg = d["xg_against"] / played
         gf_pg = a["goals"] / played
         ga_pg = d["goals_against"] / played
-        hxg, axg = round(xg_pg * 1.10, 3), round(xg_pg * 0.90, 3)
-        hxga, axga = round(xga_pg * 0.90, 3), round(xga_pg * 1.10, 3)
+        hxg, axg = round(xg_pg * (1 + SOC_HOME_ADV), 3), round(xg_pg * (1 - SOC_HOME_ADV), 3)
+        hxga, axga = round(xga_pg * (1 - SOC_HOME_ADV), 3), round(xga_pg * (1 + SOC_HOME_ADV), 3)
         lines.append(
             f"  '{key}':{{xg:{round(xg_pg,3)},xga:{round(xga_pg,3)},hxg:{hxg},hxga:{hxga},"
             f"axg:{axg},axga:{axga},gf:{round(gf_pg,3)},ga:{round(ga_pg,3)},mp:{played}}},"
