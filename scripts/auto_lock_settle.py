@@ -80,6 +80,11 @@ SPORT_TO_LOCKPICK_TYPE = {
     "SOC_ITA": "SERIEA", "SOC_CL": "CL",
     "ATP": "ATP", "WTA": "WTA",
 }
+# The 5 European leagues -- deliberately excludes SOC_MLS, which kicks off
+# at normal US evening times and doesn't have the early-kickoff problem
+# soccer-lock-early.yml exists to solve (confirmed real bug: MLS legs were
+# showing up in the "EUROPEAN SOCCER" email before this).
+EURO_SOCCER_SPORTS = frozenset({"SOC_CL", "SOC_PL", "SOC_LIGA", "SOC_BL", "SOC_ITA"})
 # OPTIMAL=2, PREMIUM=3 in _evalMkts()'s own tierN scale.
 QUALIFYING_TIERS = {2, 3}
 TIER_LABEL = {0: "SKIP", 1: "LEAN", 2: "OPTIMAL", 3: "PREMIUM"}
@@ -394,13 +399,17 @@ def gather_legs(page) -> dict:
     )
 
 
-def build_qualifying(result: dict, only_prefixes: tuple[str, ...] | None = None) -> list[dict]:
-    """only_prefixes: if given, restricts to sport tags starting with any of
-    these prefixes (e.g. ("SOC_",) for the soccer-only early pass, ("CFB",)
-    for the CFB-only early pass) -- for the dedicated early lock runs timed
-    ahead of that sport/league's own earlier kickoffs."""
+def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) -> list[dict]:
+    """only_sports: if given, restricts to exactly these sport tags (e.g.
+    EURO_SOCCER_SPORTS for the European-soccer early pass, {"CFB"} for the
+    CFB-only early pass) -- for the dedicated early lock runs timed ahead of
+    that sport/league's own earlier kickoffs. Deliberately an exact-tag
+    allowlist, not a prefix match: a bare "SOC_" prefix match would also
+    catch SOC_MLS, which kicks off at normal US evening times and has none
+    of the early-kickoff problem this pass exists for (confirmed real bug --
+    MLS legs were showing up in the "EUROPEAN SOCCER" email)."""
     def _wanted(sport: str) -> bool:
-        return only_prefixes is None or (sport or "").startswith(only_prefixes)
+        return only_sports is None or (sport or "") in only_sports
     qualifying: list[dict] = []
     for gl in result.get("gameLegs") or []:
         sport = gl.get("sport")
@@ -422,7 +431,7 @@ def build_qualifying(result: dict, only_prefixes: tuple[str, ...] | None = None)
     # Props only exist for NBA/WNBA/NHL/NFL -- neither early pass (soccer,
     # CFB) needs or has any to filter, so props are simply included only on
     # the unscoped (full) run.
-    if only_prefixes is None:
+    if only_sports is None:
         for p in result.get("propLegs") or []:
             if p.get("grade") in ("PREMIUM", "OPTIMAL"):
                 qualifying.append({"kind": "PROP", "sport": p.get("sportTag"), "leg": p})
@@ -614,10 +623,10 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
     log(f"Locks email sent to {LOCKS_EMAIL_TO}" if ok else f"Locks email send failed: {msg}")
 
 
-def run_lock(page, live: bool, only_prefixes: tuple[str, ...] | None = None, label: str = "") -> None:
+def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "") -> None:
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
-    qualifying = build_qualifying(result, only_prefixes=only_prefixes)
+    qualifying = build_qualifying(result, only_sports=only_sports)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
         f"{len(result.get('propLegs') or [])} prop legs total")
     log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found" + (f" ({label.lower()} only)" if label else ""))
@@ -664,8 +673,10 @@ def main() -> None:
     ap.add_argument("--lock", action="store_true", help="Run only the auto-lock step")
     ap.add_argument("--settle", action="store_true", help="Run only the auto-settle step")
     ap.add_argument("--only-soccer", action="store_true",
-                     help="Lock step only: restrict to the 6 European/MLS soccer leagues. "
-                          "For the early-morning pass timed ahead of European kickoffs.")
+                     help="Lock step only: restrict to the 5 European soccer leagues (CL/PL/"
+                          "La Liga/Bundesliga/Serie A) -- deliberately NOT MLS, which doesn't "
+                          "have an early-kickoff problem. For the early-morning pass timed "
+                          "ahead of European kickoffs.")
     ap.add_argument("--only-cfb", action="store_true",
                      help="Lock step only: restrict to CFB. For the early-morning pass timed "
                           "ahead of the earliest college football kickoffs (10 AM MT+).")
@@ -674,7 +685,7 @@ def main() -> None:
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
     if args.only_soccer and args.only_cfb:
         raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
-    only_prefixes = ("SOC_",) if args.only_soccer else ("CFB",) if args.only_cfb else None
+    only_sports = EURO_SOCCER_SPORTS if args.only_soccer else frozenset({"CFB"}) if args.only_cfb else None
     label = "EUROPEAN SOCCER" if args.only_soccer else "CFB" if args.only_cfb else ""
 
     from playwright.sync_api import sync_playwright
@@ -694,7 +705,7 @@ def main() -> None:
             settled = run_settle(page, args.live)
             send_settlement_email(settled, args.live)
         if do_lock:
-            run_lock(page, args.live, only_prefixes=only_prefixes, label=label)
+            run_lock(page, args.live, only_sports=only_sports, label=label)
 
         browser.close()
 
