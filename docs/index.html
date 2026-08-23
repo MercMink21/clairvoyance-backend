@@ -7005,22 +7005,25 @@ function _cfbMatchupRadarSVG(g,f){
   const hVals=_cfbRadarAxisValues(g.home,f,'h'),aVals=_cfbRadarAxisValues(g.away,f,'a');
   return _matchupRadarSVG(labels,hVals,aVals,'cfb_'+g.home+'_'+g.away);
 }
-// "Big favorite" callout — CFB's roster gap between blue-bloods and
-// cupcake/G5/FCS opponents produces genuinely lopsided matchups more
-// often than most sports: a team can have a real, high win probability
-// while still grading SKIP/LEAN on tier()'s EV requirement alone, since
-// the market prices short odds efficiently (e.g. -1000 needs 90.9%+ just
-// to break even — a real 92% team can still show near-zero EV there).
-// Purely EV-gated grading silently buries exactly the kind of
-// high-confidence pick some bettors specifically want (reliability over
-// raw value). Doesn't touch the EV-based tier itself, and doesn't upgrade
-// its color/label -- this is a parallel signal shown ALONGSIDE it, so a
-// heavy favorite still reads as an encouraged pick on hit-rate even when
-// its EV doesn't clear the tier() bar, without pretending the EV number
-// is something it isn't.
-var _CFB_HIGH_HIT_P=0.75;
-function _cfbHighHitBadgeHTML(p){
-  if(p<_CFB_HIGH_HIT_P)return'';
+// "Big favorite" callout — originally built for CFB (roster gap between
+// blue-bloods and cupcake/G5/FCS opponents produces genuinely lopsided
+// matchups more often than most sports), now shared with soccer too: a
+// team/side can have a real, high win probability while still grading
+// SKIP/LEAN on tier()'s EV requirement alone, since the market prices
+// short odds efficiently (e.g. -1000 needs 90.9%+ just to break even — a
+// real 92% team can still show near-zero EV there). Purely EV-gated
+// grading silently buries exactly the kind of high-confidence pick some
+// bettors specifically want (reliability over raw value). Doesn't touch
+// the EV-based tier itself, and doesn't upgrade its color/label -- this
+// is a parallel signal shown ALONGSIDE it, so a heavy favorite still
+// reads as an encouraged pick on hit-rate even when its EV doesn't clear
+// the tier() bar, without pretending the EV number is something it isn't.
+// Soccer only applies this to the two WIN sides (home/away), never the
+// draw chip -- a draw crossing 75% would be essentially unheard of, so
+// there's no real scenario where it'd fire there anyway.
+var _HIGH_HIT_P=0.75;
+function _highHitBadgeHTML(p){
+  if(p<_HIGH_HIT_P)return'';
   return`<div style="margin-top:2px"><span class="pill" style="background:rgba(255,221,0,.15);border:1px solid var(--gc);color:var(--gc)" title="High model win probability -- shown regardless of EV grade, since a heavy favorite's short odds can price out most of the value even when the pick itself is very likely to hit">HIGH HIT % ${(p*100).toFixed(0)}%</span></div>`;
 }
 function _cfbGameCard(g){
@@ -7122,8 +7125,8 @@ function _cfbGameCard(g){
     </div>
     ${mc.wx?weatherBadge(mc.wx,g.home):''}
     <div class="brow">
-      <div class="${hCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div>${_cfbHighHitBadgeHTML(hP)}</div>
-      <div class="${aCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div>${_cfbHighHitBadgeHTML(aP)}</div>
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.home}','${hML}',${hP.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${_mlFmt(hML)}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div>${_highHitBadgeHTML(hP)}</div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockCFBGame('${g.home}','${g.away}','ML','${g.away}','${aML}',${aP.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${_mlFmt(aML)}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div>${_highHitBadgeHTML(aP)}</div>
       <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">SPREAD</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('sprd_cfb_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="-${baseSpread.toFixed(1)}" id="sprd_cfb_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)"><button onclick="event.stopPropagation();_adjV('sprd_cfb_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:2px;width:100%"><button onclick="event.stopPropagation();_cfbSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_cfb_${gidSafe}','FAV')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadFav}</div><div id="fav_sprd_cfb_${gidSafe}" style="font-size:11px;opacity:.85">-${baseSpread.toFixed(1)}</div></button><button onclick="event.stopPropagation();_cfbSpreadLockDir('${g.home}','${g.away}','${spreadFav}','${spreadDog}',${favCoverP.toFixed(3)},'-${baseSpread.toFixed(1)}','sprd_cfb_${gidSafe}','DOG')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${spreadDog}</div><div id="dog_sprd_cfb_${gidSafe}" style="font-size:11px;opacity:.85">+${baseSpread.toFixed(1)}</div></button></div></div>
       <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div><div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV('ouinp_cfb_${gidSafe}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button><input type="number" step="0.5" value="${ouL.toFixed(1)}" id="ouinp_cfb_${gidSafe}" style="width:48px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center"><button onclick="event.stopPropagation();_adjV('ouinp_cfb_${gidSafe}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div><div style="display:flex;gap:3px"><button onclick="event.stopPropagation();_cfbOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_cfb_${gidSafe}','OVER')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button><button onclick="event.stopPropagation();_cfbOuLockDir('${g.home}','${g.away}',${overP.toFixed(3)},'${ouL.toFixed(1)}','ouinp_cfb_${gidSafe}','UNDER')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button></div></div>
     </div>
@@ -27380,13 +27383,13 @@ function _renderSocMatchCard(g,leagueKey){
     +'<div class="brow">'
     +'<div class="'+hCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\''+g.home+'\','+hP.toFixed(3)+',\''+hML+'\','+ml2d(hML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">'+hc+'</div><div class="cho">'+hML+'</div><div class="chp">'+Math.round(hP*100)+'%</div>'
-    +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div></div>'
+    +'<div style="margin-top:2px"><span class="pill '+hCS.pl+'">'+hCS.lb+'</span></div>'+_highHitBadgeHTML(hP)+'</div>'
     +'<div class="'+dCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\'DRAW\','+dP.toFixed(3)+',\''+dML+'\','+ml2d(dML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">DRAW</div><div class="cho">'+dML+'</div><div class="chp">'+Math.round(dP*100)+'%</div>'
     +'<div style="margin-top:2px"><span class="pill '+dCS.pl+'">'+dCS.lb+'</span></div></div>'
     +'<div class="'+aCS.c+' chip" style="flex:1" onclick="lockPick(\''+hc+'\',\''+ac+'\',\''+_lockType+'\',\''+g.away+'\','+aP.toFixed(3)+',\''+aML+'\','+ml2d(aML).toFixed(3)+',\''+dateStr+'\')">'
     +'<div class="cht">'+ac+'</div><div class="cho">'+aML+'</div><div class="chp">'+Math.round(aP*100)+'%</div>'
-    +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div></div>'
+    +'<div style="margin-top:2px"><span class="pill '+aCS.pl+'">'+aCS.lb+'</span></div>'+_highHitBadgeHTML(aP)+'</div>'
     +'<div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">'
     +'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>'
     +'<div style="display:flex;align-items:center;gap:2px"><button onclick="event.stopPropagation();_adjV(\''+ouId+'\',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>'+'<input type="number" step="0.5" value="'+ouL+'" id="'+ouId+'" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center">'+'<button onclick="event.stopPropagation();_adjV(\''+ouId+'\',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button></div>'
