@@ -13729,6 +13729,127 @@ function renderCrossDeviceSync(){
   el.innerHTML=html;
 }
 
+// Tennis ML auto-settlement (ATP/WTA) -- no real auto-settle existed for
+// tennis before this; the only thing resembling one was a stale,
+// hardcoded "TENNIS_CONFIRMED" winners list baked into the first
+// (dead-code -- see the real autoSettleAll(btn) below, which shadows
+// this one by JS's function-redeclaration rules) autoSettleAll()
+// definition, frozen at whatever the draw looked like when it was
+// written. ESPN's tennis scoreboard shape is genuinely different from
+// every team-sport endpoint this app already parses: events nest
+// groupings[].competitions[] (one event can host several tournaments'
+// worth of matches) rather than a flat events[].competitions[0], and
+// each competitor carries its own `winner` boolean directly -- no score
+// comparison needed for ML the way team sports require. Scoped to ML
+// only for now (sets/games O/U would need summing each competitor's
+// linescores[], a real but separate addition -- not built here since
+// this app's own O/U tennis volume is low and ML is what actually needs
+// covering).
+async function autoSettleTennis(){
+  for(const tour of['atp','wta']){
+    try{
+      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/tennis/'+tour+'/scoreboard');
+      if(!r.ok)continue;const d=await r.json();
+      const preds=getP();let changed=false;
+      for(const ev of(d.events||[])){
+        for(const grp of(ev.groupings||[])){
+          for(const c of(grp.competitions||[])){
+            if(c.status?.type?.state!=='post')continue;
+            const competitors=c.competitors||[];
+            if(competitors.length!==2)continue;
+            const [c1,c2]=competitors;
+            const n1=c1.athlete?.displayName,n2=c2.athlete?.displayName;
+            if(!n1||!n2)continue;
+            for(const p of preds){
+              if(p.outcome!=='pending'||_normSport(p)!=='TEN')continue;
+              const sameMatch=(p.hA===n1&&p.awA===n2)||(p.hA===n2&&p.awA===n1);
+              if(!sameMatch)continue;
+              const betOn=p.betOn||'';
+              let outcome=null;
+              if(betOn===n1)outcome=c1.winner?'win':'loss';
+              else if(betOn===n2)outcome=c2.winner?'win':'loss';
+              if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;
+                toast(`AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);
+                try{notifySettlement(p.betOn,outcome);}catch(e){}
+                try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'TEN',outcome,score:null});}catch(ex){}
+              }
+            }
+          }
+        }
+      }
+      if(changed){saveP(preds);updHdr();}
+    }catch(e){console.warn('Tennis settle ('+tour+'):',e);}
+  }
+}
+let _tenSettleIv=null;
+function startTennisSettle(){
+  if(_tenSettleIv)clearInterval(_tenSettleIv);
+  autoSettleTennis();
+  _tenSettleIv=setInterval(autoSettleTennis,60000);
+}
+
+// WNBA game-level auto-settlement (ML/SPREAD/OU) -- autoSettlePropsESPN
+// already covers WNBA player props, but nothing settled the game markets
+// themselves before this. Deliberately doesn't trust p.betType the way
+// autoSettleNBA does: WNBA's own spread/OU lock buttons
+// (_spreadLockDir/_ouLockDir) pass sport='WNBA' as lockPick's `type`
+// argument rather than the literal 'SPREAD'/'OU' keyword, so
+// _betTypeNorm falls through to its 'ML' default for those picks too --
+// confirmed the same real quirk auto_lock_settle.py's docstring already
+// flags for the auto-lock path, just hit here from the manual-lock
+// buttons instead. Parses the always-correct betOn text directly
+// instead (same approach as autoSettleSoccer): "TEAM" -> ML,
+// "TEAM -3.5"/"TEAM +3.5" -> spread, "OVER/UNDER N" -> total.
+async function autoSettleWNBA(){
+  try{
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?limit=100');
+    if(!r.ok)return;const d=await r.json();
+    const preds=getP();let changed=false;
+    for(const ev of(d.events||[])){
+      const c=ev.competitions?.[0];if(!c)continue;
+      if(c.status?.type?.state!=='post')continue;
+      const h=c.competitors?.find(t=>t.homeAway==='home');const a=c.competitors?.find(t=>t.homeAway==='away');
+      const hn=h?.team?.abbreviation,an=a?.team?.abbreviation;
+      if(!hn||!an)continue;
+      const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
+      for(const p of preds){
+        if(p.outcome!=='pending'||_normSport(p)!=='WNBA')continue;
+        const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+        if(!sameGame)continue;
+        let outcome=null;
+        const betOn=p.betOn||'';
+        const spreadMatch=/^(\S+)\s+([+-]\d+\.?\d*)$/.exec(betOn);
+        const ouMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)$/i.exec(betOn);
+        if(betOn===hn)outcome=hs>as?'win':(hs===as?'push':'loss');
+        else if(betOn===an)outcome=as>hs?'win':(hs===as?'push':'loss');
+        else if(ouMatch){
+          const line=parseFloat(ouMatch[2]),total=hs+as;
+          const over=ouMatch[1].toUpperCase()==='OVER';
+          outcome=total===line?'push':(over?total>line:total<line)?'win':'loss';
+        }else if(spreadMatch){
+          const favTeam=spreadMatch[1],line=parseFloat(spreadMatch[2]);
+          const favIsHome=favTeam===hn;
+          const diff=favIsHome?(hs-as):(as-hs);
+          const covered=diff+line;
+          outcome=covered>0?'win':covered<0?'loss':'push';
+        }
+        if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
+          toast(`AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);
+          try{notifySettlement(p.betOn,outcome);}catch(e){}
+          try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'WNBA',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
+        }
+      }
+    }
+    if(changed){saveP(preds);updHdr();}
+  }catch(e){console.warn('WNBA settle:',e);}
+}
+let _wnbaSettleIv=null;
+function startWNBASettle(){
+  if(_wnbaSettleIv)clearInterval(_wnbaSettleIv);
+  autoSettleWNBA();
+  _wnbaSettleIv=setInterval(autoSettleWNBA,60000);
+}
+
 // NBA auto-settlement from ESPN
 async function autoSettleNBA(){
   try{
@@ -13779,6 +13900,10 @@ async function autoSettleAll(btn){
     try{await autoSettleNBA();}catch(e){}
     try{await autoSettleNHL();}catch(e){}
     try{await autoSettleCFB();}catch(e){}
+    try{await autoSettleNFL2();}catch(e){}
+    try{await autoSettleSoccer();}catch(e){}
+    try{await autoSettleWNBA();}catch(e){}
+    try{await autoSettleTennis();}catch(e){}
     // Phase 2: text-format bets (hA contains "@", betOn has "TEAM ML -xxx")
     await autoSettleTextFormat();
     // Phase 3: player props via ESPN box scores
@@ -22714,6 +22839,8 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{startNBALive();}catch(e){console.error('nbaLive',e);}
   try{startCFBSettle();}catch(e){console.error('cfbSettle',e);}
   try{startSoccerSettle();}catch(e){console.error('soccerSettle',e);}
+  try{startWNBASettle();}catch(e){console.error('wnbaSettle',e);}
+  try{startTennisSettle();}catch(e){console.error('tennisSettle',e);}
   try{startNFLSettle2();}catch(e){console.error('nflSettle',e);}
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}

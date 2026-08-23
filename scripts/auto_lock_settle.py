@@ -169,6 +169,8 @@ def run_settle(page, live: bool) -> list[dict]:
           try { if (typeof autoSettleNHL === 'function') await autoSettleNHL(); results.nhl = 'ok'; } catch (e) { results.nhl = 'err:' + e.message; }
           try { if (typeof autoSettleCFB === 'function') await autoSettleCFB(); results.cfb = 'ok'; } catch (e) { results.cfb = 'err:' + e.message; }
           try { if (typeof autoSettleSoccer === 'function') await autoSettleSoccer(); results.soccer = 'ok'; } catch (e) { results.soccer = 'err:' + e.message; }
+          try { if (typeof autoSettleWNBA === 'function') await autoSettleWNBA(); results.wnba = 'ok'; } catch (e) { results.wnba = 'err:' + e.message; }
+          try { if (typeof autoSettleTennis === 'function') await autoSettleTennis(); results.tennis = 'ok'; } catch (e) { results.tennis = 'err:' + e.message; }
           try { if (typeof autoSettleNFL2 === 'function') await autoSettleNFL2(); results.nfl = 'ok'; } catch (e) { results.nfl = 'err:' + e.message; }
           try { if (typeof autoSettlePropsESPN === 'function') await autoSettlePropsESPN(); results.props = 'ok'; } catch (e) { results.props = 'err:' + e.message; }
           return results;
