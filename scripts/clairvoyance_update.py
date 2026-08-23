@@ -2901,6 +2901,44 @@ def _soccer_club_key(name: str) -> str:
             n = n[: -len(suf)]
     return n.strip()
 
+# _soccer_club_key() only strips short abbreviation suffixes (" fc", " sc",
+# etc); it doesn't help when one source spells the suffix out ("Football
+# Club" vs "FC") or uses a pure acronym for the whole name (ESPN's "lafc"
+# vs mlssoccer.com's "Los Angeles Football Club" -- neither a substring of
+# the other, no suffix to strip off "lafc" at all). Used to merge MLS's
+# real mlssoccer.com stats with ESPN-sourced matchLog/recentForm/homeSplit/
+# awaySplit data, which are keyed by each source's own naming convention.
+_MLS_NAME_SUFFIXES = (" football club", " soccer club", " fc", " cf", " afc", " sc", " cd", " ud")
+
+def _mls_name_strip(name: str) -> str:
+    n = (name or "").strip().lower()
+    for suf in _MLS_NAME_SUFFIXES:
+        if n.endswith(suf):
+            return n[: -len(suf)].strip()
+    return n
+
+def _fuzzy_mls_name_lookup(target: str, candidates: dict):
+    """Find target's entry in a dict keyed by a differently-formatted name
+    for the same clubs. Exact match, then suffix-stripped exact/substring
+    match, then an acronym fallback (does one side's un-spaced letters
+    match the initials of the other side's words) for the LAFC case
+    neither of the first two resolves."""
+    if target in candidates:
+        return candidates[target]
+    t_stripped = _mls_name_strip(target)
+    for k, v in candidates.items():
+        k_stripped = _mls_name_strip(k)
+        if k_stripped == t_stripped or k_stripped in t_stripped or t_stripped in k_stripped:
+            return v
+    t_flat = target.replace(" ", "")
+    for k, v in candidates.items():
+        k_flat = k.replace(" ", "")
+        k_initials = "".join(w[0] for w in k.split() if w)
+        t_initials = "".join(w[0] for w in target.split() if w)
+        if k_initials == t_flat or t_initials == k_flat:
+            return v
+    return None
+
 ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "cl":   {"name": "Champions League", "espn": "UEFA.champions"},
     "pl":   {"name": "Premier League",   "espn": "eng.1"},
@@ -5501,7 +5539,17 @@ def main() -> None:
                 "sot_pg": round((t.get("shots_on_target", 0) or 0) / gp, 2),
                 "src": "mlssoccer",
             }
-            prior = _mls_prior.get(name)
+            # mlssoccer.com and ESPN name clubs differently ("Los Angeles
+            # Football Club" vs "lafc", "New York City Football Club" vs
+            # "New York City FC") -- an exact dict-key lookup here silently
+            # dropped matchLog/recentForm/homeSplit/awaySplit for 5 of 30
+            # clubs (verified live: Atlanta United, LAFC, NYCFC, Orlando
+            # City, Vancouver Whitecaps all failed to match). _fuzzy_
+            # mls_name_lookup resolves the same 5 via suffix-stripping
+            # ("football club"/"soccer club"/"fc"/"sc"/etc, both sides)
+            # plus an acronym fallback for the LAFC case neither substring
+            # nor suffix-stripping alone reaches.
+            prior = _fuzzy_mls_name_lookup(name, _mls_prior)
             if prior:
                 for f in ("matchLog", "recentForm", "homeSplit", "awaySplit"):
                     if f in prior:

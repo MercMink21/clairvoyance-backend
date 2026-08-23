@@ -26451,18 +26451,35 @@ function _optaBaseXG(name,leagueKey){
 // proxy fallback, or the static fallback table) with the Opta scrape's own
 // attacking/defending numbers — two independent real sources averaged,
 // rather than picking one over the other. Applies to every league Opta
-// actually covers (pl/ita/bl/mls — see _OPTA_LEAGUES); La Liga and
-// Champions League aren't scraped by scrape_opta_stats.py, so _optaBaseXG
-// correctly resolves to null for those and this passes base through unchanged.
+// actually covers (pl/liga/ita/bl/mls — see _OPTA_LEAGUES); Champions
+// League isn't scraped by scrape_opta_stats.py, so _optaBaseXG correctly
+// resolves to null for that and this passes base through unchanged.
 function _blendLeagueOpta(name,base,leagueKey){
   if(!base)return base;
   var opta=_optaBaseXG(name,leagueKey);
   if(!opta)return base;
   var xg=(base.xg+opta.xg)/2, xga=(base.xga+opta.xga)/2;
+  // Preserve whatever home/away split ratio `base` already encoded --
+  // a real per-team split from _socTeamHomeAwaySplit, or just the flat
+  // league-wide _socHomeAdv() swing if no real split was available -- by
+  // reapplying that same ratio to the newly blended xg/xga, instead of
+  // always recomputing hxg/axg from the flat constant regardless of what
+  // base already had. That used to silently throw away the real
+  // team-specific split for every league this function runs for (i.e.
+  // every league except Champions League, since CL never reaches here).
   var adv=_socHomeAdv(leagueKey);
-  return{xg:xg,xga:xga,hxg:+(xg*(1+adv)).toFixed(3),hxga:+(xga*(1-adv)).toFixed(3),
-         axg:+(xg*(1-adv)).toFixed(3),axga:+(xga*(1+adv)).toFixed(3),
-         gf:base.gf,ga:base.ga,mp:base.mp,src:(base.src||'')+'+opta-blend'};
+  var hRatio=base.xg?base.hxg/base.xg:(1+adv);
+  var hgaRatio=base.xga?base.hxga/base.xga:(1-adv);
+  var aRatio=base.xg?base.axg/base.xg:(1-adv);
+  var agaRatio=base.xga?base.axga/base.xga:(1+adv);
+  return{xg:xg,xga:xga,
+         hxg:+(xg*hRatio).toFixed(3),hxga:+(xga*hgaRatio).toFixed(3),
+         axg:+(xg*aRatio).toFixed(3),axga:+(xga*agaRatio).toFixed(3),
+         gf:base.gf,ga:base.ga,mp:base.mp,
+         poss:base.poss,xag:base.xag,shotsPg:base.shotsPg,sotPg:base.sotPg,
+         recentForm:base.recentForm,homeSplit:base.homeSplit,awaySplit:base.awaySplit,matchLog:base.matchLog,
+         homeSplitUsed:base.homeSplitUsed,
+         src:(base.src||'')+'+opta-blend'};
 }
 function _socXG(name,leagueKey){
   if(!name)return null;
