@@ -26964,13 +26964,20 @@ function _socMarketBlend(hP,dP,aP,hML,dML,aML){
 // on where the call happened to be added — no accuracy reasoning behind
 // the spread, just inconsistent defaults, so the same fixture could show
 // slightly different probabilities depending on which tab rendered it.
-// 15,000 keeps standard error negligible for a 3-way soccer market
-// (~0.4% at p=0.5) while staying well clear of the multi-fixture-per-
-// render main-thread-blocking issue documented above _fetchLeagueScoreboard
-// (that incident was specifically about a many-fixture rolling window,
-// already fixed separately by restricting to today-only; a single-fixture
-// or single-league-day render at 15k is not in that regime).
-var _SOC_MC_N=15000;
+// Standardized at the main card's original 25,000 (not the 15,000 this
+// briefly ran at) — measured empirically: run-to-run spread on the same
+// true inputs was 1.81pp at 15k vs 1.10pp at 25k across 12 runs, and the
+// 95% CI is +/-0.78pp at 15k vs +/-0.60pp at 25k. That doesn't move a
+// clear PREMIUM or a clear SKIP, but it's exactly the margin that can
+// flip a pick sitting right on a tier boundary (EV~=0.03 at the OPTIMAL
+// cutoff), which is disproportionately the close calls actually worth a
+// second look. Safe at every call site including the today-only batch
+// gatherers (_socGatherLegs-style loops) -- the earlier main-thread-
+// blocking incident above _fetchLeagueScoreboard was specifically a
+// many-fixture ROLLING WINDOW (weeks of games at once), already fixed
+// separately by restricting those loops to today-only; a single
+// league-day's worth of fixtures at 25k is not in that regime.
+var _SOC_MC_N=25000;
 function _soccerMC(hxg,axg,n){
   if(!n)n=_SOC_MC_N;
   // Every other sport's MC function clamps its input (mlbMC's ERA-based
