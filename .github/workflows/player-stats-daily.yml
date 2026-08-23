@@ -1,0 +1,47 @@
+name: Daily Player Stats Refresh
+
+# Snapshot of NBA/WNBA/NHL player season stats, written to
+# docs/player_stats.json. Exists so scripts/auto_lock_settle.py (the
+# headless auto-lock driver) can still generate player props even though
+# it can't rely on a live ESPN fetch succeeding at all in an automation
+# context -- see scripts/scrape_player_stats.py's module docstring for
+# the full story (a real, pre-existing parsing bug in docs/app.html's
+# three _fetchXXXPlayerStats() functions, not just a headless-only CORS
+# issue: the endpoint's real shape is stats.categories[].leaders[], not
+# the flat top-level athletes[] those functions always assumed).
+
+on:
+  schedule:
+    # 9:45 AM MT = 15:45 UTC (MDT) / 16:45 UTC (MST) -- before auto-lock-
+    # settle.yml's 10:15 MT lock run, so today's props have real same-day
+    # data by the time that workflow gathers legs.
+    - cron: '45 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-player-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Scrape and push
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/scrape_player_stats.py --push
