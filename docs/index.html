@@ -11083,7 +11083,11 @@ function renderOverall(){
     const s=bets.filter(p=>p.outcome!=='pending');
     const w=s.filter(p=>p.outcome==='win').length;const l=s.filter(p=>p.outcome==='loss').length;
     const u=s.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
-    return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u,locked:bets.length,settledN:s.length};
+    // High Hit — win rate among picks the model flagged 75%+ win probability
+    // at lock, same threshold as _highHitBadgeHTML on the game cards.
+    const hh=s.filter(p=>p.winProb!=null&&p.winProb>=0.75);
+    const hhW=hh.filter(p=>p.outcome==='win').length;
+    return{w,l,n:s.length,acc:s.length?w/s.length:null,units:u,locked:bets.length,settledN:s.length,highHitN:hh.length,highHitAcc:hh.length?hhW/hh.length:null};
   };
   const _todStr=today();
   const _ydStr=yesterday();
@@ -11094,8 +11098,6 @@ function renderOverall(){
   const lastMoPerf=calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
   const moLbl    = firstOfLastMonth.toLocaleDateString('en-US',{month:'short',year:'numeric'}).toUpperCase();
   const allTimePerf  = calcPerf(all);
-  const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime(); // July 1 2026 00:00 ET
-  const sinceLaunchPerf=calcPerf(all.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
 
   // ── Filter-by-month selector — lets the user pick any specific month
   // (not just "this month"/"last month") to see that month's performance,
@@ -11426,11 +11428,12 @@ function renderOverall(){
       </div>
     </div>`;};
 
-  const sportRow=(d)=>{
+  const sportRow=(d,showHH)=>{
     const indent=d.sub?'padding-left:14px;border-left:2px solid rgba(0,240,255,.18);margin-left:4px;':'';
     const lsize=d.sub?'11px':'13px'; const lcol=d.sub?'var(--t3)':'var(--t)';
     if(d.n===0){if(d.always)return`<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><span style="font-family:var(--mono);font-size:14px;color:rgba(150,130,180,.35)">0W-0L</span></div>`;if(d.sub)return'';return`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:16px;color:var(--t3)">${d.lbl}</span><span style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35)">NO BETS YET</span></div>`;}
-    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:${d.sub?'3px 0':'5px 0'};border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:var(--mono);font-size:14px;color:var(--nc)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:11px;color:var(--nc);border:1px solid rgba(0,240,255,.35);padding:0 3px;border-radius:2px">${d.n}</span><span style="font-family:var(--mono);font-size:${lsize};font-weight:700;color:var(--nc)">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:14px;color:var(--nc)">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
+    const hh=showHH&&d.highHitN>0?`<span style="font-family:var(--mono);font-size:11px;color:var(--gc)" title="Win rate among picks the model flagged 75%+ win probability at lock">HH ${(d.highHitAcc*100).toFixed(0)}%·${d.highHitN}</span>`:'';
+    return`<div style="display:flex;justify-content:space-between;align-items:center;padding:${d.sub?'3px 0':'5px 0'};border-bottom:1px solid rgba(255,255,255,.05);${indent}"><span style="font-family:var(--mono);font-size:${lsize};color:${lcol}">${d.lbl}</span><div style="display:flex;gap:8px;align-items:center">${hh}<span style="font-family:var(--mono);font-size:14px;color:var(--nc)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:11px;color:var(--nc);border:1px solid rgba(0,240,255,.35);padding:0 3px;border-radius:2px">${d.n}</span><span style="font-family:var(--mono);font-size:${lsize};font-weight:700;color:var(--nc)">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:14px;color:var(--nc)">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
   };
 
   const calRow=(b)=>{
@@ -11536,8 +11539,7 @@ function renderOverall(){
     ${periodCard('THIS MONTH',moPerf,'var(--pc)')}
     ${periodCard('LAST MONTH ('+moLbl+')',lastMoPerf,'var(--vc)')}
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-    ${periodCard('SINCE LAUNCH (JUL 1, 2026)',sinceLaunchPerf,'var(--hc)')}
+  <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:14px">
     ${periodCard('ALL TIME',allTimePerf,'rgba(255,221,0,.9)')}
   </div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
@@ -11553,15 +11555,15 @@ function renderOverall(){
   <div class="ovr-sport-breakdown" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
-      ${bySportMo.length?bySportMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+      ${bySportMo.length?bySportMo.map(d=>sportRow(d)).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
     </div>
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">BET TYPE</div>
-      ${byTypeMo.length?byTypeMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+      ${byTypeMo.length?byTypeMo.map(d=>sportRow(d,true)).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
     </div>
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">LEAGUE</div>
-      ${byLeagueMo.length?byLeagueMo.map(sportRow).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
+      ${byLeagueMo.length?byLeagueMo.map(d=>sportRow(d)).join(''):'<div style="font-family:var(--mono);font-size:15px;color:rgba(150,130,180,.35);padding:5px 0">NO BETS THIS MONTH</div>'}
     </div>
   </div>`;
 
@@ -11569,15 +11571,15 @@ function renderOverall(){
   h+=`<div class="ovr-sport-breakdown" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">SPORT</div>
-      ${bySport.map(sportRow).join('')}
+      ${bySport.map(d=>sportRow(d)).join('')}
     </div>
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">BET TYPE</div>
-      ${byType.map(sportRow).join('')}
+      ${byType.map(d=>sportRow(d,true)).join('')}
     </div>
     <div class="card" style="padding:10px">
       <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--pc);margin-bottom:8px">LEAGUE</div>
-      ${byLeague.map(sportRow).join('')}
+      ${byLeague.map(d=>sportRow(d)).join('')}
     </div>
   </div>`;
 
@@ -14189,8 +14191,33 @@ function renderHomePage(){
     const rMo  = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()));
     const rLMo = hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()));
     const rAll = hCalc(allBets);
-    const LAUNCH_TS=new Date('2026-07-01T04:00:00Z').getTime();
-    const rLaunch=hCalc(allBets.filter(p=>p.lockedAt&&p.lockedAt>=LAUNCH_TS));
+
+    // League performance this month — mirrors the Overall tab's BY LEAGUE
+    // grouping, scoped to the current month so the home page surfaces
+    // something time-relevant rather than duplicating Overall's all-time table.
+    const leagueMap=[
+      {lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},{lbl:'MLB',codes:['MLB']},
+      {lbl:'NHL',codes:['NHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
+      {lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},{lbl:'KHL',codes:['KHL']},
+      {lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},{lbl:'CBB',codes:['CBB','NCAAB']},
+      {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},
+      {lbl:'World Cup',codes:['SOC','WC']},{lbl:'Champions League',codes:['CL','CH']},
+      {lbl:'Premier League',codes:['PL']},{lbl:'La Liga',codes:['LIGA']},
+      {lbl:'Bundesliga',codes:['BUND','BL']},{lbl:'MLS',codes:['MLS']},{lbl:'Serie A',codes:['SERIEA']},
+    ];
+    const moBetsSettled=allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()&&p.outcome!=='pending');
+    const byLeagueMoHome=leagueMap.map(lm=>{
+      const lb=moBetsSettled.filter(p=>lm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+      if(!lb.length)return null;
+      const w=lb.filter(p=>p.outcome==='win').length,l=lb.filter(p=>p.outcome==='loss').length;
+      const u=lb.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
+      return{lbl:lm.lbl,w,l,n:lb.length,acc:lb.length?w/lb.length:null,units:u};
+    }).filter(Boolean).sort((a,b)=>b.n-a.n);
+    const leagueRow=d=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-family:var(--mono);font-size:14px;color:var(--t)">${d.lbl}</span><div style="display:flex;gap:8px;align-items:center"><span style="font-family:var(--mono);font-size:14px;color:var(--nc)">${d.w}W-${d.l}L</span><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${pCol(d.acc)}">${d.acc!==null?(d.acc*100).toFixed(0)+'%':'--'}</span><span style="font-family:var(--mono);font-size:14px;color:${uCol(d.units)}">${d.units>=0?'+':''}${d.units.toFixed(1)}u</span></div></div>`;
+    const leaguePerfHtml=byLeagueMoHome.length?`<div style="margin-top:14px">
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// PERIOD PERFORMANCE — LEAGUE (${thisMonthLbl})</div>
+      <div class="card" style="padding:10px">${byLeagueMoHome.map(leagueRow).join('')}</div>
+    </div>`:'';
 
     const perfCard=(lbl,perf,topColor,sublabel)=>{
       const hasData=perf.n>0;
@@ -14225,29 +14252,36 @@ function renderHomePage(){
       ${perfCard('YESTERDAY',ry,'rgba(0,240,255,.8)')}
       ${perfCard('ROLLING 7D',r7,'rgba(187,255,0,.8)')}
       ${perfCard('THIS MONTH',rMo,'rgba(0,240,255,.7)',thisMonthLbl)}
-      ${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}
-      ${perfCard('SINCE LAUNCH',rLaunch,'rgba(255,32,144,.9)','JUL 1, 2026')}
+      <div style="grid-column:1/-1">${perfCard('LAST MONTH',rLMo,'rgba(240,0,255,.7)',lastMonthLbl)}</div>
       <div style="grid-column:1/-1">${perfCard('ALL TIME',rAll,'rgba(255,221,0,.9)')}</div>
-    </div>`;
+    </div>
+    ${leaguePerfHtml}`;
   }
 
-  // ── TODAY'S PENDING PICKS ────────────────────────────────────────────────────
+  // ── ALL PENDING PICKS ─────────────────────────────────────────────────────
+  // Was date===todayStr only, which silently hid every pending bet locked
+  // for a different date (futures, a game happening tomorrow, a timezone
+  // edge case on the date string) from the home screen entirely. Now shows
+  // every currently-pending bet regardless of date, soonest-game first, with
+  // a per-row date label since they're no longer implicitly "today".
   const pendEl=document.getElementById('home-pending-bets');
   if(pendEl){
-    const todayPending=pending.filter(p=>p.date===todayStr);
-    if(!todayPending.length){
-      pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// TODAY'S PICKS</div>
-      <div class="empty" style="font-size:17px">NO PICKS LOCKED FOR TODAY</div>`;
+    const allPending=pending.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')||((a.lockedAt||0)-(b.lockedAt||0)));
+    if(!allPending.length){
+      pendEl.innerHTML=`<div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--t3);margin-bottom:8px">// PENDING PICKS</div>
+      <div class="empty" style="font-size:17px">NO PENDING PICKS</div>`;
     } else {
       const sc=s=>sportColor[s]||sportColor.default;
-      const rows=todayPending.map(p=>{
+      const rows=allPending.map(p=>{
         const mu=_gameTitle(p.hA,p.awA,p.sport)||p.betOn||'';
         const conf=p.winProb?`${(p.winProb*100).toFixed(0)}%`:'';
+        const dateLbl=p.date===todayStr?'TODAY':p.date===yd?'YESTERDAY':(p.date||'');
         return`<div style="padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
               ${_sportBadgeHtml(p.sport,sc)}
               <span style="font-family:var(--mono);font-size:16px;color:var(--t2)">${mu}</span>
+              ${dateLbl?`<span style="font-family:var(--mono);font-size:13px;color:var(--t3);border:1px solid rgba(255,255,255,.15);padding:0 4px;border-radius:2px">${dateLbl}</span>`:''}
               ${_gradeChipHtml(p)}
             </div>
             <div style="font-family:var(--mono);font-size:17px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_expandBetOn(p.betOn||'',p.sport)}</div>
@@ -14261,7 +14295,7 @@ function renderHomePage(){
         </div>`;
       }).join('');
       pendEl.innerHTML=`
-      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// TODAY'S PICKS — ${todayPending.length} PENDING</div>
+      <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);margin-bottom:8px">// PENDING PICKS — ${allPending.length} PENDING</div>
       <div style="border:1px solid rgba(0,240,255,.2);border-radius:3px;overflow:hidden;background:rgba(4,0,12,.6)">
         ${rows}
       </div>`;
@@ -28426,11 +28460,20 @@ function renderAnalyticsByBet(){
   var units=bets.reduce(function(a,p){return a+pnl(p);},0);
   var avgOdds=bets.filter(function(p){return p.decOdds;}).reduce(function(a,p,i,arr){return a+p.decOdds/arr.length;},0);
   var roi=bets.length?units/bets.length*100:0;
+  // High Hit % — win rate among picks the model flagged 75%+ win probability
+  // at lock time (same threshold _highHitBadgeHTML uses on the game cards).
+  // A separate signal from WIN RATE above: validates whether "high hit"
+  // picks actually hit at the rate the badge implies, not the average of
+  // every pick in this filtered set.
+  var hhBets=bets.filter(function(p){return p.winProb!=null&&p.winProb>=0.75;});
+  var hhW=hhBets.filter(function(p){return p.outcome==='win';}).length;
+  var hhAcc=hhBets.length?hhW/hhBets.length:null;
   var sumBar='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
     +'<div class="card" style="flex:1;min-width:70px;text-align:center;padding:9px"><div style="font-family:var(--orb);font-size:27px;font-weight:700;color:'+pC(acc||0)+'">'+(acc!==null?(acc*100).toFixed(1)+'%':'--')+'</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">WIN RATE</div></div>'
     +'<div class="card" style="flex:1;min-width:70px;text-align:center;padding:9px"><div style="font-family:var(--orb);font-size:27px;font-weight:700;color:var(--nc)">'+w+'W-'+l+'L</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">RECORD</div></div>'
     +'<div class="card" style="flex:1;min-width:70px;text-align:center;padding:9px"><div style="font-family:var(--orb);font-size:27px;font-weight:700;color:'+uC(units)+'">'+(units>=0?'+':'')+units.toFixed(1)+'u</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">NET UNITS</div></div>'
     +'<div class="card" style="flex:1;min-width:70px;text-align:center;padding:9px"><div style="font-family:var(--orb);font-size:27px;font-weight:700;color:'+uC(roi)+'">'+(roi>=0?'+':'')+roi.toFixed(1)+'%</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">ROI</div></div>'
+    +'<div class="card" style="flex:1;min-width:70px;text-align:center;padding:9px" title="Win rate among picks flagged 75%+ model probability at lock"><div style="font-family:var(--orb);font-size:27px;font-weight:700;color:'+(hhAcc!==null?pC(hhAcc):'var(--t3)')+'">'+(hhAcc!==null?(hhAcc*100).toFixed(1)+'%':'--')+'</div><div style="font-family:var(--mono);font-size:14px;color:var(--t3)">HIGH HIT % ('+hhBets.length+')</div></div>'
     +'</div>';
   // By type breakdown table
   var typeRows=['ML','O/U','Spread','Parlay','Props','Other'].map(function(t){
@@ -28440,17 +28483,21 @@ function renderAnalyticsByBet(){
     var tu=tb.reduce(function(a,p){return a+pnl(p);},0);
     var ao=tb.filter(function(p){return p.decOdds;});
     var avgO=ao.length?ao.reduce(function(a,p){return a+p.decOdds;},0)/ao.length:null;
+    var thh=tb.filter(function(p){return p.winProb!=null&&p.winProb>=0.75;});
+    var thhW=thh.filter(function(p){return p.outcome==='win';}).length;
+    var thhAcc=thh.length?thhW/thh.length:null;
     return'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:17px">'
       +'<span style="color:var(--t);min-width:70px">'+t+'</span>'
       +'<span style="color:var(--t3)">'+tw+'W-'+(tb.length-tw)+'L</span>'
       +'<span style="color:'+pC(ta||0)+';font-weight:700">'+(ta!==null?(ta*100).toFixed(1)+'%':'--')+'</span>'
       +(avgO?'<span style="color:var(--t3)">'+avgO.toFixed(2)+'</span>':'<span></span>')
       +'<span style="color:'+uC(tu)+'">'+(tu>=0?'+':'')+tu.toFixed(1)+'u</span>'
+      +'<span style="color:var(--gc);font-size:15px" title="High Hit % (75%+ flagged picks)">'+(thhAcc!==null?(thhAcc*100).toFixed(0)+'%·'+thh.length:'--')+'</span>'
       +'</div>';
   }).filter(Boolean).join('');
   var typeTable='<div class="card" style="margin-bottom:12px;padding:0;overflow:hidden">'
     +'<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(10,0,24,.8);font-family:var(--mono);font-size:14px;color:var(--t3);letter-spacing:2px">'
-    +'<span>BET TYPE</span><span>RECORD</span><span>WIN%</span><span>AVG ODDS</span><span>UNITS</span></div>'
+    +'<span>BET TYPE</span><span>RECORD</span><span>WIN%</span><span>AVG ODDS</span><span>UNITS</span><span>HIGH HIT</span></div>'
     +typeRows+'</div>';
   // By sport for selected type
   var sportCodes=[{s:'MLB',c:['MLB'],col:'var(--vc)'},{s:'NHL',c:['NHL'],col:'var(--ic)'},{s:'NBA',c:['NBA'],col:'var(--pc)'},{s:'WNBA',c:['WNBA'],col:'var(--pc)'},{s:'NFL',c:['NFL','FB'],col:'var(--hc)'},{s:'CFB',c:['CFB'],col:'var(--hc)'},{s:'SOCCER',c:['SOC','WC','PL','LIGA','BL','MLS','CL'],col:'var(--gc)'},{s:'TENNIS',c:['TEN'],col:'var(--mc)'}];
