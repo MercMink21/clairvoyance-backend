@@ -2053,56 +2053,6 @@ def fetch_tennis_rankings_espn() -> dict:
          f"WTA: {len(result['wta'])} (updated {result['wtaUpdated']})")
     return result
 
-def fetch_cincinnati_open() -> dict:
-    """Real live ATP+WTA Cincinnati Open draw (Aug 14-23, 2026) via ESPN's
-    tournament scoreboard (eventId 718-2026 -- both tours' men's/women's
-    singles come back from one call to the ATP-path endpoint, confirmed
-    live). Unlike Wimbledon/Roland Garros's hand-authored historical
-    draws elsewhere in this codebase (built after the fact, once real
-    results were known), Cincinnati is still in progress as of this
-    write -- so this only ever carries real ESPN data: real scores for
-    completed matches (round, players, final score), and real scheduled
-    pairings for upcoming ones (no results, since none exist yet).
-    """
-    log("Cincinnati Open draw (ESPN)…")
-    result: dict = {"men": [], "women": [], "lastUpdated": datetime.now(timezone.utc).isoformat()}
-    try:
-        data = fetch_json(
-            "https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard",
-            params={"event": "718-2026"},
-        )
-        events = (data or {}).get("events") or []
-        cin = next((e for e in events if "Cincinnati" in (e.get("name") or "")), None)
-        if not cin:
-            log("Cincinnati Open: event not found in ESPN scoreboard", "WARN")
-            return result
-        for grp in cin.get("groupings") or []:
-            slug = (grp.get("grouping") or {}).get("slug", "")
-            if slug not in ("mens-singles", "womens-singles"):
-                continue
-            key = "men" if slug == "mens-singles" else "women"
-            for c in grp.get("competitions") or []:
-                comps = c.get("competitors") or []
-                p1 = next((x for x in comps if x.get("order") == 1), comps[0] if comps else {})
-                p2 = next((x for x in comps if x.get("order") == 2), comps[1] if len(comps) > 1 else {})
-                st = (c.get("status") or {}).get("type") or {}
-                result[key].append({
-                    "round":     (c.get("round") or {}).get("displayName", ""),
-                    "date":      c.get("date", ""),
-                    "state":     st.get("state", "pre"),
-                    "completed": bool(st.get("completed")),
-                    "p1":        (p1.get("athlete") or {}).get("displayName", "TBD"),
-                    "p2":        (p2.get("athlete") or {}).get("displayName", "TBD"),
-                    "p1Winner":  bool(p1.get("winner")),
-                    "p2Winner":  bool(p2.get("winner")),
-                    "score":     ((c.get("notes") or [{}])[0]).get("text", ""),
-                    "court":     (c.get("venue") or {}).get("court", ""),
-                })
-    except Exception as exc:
-        log(f"Cincinnati Open: {exc}", "WARN")
-    log(f"  Cincinnati Open: {len(result['men'])} men's, {len(result['women'])} women's matches")
-    return result
-
 def fetch_tennis_schedule_full() -> dict:
     """Return comprehensive 2026 ATP/WTA tournament calendar (hardcoded + ESPN live)."""
     log("Tennis full schedule (2026 calendar)…")
@@ -2120,20 +2070,17 @@ def fetch_tennis_schedule_full() -> dict:
             return "completed"
         return "active"
 
+    # Retired everything but the 4 Grand Slams (2026-08-22): ATP Masters
+    # 1000s, WTA 1000/500s (the "WTA Premier" tier under its old pre-2021
+    # naming), and both tours' season-ending Finals. Cincinnati additionally
+    # had its own dedicated live-draw scraper (fetch_cincinnati_open(),
+    # removed alongside this) since it was in progress at the time it was
+    # built -- that's gone too, not just its calendar entry.
     ATP_2026 = [
         {"name":"Australian Open","dates":"Jan 12–26","startDate":"2026-01-12","endDate":"2026-01-26","location":"Melbourne","surface":"Hard","category":"Grand Slam"},
         {"name":"French Open (Roland Garros)","dates":"May 25–Jun 8","startDate":"2026-05-25","endDate":"2026-06-08","location":"Paris","surface":"Clay","category":"Grand Slam"},
         {"name":"Wimbledon","dates":"Jun 30–Jul 13","startDate":"2026-06-30","endDate":"2026-07-13","location":"London","surface":"Grass","category":"Grand Slam"},
         {"name":"US Open","dates":"Aug 24–Sep 7","startDate":"2026-08-24","endDate":"2026-09-07","location":"New York","surface":"Hard","category":"Grand Slam"},
-        {"name":"Indian Wells Masters","dates":"Mar 5–16","startDate":"2026-03-05","endDate":"2026-03-16","location":"Indian Wells","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Miami Open","dates":"Mar 19–30","startDate":"2026-03-19","endDate":"2026-03-30","location":"Miami","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Madrid Open","dates":"Apr 25–May 4","startDate":"2026-04-25","endDate":"2026-05-04","location":"Madrid","surface":"Clay","category":"ATP Masters 1000"},
-        {"name":"Italian Open (Rome)","dates":"May 6–18","startDate":"2026-05-06","endDate":"2026-05-18","location":"Rome","surface":"Clay","category":"ATP Masters 1000"},
-        {"name":"Canadian Open (Montreal)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Montreal","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Cincinnati Masters","dates":"Aug 14–23","startDate":"2026-08-14","endDate":"2026-08-23","location":"Cincinnati","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Shanghai Masters","dates":"Oct 6–13","startDate":"2026-10-06","endDate":"2026-10-13","location":"Shanghai","surface":"Hard","category":"ATP Masters 1000"},
-        {"name":"Paris Masters","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Paris","surface":"Indoor Hard","category":"ATP Masters 1000"},
-        {"name":"ATP Finals","dates":"Nov 9–16","startDate":"2026-11-09","endDate":"2026-11-16","location":"Turin","surface":"Indoor Hard","category":"ATP Finals"},
     ]
 
     WTA_2026 = [
@@ -2141,16 +2088,6 @@ def fetch_tennis_schedule_full() -> dict:
         {"name":"French Open","dates":"May 25–Jun 8","startDate":"2026-05-25","endDate":"2026-06-08","location":"Paris","surface":"Clay","category":"Grand Slam"},
         {"name":"Wimbledon","dates":"Jun 30–Jul 13","startDate":"2026-06-30","endDate":"2026-07-13","location":"London","surface":"Grass","category":"Grand Slam"},
         {"name":"US Open","dates":"Aug 24–Sep 7","startDate":"2026-08-24","endDate":"2026-09-07","location":"New York","surface":"Hard","category":"Grand Slam"},
-        {"name":"Indian Wells","dates":"Mar 5–16","startDate":"2026-03-05","endDate":"2026-03-16","location":"Indian Wells","surface":"Hard","category":"WTA 1000"},
-        {"name":"Miami Open","dates":"Mar 19–30","startDate":"2026-03-19","endDate":"2026-03-30","location":"Miami","surface":"Hard","category":"WTA 1000"},
-        {"name":"Madrid Open","dates":"Apr 23–May 4","startDate":"2026-04-23","endDate":"2026-05-04","location":"Madrid","surface":"Clay","category":"WTA 1000"},
-        {"name":"Italian Open (Rome)","dates":"May 6–17","startDate":"2026-05-06","endDate":"2026-05-17","location":"Rome","surface":"Clay","category":"WTA 1000"},
-        {"name":"Bad Homburg/Berlin","dates":"Jun 16–22","startDate":"2026-06-16","endDate":"2026-06-22","location":"Germany","surface":"Grass","category":"WTA 500"},
-        {"name":"Eastbourne","dates":"Jun 21–28","startDate":"2026-06-21","endDate":"2026-06-28","location":"Eastbourne","surface":"Grass","category":"WTA 500"},
-        {"name":"Canadian Open (Toronto)","dates":"Jul 24–Aug 3","startDate":"2026-07-24","endDate":"2026-08-03","location":"Toronto","surface":"Hard","category":"WTA 1000"},
-        {"name":"Cincinnati","dates":"Aug 14–23","startDate":"2026-08-14","endDate":"2026-08-23","location":"Cincinnati","surface":"Hard","category":"WTA 1000"},
-        {"name":"Beijing","dates":"Sep 22–Oct 5","startDate":"2026-09-22","endDate":"2026-10-05","location":"Beijing","surface":"Hard","category":"WTA 1000"},
-        {"name":"WTA Finals","dates":"Oct 26–Nov 2","startDate":"2026-10-26","endDate":"2026-11-02","location":"Riyadh","surface":"Indoor Hard","category":"WTA Finals"},
     ]
 
     for ev in ATP_2026:
@@ -5338,7 +5275,6 @@ def main() -> None:
     tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
     tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
-    cincinnati_open   = fetch_cincinnati_open()       if S in ("tennis","all") else {}
 
     # F1 is no longer tracked in the engine — purged from the daily fetch.
     # Bundle keys are kept (empty) below so the frontend's d.get('f1',...)
@@ -5668,7 +5604,6 @@ def main() -> None:
             "schedule":      tennis_schedule,
             "scheduleFull":  tennis_sched_full,
             "rankings":      tennis_rankings,
-            "cincinnati":    cincinnati_open,
             "scheduleDate":  TODAY_ISO,
             "rolandGarros":  roland_garros,
             "oddsMatches":   tennis_odds.get("matches", []),
