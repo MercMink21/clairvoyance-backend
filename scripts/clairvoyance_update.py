@@ -2849,91 +2849,16 @@ _INJURY_KEYWORDS = [
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Soccer (Champions League / Premier League / La Liga / Bundesliga / MLS) — FBref
+# Soccer (Champions League / Premier League / La Liga / Bundesliga / MLS)
 # ═══════════════════════════════════════════════════════════════════════════════
-# FBref is part of the Sports-Reference family (same publisher as Baseball-Ref,
-# Basketball-Ref, Hockey-Ref), so it shares the same quirk: tables are embedded
-# inside HTML comments, which _table_to_rows() already handles. IMPORTANT: like
-# every *-reference site, FBref does not finalize a match's row (xG, shots,
-# possession, final score) until the day AFTER it's played — a game on the 23rd
-# won't show real numbers until the 24th's scrape. The 09:00 MT run is what
-# actually picks up yesterday's completed matches; the 15:00/23:00 runs mostly
-# just catch anything the morning run missed. Never assume a same-day fetch has
-# final data for a match played earlier that same day.
-FBREF_LEAGUES: dict[str, dict] = {
-    "cl":   {"name": "Champions League", "url": "https://fbref.com/en/comps/8/Champions-League-Stats"},
-    "pl":   {"name": "Premier League",   "url": "https://fbref.com/en/comps/9/Premier-League-Stats"},
-    "liga": {"name": "La Liga",          "url": "https://fbref.com/en/comps/12/La-Liga-Stats"},
-    "bl":   {"name": "Bundesliga",       "url": "https://fbref.com/en/comps/20/Bundesliga-Stats"},
-    "mls":  {"name": "MLS",              "url": "https://fbref.com/en/comps/22/Major-League-Soccer-Stats"},
-    "ita":  {"name": "Serie A",          "url": "https://fbref.com/en/comps/11/Serie-A-Stats"},
-}
-
-def _fbref_num(v: str, default: float = 0.0) -> float:
-    try:
-        return float((v or "").replace(",", "").strip() or default)
-    except (ValueError, TypeError):
-        return default
-
-def fetch_fbref_league(key: str) -> dict:
-    """
-    Scrape one league's squad-level standard + advanced stats from FBref:
-    xG, xGA, npxG, possession, shots, shots-on-target, progressive passes,
-    and games played — everything calculate_soccer_model() needs for a
-    Poisson/Monte-Carlo goal model, keyed by lowercase team name so it lines
-    up with the existing frontend _SOC_XG lookup convention.
-    """
-    cfg = FBREF_LEAGUES.get(key)
-    if not cfg:
-        return {}
-    log(f"FBref {cfg['name']}…")
-    out: dict = {"league": cfg["name"], "fetchedAt": TODAY_ISO, "teams": {}}
-    try:
-        time.sleep(2)  # rate-limit — FBref is stricter than most SR sites
-        soup = fetch_html(cfg["url"], timeout=25, ref=True)
-        if not soup:
-            return out
-        # "for" table = each squad's own output (Poss/Gls/xG/npxG/xAG/prgP)
-        rows = _table_to_rows(soup, "stats_squads_standard_for", limit=40)
-        for row in rows:
-            team = (row.get("team") or row.get("squad") or "").strip()
-            if not team or team.lower() in ("squad", ""):
-                continue
-            key_name = team.lower()
-            out["teams"][key_name] = {
-                "mp":        int(_fbref_num(row.get("games", "0"))),
-                "poss":      _fbref_num(row.get("possession")),
-                "gf":        _fbref_num(row.get("goals")),
-                "xg":        _fbref_num(row.get("xg")),
-                "npxg":      _fbref_num(row.get("npxg")),
-                "xag":       _fbref_num(row.get("xg_assist")),
-                "prg_passes":_fbref_num(row.get("progressive_passes")),
-                "src": "fbref",
-            }
-        # "against" table = goals/xG conceded — needed for the defensive side
-        # of the Poisson model (xGA drives the opponent's expected-goals input)
-        rows_against = _table_to_rows(soup, "stats_squads_standard_against", limit=40)
-        for row in rows_against:
-            team = (row.get("team") or row.get("squad") or "").strip()
-            if not team:
-                continue
-            key_name = team.lower().replace("vs ", "").strip()
-            if key_name not in out["teams"]:
-                out["teams"][key_name] = {"src": "fbref"}
-            out["teams"][key_name]["ga"]  = _fbref_num(row.get("goals"))
-            out["teams"][key_name]["xga"] = _fbref_num(row.get("xg"))
-        # Shooting table — shots + shots-on-target per 90, used for prop lines.
-        # Lives on the same page as the tables above, no extra request needed.
-        shoot_rows = _table_to_rows(soup, "stats_squads_shooting_for", limit=40)
-        for row in shoot_rows:
-            team = (row.get("team") or row.get("squad") or "").strip().lower()
-            if team in out["teams"]:
-                out["teams"][team]["shots_pg"] = _fbref_num(row.get("shots_per90")) or None
-                out["teams"][team]["sot_pg"]   = _fbref_num(row.get("shots_on_target_per90")) or None
-        log(f"  FBref {cfg['name']}: {len(out['teams'])} teams")
-    except Exception as exc:
-        log(f"FBref {cfg['name']}: {exc}", "WARN")
-    return out
+# FBref scraping (fbref.com, part of the Sports-Reference family) was retired
+# 2026-08-22: its Cloudflare bot-check 403s every request from both
+# residential and GitHub Actions-runner IPs, with no header/UA workaround, and
+# had done so for the whole time this pipeline existed. It was never a real
+# fallback source in practice, just a guaranteed-403 request plus a 2-second
+# rate-limit sleep on every run before falling through to fetch_espn_soccer_
+# league() anyway. See that function for the actual live data path.
+_SOCCER_LEAGUES: tuple[str, ...] = ("cl", "pl", "liga", "bl", "mls", "ita")
 
 # World Cup country name -> 3-letter code, ported directly from the frontend's
 # WC26_GROUPS (docs/app.html) so it stays a single source of truth for the
@@ -2959,10 +2884,10 @@ _WC26_COUNTRY_TO_CODE: dict[str, str] = {
 def _wc_name_to_abbr(name: str) -> str:
     return _WC26_COUNTRY_TO_CODE.get(name, name[:3].upper())
 
-# Club leagues (PL/La Liga/Bundesliga/MLS) key their FBref-sourced team data
+# Club leagues (PL/La Liga/Bundesliga/MLS) key their team data
 # (docs/soccer_fbref.json) by lowercased full club name, not a 3-letter
-# code — see fetch_fbref_league()'s `out["teams"][team]` — so odds
-# resolution for these just needs to normalize both sides the same way
+# code — see fetch_espn_soccer_league()'s `out["teams"][tname.lower()]` — so
+# odds resolution for these just needs to normalize both sides the same way
 # rather than needing a hand-built abbreviation table like the other
 # sports. Strips the generic corporate-entity suffixes ("FC", "CF", "AFC",
 # "SC") that FBref/Odds API disagree on including, so "Inter Miami CF"
@@ -3009,22 +2934,35 @@ def _espn_team_season_stats(espn_league: str, tid: str, season_year: int) -> tup
     return flat, int(gp)
 
 
-# Games into the new season at which a team's stats stop blending with last
-# season's and become 100% current-season -- 3 full matchweeks is enough
-# real signal per team to stand on its own, per explicit direction (rather
-# than a smooth/asymptotic shrink that never fully lets go of last season).
-_SEASON_SHRINK_GAMES = 3
+# Season-blend tuning for the 4 major European leagues (not Champions
+# League -- its "current" season is still last season's completed
+# tournament until the new one starts in September, so there's nothing new
+# to blend in yet; not MLS -- it has its own dedicated real-xG source,
+# fetch_mls_team_stats(), that overwrites this function's output entirely).
+# A team's stats blend current-season with last-season, ramping from 100%
+# last-season at 0 games played this year down to a 15% floor by 10 games
+# played -- and staying at that 15% floor for the rest of the season, not
+# dropping to zero. Explicit direction: prior-season form should always
+# still count for something, just progressively less as the current
+# season's own sample grows, never fully discarded.
+_SEASON_BLEND_LEAGUES = {"pl", "liga", "bl", "ita"}
+_SEASON_BLEND_RAMP_GAMES = 10
+_SEASON_BLEND_FLOOR_WEIGHT = 0.15
 
 def fetch_espn_soccer_league(key: str) -> dict:
     """
-    ESPN-sourced fallback for one league's team stats, used when FBref blocks
-    the scrape with a 403 (its Cloudflare bot-check rejects both residential
-    and GitHub Actions-runner IPs — confirmed, not fixable by header/UA
-    tweaks). ESPN's soccer.core API doesn't expose true xG, so 'xg'/'npxg'
-    here are goals-per-game proxies rather than shot-quality models — still
-    useful signal for the Poisson/Monte-Carlo layer, just weaker than real
-    xG. Output uses the exact same field schema as fetch_fbref_league() so
-    nothing downstream (frontend, main()) needs to know which source filled it.
+    Primary (and only, as of 2026-08-22 -- see below) source for one
+    league's soccer team stats. ESPN's soccer.core API doesn't expose true
+    xG, so 'xg'/'npxg' here are goals-per-game proxies rather than
+    shot-quality models -- weaker signal than real xG, but a real, live one.
+
+    FBref scraping was retired entirely: FBref's Cloudflare bot-check 403s
+    every scrape attempt from both residential and GitHub Actions-runner
+    IPs, with no header/UA workaround, and had done so for the whole time
+    this pipeline existed -- there was no live FBref data path to fall back
+    from, just permanent dead weight (a guaranteed-to-fail request, a
+    2-second rate-limit sleep, and an HTML table parser) on every run. See
+    fetch_soccer_team_stats_all() for what replaced it.
 
     Season handling: the per-team statistics endpoint needs an explicit
     season year and does NOT default to "current" -- this used to be
@@ -3037,16 +2975,10 @@ def fetch_espn_soccer_league(key: str) -> dict:
     a fixed number, so this keeps advancing every future season with no
     further code changes.
 
-    Early-season shrinkage: a team 1-2 games into a new season has almost
-    no real signal of its own yet, so its stats are blended with last
-    season's full-season numbers, weighted toward last season the fewer
-    games have been played this year. Once a team hits _SEASON_SHRINK_GAMES
-    (3) games this season, last season's numbers are dropped entirely and
-    it's 100% current-season data -- explicit direction, not a smooth decay
-    that never fully forgets last year. A newly-promoted team has no
-    meaningful "last season" top-flight record to blend with (its
-    prior-season fetch comes back with 0 games played at this level), so it
-    just runs on however many current-season games it has, unblended,
+    Season blending: see _SEASON_BLEND_* constants above. A newly-promoted
+    team has no meaningful "last season" top-flight record to blend with
+    (its prior-season fetch comes back with 0 games played at this level),
+    so it just runs on however many current-season games it has, unblended,
     rather than blending in a false last-season reading of a division it
     wasn't even competing in.
     """
@@ -3061,6 +2993,7 @@ def fetch_espn_soccer_league(key: str) -> dict:
             return out
         cur_year = (standings.get("season") or {}).get("year") or datetime.now(timezone.utc).year
         prev_year = cur_year - 1
+        blend_league = key in _SEASON_BLEND_LEAGUES
         team_ids: dict[str, str] = {}
         for child in (standings.get("children") or [standings]):
             for entry in ((child.get("standings") or {}).get("entries") or []):
@@ -3073,22 +3006,25 @@ def fetch_espn_soccer_league(key: str) -> dict:
                 time.sleep(0.3)
                 cur, mp_cur = _espn_team_season_stats(cfg["espn"], tid, cur_year)
 
-                # Blend with last season only while this team is still
-                # short of the shrink threshold this year.
+                # Always pull last season for blend-eligible leagues, not
+                # just early in the season -- the 15% floor applies for the
+                # whole season, not only before some games-played cutoff.
                 prev, mp_prev = ({}, 0)
-                if mp_cur < _SEASON_SHRINK_GAMES:
+                if blend_league:
                     time.sleep(0.3)
                     prev, mp_prev = _espn_team_season_stats(cfg["espn"], tid, prev_year)
 
                 def _rate(flat: dict, field: str, mp: int) -> float:
                     return (flat.get(field, 0) or 0) / mp if mp else 0.0
 
-                if mp_prev > 0 and mp_cur < _SEASON_SHRINK_GAMES:
-                    # Weighted blend: current season's own (thin) sample vs.
-                    # last season's full-season rate, shifting fully to
-                    # current-season by _SEASON_SHRINK_GAMES games played.
-                    w_cur = mp_cur / _SEASON_SHRINK_GAMES
-                    w_prev = 1 - w_cur
+                if mp_prev > 0 and blend_league:
+                    # Ramp from 100% last-season at 0 games played this
+                    # season down to the 15% floor at _SEASON_BLEND_RAMP_GAMES
+                    # (10) games played, then hold at that floor -- never
+                    # fully drops to 0% weight on last season.
+                    ramp = min(mp_cur, _SEASON_BLEND_RAMP_GAMES) / _SEASON_BLEND_RAMP_GAMES
+                    w_prev = max(_SEASON_BLEND_FLOOR_WEIGHT, 1 - (1 - _SEASON_BLEND_FLOOR_WEIGHT) * ramp)
+                    w_cur = 1 - w_prev
                     def blend(field: str) -> float:
                         return _rate(cur, field, mp_cur) * w_cur + _rate(prev, field, mp_prev) * w_prev
                     gf_pg  = blend("totalGoals")
@@ -3099,8 +3035,8 @@ def fetch_espn_soccer_league(key: str) -> dict:
                     poss = (cur.get("possessionPct") or 0)*w_cur + (prev.get("possessionPct") or 0)*w_prev
                     src_tag = "espn+prior-season-blend"
                 else:
-                    # Either past the shrink threshold, or no usable prior-
-                    # season record (newly promoted) -- current season only.
+                    # Not a blend-eligible league, or no usable prior-season
+                    # record (newly promoted) -- current season only.
                     gf_pg  = _rate(cur, "totalGoals", mp_cur)
                     ga_pg  = _rate(cur, "goalsConceded", mp_cur)
                     xag_pg = _rate(cur, "goalAssists", mp_cur)
@@ -3120,10 +3056,9 @@ def fetch_espn_soccer_league(key: str) -> dict:
                     "mp": int(eff_mp),
                     "poss": round(poss, 2),
                     "gf": round(gf_pg * eff_mp, 2),
-                    # Season totals, NOT per-game — matches fetch_fbref_league()'s
-                    # real-FBref schema (its "xg" column is a season total too),
-                    # which is what the frontend's _socXGFromFBref() expects: it
-                    # divides by mp itself (t.xg/mp) to get the per-game rate.
+                    # Season totals, NOT per-game — this is what the
+                    # frontend's _socXGFromFBref() expects: it divides by mp
+                    # itself (t.xg/mp) to get the per-game rate.
                     "xg": round(gf_pg * eff_mp, 2),     # proxy, not true xG
                     "npxg": round(gf_pg * eff_mp, 2),   # proxy, not true xG
                     "xag": round(xag_pg * eff_mp, 2),
@@ -3142,22 +3077,17 @@ def fetch_espn_soccer_league(key: str) -> dict:
         log(f"ESPN soccer fallback {cfg['name']}: {exc}", "WARN")
     return out
 
-def fetch_fbref_all() -> dict:
+def fetch_soccer_team_stats_all() -> dict:
     """
-    Fetch all 5 tracked leagues from FBref, falling back to ESPN's core API
-    per-league whenever FBref returns zero teams (currently always, since
-    FBref's Cloudflare bot-check 403s every scrape attempt — see
-    fetch_espn_soccer_league's docstring). Keeping the FBref attempt first
-    means this self-heals with zero code changes the moment FBref's block
-    lifts or a proxy is added.
+    Fetch all 6 tracked soccer leagues' team stats via fetch_espn_soccer_
+    league() -- see that function's docstring for the season-blend logic and
+    why FBref (formerly tried first here) was retired entirely rather than
+    kept as a dead-weight first attempt.
     """
     result: dict = {}
-    for key in FBREF_LEAGUES:
-        league = fetch_fbref_league(key)
-        if not league.get("teams"):
-            league = fetch_espn_soccer_league(key)
-        result[key] = league
-        time.sleep(3)  # extra courtesy delay between leagues on top of per-call sleeps
+    for key in _SOCCER_LEAGUES:
+        result[key] = fetch_espn_soccer_league(key)
+        time.sleep(3)  # courtesy delay between leagues on top of per-call sleeps
     return result
 
 MLS_COMPETITION_ID = "MLS-COM-000001"
@@ -5415,10 +5345,10 @@ def main() -> None:
     pwhl          = fetch_pwhl()          if S in ("nhl","all") else {}
 
     # Soccer — Champions League / Premier League / La Liga / Bundesliga / MLS
-    # via FBref. Written to its own file (docs/soccer_fbref.json) rather than
+    # / Serie A. Written to its own file (docs/soccer_fbref.json) rather than
     # folded into the giant bundle, since the frontend only needs to fetch
     # this one small file to replace/refresh its static xG fallback table.
-    soccer_fbref = fetch_fbref_all() if S in ("soccer","all") else {}
+    soccer_fbref = fetch_soccer_team_stats_all() if S in ("soccer","all") else {}
     # Injury-integration roster coverage for the 4 non-MLS leagues — these
     # already have a real win-probability model (_soccerMC's xG/Poisson
     # engine, same one MLS uses), the roster map was the only missing piece
@@ -5436,8 +5366,8 @@ def main() -> None:
             time.sleep(0.3)
     # MLS gets its own first-party feed straight from mlssoccer.com's stats
     # API — real xG per club (not the goals-per-game proxy the ESPN fallback
-    # uses for the other 4 leagues), so it takes priority over whatever
-    # fetch_fbref_all() put in soccer_fbref["mls"] above.
+    # uses for the other leagues), so it takes priority over whatever
+    # fetch_soccer_team_stats_all() put in soccer_fbref["mls"] above.
     mls_stats     = fetch_mls_team_stats() if S in ("soccer","all") else {}
     mls_standings = fetch_mls_standings()  if S in ("soccer","all") else []
     mls_schedule  = fetch_mls_schedule()   if S in ("soccer","all") else []
@@ -5529,8 +5459,8 @@ def main() -> None:
     # Soccer leagues — the piece explicitly deferred in the last odds pass.
     # Club leagues (PL/La Liga/Bundesliga/MLS) key by normalized full club
     # name (_soccer_club_key) to match how soccer_fbref.json already keys
-    # its FBref-sourced team data; World Cup keys by the same 3-letter
-    # country codes WC26_SCHEDULE already uses (_wc_name_to_abbr).
+    # its team data; World Cup keys by the same 3-letter country codes
+    # WC26_SCHEDULE already uses (_wc_name_to_abbr).
     pl_best_odds   = fetch_best_odds("pl",   [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
     liga_best_odds = fetch_best_odds("liga", [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
     bl_best_odds   = fetch_best_odds("bl",   [], name_resolver=_soccer_club_key) if S in ("soccer","all") else {}
