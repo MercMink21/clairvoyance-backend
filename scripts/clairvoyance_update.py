@@ -2985,6 +2985,36 @@ ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "ita":  {"name": "Serie A",          "espn": "ita.1"},
 }
 
+def _espn_team_season_stats(espn_league: str, tid: str, season_year: int) -> tuple[dict, int]:
+    """
+    Fetch one team's per-season aggregate stats from ESPN's core API and
+    return (flat_stats_dict, games_played). games_played is derived from
+    wins+draws+losses (not "appearances", which is aggregated across the
+    whole roster on this endpoint, not the team's own match count) --
+    returns 0 (not the old mp=1 fallback) when the team has no record for
+    this season at all, e.g. a club that wasn't in the top flight yet
+    (newly promoted) or a season that hasn't started. Callers decide what
+    a 0 means; folding a silent "assume 1 game" fallback in here made it
+    indistinguishable from a team that's actually played exactly 1 game.
+    """
+    stats = fetch_json(
+        f"https://sports.core.api.espn.com/v2/sports/soccer/leagues/{espn_league}/seasons/{season_year}/types/1/teams/{tid}/statistics"
+    )
+    cats = ((stats or {}).get("splits") or {}).get("categories") or []
+    flat: dict = {}
+    for cat in cats:
+        for s in cat.get("stats", []):
+            flat[s.get("name")] = s.get("value")
+    gp = (flat.get("wins", 0) or 0) + (flat.get("draws", 0) or 0) + (flat.get("losses", 0) or 0)
+    return flat, int(gp)
+
+
+# Games into the new season at which a team's stats stop blending with last
+# season's and become 100% current-season -- 3 full matchweeks is enough
+# real signal per team to stand on its own, per explicit direction (rather
+# than a smooth/asymptotic shrink that never fully lets go of last season).
+_SEASON_SHRINK_GAMES = 3
+
 def fetch_espn_soccer_league(key: str) -> dict:
     """
     ESPN-sourced fallback for one league's team stats, used when FBref blocks
@@ -2995,6 +3025,30 @@ def fetch_espn_soccer_league(key: str) -> dict:
     useful signal for the Poisson/Monte-Carlo layer, just weaker than real
     xG. Output uses the exact same field schema as fetch_fbref_league() so
     nothing downstream (frontend, main()) needs to know which source filled it.
+
+    Season handling: the per-team statistics endpoint needs an explicit
+    season year and does NOT default to "current" -- this used to be
+    hardcoded to 2025 (the 2025-26 season), which meant every returning
+    club's stats were permanently frozen at their final 2025-26 numbers no
+    matter how far the 2026-27 season actually progressed, and every newly
+    promoted club (not in the 2025-26 top flight at all) came back as an
+    essentially-empty record. Now reads the actual current season year off
+    the standings response (already being fetched for team IDs) instead of
+    a fixed number, so this keeps advancing every future season with no
+    further code changes.
+
+    Early-season shrinkage: a team 1-2 games into a new season has almost
+    no real signal of its own yet, so its stats are blended with last
+    season's full-season numbers, weighted toward last season the fewer
+    games have been played this year. Once a team hits _SEASON_SHRINK_GAMES
+    (3) games this season, last season's numbers are dropped entirely and
+    it's 100% current-season data -- explicit direction, not a smooth decay
+    that never fully forgets last year. A newly-promoted team has no
+    meaningful "last season" top-flight record to blend with (its
+    prior-season fetch comes back with 0 games played at this level), so it
+    just runs on however many current-season games it has, unblended,
+    rather than blending in a false last-season reading of a division it
+    wasn't even competing in.
     """
     cfg = ESPN_SOCCER_LEAGUES.get(key)
     if not cfg:
@@ -3005,6 +3059,8 @@ def fetch_espn_soccer_league(key: str) -> dict:
         standings = fetch_json(f"https://site.api.espn.com/apis/v2/sports/soccer/{cfg['espn']}/standings")
         if not standings:
             return out
+        cur_year = (standings.get("season") or {}).get("year") or datetime.now(timezone.utc).year
+        prev_year = cur_year - 1
         team_ids: dict[str, str] = {}
         for child in (standings.get("children") or [standings]):
             for entry in ((child.get("standings") or {}).get("entries") or []):
@@ -3015,46 +3071,73 @@ def fetch_espn_soccer_league(key: str) -> dict:
         for tid, tname in team_ids.items():
             try:
                 time.sleep(0.3)
-                stats = fetch_json(f"https://sports.core.api.espn.com/v2/sports/soccer/leagues/{cfg['espn']}/seasons/2025/types/1/teams/{tid}/statistics")
-                cats = ((stats or {}).get("splits") or {}).get("categories") or []
-                flat: dict = {}
-                for cat in cats:
-                    for s in cat.get("stats", []):
-                        flat[s.get("name")] = s.get("value")
-                mp = flat.get("appearances") or flat.get("starts") or 0
-                # appearances is aggregated across the roster on this endpoint;
-                # derive true team games-played from wins+draws+losses instead
-                gp = (flat.get("wins", 0) or 0) + (flat.get("draws", 0) or 0) + (flat.get("losses", 0) or 0)
-                mp = gp or 1
-                gf = flat.get("totalGoals", 0) or 0
-                ga = flat.get("goalsConceded", 0) or 0
+                cur, mp_cur = _espn_team_season_stats(cfg["espn"], tid, cur_year)
+
+                # Blend with last season only while this team is still
+                # short of the shrink threshold this year.
+                prev, mp_prev = ({}, 0)
+                if mp_cur < _SEASON_SHRINK_GAMES:
+                    time.sleep(0.3)
+                    prev, mp_prev = _espn_team_season_stats(cfg["espn"], tid, prev_year)
+
+                def _rate(flat: dict, field: str, mp: int) -> float:
+                    return (flat.get(field, 0) or 0) / mp if mp else 0.0
+
+                if mp_prev > 0 and mp_cur < _SEASON_SHRINK_GAMES:
+                    # Weighted blend: current season's own (thin) sample vs.
+                    # last season's full-season rate, shifting fully to
+                    # current-season by _SEASON_SHRINK_GAMES games played.
+                    w_cur = mp_cur / _SEASON_SHRINK_GAMES
+                    w_prev = 1 - w_cur
+                    def blend(field: str) -> float:
+                        return _rate(cur, field, mp_cur) * w_cur + _rate(prev, field, mp_prev) * w_prev
+                    gf_pg  = blend("totalGoals")
+                    ga_pg  = blend("goalsConceded")
+                    xag_pg = blend("goalAssists")
+                    shots_pg = blend("totalShots")
+                    sot_pg   = blend("shotsOnTarget")
+                    poss = (cur.get("possessionPct") or 0)*w_cur + (prev.get("possessionPct") or 0)*w_prev
+                    src_tag = "espn+prior-season-blend"
+                else:
+                    # Either past the shrink threshold, or no usable prior-
+                    # season record (newly promoted) -- current season only.
+                    gf_pg  = _rate(cur, "totalGoals", mp_cur)
+                    ga_pg  = _rate(cur, "goalsConceded", mp_cur)
+                    xag_pg = _rate(cur, "goalAssists", mp_cur)
+                    shots_pg = _rate(cur, "totalShots", mp_cur)
+                    sot_pg   = _rate(cur, "shotsOnTarget", mp_cur)
+                    poss = cur.get("possessionPct") or 0
+                    src_tag = "espn"
+
+                # Store as season totals at the real current games-played
+                # (not a nominal 1) so mp reflects reality everywhere it's
+                # displayed; a still-winless week-1 team with mp=0 gets
+                # mp=1 purely so downstream code that divides by mp doesn't
+                # divide by zero -- the totals below already bake in the
+                # blended per-game rate regardless of what mp says.
+                eff_mp = max(mp_cur, 1)
                 out["teams"][tname.lower()] = {
-                    "mp": int(mp),
-                    "poss": flat.get("possessionPct", 0) or 0,
-                    "gf": gf,
+                    "mp": int(eff_mp),
+                    "poss": round(poss, 2),
+                    "gf": round(gf_pg * eff_mp, 2),
                     # Season totals, NOT per-game — matches fetch_fbref_league()'s
                     # real-FBref schema (its "xg" column is a season total too),
                     # which is what the frontend's _socXGFromFBref() expects: it
-                    # divides by mp itself (t.xg/mp) to get the per-game rate. This
-                    # used to pre-divide by mp here, so the frontend's own division
-                    # divided twice -- expected goals came out ~mp times too small
-                    # (e.g. a 38-game season made every match project close to 0-0),
-                    # silently wrecking every non-MLS league's ML/draw/O-U while MLS
-                    # (fetch_mls_team_stats(), a genuinely different source that
-                    # already stored season totals) stayed correct.
-                    "xg": round(gf, 2),               # proxy, not true xG
-                    "npxg": round(gf, 2),              # proxy, not true xG
-                    "xag": round(flat.get("goalAssists", 0) or 0, 2),
-                    "prg_passes": flat.get("accuratePasses", 0) or 0,
-                    "ga": ga,
-                    "xga": round(ga, 2),               # proxy, not true xG
-                    "shots_pg": round((flat.get("totalShots", 0) or 0) / mp, 2) if mp else None,
-                    "sot_pg": round((flat.get("shotsOnTarget", 0) or 0) / mp, 2) if mp else None,
-                    "src": "espn",
+                    # divides by mp itself (t.xg/mp) to get the per-game rate.
+                    "xg": round(gf_pg * eff_mp, 2),     # proxy, not true xG
+                    "npxg": round(gf_pg * eff_mp, 2),   # proxy, not true xG
+                    "xag": round(xag_pg * eff_mp, 2),
+                    "prg_passes": cur.get("accuratePasses", 0) or 0,
+                    "ga": round(ga_pg * eff_mp, 2),
+                    "xga": round(ga_pg * eff_mp, 2),    # proxy, not true xG
+                    "shots_pg": round(shots_pg, 2),
+                    "sot_pg": round(sot_pg, 2),
+                    "gamesPlayedThisSeason": mp_cur,
+                    "src": src_tag,
                 }
             except Exception as exc:
                 vlog(f"  ESPN soccer team {tname}: {exc}")
-        log(f"  ESPN soccer fallback {cfg['name']}: {len(out['teams'])} teams")
+        log(f"  ESPN soccer fallback {cfg['name']}: {len(out['teams'])} teams (season {cur_year})")
     except Exception as exc:
         log(f"ESPN soccer fallback {cfg['name']}: {exc}", "WARN")
     return out
