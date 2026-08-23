@@ -10603,6 +10603,74 @@ const NHL_PROPS_DATE='20260617';
 // NHL OFFSEASON — Stanley Cup concluded. No props available.
 const NHL_PROPS_DATA=[];
 var _nbaStatsCache=null,_nbaStatsCacheDate='';
+// Shared parser for site.api.espn.com's basketball statistics?limit=300
+// response, used by both NBA and WNBA. Real shape is stats.categories[]
+// (per-category leaderboards, ~50 players each) -- NOT a flat top-level
+// athletes[] array (that key has never existed on this endpoint; the old
+// code's `(d.athletes||[]).forEach(...)` silently iterated nothing,
+// every single time, in every context -- this app has never actually
+// generated NBA/WNBA player stats until this fix). Unions the leaders of
+// 3 categories to build the player pool (a player only needs to crack
+// ONE ~50-deep leaderboard to be included), then reads each player's
+// full per-game line from their leader entry's own nested
+// statistics.splits.categories, which has real games-played + per-game
+// averages directly -- no manual season-total/games-played division
+// needed, and no risk of using a stale-cached total from a different
+// category than the games-played figure.
+function _basketballStatsFromLeaders(d){
+  var cats=(d.stats&&d.stats.categories)||[];
+  var byId={};
+  var catByName={};cats.forEach(function(c){catByName[c.name]=c;});
+  ['pointsPerGame','reboundsPerGame','assistsPerGame'].forEach(function(name){
+    var cat=catByName[name];if(!cat)return;
+    (cat.leaders||[]).forEach(function(leader){
+      var aid=leader.athlete&&leader.athlete.id;
+      if(!aid||byId[aid])return;
+      byId[aid]=leader;
+    });
+  });
+  var flat=function(leader){
+    var out={};
+    var splits=leader.statistics&&leader.statistics.splits;
+    ((splits&&splits.categories)||[]).forEach(function(cat){
+      (cat.stats||[]).forEach(function(s){if(s.name)out[s.name]=parseFloat(s.value)||0;});
+    });
+    return out;
+  };
+  var byName={};
+  Object.values(byId).forEach(function(leader){
+    var name=leader.athlete&&leader.athlete.displayName;if(!name)return;
+    var team=(leader.team&&leader.team.abbreviation)||'';
+    var s=flat(leader);
+    var ppg=s.avgPoints||0;
+    byName[name.toLowerCase()]={name,team,gp:Math.max(1,Math.round(s.gamesPlayed||1)),
+      ppg:+ppg.toFixed(1),
+      rpg:+(s.avgRebounds||0).toFixed(1),
+      apg:+(s.avgAssists||0).toFixed(1),
+      tpg:+(s.avgThreePointFieldGoalsMade||0).toFixed(1),
+      bpg:+(s.avgBlocks||0).toFixed(1),
+      spg:+(s.avgSteals||0).toFixed(1),
+      sigma:ppg?+(Math.sqrt(ppg)*1.2).toFixed(2):5.0
+    };
+  });
+  return byName;
+}
+// Bundled fallback: docs/player_stats.json, refreshed daily by
+// scripts/scrape_player_stats.py (server-side, unblocked `requests`
+// path -- same principle as soccer_standings.json). Exists mainly for
+// the headless auto-lock driver, which can't rely on a live ESPN fetch
+// succeeding at all in an automation context; a real browser hitting
+// this function directly still gets today's live numbers first.
+var _CV_BUNDLED_PLAYER_STATS=null;
+async function _fetchBundledPlayerStats(sport){
+  if(_CV_BUNDLED_PLAYER_STATS===null){
+    try{
+      var r=await fetch('player_stats.json',{cache:'no-store'});
+      _CV_BUNDLED_PLAYER_STATS=r.ok?await r.json():{};
+    }catch(e){_CV_BUNDLED_PLAYER_STATS={};}
+  }
+  return _CV_BUNDLED_PLAYER_STATS[sport]||null;
+}
 async function _fetchNBAPlayerStats(){
   var td=today();
   if(_nbaStatsCacheDate===td&&_nbaStatsCache)return _nbaStatsCache;
@@ -10610,28 +10678,17 @@ async function _fetchNBAPlayerStats(){
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
     var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/statistics?limit=300',{signal:ctrl.signal});
     var d=await r.json();
-    var byName={};
-    (d.athletes||[]).forEach(function(a){
-      var name=a.athlete&&a.athlete.displayName;if(!name)return;
-      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
-      var stats={};(a.categories||[]).forEach(function(cat){
-        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
-      });
-      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
-      byName[name.toLowerCase()]={name,team,gp,
-        ppg:+(( stats.points||stats.PTS||0)/gp).toFixed(1),
-        rpg:+((stats.totalRebounds||stats.REB||0)/gp).toFixed(1),
-        apg:+((stats.assists||stats.AST||0)/gp).toFixed(1),
-        tpg:+((stats.threePointFieldGoalsMade||stats.threePointersMade||0)/gp).toFixed(1),
-        bpg:+((stats.blockedShots||stats.blocks||0)/gp).toFixed(1),
-        spg:+((stats.steals||0)/gp).toFixed(1),
-        sigma:stats.pointsPerGame?Math.sqrt(stats.pointsPerGame)*1.2:5.0
-      };
-    });
+    var byName=_basketballStatsFromLeaders(d);
+    if(!Object.keys(byName).length){var bundled=await _fetchBundledPlayerStats('nba');if(bundled)byName=bundled;}
     _nbaStatsCache=byName;_nbaStatsCacheDate=td;
     console.log('[CV] NBA stats loaded: '+Object.keys(byName).length+' players');
     return byName;
-  }catch(e){console.warn('[CV] NBA stats fetch err:',e);return null;}
+  }catch(e){
+    console.warn('[CV] NBA stats fetch err:',e);
+    var bundled=await _fetchBundledPlayerStats('nba');
+    if(bundled){_nbaStatsCache=bundled;_nbaStatsCacheDate=td;return bundled;}
+    return null;
+  }
 }
 
 // Shared PREMIUM/OPTIMAL/LEAN/SKIP grader -- conf is the probability of
@@ -15269,6 +15326,46 @@ function renderNHLSCFProps(){/* superseded by renderNHLPropsLive */}
 // whatever Linemate happened to have. This is the live fallback tier,
 // used exactly like WNBA's when Linemate doesn't have enough real props.
 var _nhlStatsCache=null,_nhlStatsCacheDate='';
+// Real shape is stats.categories[].leaders[] (same discovery as the
+// basketball fix above, see _basketballStatsFromLeaders) -- the old
+// `(d.athletes||[]).forEach(...)` iterated a key that has never existed
+// on this endpoint, so NHL player props have never actually generated
+// until this fix.
+function _nhlStatsFromLeaders(d){
+  var cats=(d.stats&&d.stats.categories)||[];
+  var byId={};
+  var catByName={};cats.forEach(function(c){catByName[c.name]=c;});
+  ['points','goals','assists'].forEach(function(name){
+    var cat=catByName[name];if(!cat)return;
+    (cat.leaders||[]).forEach(function(leader){
+      var aid=leader.athlete&&leader.athlete.id;
+      if(!aid||byId[aid])return;
+      byId[aid]=leader;
+    });
+  });
+  var flat=function(leader){
+    var out={};
+    var splits=leader.statistics&&leader.statistics.splits;
+    ((splits&&splits.categories)||[]).forEach(function(cat){
+      (cat.stats||[]).forEach(function(s){if(s.name)out[s.name]=parseFloat(s.value)||0;});
+    });
+    return out;
+  };
+  var byName={};
+  Object.values(byId).forEach(function(leader){
+    var name=leader.athlete&&leader.athlete.displayName;if(!name)return;
+    var team=(leader.team&&leader.team.abbreviation)||'';
+    var s=flat(leader);
+    var gp=Math.max(1,Math.round(s.games||1));
+    byName[name.toLowerCase()]={name,team,gp,
+      gpg:+(s.avgGoals||0).toFixed(2),
+      apg:+((s.assists||0)/gp).toFixed(2),
+      ppg:+(s.pointsPerGame||0).toFixed(2),
+      shpg:+(s.avgShots||0).toFixed(1)
+    };
+  });
+  return byName;
+}
 async function _fetchNHLPlayerStats(){
   var td=typeof today==='function'?today():'';
   if(_nhlStatsCacheDate===td&&_nhlStatsCache)return _nhlStatsCache;
@@ -15276,27 +15373,17 @@ async function _fetchNHLPlayerStats(){
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
     var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/statistics?limit=300',{signal:ctrl.signal});
     var d=await r.json();
-    var byName={};
-    (d.athletes||[]).forEach(function(a){
-      var name=a.athlete&&a.athlete.displayName;if(!name)return;
-      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
-      var stats={};(a.categories||[]).forEach(function(cat){
-        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
-      });
-      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
-      var goals=stats.goals||stats.G||0,assists=stats.assists||stats.A||0;
-      var points=stats.points||stats.PTS||(goals+assists);
-      byName[name.toLowerCase()]={name,team,gp,
-        gpg:+((goals/gp)).toFixed(2),
-        apg:+((assists/gp)).toFixed(2),
-        ppg:+((points/gp)).toFixed(2),
-        shpg:+((stats.shots||stats.SOG||0)/gp).toFixed(1)
-      };
-    });
+    var byName=_nhlStatsFromLeaders(d);
+    if(!Object.keys(byName).length){var bundled=await _fetchBundledPlayerStats('nhl');if(bundled)byName=bundled;}
     _nhlStatsCache=byName;_nhlStatsCacheDate=td;
     console.log('[CV] NHL stats loaded: '+Object.keys(byName).length+' players');
     return byName;
-  }catch(e){console.warn('[CV] NHL stats fetch err:',e);return null;}
+  }catch(e){
+    console.warn('[CV] NHL stats fetch err:',e);
+    var bundled=await _fetchBundledPlayerStats('nhl');
+    if(bundled){_nhlStatsCache=bundled;_nhlStatsCacheDate=td;return bundled;}
+    return null;
+  }
 }
 function _generateNHLPropsLive(games,statsData){
   if(!statsData||!games||!games.length)return[];
@@ -19132,7 +19219,7 @@ function renderMorningReport(){
 }
 
 // ═══ REMOTE DATA BOOTSTRAP (data.json from GitHub Pages) ════════════════════
-let LAST_AUTO_UPDATE = '2026-08-12 23:00 MT';
+let LAST_AUTO_UPDATE = '2026-08-23 15:00 MT';
 window.__CV_DATA = null;
 
 async function loadRemoteData(force=false){
@@ -24604,27 +24691,17 @@ async function _fetchWNBAPlayerStats(){
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},9000);
     var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/statistics?limit=300',{signal:ctrl.signal});
     var d=await r.json();
-    var byName={};
-    (d.athletes||[]).forEach(function(a){
-      var name=a.athlete&&a.athlete.displayName;if(!name)return;
-      var team=a.athlete&&a.athlete.team&&(a.athlete.team.abbreviation||'');
-      var stats={};
-      (a.categories||[]).forEach(function(cat){
-        (cat.names||[]).forEach(function(n,i){stats[n]=parseFloat(cat.values&&cat.values[i])||0;});
-      });
-      var gp=Math.max(1,stats.gamesPlayed||stats.GP||1);
-      byName[name.toLowerCase()]={name,team,gp,
-        ppg:+((stats.points||stats.PTS||0)/gp).toFixed(1),
-        rpg:+((stats.totalRebounds||stats.REB||0)/gp).toFixed(1),
-        apg:+((stats.assists||stats.AST||0)/gp).toFixed(1),
-        tpg:+((stats.threePointFieldGoalsMade||stats.threePointersMade||0)/gp).toFixed(1),
-        spg:+((stats.steals||0)/gp).toFixed(1)
-      };
-    });
+    var byName=_basketballStatsFromLeaders(d);
+    if(!Object.keys(byName).length){var bundled=await _fetchBundledPlayerStats('wnba');if(bundled)byName=bundled;}
     _wnbaStatsCache=byName;_wnbaStatsCacheDate=td;
     console.log('[CV] WNBA stats loaded: '+Object.keys(byName).length+' players');
     return byName;
-  }catch(e){console.warn('[CV] WNBA stats fetch err:',e);return null;}
+  }catch(e){
+    console.warn('[CV] WNBA stats fetch err:',e);
+    var bundled=await _fetchBundledPlayerStats('wnba');
+    if(bundled){_wnbaStatsCache=bundled;_wnbaStatsCacheDate=td;return bundled;}
+    return null;
+  }
 }
 function _generateWNBAPropsLive(games,statsData){
   if(!statsData||!games||!games.length)return[];
