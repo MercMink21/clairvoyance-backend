@@ -403,11 +403,17 @@ def gather_legs(page) -> dict:
     )
 
 
-def build_qualifying(result: dict, only_soccer: bool = False) -> list[dict]:
+def build_qualifying(result: dict, only_prefixes: tuple[str, ...] | None = None) -> list[dict]:
+    """only_prefixes: if given, restricts to sport tags starting with any of
+    these prefixes (e.g. ("SOC_",) for the soccer-only early pass, ("CFB",)
+    for the CFB-only early pass) -- for the dedicated early lock runs timed
+    ahead of that sport/league's own earlier kickoffs."""
+    def _wanted(sport: str) -> bool:
+        return only_prefixes is None or (sport or "").startswith(only_prefixes)
     qualifying: list[dict] = []
     for gl in result.get("gameLegs") or []:
         sport = gl.get("sport")
-        if only_soccer and not (sport or "").startswith("SOC_"):
+        if not _wanted(sport):
             continue
         for m in gl.get("markets") or []:
             tier_n = m.get("tierN")
@@ -422,7 +428,10 @@ def build_qualifying(result: dict, only_soccer: bool = False) -> list[dict]:
                     # gameLegs.
                     "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
                 })
-    if not only_soccer:
+    # Props only exist for NBA/WNBA/NHL/NFL -- neither early pass (soccer,
+    # CFB) needs or has any to filter, so props are simply included only on
+    # the unscoped (full) run.
+    if only_prefixes is None:
         for p in result.get("propLegs") or []:
             if p.get("grade") in ("PREMIUM", "OPTIMAL"):
                 qualifying.append({"kind": "PROP", "sport": p.get("sportTag"), "leg": p})
@@ -585,14 +594,13 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
         log(f"Locks email send failed: {exc}")
 
 
-def run_lock(page, live: bool, only_soccer: bool = False) -> None:
-    label = "EUROPEAN SOCCER" if only_soccer else ""
+def run_lock(page, live: bool, only_prefixes: tuple[str, ...] | None = None, label: str = "") -> None:
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
-    qualifying = build_qualifying(result, only_soccer=only_soccer)
+    qualifying = build_qualifying(result, only_prefixes=only_prefixes)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
         f"{len(result.get('propLegs') or [])} prop legs total")
-    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found" + (" (soccer only)" if only_soccer else ""))
+    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found" + (f" ({label.lower()} only)" if label else ""))
 
     for q in qualifying:
         if q["kind"] == "GAME":
@@ -638,9 +646,16 @@ def main() -> None:
     ap.add_argument("--only-soccer", action="store_true",
                      help="Lock step only: restrict to the 6 European/MLS soccer leagues. "
                           "For the early-morning pass timed ahead of European kickoffs.")
+    ap.add_argument("--only-cfb", action="store_true",
+                     help="Lock step only: restrict to CFB. For the early-morning pass timed "
+                          "ahead of the earliest college football kickoffs (10 AM MT+).")
     ap.add_argument("--app-url", default=APP_URL, help="Override the app URL (e.g. a local server for testing).")
     args = ap.parse_args()
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
+    if args.only_soccer and args.only_cfb:
+        raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
+    only_prefixes = ("SOC_",) if args.only_soccer else ("CFB",) if args.only_cfb else None
+    label = "EUROPEAN SOCCER" if args.only_soccer else "CFB" if args.only_cfb else ""
 
     from playwright.sync_api import sync_playwright
 
@@ -659,7 +674,7 @@ def main() -> None:
             settled = run_settle(page, args.live)
             send_settlement_email(settled, args.live)
         if do_lock:
-            run_lock(page, args.live, only_soccer=args.only_soccer)
+            run_lock(page, args.live, only_prefixes=only_prefixes, label=label)
 
         browser.close()
 

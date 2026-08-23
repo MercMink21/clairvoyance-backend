@@ -1,0 +1,64 @@
+name: CFB Auto Lock (Early)
+
+# Dedicated early lock+email pass for just CFB -- confirmed real kickoff
+# times of 10:00 AM MT and later (per the user directly), which the main
+# auto-lock-settle.yml run (10:15 AM MT) would already be cutting it
+# close on, or missing outright for the earliest games. Same idea as
+# soccer-lock-early.yml, one sport at a time.
+#
+# Same safety convention as the other lock workflows: dry-run by
+# default, reads the same LIVE_MODE repo variable (Settings -> Secrets
+# and variables -> Actions -> Variables) so this goes live/dry-run
+# together with the rest, not independently.
+
+on:
+  schedule:
+    # 9:00 AM MT = 15:00 UTC (MDT) / 16:00 UTC (MST) -- an hour ahead of
+    # the earliest confirmed CFB kickoffs.
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Actually write to Supabase (unchecked = dry-run, logs only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  cfb-lock-early:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
+
+      - name: Determine live flag from trigger
+        id: flags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run CFB-only auto-lock
+        env:
+          TZ: America/Denver
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/auto_lock_settle.py --lock --only-cfb ${{ steps.flags.outputs.live_flag }}
