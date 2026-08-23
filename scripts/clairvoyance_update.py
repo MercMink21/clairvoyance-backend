@@ -2939,6 +2939,11 @@ def _fuzzy_mls_name_lookup(target: str, candidates: dict):
             return v
     return None
 
+# NOTE: scripts/scrape_soccer_standings.py has its own standalone copy of
+# this exact dict (deliberately -- it's a separate daily cron with no
+# import dependency on this file, same convention as scrape_opta_stats.py).
+# If a league gets added/renamed/removed here, update it there too, or the
+# two will silently drift on which leagues get a standings snapshot.
 ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "cl":   {"name": "Champions League", "espn": "UEFA.champions"},
     "pl":   {"name": "Premier League",   "espn": "eng.1"},
@@ -3010,16 +3015,31 @@ def _espn_team_match_log(espn_league: str, tid: str, seasons: list[int]) -> list
                 "homeAway": me.get("homeAway", ""),
                 "gf": gf,
                 "ga": ga,
+                "season": season,
             })
     games.sort(key=lambda g: g["date"])
     return games
 
 
-def _summarize_match_log(games: list[dict]) -> dict:
+def _summarize_match_log(games: list[dict], cur_year: int, w_cur: float, w_prev: float) -> dict:
     """Derive recent-form (last 5, any venue) and home/away splits from a
     team's match log. All three of the model's new form-based signals come
     from this one summary; head-to-head is the only one that needs the raw
-    per-opponent match log itself (kept separately, see matchLog below)."""
+    per-opponent match log itself (kept separately, see matchLog below).
+
+    recentForm is deliberately NOT season-blended -- it's the literal last
+    5 games in chronological order regardless of season boundary, correct
+    for tracking a streak (form can carry across a season transition), not
+    a "how much do we trust this season's sample yet" question.
+
+    homeSplit/awaySplit DO blend current-season vs previous-season using
+    the same w_cur/w_prev weight the caller already computed for this
+    team's goals/xG numbers -- without this, a team's home-fortress
+    reading stayed an unweighted flat pool of 2 full seasons even once
+    the rest of that team's profile had shifted to mostly-current-season,
+    silently keeping the split stale-season-heavy well past the point the
+    goals blend had already floored at _SEASON_BLEND_FLOOR_WEIGHT.
+    """
     def _agg(rows: list[dict]) -> dict:
         n = len(rows)
         if not n:
@@ -3032,10 +3052,25 @@ def _summarize_match_log(games: list[dict]) -> dict:
             "gf": round(sum(g["gf"] for g in rows) / n, 3),
             "ga": round(sum(g["ga"] for g in rows) / n, 3),
         }
+
+    def _agg_blended(rows: list[dict]) -> dict:
+        cur_agg = _agg([g for g in rows if g.get("season") == cur_year])
+        prev_agg = _agg([g for g in rows if g.get("season") != cur_year])
+        if not cur_agg["games"]:
+            return prev_agg
+        if not prev_agg["games"]:
+            return cur_agg
+        return {
+            "games": cur_agg["games"] + prev_agg["games"],
+            "w": cur_agg["w"] + prev_agg["w"], "d": cur_agg["d"] + prev_agg["d"], "l": cur_agg["l"] + prev_agg["l"],
+            "gf": round(cur_agg["gf"] * w_cur + prev_agg["gf"] * w_prev, 3),
+            "ga": round(cur_agg["ga"] * w_cur + prev_agg["ga"] * w_prev, 3),
+        }
+
     last5 = games[-5:]
     home = [g for g in games if g["homeAway"] == "home"]
     away = [g for g in games if g["homeAway"] == "away"]
-    return {"recentForm": _agg(last5), "homeSplit": _agg(home), "awaySplit": _agg(away)}
+    return {"recentForm": _agg(last5), "homeSplit": _agg_blended(home), "awaySplit": _agg_blended(away)}
 
 
 # Season-blend tuning for the 4 major European leagues (not Champions
@@ -3141,6 +3176,7 @@ def fetch_espn_soccer_league(key: str) -> dict:
                 else:
                     # Not a blend-eligible league, or no usable prior-season
                     # record (newly promoted) -- current season only.
+                    w_cur, w_prev = 1.0, 0.0
                     gf_pg  = _rate(cur, "totalGoals", mp_cur)
                     ga_pg  = _rate(cur, "goalsConceded", mp_cur)
                     xag_pg = _rate(cur, "goalAssists", mp_cur)
@@ -3156,7 +3192,17 @@ def fetch_espn_soccer_league(key: str) -> dict:
                 # head-to-head at render time.
                 time.sleep(0.3)
                 match_log = _espn_team_match_log(cfg["espn"], tid, [cur_year, prev_year])
-                form = _summarize_match_log(match_log)
+                # homeSplit/awaySplit blend with the SAME w_cur/w_prev
+                # weight the goals/xG numbers above just used, so a team's
+                # home-fortress reading doesn't stay pooled across 2 full
+                # seasons flat while everything else about that team has
+                # already shifted to mostly-current-season. recentForm
+                # deliberately does NOT get this treatment -- it's the
+                # literal last 5 games in chronological order regardless
+                # of season boundary, which is correct for tracking a
+                # streak (form can carry across a season transition), not
+                # a "how much do we trust this season's sample yet" question.
+                form = _summarize_match_log(match_log, cur_year, w_cur, w_prev)
 
                 # Store as season totals at the real current games-played
                 # (not a nominal 1) so mp reflects reality everywhere it's

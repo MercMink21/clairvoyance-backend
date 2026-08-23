@@ -277,13 +277,27 @@ def build_soc_xg_lines(slim: dict, name_map: dict) -> list[str]:
     return lines
 
 
+_STATIC_TABLE_MP_RE = re.compile(r"mp:(\d+)")
+
 def replace_league_block(html: str, name_map: dict, new_lines: list[str]) -> str:
     """Replace each existing `'key':{...},` entry for this league's teams
     in _SOC_XG in place, preserving surrounding structure/comments. Falls
     back to leaving unmatched keys untouched (roster changes — promotions/
     relegations — need a manual one-off edit like the initial migration,
     same as the docstring for fetch_mls_rosters already documents for
-    similar roster-coverage gaps)."""
+    similar roster-coverage gaps).
+
+    Never lets a patch DECREASE a team's mp (games-played sample size).
+    This ran daily against every team the Opta scrape found data for,
+    regardless of how much bigger a sample the existing entry already
+    had -- so an established club sitting on a full 38-game prior-season
+    baseline got silently overwritten with a noisy n=1/n=2 current-season
+    read the very first day Opta's tournamentstats endpoint returned
+    anything for it, and every day after until the new season caught up.
+    A newly-promoted club with no prior-season entry at all (mp effectively
+    0) still updates immediately, same as before -- this only blocks a
+    same-team downgrade, not first-time population.
+    """
     new_by_key = {}
     for line in new_lines:
         key = line.split("'")[1]
@@ -297,6 +311,14 @@ def replace_league_block(html: str, name_map: dict, new_lines: list[str]) -> str
         pattern = re.compile(r"^  '" + re.escape(key) + r"':\{[^}]*\}(,?)\s*$", re.MULTILINE)
         m = pattern.search(html)
         if m:
+            old_mp_m = _STATIC_TABLE_MP_RE.search(m.group(0))
+            new_mp_m = _STATIC_TABLE_MP_RE.search(new_line)
+            old_mp = int(old_mp_m.group(1)) if old_mp_m else 0
+            new_mp = int(new_mp_m.group(1)) if new_mp_m else 0
+            if new_mp < old_mp:
+                print(f"[INFO] '{key}': keeping existing mp={old_mp} entry over thinner "
+                      f"mp={new_mp} scrape — not downgrading sample size", file=sys.stderr)
+                continue
             trailing_comma = m.group(1)
             replacement = new_line.rstrip().rstrip(",") + trailing_comma
             html = pattern.sub(replacement, html, count=1)

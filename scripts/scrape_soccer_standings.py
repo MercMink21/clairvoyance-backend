@@ -31,6 +31,11 @@ import requests
 ROOT = Path(__file__).parent.parent
 OUT = ROOT / "docs" / "soccer_standings.json"
 
+# NOTE: this is a deliberate standalone copy of clairvoyance_update.py's
+# ESPN_SOCCER_LEAGUES (no import dependency between the two scripts, same
+# convention as scrape_opta_stats.py). If a league gets added/renamed/
+# removed in one, update the other too, or they'll silently drift on
+# which leagues get a standings snapshot.
 ESPN_SOCCER_LEAGUES: dict[str, dict] = {
     "cl":   {"name": "Champions League", "espn": "UEFA.champions"},
     "pl":   {"name": "Premier League",   "espn": "eng.1"},

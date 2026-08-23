@@ -16,7 +16,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -43,7 +43,13 @@ jobs:
           TZ: America/Denver
         run: |
           python scripts/clairvoyance_update.py --no-linemate
-        timeout-minutes: 15
+        # Soccer's per-team fetches (season stats, prior-season blend,
+        # 2-season match log) grew from 1 ESPN call/team to up to 4 this
+        # session -- a recent real run measured 573s (9.5 min) of this
+        # step's 900s budget, only ~5.5 min of headroom left before a
+        # slow API day silently truncates whichever sports haven't been
+        # reached yet. Bumped from 15 to 25 min for real margin.
+        timeout-minutes: 25
 
       - name: Commit and push data
         id: push

@@ -4439,6 +4439,20 @@ function mlbCard(hA,awA,gt,date,espnGame){
   // untouched. When both sides would independently clear OPTIMAL, cap the
   // lower-EV side at LEAN so only one half of the pair surfaces as a
   // top-confidence pick.
+  //
+  // _demoteFavML/_demoteDogRL below are the single source of truth for
+  // WHICH side is correlated-and-losing; every consumer of that decision
+  // reads these same two flags via closure, so the correlation math
+  // itself is not duplicated. What DOES repeat is how each display site
+  // turns "demoted" into a capped visual: the ML chip below fakes a low
+  // EV into chipC() (0.02, comfortably under the 0.03 OPTIMAL cutoff);
+  // the _rawMkts entries further down do the same via a capped evVal;
+  // the Run Line reasoning card's dogTier instead does
+  // Math.min(tier(...),1) directly. Two different mechanisms for the
+  // same "cap at LEAN" outcome — if you're adding a 4th display site for
+  // ML/RL grades, wire it to _demoteFavML/_demoteDogRL rather than
+  // reinventing correlation detection, but match whichever of the two
+  // existing capping patterns the surrounding code already uses.
   const _favP=Math.max(hP,aP),_favDec=hP>=.5?hD:aD,_favEv=ev(_favP,_favDec);
   const _dogRLP=1-rlP,_dogRLEv=ev(_dogRLP,2.05);
   const _mlRlCorrelated=tier(_favP,_favEv)>=2&&tier(_dogRLP,_dogRLEv,'SPREAD')>=2;
@@ -26251,13 +26265,20 @@ var _SOC_XG={
   // ('atletico madrid', 'deportivo alaves') that no longer match
   // docs/soccer_fbref.json's accented convention ('atlético madrid',
   // 'alavés'), so both the static fallback AND the live FBref/Opta fuzzy-
-  // match lookups were silently missing these teams. Sourced from
-  // docs/soccer_fbref.json's real 2025/26 season totals (all 20 current
-  // clubs) except the 3 newly-promoted sides (Racing Santander/Málaga/
-  // Deportivo), which have no prior-season top-flight data — those use
-  // real single-game 2026/27 Opta data from docs/liga_opta_stats.json
-  // instead (noisy at n=1, but real, not a guess; will stabilize as
-  // scrape_opta_stats.py's daily refresh accumulates more games).
+  // match lookups were silently missing these teams. Most clubs are
+  // real 2025/26 season totals (mp:38); some now sit on real but thin
+  // n=1/n=2 2026/27 Opta samples instead (docs/liga_opta_stats.json) --
+  // NOT limited to newly-promoted sides specifically, since Opta's own
+  // tournamentstats coverage rolls out per-team on its own schedule as
+  // the season starts, independent of promotion status. The exact set
+  // of thin-sample teams drifts day to day as more real games land, so
+  // don't trust a specific count here -- check mp: per entry below
+  // instead. scrape_opta_stats.py's replace_league_block() will never
+  // downgrade an entry's mp below what it already has (fixed 2026-08-23,
+  // after the daily refresh had been silently overwriting a full
+  // 38-game baseline with a fresh n=1 read the first day Opta returned
+  // anything for that club), so these will only ever gain real games
+  // from here, never lose sample size.
   'barcelona':{xg:2.5,xga:0.95,hxg:2.75,hxga:0.855,axg:2.25,axga:1.045,gf:2.5,ga:0.947,mp:38},
   'real madrid':{xg:2.03,xga:0.92,hxg:2.233,hxga:0.828,axg:1.827,axga:1.012,gf:2.026,ga:0.921,mp:38},
   'atlético madrid':{xg:0.92,xga:0.15,hxg:1.012,hxga:0.135,axg:0.828,axga:0.165,gf:2.0,ga:0.0,mp:1},
@@ -26437,12 +26458,28 @@ function _socXGFromFBref(name,leagueKey){
 // boot, line ~19127) depending on which loader won the race, so check both.
 // Returns null if that team/league/data isn't available, letting callers
 // fall back to whatever base xG they already had.
+// Shared fuzzy team-name matcher — case-insensitive exact match first,
+// then substring match in either direction (the same convention every
+// soccer factor function below used to reimplement inline). `getName`
+// extracts the comparable string from each candidate: an object's field
+// (e.g. `function(t){return t.team;}`), or omit it to match against plain
+// string candidates directly (e.g. a list of team-name dict keys).
+function _socFuzzyFind(target,candidates,getName){
+  if(!target||!candidates)return undefined;
+  var k=target.toLowerCase().trim();
+  for(var i=0;i<candidates.length;i++){
+    var c=candidates[i];
+    var name=getName?(getName(c)||''):(c||'');
+    var ck=String(name).toLowerCase();
+    if(ck===k||k.indexOf(ck)>=0||ck.indexOf(k)>=0)return c;
+  }
+  return undefined;
+}
 function _optaBaseXG(name,leagueKey){
   var d=window.__CV_OPTA&&window.__CV_OPTA[leagueKey];
   if(!d&&leagueKey==='mls')d=window.__CV_MLS_OPTA;
   if(!d||!name)return null;
-  var k=name.toLowerCase().trim();
-  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  function find(arr){return _socFuzzyFind(name,arr,function(t){return t.team;});}
   var a=find(d.attacking),def=find(d.defending);
   if(!a||!def||!a.played)return null;
   return{xg:a.xg/a.played,xga:def.xg_against/a.played};
@@ -26657,8 +26694,7 @@ function _optaLeagueAverages(key){
 function _optaStyleFactor(name,key){
   var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d||!name)return 1;
   var avgS=_optaLeagueAverages(key);if(!avgS)return 1;
-  var k=name.toLowerCase().trim();
-  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  function find(arr){return _socFuzzyFind(name,arr,function(t){return t.team;});}
   var p=find(d.passing),pr=find(d.pressing),sq=find(d.sequences);
   if(!p||!pr||!sq)return 1;
   var possFactor=avgS.posPerc>0?(p.pos_perc/avgS.posPerc):1;
@@ -26733,8 +26769,7 @@ function _optaAdvancedLeagueAverages(key){
 function _optaAdvancedFactor(name,key){
   var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d||!name)return 1;
   var avgS=_optaAdvancedLeagueAverages(key);if(!avgS)return 1;
-  var k=name.toLowerCase().trim();
-  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  function find(arr){return _socFuzzyFind(name,arr,function(t){return t.team;});}
   var att=find(d.attacking),def=find(d.defending),pr=find(d.pressing),pa=find(d.passing);
   if(!att)return 1;
   var played=att.played||0;
@@ -26776,9 +26811,7 @@ function _fbrefLeagueAverages(leagueKey){
 function _fbrefFieldsFactor(name,leagueKey){
   var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
   var avgS=_fbrefLeagueAverages(leagueKey);if(!avgS)return 1;
-  var k=name.toLowerCase().trim();
-  var tkeys=Object.keys(teams);
-  var tk2=tkeys.find(function(tk){var t=tk.toLowerCase();return t===k||t.indexOf(k)>=0||k.indexOf(t)>=0;});
+  var tk2=_socFuzzyFind(name,Object.keys(teams));
   if(!tk2)return 1;
   var t=teams[tk2];
   var possFactor=avgS.poss>0&&t.poss?(t.poss/avgS.poss):1;
@@ -26795,9 +26828,7 @@ function _fbrefFieldsFactor(name,leagueKey){
 // Needs at least 3 of the last 5 completed to mean anything. +/-6% clamp.
 function _socFormFactor(name,leagueKey){
   var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
-  var k=name.toLowerCase().trim();
-  var tkeys=Object.keys(teams);
-  var tk2=tkeys.find(function(tk){var t=tk.toLowerCase();return t===k||t.indexOf(k)>=0||k.indexOf(t)>=0;});
+  var tk2=_socFuzzyFind(name,Object.keys(teams));
   if(!tk2)return 1;
   var t=teams[tk2];
   var rf=t.recentForm;if(!rf||rf.games<3)return 1;
@@ -26838,9 +26869,7 @@ function _socStandingsFactor(name,leagueKey){
 function _socH2HFactor(homeName,awayName,leagueKey){
   var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;
   if(!teams||!homeName||!awayName)return{home:1,away:1};
-  var hk=homeName.toLowerCase().trim();
-  var tkeys=Object.keys(teams);
-  var htk=tkeys.find(function(tk){var t=tk.toLowerCase();return t===hk||t.indexOf(hk)>=0||hk.indexOf(t)>=0;});
+  var htk=_socFuzzyFind(homeName,Object.keys(teams));
   if(!htk)return{home:1,away:1};
   var log=teams[htk].matchLog;if(!log||!log.length)return{home:1,away:1};
   var ak=awayName.toLowerCase().trim();
@@ -27076,6 +27105,13 @@ async function _fetchLeagueScoreboard(leagueKey){
   }catch(e){console.warn('[CV] League scoreboard err:',leagueKey,e);return[];}
 }
 
+// NOTE: this parses the same ESPN standings response shape as
+// scripts/scrape_soccer_standings.py and fetch_espn_soccer_league()'s
+// team-ID discovery in clairvoyance_update.py -- 3 independent
+// implementations of the same parsing logic (this one's the live browser
+// fetch, they're server-side snapshots), by design (no cross-file/cross-
+// language import possible here). If the field names or shape below ever
+// change, check both Python copies too.
 var _leagueStandCache={},_leagueStandCacheTs={};
 async function _fetchLeagueStandings(leagueKey){
   var now=Date.now();
