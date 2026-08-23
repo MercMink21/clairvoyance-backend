@@ -4425,10 +4425,29 @@ function mlbCard(hA,awA,gt,date,espnGame){
   const hP=ens.p,aP=1-ens.p;
   const hML=espnGame?.hML||p2ml(hP),aML=espnGame?.aML||p2ml(aP);
   const hD=ml2d(hML),aD=ml2d(aML);
-  const hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
+  let hCS=chipC(hP,ev(hP,hD)),aCS=chipC(aP,ev(aP,aD));
   const ouL=espnGame?.ou!=null?_forceHalfLine(espnGame.ou):_mlbOuDefault(mc?mc.avgT:null);
   const ouP=mc?.overP??( mc&&mc.avgT>parseFloat(ouL)?.52:.48);const ouCS=chipC(ouP,ev(ouP,1.91));
   const rlP=hP>=.5?(mc?.rl15||.38):(mc?.rlN||.38);const rlCS=chipC(rlP,ev(rlP,1.87));
+  // Correlation guard — backtested against 2,217 real settled bets pulled
+  // from the live Supabase ledger (2026-08-22 session): favorite ML +
+  // underdog RL(+1.5) graded OPTIMAL/PREMIUM together on the same game hit
+  // 62.2% (46-28) vs 69.6% (543-237) for standalone OPTIMAL+/PREMIUM picks.
+  // They're not two independent edges -- both need the favorite to win by
+  // exactly 1 run to split; every other outcome, they hit or miss as one.
+  // ML+O/U and RL+O/U pairings backtested clean (72.6% and 70.1%) and are
+  // untouched. When both sides would independently clear OPTIMAL, cap the
+  // lower-EV side at LEAN so only one half of the pair surfaces as a
+  // top-confidence pick.
+  const _favP=Math.max(hP,aP),_favDec=hP>=.5?hD:aD,_favEv=ev(_favP,_favDec);
+  const _dogRLP=1-rlP,_dogRLEv=ev(_dogRLP,2.05);
+  const _mlRlCorrelated=tier(_favP,_favEv)>=2&&tier(_dogRLP,_dogRLEv,'SPREAD')>=2;
+  const _demoteFavML=_mlRlCorrelated&&_favEv<_dogRLEv;
+  const _demoteDogRL=_mlRlCorrelated&&!_demoteFavML;
+  if(_demoteFavML){
+    const _capped=chipC(_favP,0.02); // EV pinned below the OPTIMAL cutoff (.03) so tier caps at LEAN
+    if(hP>=.5)hCS=_capped;else aCS=_capped;
+  }
   const hPit=espnGame?.hPit||PIT[hA]?.name||'TBD';const aPit=espnGame?.aPit||PIT[awA]?.name||'TBD';
   const hPitERA=espnGame?.hPitERA||PIT[hA]?.era||4.5;const aPitERA=espnGame?.aPitERA||PIT[awA]?.era||4.5;
   const statusDot=espnGame?.status==='in'?'<span class="status-live"></span>':espnGame?.status==='post'?'<span class="status-final"></span>':'<span class="status-pre"></span>';
@@ -4462,7 +4481,15 @@ function mlbCard(hA,awA,gt,date,espnGame){
     {label:`${dogTeam} +1.5`,prob:rlDogP,dec:rlDogDec,ml:'+110',side:'rlDog'},
     {label:`OVER ${ouL}`,prob:ovP,dec:ouDec,ml:'-110',side:'over'},
     {label:`UNDER ${ouL}`,prob:unP,dec:ouDec,ml:'-110',side:'under'},
-  ].map(m=>({...m,evVal:ev(m.prob,m.dec)}));
+  ].map(m=>{
+    const natEv=ev(m.prob,m.dec);
+    // Same correlation guard as hCS/aCS/dogTier above, applied here too so
+    // the card's overall best-market badge and MARKET SCAN footer agree
+    // with what the chips actually show instead of re-deriving their own
+    // uncapped ranking from the same correlated pair.
+    const demoted=(m.side==='mlFav'&&_demoteFavML)||(m.side==='rlDog'&&_demoteDogRL);
+    return{...m,evVal:demoted?Math.min(natEv,0.02):natEv};
+  });
   const _nm=_evalMkts(_rawMkts); // ranks by composite mfScore, not just tier+EV
   _autoLockCapture('MLB',hA,awA,_nm,mc?`MC PROJ: ${awA} ${mc.avgA.toFixed(1)} – ${hA} ${mc.avgH.toFixed(1)} (Total ${mc.avgT.toFixed(1)}, ${(mc.n||5000)/1000|0}k sims)`:null);
   const bestMkt=_nm.best;
@@ -4606,7 +4633,7 @@ function mlbCard(hA,awA,gt,date,espnGame){
       }):''}
       <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">RUN LINE ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-        ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const mcProjH=mc?mc.avgH.toFixed(1):'—';const mcProjA=mc?mc.avgA.toFixed(1):'—';const mcMargin=mc?Math.abs(mc.avgH-mc.avgA).toFixed(1):'—';const mcFavScore=hP>=.5?(mc?mc.avgH.toFixed(1):'—'):(mc?mc.avgA.toFixed(1):'—');const mcDogScore=hP>=.5?(mc?mc.avgA.toFixed(1):'—'):(mc?mc.avgH.toFixed(1):'—');const mcMarginNum=mc?mc.avgH-mc.avgA:0;const mcFavMargin=hP>=.5?mcMarginNum:-mcMarginNum;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV,'SPREAD');const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=tier(dogRLP,dogEV,'SPREAD');const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const rlReason=rlTier>=2?`${favRL} -1.5: MC proj margin ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} runs (${mcFavScore}–${mcDogScore}). Covers -1.5 in ${(rlP*100).toFixed(0)}% of 5k sims. ERA: ${favPit} ${favERA} vs ${dogPit} ${dogERA}.`:`${favRL} -1.5: MC margin only ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} (${mcFavScore}–${mcDogScore}). ${(rlP*100).toFixed(0)}% cover prob insufficient — ERA gap thin (${favERA} vs ${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5: MC projects fav margin ${mcFavMargin.toFixed(1)} — within 1 run in enough sims. Dog covers in ${(dogRLP*100).toFixed(0)}% of 5k sims. ${dogPit} (${dogERA} ERA) limits blowout risk.`:`${dogRL} +1.5: Fav MC margin ${mcFavMargin.toFixed(1)} runs exceeds 1.5-run line in too many sims (${(dogRLP*100).toFixed(0)}% dog cover).`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
+        ${(()=>{const favRL=hP>=.5?hA:awA;const dogRL=hP>=.5?awA:hA;const mcProjH=mc?mc.avgH.toFixed(1):'—';const mcProjA=mc?mc.avgA.toFixed(1):'—';const mcMargin=mc?Math.abs(mc.avgH-mc.avgA).toFixed(1):'—';const mcFavScore=hP>=.5?(mc?mc.avgH.toFixed(1):'—'):(mc?mc.avgA.toFixed(1):'—');const mcDogScore=hP>=.5?(mc?mc.avgA.toFixed(1):'—'):(mc?mc.avgH.toFixed(1):'—');const mcMarginNum=mc?mc.avgH-mc.avgA:0;const mcFavMargin=hP>=.5?mcMarginNum:-mcMarginNum;const rlEV=ev(rlP,1.87);const rlTier=tier(rlP,rlEV,'SPREAD');const rlLabel=rlTier===3?'PREMIUM':rlTier===2?'OPTIMAL':rlTier===1?'LEAN':'SKIP';const rlCol=rlTier===3?'var(--gc)':rlTier===2?'var(--nc)':rlTier===1?'var(--ic)':'var(--t3)';const dogRLP=1-rlP;const dogEV=ev(dogRLP,2.05);const dogTier=_demoteDogRL?Math.min(tier(dogRLP,dogEV,'SPREAD'),1):tier(dogRLP,dogEV,'SPREAD');const dogLabel=dogTier===3?'PREMIUM':dogTier===2?'OPTIMAL':dogTier===1?'LEAN':'SKIP';const dogCol=dogTier===3?'var(--gc)':dogTier===2?'var(--nc)':dogTier===1?'var(--ic)':'var(--t3)';const rlReason=rlTier>=2?`${favRL} -1.5: MC proj margin ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} runs (${mcFavScore}–${mcDogScore}). Covers -1.5 in ${(rlP*100).toFixed(0)}% of 5k sims. ERA: ${favPit} ${favERA} vs ${dogPit} ${dogERA}.`:`${favRL} -1.5: MC margin only ${mcFavMargin>=0?'+':''}${mcFavMargin.toFixed(1)} (${mcFavScore}–${mcDogScore}). ${(rlP*100).toFixed(0)}% cover prob insufficient — ERA gap thin (${favERA} vs ${dogERA}).`;const dogRLReason=dogTier>=2?`${dogRL} +1.5: MC projects fav margin ${mcFavMargin.toFixed(1)} — within 1 run in enough sims. Dog covers in ${(dogRLP*100).toFixed(0)}% of 5k sims. ${dogPit} (${dogERA} ERA) limits blowout risk.`:`${dogRL} +1.5: Fav MC margin ${mcFavMargin.toFixed(1)} runs exceeds 1.5-run line in too many sims (${(dogRLP*100).toFixed(0)}% dog cover).`;return'<div style="background:rgba(255,200,0,.06);border:1px solid '+rlCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+rlCol+'">'+favRL+' -1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+rlCol+';color:'+rlCol+';border-radius:2px">'+rlLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+rlReason+'</div></div>'+'<div style="background:rgba(80,120,255,.05);border:1px solid '+dogCol+';border-radius:3px;padding:7px 9px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+dogCol+'">'+dogRL+' +1.5</span><span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+dogCol+';color:'+dogCol+';border-radius:2px">'+dogLabel+'</span></div><div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">'+dogRLReason+'</div></div>';})()}
       </div>
       <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1.5px;margin-bottom:6px">OVER / UNDER ANALYSIS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
