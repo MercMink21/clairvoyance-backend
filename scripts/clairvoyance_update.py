@@ -3169,6 +3169,7 @@ def fetch_soccer_team_stats_all() -> dict:
         time.sleep(3)  # courtesy delay between leagues on top of per-call sleeps
     return result
 
+
 MLS_COMPETITION_ID = "MLS-COM-000001"
 MLS_SEASON_ID      = "MLS-SEA-0001KA"   # 2026 MLS regular season
 
@@ -5513,6 +5514,11 @@ def main() -> None:
         (ROOT / "docs" / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         (DATA / "soccer_fbref.json").write_text(json.dumps(soccer_fbref, indent=2))
         note("soccer_fbref.json written")
+    # Soccer standings snapshot (docs/soccer_standings.json) is written by
+    # its own dedicated daily script (scripts/scrape_soccer_standings.py /
+    # soccer-standings-daily.yml), not here -- standings move slowly enough
+    # that bundling it into this 3x/day pipeline would just be redundant
+    # API load for no real freshness gain.
     mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule, "weather": soccer_weather, "rosters": mls_rosters}
     if mls_standings or mls_schedule:
         (ROOT / "docs" / "mls_schedule.json").write_text(json.dumps(mls_bundle, indent=2))

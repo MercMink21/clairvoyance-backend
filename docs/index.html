@@ -19100,6 +19100,7 @@ async function loadRemoteData(force=false){
   }catch(e){console.warn('[CV] data.json offline:',e.message);}
   loadSoccerFBref();
   loadMLSOptaStats();
+  loadSoccerStandingsSnapshot();
 }
 
 window.__CV_FBREF = null;
@@ -27065,6 +27066,31 @@ async function _fetchLeagueStandings(leagueKey){
     rows.sort(function(a,b){return b.pts-a.pts||(b.gd-a.gd)||(b.gf-a.gf);});
     _leagueStandCache[leagueKey]=rows;_leagueStandCacheTs[leagueKey]=now;return rows;
   }catch(e){console.warn('[CV] Standings err:',leagueKey,e);return[];}
+}
+// Pre-seeds _leagueStandCache from the daily server-side snapshot (docs/
+// soccer_standings.json, written by scripts/scrape_soccer_standings.py)
+// so _socStandingsFactor() has real data immediately at boot, not just
+// after a user happens to open a specific league's matches tab this
+// session (the only thing that populated this cache before). Only fills
+// leagues _fetchLeagueStandings() hasn't already cached (never overwrites
+// a fresher live fetch), and stamps the same TTL clock so a live fetch
+// still naturally supersedes it 5 minutes after page load.
+var _socStandSnapLoading=null;
+function loadSoccerStandingsSnapshot(){
+  if(_socStandSnapLoading)return _socStandSnapLoading;
+  _socStandSnapLoading=fetch('soccer_standings.json',{cache:'no-cache'})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){
+      if(!d)return d;
+      var now=Date.now();
+      Object.keys(d).forEach(function(lk){
+        if(_leagueStandCache[lk])return;
+        if(d[lk]&&d[lk].length){_leagueStandCache[lk]=d[lk];_leagueStandCacheTs[lk]=now;}
+      });
+      return d;
+    })
+    .catch(function(e){console.warn('[CV] Soccer standings snapshot load failed:',e.message);return null;});
+  return _socStandSnapLoading;
 }
 
 // Per-league StatMuse feed -- filters the one shared, undifferentiated
