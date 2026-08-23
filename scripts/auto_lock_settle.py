@@ -168,6 +168,7 @@ def run_settle(page, live: bool) -> list[dict]:
           try { if (typeof autoSettleNBA === 'function') await autoSettleNBA(); results.nba = 'ok'; } catch (e) { results.nba = 'err:' + e.message; }
           try { if (typeof autoSettleNHL === 'function') await autoSettleNHL(); results.nhl = 'ok'; } catch (e) { results.nhl = 'err:' + e.message; }
           try { if (typeof autoSettleCFB === 'function') await autoSettleCFB(); results.cfb = 'ok'; } catch (e) { results.cfb = 'err:' + e.message; }
+          try { if (typeof autoSettleSoccer === 'function') await autoSettleSoccer(); results.soccer = 'ok'; } catch (e) { results.soccer = 'err:' + e.message; }
           try { if (typeof autoSettleNFL2 === 'function') await autoSettleNFL2(); results.nfl = 'ok'; } catch (e) { results.nfl = 'err:' + e.message; }
           try { if (typeof autoSettlePropsESPN === 'function') await autoSettlePropsESPN(); results.props = 'ok'; } catch (e) { results.props = 'err:' + e.message; }
           return results;
@@ -400,10 +401,12 @@ def gather_legs(page) -> dict:
     )
 
 
-def build_qualifying(result: dict) -> list[dict]:
+def build_qualifying(result: dict, only_soccer: bool = False) -> list[dict]:
     qualifying: list[dict] = []
     for gl in result.get("gameLegs") or []:
         sport = gl.get("sport")
+        if only_soccer and not (sport or "").startswith("SOC_"):
+            continue
         for m in gl.get("markets") or []:
             tier_n = m.get("tierN")
             if tier_n in QUALIFYING_TIERS:
@@ -417,9 +420,10 @@ def build_qualifying(result: dict) -> list[dict]:
                     # gameLegs.
                     "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
                 })
-    for p in result.get("propLegs") or []:
-        if p.get("grade") in ("PREMIUM", "OPTIMAL"):
-            qualifying.append({"kind": "PROP", "sport": p.get("sportTag"), "leg": p})
+    if not only_soccer:
+        for p in result.get("propLegs") or []:
+            if p.get("grade") in ("PREMIUM", "OPTIMAL"):
+                qualifying.append({"kind": "PROP", "sport": p.get("sportTag"), "leg": p})
     return qualifying
 
 
@@ -553,13 +557,14 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
     return "\n".join(lines)
 
 
-def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None) -> None:
+def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None, label: str = "") -> None:
     if not RESEND_API_KEY or not LOCKS_EMAIL_TO:
         log("RESEND_API_KEY/LOCKS_EMAIL_TO not set — skipping locked-picks email")
         return
     body_text = build_locks_email_body(qualifying, live, locked_count)
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} picks for {date_str} ({len(qualifying)})"
+    tag = f"{label} " if label else ""
+    subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} {tag}picks for {date_str} ({len(qualifying)})"
     body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
         body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
     try:
@@ -578,13 +583,14 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
         log(f"Locks email send failed: {exc}")
 
 
-def run_lock(page, live: bool) -> None:
-    log("=== AUTO-LOCK (PREMIUM/OPTIMAL) ===")
+def run_lock(page, live: bool, only_soccer: bool = False) -> None:
+    label = "EUROPEAN SOCCER" if only_soccer else ""
+    log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
-    qualifying = build_qualifying(result)
+    qualifying = build_qualifying(result, only_soccer=only_soccer)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
         f"{len(result.get('propLegs') or [])} prop legs total")
-    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found")
+    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found" + (" (soccer only)" if only_soccer else ""))
 
     for q in qualifying:
         if q["kind"] == "GAME":
@@ -597,11 +603,11 @@ def run_lock(page, live: bool) -> None:
 
     if not live:
         log(f"[DRY RUN] Would lock {len(qualifying)} legs above (pass --live to write)")
-        send_locks_email(qualifying, live=False)
+        send_locks_email(qualifying, live=False, label=label)
         return
 
     if not qualifying:
-        send_locks_email(qualifying, live=True, locked_count=0)
+        send_locks_email(qualifying, live=True, locked_count=0, label=label)
         return
 
     locked = 0
@@ -619,7 +625,7 @@ def run_lock(page, live: bool) -> None:
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    send_locks_email(qualifying, live=True, locked_count=locked)
+    send_locks_email(qualifying, live=True, locked_count=locked, label=label)
 
 
 def main() -> None:
@@ -627,6 +633,9 @@ def main() -> None:
     ap.add_argument("--live", action="store_true", help="Actually write to Supabase. Default is dry-run (logs only).")
     ap.add_argument("--lock", action="store_true", help="Run only the auto-lock step")
     ap.add_argument("--settle", action="store_true", help="Run only the auto-settle step")
+    ap.add_argument("--only-soccer", action="store_true",
+                     help="Lock step only: restrict to the 6 European/MLS soccer leagues. "
+                          "For the early-morning pass timed ahead of European kickoffs.")
     ap.add_argument("--app-url", default=APP_URL, help="Override the app URL (e.g. a local server for testing).")
     args = ap.parse_args()
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
@@ -648,7 +657,7 @@ def main() -> None:
             settled = run_settle(page, args.live)
             send_settlement_email(settled, args.live)
         if do_lock:
-            run_lock(page, args.live)
+            run_lock(page, args.live, only_soccer=args.only_soccer)
 
         browser.close()
 

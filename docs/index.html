@@ -7359,6 +7359,72 @@ function startCFBSettle(){
   _cfbSettleIv=setInterval(autoSettleCFB,60000);
 }
 
+// No auto-settle existed for any of the 6 club soccer leagues until now --
+// every soccer pick had to be settled manually. Same fetch-real-scores-and-
+// match pattern as autoSettleCFB, extended for soccer's 3-way outcome
+// (home/draw/away, not just win/loss) and goals O/U. Doesn't trust
+// p.betType for the market type (lockPick()'s `type` param doubles as the
+// sport tag for these leagues -- see auto_lock_settle.py's module
+// docstring on this exact quirk -- so betType silently defaults to 'ML'
+// even for a real O/U pick); parses the always-correct betOn text instead:
+// betOn===p.hA -> home win, betOn==='DRAW' -> draw, betOn===p.awA -> away
+// win, /^(OVER|UNDER) N$/ -> goals total.
+const _SOC_SETTLE_LEAGUES=[
+  {key:'cl',espn:'UEFA.champions',sport:'CL'},
+  {key:'pl',espn:'eng.1',sport:'PL'},
+  {key:'liga',espn:'esp.1',sport:'LIGA'},
+  {key:'bl',espn:'ger.1',sport:'BUND'},
+  {key:'mls',espn:'usa.1',sport:'MLS'},
+  {key:'ita',espn:'ita.1',sport:'SERIEA'},
+];
+async function autoSettleSoccer(){
+  const preds=getP();let changed=false;
+  for(const lg of _SOC_SETTLE_LEAGUES){
+    try{
+      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+lg.espn+'/scoreboard');
+      if(!r.ok)continue;
+      const d=await r.json();
+      for(const ev of(d.events||[])){
+        const comp=(ev.competitions||[{}])[0];
+        if(comp.status?.type?.state!=='post')continue;
+        const home=comp.competitors?.find(c=>c.homeAway==='home');
+        const away=comp.competitors?.find(c=>c.homeAway==='away');
+        const hn=home?.team?.displayName,an=away?.team?.displayName;
+        if(!hn||!an)continue;
+        const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
+        for(const p of preds){
+          if(p.outcome!=='pending'||_normSport(p)!==lg.sport)continue;
+          const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+          if(!sameGame)continue;
+          let outcome=null;
+          const ouMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)$/i.exec(p.betOn||'');
+          if(p.betOn===p.hA)outcome=hs>as?'win':(hs===as?'loss':'loss');
+          else if(p.betOn===p.awA)outcome=as>hs?'win':(hs===as?'loss':'loss');
+          else if((p.betOn||'').toUpperCase()==='DRAW')outcome=hs===as?'win':'loss';
+          else if(ouMatch){
+            const line=parseFloat(ouMatch[2]),total=hs+as;
+            const over=ouMatch[1].toUpperCase()==='OVER';
+            outcome=total===line?'push':(over?total>line:total<line)?'win':'loss';
+          }
+          if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
+            toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');
+            try{notifySettlement(p.betOn,outcome);}catch(e){}
+            try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'SOCCER',league:lg.sport,outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
+          }
+        }
+      }
+    }catch(e){console.warn('Soccer settle ('+lg.key+'):',e);}
+  }
+  if(changed){saveP(preds);updHdr();}
+}
+// Same 60s-cadence auto-refresh pattern as startCFBSettle.
+let _socSettleIv=null;
+function startSoccerSettle(){
+  if(_socSettleIv)clearInterval(_socSettleIv);
+  autoSettleSoccer();
+  _socSettleIv=setInterval(autoSettleSoccer,60000);
+}
+
 // ═══ NFL DATA LOADER + MC SIM ENGINE ═══════════════════════════════════
 // Phase 1 (scripts/fetch_nfl.py): teams/schedule/standings/team-stats/
 // injuries/transactions -- Games/Model/Config, weather, and settlement.
@@ -22647,6 +22713,7 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   try{startNHLLive();}catch(e){console.error('nhlLive',e);}
   try{startNBALive();}catch(e){console.error('nbaLive',e);}
   try{startCFBSettle();}catch(e){console.error('cfbSettle',e);}
+  try{startSoccerSettle();}catch(e){console.error('soccerSettle',e);}
   try{startNFLSettle2();}catch(e){console.error('nflSettle',e);}
   try{autoSettleNBA();}catch(e){console.error('autoSettleNBA',e);}
   try{renderOverall();}catch(e){console.error('renderOverall',e);}
