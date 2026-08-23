@@ -47,11 +47,14 @@ from __future__ import annotations
 
 import argparse
 import os
-import requests
+import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
+sys.path.insert(0, str(Path(__file__).parent))
+from _gmail_email import send_email as _send_gmail  # noqa: E402
+
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 # Separate from SOCIAL_CARD_EMAIL_TO on purpose -- this is a personal daily
 # betting reference, not public social content, so it can (and probably
 # should) go to a different inbox. Falls back to the social recipient only
@@ -247,8 +250,8 @@ def build_settlement_email_body(settled: list[dict]) -> str:
 
 
 def send_settlement_email(settled: list[dict], live: bool) -> None:
-    if not RESEND_API_KEY or not LOCKS_EMAIL_TO:
-        log("RESEND_API_KEY/LOCKS_EMAIL_TO not set — skipping settlement email")
+    if not LOCKS_EMAIL_TO:
+        log("LOCKS_EMAIL_TO not set — skipping settlement email")
         return
     if not settled:
         log("Nothing settled this run — skipping settlement email")
@@ -261,20 +264,8 @@ def send_settlement_email(settled: list[dict], live: bool) -> None:
     subject = f"Clairvoyance — {prefix}Settled {date_str}: {wins}W-{losses}L ({len(settled)})"
     body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
         body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
-    try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": "Clairvoyance Engine <onboarding@resend.dev>", "to": [LOCKS_EMAIL_TO],
-                  "subject": subject, "html": body_html},
-            timeout=30,
-        )
-        if resp.status_code >= 300:
-            log(f"Settlement email send failed: HTTP {resp.status_code} {resp.text[:300]}")
-        else:
-            log(f"Settlement email sent to {LOCKS_EMAIL_TO}")
-    except Exception as exc:
-        log(f"Settlement email send failed: {exc}")
+    ok, msg = _send_gmail(subject, LOCKS_EMAIL_TO, body_html)
+    log(f"Settlement email sent to {LOCKS_EMAIL_TO}" if ok else f"Settlement email send failed: {msg}")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -610,8 +601,8 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
 
 
 def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None, label: str = "") -> None:
-    if not RESEND_API_KEY or not LOCKS_EMAIL_TO:
-        log("RESEND_API_KEY/LOCKS_EMAIL_TO not set — skipping locked-picks email")
+    if not LOCKS_EMAIL_TO:
+        log("LOCKS_EMAIL_TO not set — skipping locked-picks email")
         return
     body_text = build_locks_email_body(qualifying, live, locked_count)
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -619,20 +610,8 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
     subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} {tag}picks for {date_str} ({len(qualifying)})"
     body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
         body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
-    try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": "Clairvoyance Engine <onboarding@resend.dev>", "to": [LOCKS_EMAIL_TO],
-                  "subject": subject, "html": body_html},
-            timeout=30,
-        )
-        if resp.status_code >= 300:
-            log(f"Locks email send failed: HTTP {resp.status_code} {resp.text[:300]}")
-        else:
-            log(f"Locks email sent to {LOCKS_EMAIL_TO}")
-    except Exception as exc:
-        log(f"Locks email send failed: {exc}")
+    ok, msg = _send_gmail(subject, LOCKS_EMAIL_TO, body_html)
+    log(f"Locks email sent to {LOCKS_EMAIL_TO}" if ok else f"Locks email send failed: {msg}")
 
 
 def run_lock(page, live: bool, only_prefixes: tuple[str, ...] | None = None, label: str = "") -> None:

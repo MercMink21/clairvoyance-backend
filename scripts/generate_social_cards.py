@@ -68,17 +68,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import requests
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gmail_email import send_email as _send_gmail  # noqa: E402
 
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -790,14 +791,10 @@ def _caption_block(title: str, text: str) -> str:
 
 
 def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro: str = "") -> None:
-    if not RESEND_API_KEY or not SOCIAL_CARD_EMAIL_TO:
-        log(f"Email creds not set — skipping send for: {subject}")
+    if not SOCIAL_CARD_EMAIL_TO:
+        log(f"No recipient set (SOCIAL_CARD_EMAIL_TO) — skipping send for: {subject}")
         return
-    attachments = [
-        {"filename": p.name, "content": base64.b64encode(p.read_bytes()).decode("ascii")}
-        for p in cards
-    ]
-    filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
+    filename_list_html = "".join(f"<li>{p.name}</li>" for p in cards)
     body_html = (
         f"<p>{intro}</p>"
         f"<p>Cards attached:</p><ul>{filename_list_html}</ul>"
@@ -805,21 +802,10 @@ def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro:
         f"{_caption_block('Instagram caption', captions['instagram'])}"
         f"{_caption_block('X caption', captions['x'])}"
     )
-    resp = requests.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        json={
-            "from": "Clairvoyance Engine <onboarding@resend.dev>",
-            "to": [SOCIAL_CARD_EMAIL_TO],
-            "subject": subject,
-            "html": body_html,
-            "attachments": attachments,
-        },
-        timeout=30,
-    )
-    if resp.status_code >= 300:
-        raise RuntimeError(f"Resend send failed for '{subject}': HTTP {resp.status_code} {resp.text[:300]}")
-    log(f"Email sent: {subject} ({len(attachments)} attachment(s))")
+    ok, msg = _send_gmail(subject, SOCIAL_CARD_EMAIL_TO, body_html, attachments=cards)
+    if not ok:
+        raise RuntimeError(f"Gmail send failed for '{subject}': {msg}")
+    log(f"Email sent: {subject} ({len(cards)} attachment(s))")
 
 
 def main() -> None:

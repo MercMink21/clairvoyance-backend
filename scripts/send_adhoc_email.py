@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-send_adhoc_email.py — one-off asset delivery via Resend, for content that
+send_adhoc_email.py — one-off asset delivery via Gmail SMTP (_gmail_email.py), for content that
 isn't part of the scheduled generate_social_cards.py pipeline (manual
 requests, spot-checks, one-time exports).
 
@@ -9,12 +9,13 @@ Usage:
       --file path/to/one.mp4 --file path/to/two.png
 """
 import argparse
-import base64
 import os
+import sys
+from pathlib import Path
 
-import requests
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gmail_email import send_email as _send_gmail  # noqa: E402
 
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 
 
@@ -38,18 +39,11 @@ def main() -> None:
     args = parser.parse_args()
 
     recipient = args.to or SOCIAL_CARD_EMAIL_TO
-    if not RESEND_API_KEY or not recipient:
-        raise RuntimeError("RESEND_API_KEY not set, or no recipient (pass --to or set SOCIAL_CARD_EMAIL_TO)")
+    if not recipient:
+        raise RuntimeError("No recipient (pass --to or set SOCIAL_CARD_EMAIL_TO)")
 
-    attachments = []
-    for f in args.files:
-        with open(f, "rb") as fh:
-            attachments.append({
-                "filename": os.path.basename(f),
-                "content": base64.b64encode(fh.read()).decode("ascii"),
-            })
-
-    filename_list_html = "".join(f"<li>{a['filename']}</li>" for a in attachments)
+    file_paths = [Path(f) for f in args.files]
+    filename_list_html = "".join(f"<li>{p.name}</li>" for p in file_paths)
     body_html = f"<p>{args.intro}</p><p>Attached:</p><ul>{filename_list_html}</ul>"
     if args.caption_ig or args.caption_x:
         body_html += "<p>Captions below, ready to copy-paste:</p>"
@@ -58,21 +52,10 @@ def main() -> None:
         if args.caption_x:
             body_html += _caption_block("X caption", args.caption_x)
 
-    resp = requests.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        json={
-            "from": "Clairvoyance Engine <onboarding@resend.dev>",
-            "to": [recipient],
-            "subject": args.subject,
-            "html": body_html,
-            "attachments": attachments,
-        },
-        timeout=30,
-    )
-    if resp.status_code >= 300:
-        raise RuntimeError(f"Resend send failed: HTTP {resp.status_code} {resp.text[:300]}")
-    print(f"Email sent: {args.subject} ({len(attachments)} attachment(s))")
+    ok, msg = _send_gmail(args.subject, recipient, body_html, attachments=file_paths)
+    if not ok:
+        raise RuntimeError(f"Gmail send failed: {msg}")
+    print(f"Email sent: {args.subject} ({len(file_paths)} attachment(s))")
 
 
 if __name__ == "__main__":
