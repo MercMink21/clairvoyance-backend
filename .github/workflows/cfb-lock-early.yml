@@ -48,8 +48,16 @@ jobs:
       - name: Determine live flag from trigger
         id: flags
         run: |
+          # Same one-week dry-run gate as auto-lock-settle.yml -- stays
+          # dry-run through Sat 2026-08-29 regardless of LIVE_MODE, live
+          # starts with the first scheduled run on/after Sun 2026-08-30.
+          # workflow_dispatch always honors the `live` input directly.
+          LIVE_GATE_DATE="2026-08-30"
+          TODAY="$(date -u +%Y-%m-%d)"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          elif [ "$TODAY" \< "$LIVE_GATE_DATE" ]; then
+            echo "live_flag=" >> "$GITHUB_OUTPUT"
           else
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           fi

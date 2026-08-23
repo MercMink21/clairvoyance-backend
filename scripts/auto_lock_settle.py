@@ -421,7 +421,7 @@ def build_qualifying(result: dict, only_prefixes: tuple[str, ...] | None = None)
                 qualifying.append({
                     "kind": "GAME", "sport": sport, "hA": gl.get("hA"), "awA": gl.get("awA"),
                     "side": m.get("side"), "label": m.get("label"), "prob": m.get("prob"),
-                    "ml": m.get("ml"), "dec": m.get("dec"), "tierN": tier_n,
+                    "ml": m.get("ml"), "dec": m.get("dec"), "tierN": tier_n, "evVal": m.get("evVal"),
                     # Same for every qualifying market on this game -- carried
                     # per-leg (not de-duped) so build_locks_email_body can
                     # regroup by matchup without needing a second pass over
@@ -508,15 +508,48 @@ def lock_prop_leg(page, sport: str, leg: dict) -> str:
     return "skip: unhandled prop sport"
 
 
+# Same threshold + same side classification _evalMkts() uses in
+# docs/app.html (an 'over'/'under'/'setsOver'/'setsUnder' side is OU, an
+# 'rlFav'/'rlDog'/'plFav'/'plDog'/'sprdFav'/'sprdDog'/'ahFav'/'ahDog' side
+# is SPREAD, everything else -- including soccer's home/draw/away team-
+# name sides -- is ML) and the exact threshold _highHitBadgeHTML() uses
+# on the game cards, so "HIGH HIT %" in this email means the same thing
+# it means on screen.
+_HIGH_HIT_P = 0.75
+_OU_SIDES = {"over", "under", "setsOver", "setsUnder"}
+_SPREAD_SIDES = {"rlFav", "rlDog", "plFav", "plDog", "sprdFav", "sprdDog", "ahFav", "ahDog"}
+
+
+def _market_type(side: str | None) -> str:
+    if side in _OU_SIDES:
+        return "OU"
+    if side in _SPREAD_SIDES:
+        return "SPREAD"
+    return "ML"
+
+
 def _leg_line(q: dict) -> str:
-    """One human-readable line per qualifying leg, for the email body."""
+    """One human-readable line per qualifying leg, for the email body --
+    tier, probability, EV, both odds formats, and (for a moneyline pick
+    at 75%+ model probability) the same HIGH HIT % tag the game cards
+    show, so a heavy favorite that clears the hit-rate bar but not the
+    EV bar still gets flagged here even if its tier is only LEAN."""
     if q["kind"] == "GAME":
-        return f"{q['label']} — {TIER_LABEL.get(q['tierN'], '?')} · {q['prob']*100:.0f}% · {q.get('ml') or ''}"
+        ev_val = q.get("evVal")
+        ev_str = f" · EV {ev_val*100:+.1f}%" if ev_val is not None else ""
+        ml, dec = q.get("ml"), q.get("dec")
+        odds_str = (f" · {ml}" if ml else "") + (f" ({dec:.2f})" if dec else "")
+        prob = q.get("prob") or 0
+        hh = " · 🔥 HIGH HIT %" if _market_type(q.get("side")) == "ML" and prob >= _HIGH_HIT_P else ""
+        return f"{q['label']} — {TIER_LABEL.get(q['tierN'], '?')} · {prob*100:.0f}%{ev_str}{odds_str}{hh}"
     leg = q["leg"]
     direction = "UNDER" if leg.get("over") is False else "OVER"
     prob = leg.get("prob") if leg.get("prob") is not None else (leg.get("conf", 0) / 100)
+    prob = prob or 0
+    ml, dec = leg.get("ml"), leg.get("dec")
+    odds_str = (f" · {ml}" if ml else "") + (f" ({dec:.2f})" if dec else "")
     return (f"{leg.get('player')} {direction} {leg.get('line')} {leg.get('stat')} "
-            f"— {leg.get('grade')} · {(prob or 0)*100:.0f}% · {leg.get('ml') or ''}")
+            f"— {leg.get('grade')} · {prob*100:.0f}%{odds_str}")
 
 
 def _prop_matchup_key(leg: dict) -> str:
@@ -544,7 +577,13 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
         if live else
         f"DRY RUN — {len(qualifying)} legs qualified, nothing was written"
     )
-    lines = [status_line, ""]
+    lines = [status_line]
+    high_hit = [q for q in qualifying if q["kind"] == "GAME" and _market_type(q.get("side")) == "ML"
+                and (q.get("prob") or 0) >= _HIGH_HIT_P]
+    if high_hit:
+        lines.append(f"🔥 {len(high_hit)} HIGH HIT % moneyline pick{'s' if len(high_hit) != 1 else ''} today "
+                      f"(75%+ model win probability, regardless of tier/EV)")
+    lines.append("")
     if not qualifying:
         lines.append("No PREMIUM/OPTIMAL legs cleared the bar today.")
         return "\n".join(lines)
@@ -555,15 +594,17 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
         lines.append(f"=== {SPORT_DISPLAY_NAME.get(sport, sport)} ({total_legs}) ===")
         for matchup, legs in matchups.items():
             lines.append(f"{matchup}")
-            mc_summary = next((l.get("mcSummary") for l in legs if l.get("mcSummary")), None)
-            if mc_summary:
-                lines.append(f"  {mc_summary}")
-            best = next((l.get("best") for l in legs if l.get("best")), None)
-            if best:
-                lines.append(f"  Best market value: {best['label']} ({TIER_LABEL.get(best.get('tierN'), '?')})")
-            lines.append("  Picks meeting PREMIUM/OPTIMAL:")
+            lines.append("  Worth taking:")
             for q in legs:
                 lines.append(f"    • {_leg_line(q)}")
+            mc_summary = next((l.get("mcSummary") for l in legs if l.get("mcSummary")), None)
+            best = next((l.get("best") for l in legs if l.get("best")), None)
+            if mc_summary or best:
+                lines.append("  Reasoning:")
+                if mc_summary:
+                    lines.append(f"    {mc_summary}")
+                if best:
+                    lines.append(f"    Best market value on this game: {best['label']} ({TIER_LABEL.get(best.get('tierN'), '?')})")
             lines.append("")
     return "\n".join(lines)
 
