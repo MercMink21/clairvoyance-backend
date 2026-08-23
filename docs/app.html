@@ -26369,11 +26369,24 @@ var _SOC_XG={
 // aren't. Champions League intentionally left out of this table for now.
 var _SOC_HOME_ADV={default:0.10,mls:0.16};
 function _socHomeAdv(leagueKey){return _SOC_HOME_ADV[leagueKey]!=null?_SOC_HOME_ADV[leagueKey]:_SOC_HOME_ADV.default;}
+// Real per-team home/away goal-rate split (from each team's own match log
+// -- see homeSplit/awaySplit in docs/{league}_opta... no, docs/soccer_fbref.json,
+// written by _espn_team_match_log()/_summarize_match_log() in
+// clairvoyance_update.py). Requires a minimum sample (3 games at that venue)
+// before trusting it over the flat league-wide _socHomeAdv() default --
+// early season, most teams won't have 3 home AND 3 away games yet, so this
+// gracefully returns null and callers fall back to the flat number.
+function _socTeamHomeAwaySplit(t){
+  var hs=t&&t.homeSplit,as=t&&t.awaySplit;
+  if(!hs||!as||hs.games<3||as.games<3)return null;
+  return {homeGf:hs.gf,homeGa:hs.ga,awayGf:as.gf,awayGa:as.ga};
+}
 function _socXGFromFBref(name,leagueKey){
-  // Prefer real, freshly-scraped FBref data (window.__CV_FBREF, written by
-  // fetch_fbref_all() in clairvoyance_update.py) over the static _SOC_XG
-  // fallback table below. Falls through to null if FBref data isn't loaded
-  // yet or doesn't have this team, letting _socXG() fall back to the static table.
+  // Prefer real, freshly-scraped team stats (window.__CV_FBREF, written by
+  // fetch_soccer_team_stats_all() in clairvoyance_update.py) over the static
+  // _SOC_XG fallback table below. Falls through to null if that data isn't
+  // loaded yet or doesn't have this team, letting _socXG() fall back to the
+  // static table.
   var fb=window.__CV_FBREF;
   if(!fb||!name)return null;
   var k=name.toLowerCase().trim();
@@ -26388,7 +26401,18 @@ function _socXGFromFBref(name,leagueKey){
         var t=teams[tkeys[i]];
         var mp=t.mp||34;
         var adv=_socHomeAdv(leagueKey);
-        return {xg:t.xg/mp,xga:t.xga/mp,hxg:t.xg/mp*(1+adv),hxga:t.xga/mp*(1-adv),axg:t.xg/mp*(1-adv),axga:t.xga/mp*(1+adv),gf:t.gf/mp,ga:t.ga/mp,mp:mp,src:'fbref'};
+        var split=_socTeamHomeAwaySplit(t);
+        // hxg/axg below are this team's rate AS IF IT WERE the home side
+        // (used when this team is actually home) or the away side (used
+        // when actually away) -- callers pick whichever applies. Team-
+        // specific split replaces the flat league-wide +/-adv guess once
+        // there's a real 3+-game sample at that venue for this exact team.
+        var hxg=split?split.homeGf:t.xg/mp*(1+adv), hxga=split?split.homeGa:t.xga/mp*(1-adv);
+        var axg=split?split.awayGf:t.xg/mp*(1-adv), axga=split?split.awayGa:t.xga/mp*(1+adv);
+        return {xg:t.xg/mp,xga:t.xga/mp,hxg:hxg,hxga:hxga,axg:axg,axga:axga,gf:t.gf/mp,ga:t.ga/mp,mp:mp,
+                poss:t.poss,xag:t.xag,shotsPg:t.shots_pg,sotPg:t.sot_pg,
+                recentForm:t.recentForm,homeSplit:t.homeSplit,awaySplit:t.awaySplit,matchLog:t.matchLog,
+                homeSplitUsed:!!split,src:'fbref'};
       }
     }
   }
@@ -26652,6 +26676,155 @@ function _optaPowerRankFactors(homeName,awayName,leagueKey){
   return{home:1+adj,away:1-adj};
 }
 
+// ── Second-tier signals (2026-08-23) ──────────────────────────────────────
+// Everything below stacks on top of _optaStyleFactor/_optaPowerRankFactors,
+// so each one is clamped tighter (+/-5-8% vs those two's +/-15%) -- with 5
+// more multiplicative factors added, an overall sanity clamp on the FINAL
+// combined result (see _socExpectedGoals) is what actually keeps the worst
+// case from compounding into something extreme; these per-factor clamps
+// just keep any ONE signal from ever dominating on its own.
+
+var _OPTA_ADV_LEAGUE_AVG={};
+function _optaAdvancedLeagueAverages(key){
+  if(_OPTA_ADV_LEAGUE_AVG[key])return _OPTA_ADV_LEAGUE_AVG[key];
+  var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d)return null;
+  var att=d.attacking||[],def=d.defending||[],press=d.pressing||[],pass=d.passing||[];
+  function avg(arr,f){var v=arr.map(function(t){return t[f]||0;}).filter(function(x){return x>0;});return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:0;}
+  return _OPTA_ADV_LEAGUE_AVG[key]={
+    shotConv:avg(att,'shot_conv'), xgPerShot:avg(att,'xg_per_shot'),
+    shotConvAgainst:avg(def,'shot_conv_against'),
+    pressActions:avg(press,'high_turnovers')+avg(press,'defensive_actions'),
+    service:avg(pass,'op_crosses')+avg(pass,'through_balls')+avg(pass,'final_third_passes'),
+  };
+}
+// Finishing quality (shot_conv vs xg_per_shot -- converting at a rate shot
+// quality alone doesn't explain), regression (goals_vs_xg per game,
+// dampened to a partial correction since a hot/cold run is part real, part
+// noise -- never a full reversion to xG), pressing beyond the PPDA number
+// _optaStyleFactor already uses (high_turnovers + defensive_actions), and
+// service quality into the box (crosses + through balls + final-third
+// passes, upstream of the shot itself). +/-8% clamp.
+function _optaAdvancedFactor(name,key){
+  var d=window.__CV_OPTA&&window.__CV_OPTA[key];if(!d||!name)return 1;
+  var avgS=_optaAdvancedLeagueAverages(key);if(!avgS)return 1;
+  var k=name.toLowerCase().trim();
+  function find(arr){return (arr||[]).find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});}
+  var att=find(d.attacking),def=find(d.defending),pr=find(d.pressing),pa=find(d.passing);
+  if(!att)return 1;
+  var played=att.played||0;
+  var regAdj=played?Math.max(-0.04,Math.min(0.04,(att.goals_vs_xg||0)/played*0.15)):0;
+  var finFactor=avgS.shotConv>0&&att.shot_conv!=null?(att.shot_conv/avgS.shotConv):1;
+  var qualFactor=avgS.xgPerShot>0&&att.xg_per_shot!=null?(att.xg_per_shot/avgS.xgPerShot):1;
+  var defFinFactor=(def&&avgS.shotConvAgainst>0&&def.shot_conv_against!=null)?(avgS.shotConvAgainst/def.shot_conv_against):1;
+  var pressFactor=1;
+  if(pr){var pa2=(pr.high_turnovers||0)+(pr.defensive_actions||0);pressFactor=avgS.pressActions>0?(pa2/avgS.pressActions):1;}
+  var serviceFactor=1;
+  if(pa){var sv=(pa.op_crosses||0)+(pa.through_balls||0)+(pa.final_third_passes||0);serviceFactor=avgS.service>0?(sv/avgS.service):1;}
+  var raw=finFactor*0.25+qualFactor*0.20+defFinFactor*0.20+pressFactor*0.15+serviceFactor*0.20;
+  raw+=regAdj;
+  return Math.max(0.92,Math.min(1.08,raw));
+}
+
+var _FBREF_LEAGUE_AVG={};
+function _fbrefLeagueAverages(leagueKey){
+  if(_FBREF_LEAGUE_AVG[leagueKey])return _FBREF_LEAGUE_AVG[leagueKey];
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams)return null;
+  var vals=Object.values(teams);
+  function avg(getter){var v=vals.map(getter).filter(function(x){return x>0;});return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:0;}
+  return _FBREF_LEAGUE_AVG[leagueKey]={
+    poss:avg(function(t){return t.poss||0;}),
+    xagPg:avg(function(t){return t.mp?((t.xag||0)/t.mp):0;}),
+    shotsPg:avg(function(t){return t.shots_pg||0;}),
+    sotPg:avg(function(t){return t.sot_pg||0;}),
+  };
+}
+// Possession, expected assists, shots/shots-on-target per game -- fetched
+// and blended into docs/soccer_fbref.json every run already (see
+// fetch_espn_soccer_league() in clairvoyance_update.py) but never actually
+// read by the model until now. Applies to every league (not just the
+// Opta-covered ones), since this comes from the same file _socXGFromFBref
+// already reads for every league including Champions League. +/-6% clamp
+// -- tighter than _optaAdvancedFactor since these are cruder proxies
+// (goals-based xag/shots, not real shot-location xG) and this stacks on
+// top of that factor too for the leagues that have both.
+function _fbrefFieldsFactor(name,leagueKey){
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
+  var avgS=_fbrefLeagueAverages(leagueKey);if(!avgS)return 1;
+  var k=name.toLowerCase().trim();
+  var tkeys=Object.keys(teams);
+  var tk2=tkeys.find(function(tk){var t=tk.toLowerCase();return t===k||t.indexOf(k)>=0||k.indexOf(t)>=0;});
+  if(!tk2)return 1;
+  var t=teams[tk2];
+  var possFactor=avgS.poss>0&&t.poss?(t.poss/avgS.poss):1;
+  var xagFactor=(avgS.xagPg>0&&t.mp)?(((t.xag||0)/t.mp)/avgS.xagPg):1;
+  var shotsFactor=avgS.shotsPg>0&&t.shots_pg?(t.shots_pg/avgS.shotsPg):1;
+  var sotFactor=avgS.sotPg>0&&t.sot_pg?(t.sot_pg/avgS.sotPg):1;
+  var raw=possFactor*0.20+xagFactor*0.35+shotsFactor*0.20+sotFactor*0.25;
+  return Math.max(0.94,Math.min(1.06,raw));
+}
+
+// Recent form: last-5-games goal differential vs THIS team's own season
+// average (not league average -- the point is detecting a hot/cold streak
+// relative to their own baseline, not how they compare to the league).
+// Needs at least 3 of the last 5 completed to mean anything. +/-6% clamp.
+function _socFormFactor(name,leagueKey){
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
+  var k=name.toLowerCase().trim();
+  var tkeys=Object.keys(teams);
+  var tk2=tkeys.find(function(tk){var t=tk.toLowerCase();return t===k||t.indexOf(k)>=0||k.indexOf(t)>=0;});
+  if(!tk2)return 1;
+  var t=teams[tk2];
+  var rf=t.recentForm;if(!rf||rf.games<3)return 1;
+  var seasonGdPg=t.mp?(((t.gf||0)-(t.ga||0))/t.mp):0;
+  var recentGdPg=rf.gf-rf.ga;
+  var delta=recentGdPg-seasonGdPg;
+  return 1+Math.max(-0.06,Math.min(0.06,delta*0.05));
+}
+
+// Standings-based form: points-per-game vs league-average points-per-game.
+// A genuinely distinct signal from goals-based xG -- captures a team's
+// actual W-D-L result tendency (clutch/game-management factor), not just
+// its scoring rate, which especially matters in a low-scoring sport where
+// a 1-0 win and a 4-0 win are worth the same 3 points. Reads from
+// _leagueStandCache (already populated by _fetchLeagueStandings whenever
+// that league's matches tab has been opened this session) rather than
+// firing its own fetch -- returns neutral if standings haven't loaded yet
+// rather than blocking on a new request from inside a sync render path.
+// +/-6% clamp.
+function _socStandingsFactor(name,leagueKey){
+  var rows=(typeof _leagueStandCache!=='undefined')&&_leagueStandCache[leagueKey];
+  if(!rows||!rows.length||!name)return 1;
+  var k=name.toLowerCase().trim();
+  var row=rows.find(function(r){var rn=(r.name||'').toLowerCase();return rn===k||rn.indexOf(k)>=0||k.indexOf(rn)>=0;});
+  if(!row||!row.mp)return 1;
+  var ppg=row.pts/row.mp;
+  var avgPpg=rows.reduce(function(s,r){return s+(r.mp?r.pts/r.mp:0);},0)/rows.length;
+  if(!avgPpg)return 1;
+  return Math.max(0.94,Math.min(1.06,ppg/avgPpg));
+}
+
+// Head-to-head: this specific matchup's history from the home team's own
+// match log (see matchLog in docs/soccer_fbref.json, written by
+// _espn_team_match_log() in clairvoyance_update.py -- current + previous
+// season). Needs at least 2 prior meetings to mean anything. +/-6% clamp,
+// applied as a home/away pair like _optaPowerRankFactors (the team that's
+// historically dominated this exact matchup gets nudged up, the other down).
+function _socH2HFactor(homeName,awayName,leagueKey){
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;
+  if(!teams||!homeName||!awayName)return{home:1,away:1};
+  var hk=homeName.toLowerCase().trim();
+  var tkeys=Object.keys(teams);
+  var htk=tkeys.find(function(tk){var t=tk.toLowerCase();return t===hk||t.indexOf(hk)>=0||hk.indexOf(t)>=0;});
+  if(!htk)return{home:1,away:1};
+  var log=teams[htk].matchLog;if(!log||!log.length)return{home:1,away:1};
+  var ak=awayName.toLowerCase().trim();
+  var meetings=log.filter(function(g){var o=(g.opponent||'').toLowerCase();return o===ak||o.indexOf(ak)>=0||ak.indexOf(o)>=0;});
+  if(meetings.length<2)return{home:1,away:1};
+  var gdAvg=meetings.reduce(function(s,g){return s+(g.gf-g.ga);},0)/meetings.length;
+  var adj=Math.max(-0.06,Math.min(0.06,gdAvg*0.04));
+  return{home:1+adj,away:1-adj};
+}
+
 // Expected goals for a fixture, blending each side's own attack rate with
 // the opponent's defensive rate — every call site previously used a team's
 // raw hxg/axg (its own scoring average) alone, with no adjustment for how
@@ -26665,22 +26838,45 @@ function _optaPowerRankFactors(homeName,awayName,leagueKey){
 // pulls it up, instead of defense never entering the calculation at all.
 // leagueKey/homeName/awayName are optional — when leagueKey is one of the
 // Opta-covered leagues (pl/liga/ita/bl/mls) and names are given, applies
-// _optaStyleFactor() on top of the xG blend so picks aren't driven by
-// xG/xGA alone (previously this only ever fired for 'mls'), and for the 4
-// leagues Opta also publishes Power Rankings for, additionally applies
-// _optaPowerRankFactors() as a second, independent adjustment.
+// _optaStyleFactor() + _optaAdvancedFactor() on top of the xG blend so
+// picks aren't driven by xG/xGA alone, and for the leagues Opta also
+// publishes Power Rankings for, additionally applies _optaPowerRankFactors().
+// Then, for every league (this part doesn't need Opta -- it comes from the
+// same soccer_fbref.json / standings-cache data every league already has),
+// applies _fbrefFieldsFactor, _socFormFactor, _socStandingsFactor, and
+// _socH2HFactor. With up to 7 multiplicative factors now capable of
+// stacking, the individual per-factor clamps (+/-6-15% each) no longer
+// bound the WORST case on their own -- so the combined result is also
+// clamped to +/-35% of the pre-factor base blend as a final backstop,
+// after every factor has been applied, not instead of the individual ones.
 function _socExpectedGoals(homeXG,awayXG,leagueKey,homeName,awayName){
   let hxg=homeXG?((homeXG.hxg||homeXG.xg)+((awayXG&&awayXG.axga)??(homeXG.hxg||homeXG.xg)))/2:1.35;
   let axg=awayXG?((awayXG.axg||awayXG.xg)+((homeXG&&homeXG.hxga)??(awayXG.axg||awayXG.xg)))/2:1.15;
+  const baseHxg=hxg, baseAxg=axg;
   if(_OPTA_LEAGUES.indexOf(leagueKey)>=0&&homeName&&awayName&&window.__CV_OPTA&&window.__CV_OPTA[leagueKey]){
     hxg*=_optaStyleFactor(homeName,leagueKey);
     axg*=_optaStyleFactor(awayName,leagueKey);
+    hxg*=_optaAdvancedFactor(homeName,leagueKey);
+    axg*=_optaAdvancedFactor(awayName,leagueKey);
   }
   if(_POWER_RANK_LEAGUES.indexOf(leagueKey)>=0&&homeName&&awayName){
     var _pf=_optaPowerRankFactors(homeName,awayName,leagueKey);
     hxg*=_pf.home;
     axg*=_pf.away;
   }
+  if(homeName&&awayName){
+    hxg*=_fbrefFieldsFactor(homeName,leagueKey);
+    axg*=_fbrefFieldsFactor(awayName,leagueKey);
+    hxg*=_socFormFactor(homeName,leagueKey);
+    axg*=_socFormFactor(awayName,leagueKey);
+    hxg*=_socStandingsFactor(homeName,leagueKey);
+    axg*=_socStandingsFactor(awayName,leagueKey);
+    var _h2h=_socH2HFactor(homeName,awayName,leagueKey);
+    hxg*=_h2h.home;
+    axg*=_h2h.away;
+  }
+  hxg=Math.max(baseHxg*0.65,Math.min(baseHxg*1.35,hxg));
+  axg=Math.max(baseAxg*0.65,Math.min(baseAxg*1.35,axg));
   return{hxg,axg};
 }
 // Exact P(total goals > line) for a Poisson(hxg+axg) total-goals

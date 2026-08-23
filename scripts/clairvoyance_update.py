@@ -2934,6 +2934,72 @@ def _espn_team_season_stats(espn_league: str, tid: str, season_year: int) -> tup
     return flat, int(gp)
 
 
+def _espn_team_match_log(espn_league: str, tid: str, seasons: list[int]) -> list[dict]:
+    """
+    Compact completed-match history for one team across the given season
+    years, oldest first: date, opponent name, home/away, goals for/against.
+    This one flat list is the single source that recent-form, home/away
+    splits, and head-to-head all derive from -- computed here once per
+    team (cheap: one list-filter each) or left raw for the frontend to
+    filter by a specific opponent at render time (head-to-head is
+    fixture-specific -- precomputing every possible opponent pairing
+    server-side would be O(teams^2) per league for no benefit, since only
+    one specific matchup needs to be looked up per card rendered).
+    """
+    games: list[dict] = []
+    for season in seasons:
+        data = fetch_json(
+            f"https://site.api.espn.com/apis/site/v2/sports/soccer/{espn_league}/teams/{tid}/schedule",
+            params={"season": season},
+        )
+        for ev in (data or {}).get("events", []):
+            comp = (ev.get("competitions") or [{}])[0]
+            status = (comp.get("status") or {}).get("type") or {}
+            if not status.get("completed"):
+                continue
+            competitors = comp.get("competitors") or []
+            me  = next((c for c in competitors if str(c.get("team", {}).get("id")) == str(tid)), None)
+            opp = next((c for c in competitors if c is not me), None)
+            if not me or not opp:
+                continue
+            gf = (me.get("score") or {}).get("value")
+            ga = (opp.get("score") or {}).get("value")
+            if gf is None or ga is None:
+                continue
+            games.append({
+                "date": ev.get("date", ""),
+                "opponent": (opp.get("team") or {}).get("displayName", ""),
+                "homeAway": me.get("homeAway", ""),
+                "gf": gf,
+                "ga": ga,
+            })
+    games.sort(key=lambda g: g["date"])
+    return games
+
+
+def _summarize_match_log(games: list[dict]) -> dict:
+    """Derive recent-form (last 5, any venue) and home/away splits from a
+    team's match log. All three of the model's new form-based signals come
+    from this one summary; head-to-head is the only one that needs the raw
+    per-opponent match log itself (kept separately, see matchLog below)."""
+    def _agg(rows: list[dict]) -> dict:
+        n = len(rows)
+        if not n:
+            return {"games": 0, "w": 0, "d": 0, "l": 0, "gf": 0.0, "ga": 0.0}
+        w = sum(1 for g in rows if g["gf"] > g["ga"])
+        d = sum(1 for g in rows if g["gf"] == g["ga"])
+        l = n - w - d
+        return {
+            "games": n, "w": w, "d": d, "l": l,
+            "gf": round(sum(g["gf"] for g in rows) / n, 3),
+            "ga": round(sum(g["ga"] for g in rows) / n, 3),
+        }
+    last5 = games[-5:]
+    home = [g for g in games if g["homeAway"] == "home"]
+    away = [g for g in games if g["homeAway"] == "away"]
+    return {"recentForm": _agg(last5), "homeSplit": _agg(home), "awaySplit": _agg(away)}
+
+
 # Season-blend tuning for the 4 major European leagues (not Champions
 # League -- its "current" season is still last season's completed
 # tournament until the new one starts in September, so there's nothing new
@@ -3045,6 +3111,15 @@ def fetch_espn_soccer_league(key: str) -> dict:
                     poss = cur.get("possessionPct") or 0
                     src_tag = "espn"
 
+                # Match log (current + previous season) -- the single
+                # source recent form, home/away splits, and head-to-head
+                # all derive from. Kept raw (not just the summary) so the
+                # frontend can filter it against a specific opponent for
+                # head-to-head at render time.
+                time.sleep(0.3)
+                match_log = _espn_team_match_log(cfg["espn"], tid, [cur_year, prev_year])
+                form = _summarize_match_log(match_log)
+
                 # Store as season totals at the real current games-played
                 # (not a nominal 1) so mp reflects reality everywhere it's
                 # displayed; a still-winless week-1 team with mp=0 gets
@@ -3068,6 +3143,10 @@ def fetch_espn_soccer_league(key: str) -> dict:
                     "shots_pg": round(shots_pg, 2),
                     "sot_pg": round(sot_pg, 2),
                     "gamesPlayedThisSeason": mp_cur,
+                    "recentForm": form["recentForm"],
+                    "homeSplit": form["homeSplit"],
+                    "awaySplit": form["awaySplit"],
+                    "matchLog": match_log,
                     "src": src_tag,
                 }
             except Exception as exc:
@@ -5398,6 +5477,13 @@ def main() -> None:
         # nothing downstream breaks; the full 30+ field mlssoccer.com payload
         # goes to its own docs/mls_stats.json for the Monte Carlo layer to
         # pull richer signal from without the frontend needing to change.
+        # Preserve matchLog/recentForm/homeSplit/awaySplit from whatever
+        # fetch_soccer_team_stats_all() already put in soccer_fbref["mls"]
+        # (via fetch_espn_soccer_league("mls")) before this overwrites the
+        # rest of each team's entry -- MLS's real mlssoccer.com stats don't
+        # include match-by-match history, only season aggregates, so this
+        # is the only place that data comes from for MLS.
+        _mls_prior = (soccer_fbref.get("mls") or {}).get("teams") or {}
         normalized = {}
         for name, t in mls_stats["teams"].items():
             gp = t.get("mp") or 1
@@ -5414,6 +5500,11 @@ def main() -> None:
                 "sot_pg": round((t.get("shots_on_target", 0) or 0) / gp, 2),
                 "src": "mlssoccer",
             }
+            prior = _mls_prior.get(name)
+            if prior:
+                for f in ("matchLog", "recentForm", "homeSplit", "awaySplit"):
+                    if f in prior:
+                        normalized[name][f] = prior[f]
         soccer_fbref["mls"] = {"league": "MLS", "fetchedAt": TODAY_ISO, "teams": normalized}
         (ROOT / "docs" / "mls_stats.json").write_text(json.dumps(mls_stats, indent=2))
         (DATA / "mls_stats.json").write_text(json.dumps(mls_stats, indent=2))
