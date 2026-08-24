@@ -178,24 +178,13 @@ def _notify(title: str, msg: str) -> None:
 
 def _alert(title: str, msg: str, level: str = "info") -> None:
     """
-    Unified alert path: always does the local macOS notification (existing
-    behavior, silently no-ops off macOS — including on GitHub Actions
-    runners), and ALSO posts to a Discord webhook if DISCORD_WEBHOOK_URL is
-    set in .env — the piece that was missing entirely before. Without a
-    webhook configured this degrades to exactly the old behavior (silent on
-    CI), so nothing breaks if you don't set it up; set DISCORD_WEBHOOK_URL
-    to start getting same-day pings on scrape failures instead of only
-    finding out when you happen to check the site.
+    Local macOS notification (silently no-ops off macOS, including on
+    GitHub Actions runners). Discord webhook alerting was never actually
+    set up (DISCORD_WEBHOOK_URL was never configured as a secret) and has
+    been retired -- email alerting via _gmail_email.py is the replacement
+    path going forward, not built into this generic alert function yet.
     """
     _notify(title, msg)
-    webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
-    if not webhook:
-        return
-    emoji = {"error": "🔴", "warn": "🟡", "info": "🟢"}.get(level, "🟢")
-    try:
-        requests.post(webhook, json={"content": f"{emoji} **Clairvoyance — {title}**\n{msg}"}, timeout=8)
-    except Exception as exc:
-        log(f"Discord webhook failed: {exc}", "WARN")
 
 def _check_source_health(label: str, count: int, prior_count: int | None = None) -> None:
     """

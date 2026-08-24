@@ -37,7 +37,6 @@ jobs:
       - name: Run Clairvoyance update v7.0
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           TZ: America/Denver
@@ -71,15 +70,7 @@ jobs:
 
       - name: Alert on push failure
         if: steps.push.outputs.push_failed == 'true'
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          # No-ops harmlessly if DISCORD_WEBHOOK_URL isn't set (empty URL → curl fails, caught by || true)
-          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{\"content\":\"🔴 **Clairvoyance — Push Failed**\\nScheduled refresh's git push to main failed on GitHub Actions. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
-          fi
+        run: echo "::error::Scheduled refresh's git push to main failed."
 
       # Post-deploy verification: same safety net as the local git_push() path
       # (verify_deployment() in clairvoyance_update.py) — GitHub Pages needs a
@@ -88,8 +79,6 @@ jobs:
       # that the commit succeeded.
       - name: Verify deployment
         if: steps.push.outputs.changed == 'true'
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           ok=false
           for i in 1 2 3; do
@@ -103,9 +92,4 @@ jobs:
           done
           if [ "$ok" != "true" ]; then
             echo "::warning::Live data.json failed post-deploy verification"
-            if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-              curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
-                -H "Content-Type: application/json" \
-                -d "{\"content\":\"🔴 **Clairvoyance — Deploy Verification Failed**\\nLive data.json didn't verify after push (3 attempts, 25s apart). Site may be serving stale/broken data. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
-            fi
           fi

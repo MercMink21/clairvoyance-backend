@@ -73,15 +73,8 @@ jobs:
       # 30-90+ minutes past the nominal 9:30 MT cron time (observed
       # consistently — not a bug in this file, just how shared-runner
       # scheduling works), so a late email is normal. A genuinely failed
-      # run is not — this is the one case worth an explicit page, same
-      # alerting pattern scheduled-refresh.yml already uses.
+      # run is not — surfaced as a workflow error annotation (Discord
+      # alerting was never actually set up and has been retired).
       - name: Alert on failure
         if: failure()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "{\"content\":\"🔴 **Clairvoyance — Daily Social Cards Email FAILED**\\nScheduled 9:30 MT run did not complete. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true
-          fi
+        run: echo "::error::Daily Social Cards Email run did not complete."
