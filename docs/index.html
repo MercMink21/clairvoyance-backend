@@ -24647,22 +24647,23 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var _wADrtg=(_wAT.drtg||_wAT.defRtg||(100-parseFloat(aNetStr||0)*.5)).toFixed(1);
       var _wHPace=(_wHT.pace||90).toFixed(1);var _wAPace=(_wAT.pace||90).toFixed(1);
       var _wHWpct=((_wHT.wpct||0.5)*100).toFixed(0);var _wAWpct=((_wAT.wpct||0.5)*100).toFixed(0);
-      // Use wnbaOUProb for proper model-based O/U
-      var _wMcResult={totalProj:(_wnbaFavP>=.5?parseFloat(_wHOrtg)+parseFloat(_wAOrtg)*0.95:parseFloat(_wAOrtg)+parseFloat(_wHOrtg)*0.95)||164};
-      var _wOvP2=wnbaOUProb(_wMcResult,ouStr);var _wUnP2=1-_wOvP2;
-      // Recalculate O/U markets with proper probabilities
-      _wnbaMkts.mkts&&_wnbaMkts.mkts.forEach(function(m){if(m.side==='over')m.prob=_wOvP2;if(m.side==='under')m.prob=_wUnP2;});
       var _wnbaEdge=_edge(_wnbaBM.prob,_wnbaBM.side==='mlFav'?_wnbaFavDec:_wnbaBM.side==='mlDog'?_wnbaDogDec:1.91);
       var _wnbaKelly=(_kelly(_wnbaBM.prob,_wnbaBM.side==='mlFav'?_wnbaFavDec:_wnbaBM.side==='mlDog'?_wnbaDogDec:1.91)*100).toFixed(1);
       var _wSig=_sigma([ens.mcP,ens.bayP,ens.eloP]);
       var _wSigStr=_wSig<=.03?'well-aligned':_wSig<=.06?'converging':'partial consensus';
       var _wNetCtxFull=_wnbaFav+' ORtg '+(_wnbaFavP>=.5?_wHOrtg:_wAOrtg)+' / DRtg '+(_wnbaFavP>=.5?_wHDrtg:_wADrtg)+' / Net '+hNetStr+' vs '+_wnbaDogT+' ORtg '+(_wnbaFavP>=.5?_wAOrtg:_wHOrtg)+' / DRtg '+(_wnbaFavP>=.5?_wADrtg:_wHDrtg)+' / Net '+aNetStr;
-      var _wProjTotal=(parseFloat(_wnbaFavP>=.5?_wHOrtg:_wAOrtg)*parseFloat(_wnbaFavP>=.5?_wADrtg:_wHDrtg)/100*82+parseFloat(_wnbaFavP>=.5?_wAOrtg:_wHOrtg)*parseFloat(_wnbaFavP>=.5?_wHDrtg:_wADrtg)/100*82).toFixed(0);
+      // Real MC-simulated total (25k trials), not a crude ORtg/DRtg
+      // formula -- was previously _wProjTotal, a separate cruder estimate
+      // that could (and did) disagree with the real MC signal shown
+      // elsewhere on the same card (confirmed real bug: the reasoning text
+      // could say "Over prob 58%" from this crude formula in the same
+      // sentence as the real MC total sitting BELOW the O/U line).
+      var _wProjTotal=_wnbaMCResult.avgT.toFixed(0);
       var rsn=_wnbaTier===0?
         'No qualifying edge (best ML '+Math.round(_wnbaFavP*100)+'% vs implied '+(1/(_wnbaFavDec||1.91)*100).toFixed(0)+'%). '+_wNetCtxFull+'. '+_wnbaEnsStr+' (σ '+(_wSig*100).toFixed(1)+'%). Projected total: ~'+_wProjTotal+' vs '+ouStr+'. Monitor line movement or skip.':
         'Best market: <strong>'+_wnbaBM.label+'</strong> · '+_wnbaMkts.lbl+' · '+_wnbaBP+'% · EV +'+_wnbaBE+'% · edge +'+(_wnbaEdge*100).toFixed(1)+'pp. '+
         _wNetCtxFull+'. W%: '+(_wnbaFavP>=.5?hab:aab)+' '+(_wnbaFavP>=.5?_wHWpct:_wAWpct)+'% vs '+(_wnbaFavP>=.5?aab:hab)+' '+(_wnbaFavP>=.5?_wAWpct:_wHWpct)+'%. '+
-        'Projected total ~'+_wProjTotal+' vs O/U '+ouStr+' ('+(_wOvP2*100).toFixed(0)+'% over). '+
+        'Projected total ~'+_wProjTotal+' vs O/U '+ouStr+' ('+(_wnbaOvP*100).toFixed(0)+'% over). '+
         (_wnbaBM.side==='mlFav'?'Dominant net rating edge drives ML value.':
         _wnbaBM.side==='mlDog'?'Underdog value — net rating gap does not justify the ML price.':
         _wnbaBM.side==='sprdFav'?'Fav covers -'+Math.abs(_wnbaLineNum).toFixed(1)+' in '+(_wnbaFavCoverMC*100).toFixed(1)+'% of 10k sims. '+_wnbaSprdStr+'. '+_wnbaMCCoverStr+'.':
@@ -24799,14 +24800,14 @@ async function _renderWNBAGamesInner(el,dateEl,force){
             +'<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+ovCol+'">OVER '+ouStr+'</span>'
             +'<span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+ovCol+';color:'+ovCol+';border-radius:2px">'+ovLabel+'</span>'
             +'</div>'
-            +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">MC projects '+(_wnbaMCResult.avgT.toFixed(1))+' combined — '+( (_wnbaMCResult.avgT-parseFloat(ouStr))>=0?'+':'')+(_wnbaMCResult.avgT-parseFloat(ouStr)).toFixed(1)+' vs '+ouStr+' line. Over prob '+Math.round(_wOvP2*100)+'%.</div>'
+            +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">MC projects '+(_wnbaMCResult.avgT.toFixed(1))+' combined — '+( (_wnbaMCResult.avgT-parseFloat(ouStr))>=0?'+':'')+(_wnbaMCResult.avgT-parseFloat(ouStr)).toFixed(1)+' vs '+ouStr+' line. Over prob '+Math.round(_wnbaOvP*100)+'%.</div>'
             +'</div>'
             +'<div style="background:rgba(255,32,144,.05);border:1px solid '+unCol+';border-radius:3px;padding:6px 8px">'
             +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
             +'<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:'+unCol+'">UNDER '+ouStr+'</span>'
             +'<span style="font-family:var(--mono);font-size:14px;padding:1px 4px;border:1px solid '+unCol+';color:'+unCol+';border-radius:2px">'+unLabel+'</span>'
             +'</div>'
-            +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">MC projects '+(_wnbaMCResult.avgT.toFixed(1))+' combined — '+(parseFloat(ouStr)-_wnbaMCResult.avgT).toFixed(1)+' below '+ouStr+' line. Under prob '+Math.round((1-_wOvP2)*100)+'%.</div>'
+            +'<div style="font-family:var(--mono);font-size:14px;color:var(--t3);line-height:1.5">MC projects '+(_wnbaMCResult.avgT.toFixed(1))+' combined — '+(parseFloat(ouStr)-_wnbaMCResult.avgT).toFixed(1)+' below '+ouStr+' line. Under prob '+Math.round((1-_wnbaOvP)*100)+'%.</div>'
             +'</div>'
             +'</div>'
             +'</div>';
