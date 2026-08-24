@@ -449,6 +449,65 @@ def get_engine_performance(page) -> dict | None:
     )
 
 
+def get_sport_performance(page) -> dict | None:
+    """Last Month / All Time win-loss-units, broken down by league, computed
+    with the exact same leagueMap categorization and calc logic as the home
+    page's own "// PERIOD PERFORMANCE — LEAGUE" table (docs/app.html
+    renderHomePage) -- LAST MONTH instead of that table's own THIS MONTH
+    toggle option since a still-accumulating current month isn't a
+    meaningful stable number on a once-daily snapshot (it would visibly
+    change shape hour to hour if this ran again), where a completed month
+    only changes once, on the 1st. Written to docs/sport_performance.json
+    for the same reason engine_performance.json exists -- so the landing
+    page can mirror these numbers without its own Supabase access."""
+    return page.evaluate(
+        """
+        async () => {
+          const allBets = getP();
+          const nowD = getMSTNow();
+          const firstOfMonth = mstFirstOfMonth(nowD);
+          const firstOfLastMonth = mstFirstOfMonth(new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1));
+          const lastMonthLbl = firstOfLastMonth.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+
+          // Deliberate copy of renderHomePage's own leagueMap (docs/app.html)
+          // -- no shared constant between the two, so if a league is ever
+          // added/renamed there, update both or they'll silently drift on
+          // which leagues this snapshot covers.
+          const leagueMap = [
+            {lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},{lbl:'MLB',codes:['MLB']},
+            {lbl:'NHL',codes:['NHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
+            {lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},{lbl:'KHL',codes:['KHL']},
+            {lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},{lbl:'CBB',codes:['CBB','NCAAB']},
+            {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},
+            {lbl:'World Cup',codes:['SOC','WC']},{lbl:'Champions League',codes:['CL','CH']},
+            {lbl:'Premier League',codes:['PL']},{lbl:'La Liga',codes:['LIGA']},
+            {lbl:'Bundesliga',codes:['BUND','BL']},{lbl:'MLS',codes:['MLS']},{lbl:'Serie A',codes:['SERIEA']},
+          ];
+
+          const byLeague = bets => leagueMap.map(lm => {
+            const lb = bets.filter(p => lm.codes.some(c => p.sport && p.sport.toUpperCase() === c.toUpperCase()));
+            if (!lb.length) return null;
+            const w = lb.filter(p => p.outcome === 'win').length, l = lb.filter(p => p.outcome === 'loss').length;
+            const u = lb.reduce((a, p) => {
+              if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+              if (p.outcome === 'loss') return a - 1;
+              return a;
+            }, 0);
+            return { lbl: lm.lbl, w, l, n: lb.length, pct: lb.length ? w / lb.length : null, units: u };
+          }).filter(Boolean).sort((a, b) => b.n - a.n);
+
+          const settled = allBets.filter(p => p.outcome !== 'pending');
+          const lastMonthBets = settled.filter(p => p.lockedAt && p.lockedAt >= firstOfLastMonth.getTime() && p.lockedAt < firstOfMonth.getTime());
+
+          return {
+            lastMonth: { label: lastMonthLbl, leagues: byLeague(lastMonthBets) },
+            allTime: { label: 'ALL TIME', leagues: byLeague(settled) },
+          };
+        }
+        """
+    )
+
+
 def run(out_dir: Path, force: set[str] | None = None) -> dict:
     from playwright.sync_api import sync_playwright
 
@@ -541,6 +600,21 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
                 log(f"Wrote {perf_path}")
         except Exception as e:
             log(f"WARNING: engine performance snapshot failed: {e}")
+
+        # Sport performance snapshot (Last Month / All Time, by league) --
+        # feeds the landing page's own Sport Performance section, same
+        # rationale as engine_performance.json above.
+        try:
+            sport_perf = get_sport_performance(page)
+            if sport_perf:
+                sport_perf_path = ROOT / "docs" / "sport_performance.json"
+                sport_perf_path.write_text(json.dumps({
+                    "generated_at": now_mt.strftime("%Y-%m-%d %H:%M MT"),
+                    **sport_perf,
+                }, indent=2))
+                log(f"Wrote {sport_perf_path}")
+        except Exception as e:
+            log(f"WARNING: sport performance snapshot failed: {e}")
 
         # Daily (always)
         cards, stats = generate_cards(page, out_dir, "YESTERDAY")
