@@ -37,7 +37,7 @@ def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
         subject = f"Clairvoyance — {len(products_and_days)} subscriptions expiring soon"
 
     rows = "".join(
-        f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;color:#ddd">'
+        f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12);font-size:15px;color:#eee">'
         f'<strong style="color:#fff">{PRODUCT_LABEL[p]}</strong> — '
         f'<span style="color:{"#ff3b5c" if d <= 1 else "#ffdd00"}">{d} day{"s" if d != 1 else ""} left</span>'
         f'</div>'
@@ -46,10 +46,10 @@ def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
     urgency = "expires today" if soonest <= 0 else f"expires in {soonest} day{'s' if soonest != 1 else ''}"
     body = (
         EMAIL_WRAP_OPEN +
-        f'<div style="font-size:16px;color:#fff;margin-bottom:14px">'
+        f'<div style="font-size:16px;color:#1a1a2e;margin-bottom:14px">'
         f'Your access to {", ".join(names)} {urgency}.</div>'
         f'<div style="background:#14001f;border-radius:6px;padding:4px 14px;margin-bottom:16px">{rows}</div>'
-        f'<div style="font-size:14px;color:#ccc;line-height:1.6">'
+        f'<div style="font-size:14px;color:#444;line-height:1.6">'
         f'To keep it going with no gap in your daily picks, reply to this email or Venmo the usual '
         f'amount — we\'ll renew you for another 30 days from whenever it\'s received. '
         f'No action needed if you\'re fine letting it lapse.</div>' +

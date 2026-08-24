@@ -263,10 +263,10 @@ def _settle_result_html(b: dict) -> str:
         result = f"actual: {_esc(b['playerResult'])}"
     else:
         result = "no score/result captured"
-    return (f'<div style="padding:5px 0;font-size:14px;color:#ddd">'
+    return (f'<div style="padding:5px 0;font-size:14px;color:#eee">'
             f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
             f'border-radius:3px;margin-right:8px;text-transform:uppercase">{_esc(outcome)}</span>'
-            f'{_esc(b.get("betOn"))} <span style="color:#999">({result})</span></div>')
+            f'{_esc(b.get("betOn"))} <span style="color:#bbb">({result})</span></div>')
 
 
 def build_settlement_email_html(settled: list[dict]) -> str:
@@ -279,10 +279,10 @@ def build_settlement_email_html(settled: list[dict]) -> str:
     pushes = sum(1 for b in settled if b.get("outcome") not in ("win", "loss"))
     record = f"{wins}W-{losses}L" + (f"-{pushes}P" if pushes else "")
     parts = [_EMAIL_WRAP_OPEN,
-              f'<div style="font-size:12px;letter-spacing:1px;color:#999;text-transform:uppercase">'
+              f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">'
               f'{len(settled)} bets settled — {record}</div>']
     if not settled:
-        parts.append('<div style="padding:20px 0;color:#999;font-size:14px">No bets settled this run.</div>')
+        parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No bets settled this run.</div>')
         parts.append(_EMAIL_WRAP_CLOSE)
         return "".join(parts)
 
@@ -290,8 +290,8 @@ def build_settlement_email_html(settled: list[dict]) -> str:
         bets = by_sport[sport]
         sw = sum(1 for b in bets if b.get("outcome") == "win")
         sl = sum(1 for b in bets if b.get("outcome") == "loss")
-        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#00e5ff;text-transform:uppercase;'
-                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,229,255,.25);padding-bottom:4px">'
+        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#0090a8;text-transform:uppercase;'
+                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,144,168,.3);padding-bottom:4px">'
                       f'{_esc(SPORT_DISPLAY_NAME.get(sport, sport))} ({sw}W-{sl}L)</div>')
         parts.append('<div style="background:#14001f;border-radius:6px;padding:10px 14px">')
         parts.append("".join(_settle_result_html(b) for b in bets))
@@ -577,11 +577,14 @@ _GRADE_COLOR = {"PREMIUM": "#ffdd00", "OPTIMAL": "#00e5ff", "LEAN": "#6699ff"}
 
 
 def _leg_html(q: dict) -> str:
-    """One row per qualifying leg: a colored tier badge, probability, EV,
-    both odds formats, and (for a moneyline pick at 75%+ model
-    probability) the same HIGH HIT % tag the game cards show, so a heavy
-    favorite that clears the hit-rate bar but not the EV bar still gets
-    flagged here even if its tier is only LEAN."""
+    """One block per qualifying leg: the tier/grade badge on its own line
+    ABOVE the pick (not inline before it) -- applies identically to every
+    sport and league since both branches (game markets, player props)
+    share this one function, no per-sport variant to keep in sync.
+    Probability, EV, both odds formats, and (for a moneyline pick at
+    75%+ model probability) the same HIGH HIT % tag the game cards show,
+    so a heavy favorite that clears the hit-rate bar but not the EV bar
+    still gets flagged here even if its tier is only LEAN."""
     if q["kind"] == "GAME":
         tier_n = q["tierN"]
         tier_lbl = TIER_LABEL.get(tier_n, "?")
@@ -592,10 +595,11 @@ def _leg_html(q: dict) -> str:
         odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
         prob = q.get("prob") or 0
         hh = ' <span style="color:#ffdd00">🔥 HIGH HIT %</span>' if _market_type(q.get("side")) == "ML" and prob >= _HIGH_HIT_P else ''
-        return (f'<div style="padding:4px 0;font-size:14px;color:#ddd">'
+        return (f'<div style="padding:5px 0">'
                 f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
-                f'border-radius:3px;margin-right:8px">{tier_lbl}</span>'
-                f'{_esc(q["label"])} — {prob*100:.0f}%{ev_str}{odds_str}{hh}</div>')
+                f'border-radius:3px;display:inline-block;margin-bottom:3px">{tier_lbl}</span>'
+                f'<div style="font-size:14px;color:#eee">{_esc(q["label"])} — {prob*100:.0f}%{ev_str}{odds_str}{hh}</div>'
+                f'</div>')
     leg = q["leg"]
     direction = "UNDER" if leg.get("over") is False else "OVER"
     prob = leg.get("prob") if leg.get("prob") is not None else (leg.get("conf", 0) / 100)
@@ -604,10 +608,11 @@ def _leg_html(q: dict) -> str:
     odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
     grade = leg.get("grade") or ""
     color = _GRADE_COLOR.get(grade, "#666")
-    return (f'<div style="padding:4px 0;font-size:14px;color:#ddd">'
+    return (f'<div style="padding:5px 0">'
             f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
-            f'border-radius:3px;margin-right:8px">{_esc(grade)}</span>'
-            f'{_esc(leg.get("player"))} {direction} {_esc(leg.get("line"))} {_esc(leg.get("stat"))} — {prob*100:.0f}%{odds_str}</div>')
+            f'border-radius:3px;display:inline-block;margin-bottom:3px">{_esc(grade)}</span>'
+            f'<div style="font-size:14px;color:#eee">{_esc(leg.get("player"))} {direction} {_esc(leg.get("line"))} {_esc(leg.get("stat"))} — {prob*100:.0f}%{odds_str}</div>'
+            f'</div>')
 
 
 def _prop_matchup_key(leg: dict) -> str:
@@ -632,27 +637,27 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
         if live else
         f"DRY RUN — {len(qualifying)} legs qualified, nothing was written"
     )
-    parts = [_EMAIL_WRAP_OPEN, f'<div style="font-size:12px;letter-spacing:1px;color:#999;text-transform:uppercase">{_esc(status_line)}</div>']
+    parts = [_EMAIL_WRAP_OPEN, f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">{_esc(status_line)}</div>']
 
     high_hit = [q for q in qualifying if q["kind"] == "GAME" and _market_type(q.get("side")) == "ML"
                 and (q.get("prob") or 0) >= _HIGH_HIT_P]
     if high_hit:
         n = len(high_hit)
-        parts.append(f'<div style="background:rgba(255,221,0,.12);border:1px solid rgba(255,221,0,.4);'
-                      f'border-radius:4px;padding:8px 12px;margin:10px 0;font-size:13px;color:#ffdd00">'
+        parts.append(f'<div style="background:#fff6d6;border:1px solid #e6c200;'
+                      f'border-radius:4px;padding:8px 12px;margin:10px 0;font-size:13px;color:#7a5900">'
                       f'🔥 {n} HIGH HIT % moneyline pick{"s" if n != 1 else ""} today '
                       f'(75%+ model win probability, regardless of tier/EV)</div>')
 
     if not qualifying:
-        parts.append('<div style="padding:20px 0;color:#999;font-size:14px">No PREMIUM/OPTIMAL legs cleared the bar today.</div>')
+        parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No PREMIUM/OPTIMAL legs cleared the bar today.</div>')
         parts.append(_EMAIL_WRAP_CLOSE)
         return "".join(parts)
 
     for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
         matchups = by_sport[sport]
         total_legs = sum(len(v) for v in matchups.values())
-        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#00e5ff;text-transform:uppercase;'
-                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,229,255,.25);padding-bottom:4px">'
+        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#0090a8;text-transform:uppercase;'
+                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,144,168,.3);padding-bottom:4px">'
                       f'{_esc(SPORT_DISPLAY_NAME.get(sport, sport))} ({total_legs})</div>')
         for matchup, legs in matchups.items():
             parts.append('<div style="background:#14001f;border-radius:6px;padding:12px 14px;margin-bottom:10px">')
@@ -666,8 +671,8 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
                     bits.append(_esc(mc_summary))
                 if best:
                     bits.append(f'Best market value on this game: {_esc(best["label"])} ({TIER_LABEL.get(best.get("tierN"), "?")})')
-                parts.append(f'<div style="border-top:1px solid rgba(255,255,255,.08);margin-top:8px;padding-top:8px;'
-                              f'font-size:12px;color:#999;line-height:1.5">{"<br>".join(bits)}</div>')
+                parts.append(f'<div style="border-top:1px solid rgba(255,255,255,.12);margin-top:8px;padding-top:8px;'
+                              f'font-size:12px;color:#bbb;line-height:1.5">{"<br>".join(bits)}</div>')
             parts.append('</div>')
     parts.append(_EMAIL_WRAP_CLOSE)
     return "".join(parts)

@@ -23,8 +23,8 @@ SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 def _caption_block(title: str, text: str) -> str:
     html_text = text.replace("\n", "<br>")
     return (
-        f'<h3 style="margin-bottom:4px;color:#fff">{title}</h3>'
-        f'<div style="background:#14001f;border-radius:6px;padding:12px 16px;color:#ddd;'
+        f'<h3 style="margin-bottom:4px;color:#1a1a2e">{title}</h3>'
+        f'<div style="background:#14001f;border-radius:6px;padding:12px 16px;color:#eee;'
         f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
     )
 

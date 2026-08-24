@@ -13,19 +13,31 @@ GMAIL_USER is the sending account (also the account the App Password was
 generated for -- these are tightly coupled, changing one without the other
 breaks auth, so this is a plain constant rather than a second secret).
 
-Every email sent through send_email() automatically gets the CLAIRVOYANCE
-/ ADVANCED SPORTS INTELLIGENCE ENGINE brand header prepended -- callers
-don't add it themselves. Callers SHOULD still wrap their own html_body in
-EMAIL_WRAP_OPEN/EMAIL_WRAP_CLOSE (the shared dark-card body chrome) so
-the header flows into the body with no visual seam -- send_email() only
-owns the header, not the body wrapper, since some callers build multi-
-part content around it.
+Every caller wraps its own html_body in EMAIL_WRAP_OPEN/EMAIL_WRAP_CLOSE
+before passing it to send_email() -- EMAIL_WRAP_OPEN already contains the
+CLAIRVOYANCE brand header. Two deliberate regions inside one outer
+wrapper, applied identically on every send (not something each caller
+re-decides): a header band carrying the site's own background image
+(matches clairvoyanceengine.info's look, holds only the logo), and a
+plain white body band beneath it where the caller's actual content
+(picks, results, whatever) renders -- picks read far better against a
+clean white background than against a busy image, and individual pick/
+leg cards (still their own dark panels, see auto_lock_settle.py) pop
+more against white than they did against the old all-dark card.
+
+The header logo is a real PNG (StandardLogo.png, hosted live at
+clairvoyanceengine.info), not styled text -- text-shadow glow and the
+Orbitron font are both unreliable in HTML email (Outlook strips
+text-shadow outright; custom @font-face/Google Fonts links are stripped
+by most clients including Gmail), so what rendered as flat, wrong-font
+text in a real inbox is the exact same asset the site itself uses for
+its own logo, guaranteed to render pixel-correct anywhere images display
+at all.
 
 Usage:
   from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE
   ok, msg = send_email("Subject", "recipient@example.com", EMAIL_WRAP_OPEN + "<p>html body</p>" + EMAIL_WRAP_CLOSE)
-  ok, msg = send_email("Subject", "recipient@example.com", "<p>html body</p>", attachments=[Path("card.png")])
-  ok, msg = send_email("Subject", ["a@x.com", "b@x.com"], "<p>html body</p>")  # BCC'd -- see note below
+  ok, msg = send_email("Subject", ["a@x.com", "b@x.com"], EMAIL_WRAP_OPEN + "<p>html body</p>" + EMAIL_WRAP_CLOSE)  # BCC'd -- see note below
 """
 from __future__ import annotations
 import os
@@ -39,14 +51,6 @@ from pathlib import Path
 GMAIL_USER = "clairvoyanceengine@gmail.com"
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
-# Same wordmark treatment as the live site and the local subscriber admin
-# page: "CLAIRVOYANCE" in neon magenta, "ADVANCED SPORTS INTELLIGENCE
-# ENGINE" in neon cyan. Prepended here (not in each caller) so every email
-# this system sends -- locks, settlement, social cards, ad-hoc -- carries
-# it automatically regardless of sport, with nothing to remember to add
-# per email builder. text-shadow (the glow) is stripped by some email
-# clients (Outlook, some Gmail views); the plain magenta/cyan colors
-# still come through everywhere, which is the part that actually matters.
 # Same background image the live site (clairvoyanceengine.info) uses
 # behind its own body -- referenced by its real public URL (not a data
 # URI: emails already run large from attachments, and this keeps the
@@ -59,28 +63,30 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 _BG_STYLE = ("background-color:#16122a;background-image:url('https://clairvoyanceengine.info/bg.jpg');"
              "background-size:cover;background-position:center center;")
 
-_BRAND_HEADER = (
-    f'<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-    f'max-width:640px;margin:0 auto;text-align:center;padding:20px 16px 16px;{_BG_STYLE}">'
-    '<div style="font-size:24px;font-weight:900;letter-spacing:4px;color:#f000ff;'
-    'text-shadow:0 0 10px #f000ff,0 0 24px rgba(240,0,255,.6)">CLAIRVOYANCE</div>'
-    '<div style="font-size:11px;letter-spacing:3px;color:#00f0ff;'
-    'text-shadow:0 0 8px rgba(0,240,255,.5);margin-top:5px;text-transform:uppercase">'
-    'Advanced Sports Intelligence Engine</div>'
-    '</div>'
+# StandardLogo.png -- "CLAIRVOYANCE" in neon magenta + "ADVANCED SPORTS
+# INTELLIGENCE ENGINE" in neon cyan, already rendered as pixels on the
+# same diamond-grid background the site itself uses. A real PNG instead
+# of styled text on purpose: text-shadow (the glow) is stripped outright
+# by Outlook and inconsistently elsewhere, and Google Fonts links are
+# stripped by most email clients including Gmail, so styled text renders
+# as flat, wrong-font text in a real inbox -- an image is immune to both.
+_HEADER_IMG = (
+    '<img src="https://clairvoyanceengine.info/StandardLogo.png" width="320" '
+    'alt="Clairvoyance — Advanced Sports Intelligence Engine" '
+    'style="display:block;width:100%;max-width:320px;height:auto;margin:0 auto 16px">'
 )
 
-# Shared body chrome -- every email's actual content renders inside this
-# same card shell (not just the header above it) so every script that
-# sends mail through here reads as one consistent product instead of
-# some emails carrying the site's look and others dropping into a plain
-# flat background right below the branded header. Callers wrap their
-# own html_body with EMAIL_WRAP_OPEN/EMAIL_WRAP_CLOSE before passing it
-# to send_email() -- kept as two pieces (not done automatically here)
-# because some callers build multi-part content around it.
-EMAIL_WRAP_OPEN = (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-                    f'max-width:640px;margin:0 auto;color:#e8e8e8;padding:20px 16px;{_BG_STYLE}">')
-EMAIL_WRAP_CLOSE = '</div>'
+# Shared chrome every email renders inside: an outer layout-only wrapper,
+# a header band (site background image + logo), then a white body band
+# where the caller's own content goes. Two regions, always the same two
+# regions, so "header looks like the site, body is clean and readable"
+# is a fixed structural rule instead of something that can drift.
+EMAIL_WRAP_OPEN = (
+    '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto">'
+    f'<div style="{_BG_STYLE}padding:24px 16px 20px;text-align:center">{_HEADER_IMG}</div>'
+    '<div style="background:#ffffff;color:#1a1a2e;padding:20px 16px">'
+)
+EMAIL_WRAP_CLOSE = '</div></div>'
 
 
 def send_email(subject: str, to: str | list[str], html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
@@ -101,7 +107,7 @@ def send_email(subject: str, to: str | list[str], html_body: str, attachments: l
     msg["From"] = f"Clairvoyance Engine <{GMAIL_USER}>"
     msg["To"] = recipients[0] if len(recipients) == 1 else GMAIL_USER
     msg["Subject"] = subject
-    msg.attach(MIMEText(_BRAND_HEADER + html_body, "html"))
+    msg.attach(MIMEText(html_body, "html"))
 
     for path in attachments or []:
         path = Path(path)
