@@ -1,0 +1,40 @@
+name: Send Demo Locks Emails
+
+# One-off/manual: sends a demo locks email for each of the 8 sport
+# products using realistic synthetic sample picks (scripts/send_demo_emails.py),
+# not live game data -- useful for previewing the email format/brand
+# header regardless of which leagues are actually in-season today.
+# No Playwright needed (unlike auto-lock-settle.yml) since this never
+# touches the live app or Supabase, just sends email.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: 'Recipient email (blank = LOCKS_EMAIL_TO/SOCIAL_CARD_EMAIL_TO secret)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send-demo-emails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Send demo emails
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/send_demo_emails.py ${{ inputs.to != '' && format('--to {0}', inputs.to) || '' }}
