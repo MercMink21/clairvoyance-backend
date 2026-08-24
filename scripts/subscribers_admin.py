@@ -34,11 +34,22 @@ from _subscribers import (
 )
 
 PORT = 8899
+# Same icon the main app uses for its own iOS home-screen add (see
+# docs/app.html's apple-touch-icon link) -- so this admin page's Home
+# Screen icon matches the real app's instead of Safari's generic favicon
+# screenshot fallback.
+ICON_PATH = Path(__file__).resolve().parent.parent / "docs" / "icon-1080.png"
 
 PAGE = """<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CLAIRVOYANCE">
+<meta name="theme-color" content="#020008">
+<link rel="apple-touch-icon" sizes="1080x1080" href="/icon-1080.png">
 <title>Clairvoyance — Subscribers</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -78,8 +89,8 @@ body{
   clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
 }
 .sh{font-family:var(--orb);font-size:16px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-  margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid rgba(0,240,255,.45);
-  text-shadow:0 0 8px rgba(0,240,255,.4);color:var(--nc)}
+  margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid rgba(240,0,255,.45);
+  text-shadow:0 0 8px rgba(240,0,255,.4);color:var(--pc)}
 label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1.5px;color:var(--t3);
   text-transform:uppercase;margin-bottom:6px}
 input[type=email]{
@@ -131,6 +142,13 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
 .ptag.low{background:var(--h3);border-color:var(--hc);color:var(--hc)}
 .ptag .x{cursor:pointer;opacity:.6;font-family:var(--ex);font-size:13px;line-height:1;transition:opacity .15s}
 .ptag .x:hover{opacity:1}
+.prodblock{margin-bottom:18px}
+.prodblock:last-child{margin-bottom:0}
+.prodblock h3{font-family:var(--orb);font-size:14px;color:var(--nc);margin:0 0 8px;
+  text-transform:uppercase;letter-spacing:2px}
+.priceval{color:var(--gc);font-weight:700}
+.priceavg{color:var(--t3);font-size:11px}
+.pricebest{background:var(--p3);border-left:2px solid var(--pc)}
 </style>
 </head>
 <body>
@@ -170,6 +188,26 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
     <div class="count-note" id="countNote"></div>
     <div id="allList"></div>
   </div>
+
+  <div class="card">
+    <div class="sh">Subscribers by Product</div>
+    <div id="byProductList"></div>
+  </div>
+
+  <div class="card">
+    <div class="sh">Pricing</div>
+    <table>
+      <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
+      <tr><td>1</td><td class="priceval">$20</td><td class="priceavg">$20.00</td></tr>
+      <tr><td>2</td><td class="priceval">$30</td><td class="priceavg">$15.00</td></tr>
+      <tr><td>3</td><td class="priceval">$38</td><td class="priceavg">$12.67</td></tr>
+      <tr><td>4</td><td class="priceval">$45</td><td class="priceavg">$11.25</td></tr>
+      <tr><td>5</td><td class="priceval">$55</td><td class="priceavg">$11.00</td></tr>
+      <tr><td>6</td><td class="priceval">$61</td><td class="priceavg">$10.17</td></tr>
+      <tr><td>7</td><td class="priceval">$66</td><td class="priceavg">$9.43</td></tr>
+      <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$70</td><td class="priceavg">$8.75</td></tr>
+    </table>
+  </div>
 </div>
 
 <script>
@@ -184,6 +222,7 @@ async function loadAll() {
     'SUBSCRIBER ACCESS · ' + data.expiry_days + '-DAY WINDOWS';
   renderChips();
   renderAllList(data.data);
+  renderByProduct(data.data);
 }
 
 function renderChips() {
@@ -232,6 +271,23 @@ function renderAllList(data) {
           <span class="x" onclick="doRemove('${p.product}','${escapeAttr(g.email)}')" title="Remove ${p.product}">×</span>
         </span>`).join('')}</div>
     </div>`).join('') + '</div>';
+}
+
+function renderByProduct(data) {
+  const el = document.getElementById('byProductList');
+  el.innerHTML = PRODUCTS.map(p => {
+    const rows = data[p] || [];
+    const body = rows.length
+      ? `<table><tr><th>Email</th><th>Days left</th><th>Added</th><th></th></tr>` +
+        rows.map(r => `<tr>
+          <td>${escapeHtml(r.email)}</td>
+          <td class="${daysClass(r.days_left)}">${r.days_left}</td>
+          <td>${r.added.slice(0,10)}</td>
+          <td><button class="btn btn-h" onclick="doRemove('${p}','${escapeAttr(r.email)}')">Remove</button></td>
+        </tr>`).join('') + `</table>`
+      : `<div class="empty">no active subscribers</div>`;
+    return `<div class="prodblock"><h3>${p} (${rows.length})</h3>${body}</div>`;
+  }).join('');
 }
 
 function escapeHtml(s) {
@@ -326,6 +382,18 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self._html(PAGE)
+        elif parsed.path == "/icon-1080.png":
+            try:
+                body = ICON_PATH.read_bytes()
+            except Exception:
+                self._json({"error": "icon not found"}, 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
         elif parsed.path == "/api/subscribers":
             self._json({
                 "products": list(PRODUCTS),
