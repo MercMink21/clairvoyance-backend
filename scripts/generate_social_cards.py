@@ -472,14 +472,17 @@ def get_sport_performance(page) -> dict | None:
           // Deliberate copy of renderHomePage's own leagueMap (docs/app.html)
           // -- no shared constant between the two, so if a league is ever
           // added/renamed there, update both or they'll silently drift on
-          // which leagues this snapshot covers.
+          // which leagues this snapshot covers. World Cup deliberately
+          // dropped from THIS copy only (unlike the home page's own table,
+          // which keeps it) -- not a real recurring league on a Last
+          // Month/All Time snapshot the way the other rows are.
           const leagueMap = [
             {lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},{lbl:'MLB',codes:['MLB']},
             {lbl:'NHL',codes:['NHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
             {lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},{lbl:'KHL',codes:['KHL']},
             {lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},{lbl:'CBB',codes:['CBB','NCAAB']},
             {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},
-            {lbl:'World Cup',codes:['SOC','WC']},{lbl:'Champions League',codes:['CL','CH']},
+            {lbl:'Champions League',codes:['CL','CH']},
             {lbl:'Premier League',codes:['PL']},{lbl:'La Liga',codes:['LIGA']},
             {lbl:'Bundesliga',codes:['BUND','BL']},{lbl:'MLS',codes:['MLS']},{lbl:'Serie A',codes:['SERIEA']},
           ];
