@@ -109,13 +109,24 @@ table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px
 th{text-align:left;color:var(--t3);font-weight:400;letter-spacing:1px;text-transform:uppercase;
   font-size:11px;padding:7px 8px;border-bottom:1px solid rgba(240,0,255,.25)}
 td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
-.prodblock{margin-bottom:18px}
-.prodblock h3{font-family:var(--orb);font-size:14px;color:var(--nc);margin:0 0 8px;
-  text-transform:uppercase;letter-spacing:2px}
 .empty{color:var(--t3);font-family:var(--mono);font-size:12px;padding:6px 8px}
 .days{color:var(--gc);font-weight:700}
 .days.low{color:var(--hc)}
 .expired-note{font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.5px}
+.count-note{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.5px;margin:-6px 0 14px}
+.emlist{display:flex;flex-direction:column}
+.emrow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.emrow:last-child{border-bottom:none;padding-bottom:0}
+.emaddr{font-family:var(--mono);font-size:15px;color:var(--t);margin-bottom:8px}
+.ptags{display:flex;flex-wrap:wrap;gap:7px}
+.ptag{
+  display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+  letter-spacing:1px;text-transform:uppercase;background:var(--p3);border:1px solid var(--pc);
+  color:var(--pc);border-radius:2px;padding:4px 9px;
+}
+.ptag.low{background:var(--h3);border-color:var(--hc);color:var(--hc)}
+.ptag .x{cursor:pointer;opacity:.6;font-family:var(--ex);font-size:13px;line-height:1;transition:opacity .15s}
+.ptag .x:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -152,6 +163,7 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
 
   <div class="card">
     <div class="sh">All Active Subscribers</div>
+    <div class="count-note" id="countNote"></div>
     <div id="allList"></div>
   </div>
 </div>
@@ -184,21 +196,38 @@ function toggleChip(p) {
   renderChips();
 }
 
+function groupByEmail(data) {
+  const byEmail = {};
+  for (const p of PRODUCTS) {
+    for (const r of (data[p] || [])) {
+      (byEmail[r.email] = byEmail[r.email] || []).push({ product: p, days_left: r.days_left, added: r.added });
+    }
+  }
+  return Object.keys(byEmail).sort().map(email => ({
+    email,
+    products: byEmail[email].sort((a, b) => a.days_left - b.days_left),
+  }));
+}
+
 function renderAllList(data) {
   const el = document.getElementById('allList');
-  el.innerHTML = PRODUCTS.map(p => {
-    const rows = data[p] || [];
-    const body = rows.length
-      ? `<table><tr><th>Email</th><th>Days left</th><th>Added</th><th></th></tr>` +
-        rows.map(r => `<tr>
-          <td>${escapeHtml(r.email)}</td>
-          <td class="${daysClass(r.days_left)}">${r.days_left}</td>
-          <td>${r.added.slice(0,10)}</td>
-          <td><button class="btn btn-h" onclick="doRemove('${p}','${escapeAttr(r.email)}')">Remove</button></td>
-        </tr>`).join('') + `</table>`
-      : `<div class="empty">no active subscribers</div>`;
-    return `<div class="prodblock"><h3>${p} (${rows.length})</h3>${body}</div>`;
-  }).join('');
+  const grouped = groupByEmail(data);
+  const noteEl = document.getElementById('countNote');
+  if (!grouped.length) {
+    el.innerHTML = '<div class="empty">No active subscribers.</div>';
+    noteEl.textContent = '';
+    return;
+  }
+  const totalSubs = grouped.reduce((n, g) => n + g.products.length, 0);
+  noteEl.textContent = `${grouped.length} email${grouped.length === 1 ? '' : 's'} · ${totalSubs} active subscription${totalSubs === 1 ? '' : 's'}`;
+  el.innerHTML = '<div class="emlist">' + grouped.map(g => `
+    <div class="emrow">
+      <div class="emaddr">${escapeHtml(g.email)}</div>
+      <div class="ptags">${g.products.map(p => `
+        <span class="ptag${p.days_left <= 5 ? ' low' : ''}">${p.product.toUpperCase()} · ${p.days_left}D
+          <span class="x" onclick="doRemove('${p.product}','${escapeAttr(g.email)}')" title="Remove ${p.product}">×</span>
+        </span>`).join('')}</div>
+    </div>`).join('') + '</div>';
 }
 
 function escapeHtml(s) {
