@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
+from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
 
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 
@@ -22,8 +23,8 @@ SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 def _caption_block(title: str, text: str) -> str:
     html_text = text.replace("\n", "<br>")
     return (
-        f'<h3 style="margin-bottom:4px">{title}</h3>'
-        f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
+        f'<h3 style="margin-bottom:4px;color:#fff">{title}</h3>'
+        f'<div style="background:#14001f;border-radius:6px;padding:12px 16px;color:#ddd;'
         f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
     )
 
@@ -44,13 +45,14 @@ def main() -> None:
 
     file_paths = [Path(f) for f in args.files]
     filename_list_html = "".join(f"<li>{p.name}</li>" for p in file_paths)
-    body_html = f"<p>{args.intro}</p><p>Attached:</p><ul>{filename_list_html}</ul>"
+    body_html = _EMAIL_WRAP_OPEN + f"<p>{args.intro}</p><p>Attached:</p><ul>{filename_list_html}</ul>"
     if args.caption_ig or args.caption_x:
         body_html += "<p>Captions below, ready to copy-paste:</p>"
         if args.caption_ig:
             body_html += _caption_block("Instagram caption", args.caption_ig)
         if args.caption_x:
             body_html += _caption_block("X caption", args.caption_x)
+    body_html += _EMAIL_WRAP_CLOSE
 
     ok, msg = _send_gmail(args.subject, recipient, body_html, attachments=file_paths)
     if not ok:

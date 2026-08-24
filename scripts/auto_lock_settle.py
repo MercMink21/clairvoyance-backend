@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
+from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
 from _subscribers import recipients_for, OWNER_EMAIL  # noqa: E402
 
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
@@ -243,11 +244,9 @@ def _esc(s) -> str:
     return str(s if s is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-# Shared email chrome -- both emails render inside this same dark card
-# shell so they read as one product, not two differently-styled scripts.
-_EMAIL_WRAP_OPEN = ('<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-                     'max-width:640px;margin:0 auto;background:#0a0014;color:#e8e8e8;padding:20px 16px">')
-_EMAIL_WRAP_CLOSE = '</div>'
+# _EMAIL_WRAP_OPEN/_EMAIL_WRAP_CLOSE imported from _gmail_email above --
+# shared across every script that sends mail (see that module for why),
+# not just the two locks/settlement emails built here.
 _OUTCOME_COLOR = {"win": "#00e676", "loss": "#ff3b5c", "push": "#ffb300"}
 
 

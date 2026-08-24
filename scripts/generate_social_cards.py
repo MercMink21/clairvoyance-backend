@@ -78,6 +78,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
+from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
 
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
@@ -784,8 +785,8 @@ def build_covers_caption() -> dict[str, str]:
 def _caption_block(title: str, text: str) -> str:
     html_text = text.replace("\n", "<br>")
     return (
-        f'<h3 style="margin-bottom:4px">{title}</h3>'
-        f'<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;'
+        f'<h3 style="margin-bottom:4px;color:#fff">{title}</h3>'
+        f'<div style="background:#14001f;border-radius:6px;padding:12px 16px;color:#ddd;'
         f'font-family:monospace;font-size:13px;white-space:pre-wrap;margin-bottom:20px">{html_text}</div>'
     )
 
@@ -796,11 +797,13 @@ def send_email(subject: str, cards: list[Path], captions: dict[str, str], intro:
         return
     filename_list_html = "".join(f"<li>{p.name}</li>" for p in cards)
     body_html = (
+        _EMAIL_WRAP_OPEN +
         f"<p>{intro}</p>"
         f"<p>Cards attached:</p><ul>{filename_list_html}</ul>"
         f"<p>Captions below, ready to copy-paste:</p>"
         f"{_caption_block('Instagram caption', captions['instagram'])}"
         f"{_caption_block('X caption', captions['x'])}"
+        + _EMAIL_WRAP_CLOSE
     )
     ok, msg = _send_gmail(subject, SOCIAL_CARD_EMAIL_TO, body_html, attachments=cards)
     if not ok:
