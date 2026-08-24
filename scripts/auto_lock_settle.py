@@ -54,7 +54,15 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
 from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
+from _gmail_email import EMAIL_WRAP_CLOSE_DISCLOSED as _LOCKS_EMAIL_CLOSE  # noqa: E402
 from _subscribers import recipients_for, OWNER_EMAIL  # noqa: E402
+
+# _LOCKS_EMAIL_CLOSE (the disclaimer-bearing close, defined in
+# _gmail_email.py so _subscribers.py's receipt email can share the exact
+# same copy without a circular import) is used at BOTH return points in
+# build_locks_email_html() below, including the "no legs qualified
+# today" early return -- structurally impossible to add a new return
+# path that skips it.
 
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 # Separate from SOCIAL_CARD_EMAIL_TO on purpose -- this is a personal daily
@@ -652,7 +660,7 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
 
     if not qualifying:
         parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No PREMIUM/OPTIMAL legs cleared the bar today.</div>')
-        parts.append(_EMAIL_WRAP_CLOSE)
+        parts.append(_LOCKS_EMAIL_CLOSE)
         return "".join(parts)
 
     def _render_sport_section(sport: str) -> None:
@@ -702,7 +710,7 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
         for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
             _render_sport_section(sport)
 
-    parts.append(_EMAIL_WRAP_CLOSE)
+    parts.append(_LOCKS_EMAIL_CLOSE)
     return "".join(parts)
 
 

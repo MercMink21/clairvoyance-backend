@@ -30,7 +30,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, active_subscribers,
-    products_for_email, analytics_summary, EXPIRY_DAYS,
+    products_for_email, analytics_summary, send_receipt_email, EXPIRY_DAYS,
 )
 
 PORT = 8899
@@ -475,6 +475,12 @@ async function doAdd() {
     const j = await res.json();
     results.push(j.message || j.error);
   }
+  const receiptRes = await fetch('/api/receipt', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({email})
+  });
+  const receiptJ = await receiptRes.json();
+  results.push(receiptJ.ok ? 'receipt sent' : `receipt not sent (${receiptJ.message})`);
   msgEl.className = 'msg ok';
   msgEl.textContent = results.join(' · ');
   selectedProducts.clear();
@@ -591,6 +597,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "invalid product/email"}, 400)
                 return
             self._json({"ok": True, "message": remove_subscriber(product, email)})
+        elif parsed.path == "/api/receipt":
+            # Called once by the frontend after its whole add-loop
+            # finishes (doAdd() can fire several /api/add calls in a row
+            # for one multi-product signup) -- one receipt per "Add"
+            # click, showing the final bundle, not one per product.
+            if not email:
+                self._json({"error": "invalid email"}, 400)
+                return
+            ok, msg = send_receipt_email(email)
+            self._json({"ok": ok, "message": msg})
         else:
             self._json({"error": "not found"}, 404)
 

@@ -30,8 +30,12 @@ bundled as one purchase).
 from __future__ import annotations
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gmail_email import send_email as _send_gmail, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE_DISCLOSED  # noqa: E402
 
 SUBSCRIBERS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscribers.json"
 EVENTS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscriber_events.json"
@@ -495,3 +499,61 @@ def products_for_email(email: str) -> list[dict]:
                 "active": days_left > 0,
             })
     return out
+
+
+def send_receipt_email(email: str) -> tuple[bool, str]:
+    """Confirmation-of-access receipt, sent after add_subscriber() adds or
+    renews a product for this email. Reflects the email's CURRENT full
+    active bundle (via products_for_email()), not just the product(s)
+    touched by whatever call triggered it -- Venmo is the actual payment
+    rail and this system has zero visibility into what was charged, so
+    this is deliberately a receipt of ACCESS (what's live right now, the
+    standard PRICING_BY_COUNT reference price for that bundle size, and
+    each product's expiry date), not a claimed record of a specific
+    payment amount.
+
+    Safe to call after every single add/renew, including mid-batch: each
+    send is independently accurate for the state at that moment, so a
+    multi-product signup done one call at a time (e.g. the web admin
+    tool, which only adds one product per request) still produces a
+    correct, if incremental, trail of receipts -- callers doing a known
+    single-email multi-product batch in one go (manage_subscribers.py's
+    CLI `add`) should instead call this once after the whole batch
+    completes, so the subscriber gets one receipt showing the final
+    bundle instead of N ballooning ones.
+
+    Returns (False, ...) without sending if the email has no active
+    products at all (e.g. add_subscriber() was never actually called,
+    or every entry already lapsed) -- there's nothing true to receipt."""
+    rows = sorted((r for r in products_for_email(email) if r["active"]), key=lambda r: r["product"])
+    if not rows:
+        return False, f"{email} has no active products -- nothing to receipt"
+
+    n = len(rows)
+    price = PRICING_BY_COUNT.get(min(n, 8), 0)
+    now = _now()
+    expiry_rows = "".join(
+        f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12);font-size:15px;color:#eee">'
+        f'<strong style="color:#fff">{r["product"].upper()}</strong> — '
+        f'<span style="color:#bbb">active through '
+        f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
+        f'</div>'
+        for r in rows
+    )
+    subject = f"Clairvoyance — Receipt: {n} product{'s' if n != 1 else ''} active (${price}/mo)"
+    body = (
+        EMAIL_WRAP_OPEN +
+        '<div style="font-size:16px;color:#1a1a2e;margin-bottom:4px">'
+        'Thanks for subscribing to Clairvoyance Engine.</div>'
+        f'<div style="font-size:13px;color:#777;margin-bottom:16px">Confirmed {now.strftime("%b %d, %Y")}</div>'
+        f'<div style="background:#14001f;border-radius:6px;padding:4px 14px;margin-bottom:16px">{expiry_rows}</div>'
+        f'<div style="font-size:14px;color:#1a1a2e;margin-bottom:4px">'
+        f'Standard price for {n} simultaneous product{"s" if n != 1 else ""}: <strong>${price}/month</strong></div>'
+        '<div style="font-size:13px;color:#777;line-height:1.6">'
+        'This confirms the access currently live on your account -- not a record of a specific '
+        'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
+        f'for another {EXPIRY_DAYS} days whenever you pay again; reply to this email with any '
+        'questions.</div>' +
+        EMAIL_WRAP_CLOSE_DISCLOSED
+    )
+    return _send_gmail(subject, email, body)

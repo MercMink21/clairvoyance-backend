@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, list_subscribers,
-    products_for_email, EXPIRY_DAYS,
+    products_for_email, send_receipt_email, EXPIRY_DAYS,
 )
 
 
@@ -74,6 +74,8 @@ def main() -> None:
                 sys.exit(1)
         for product in [args[1], *args[3:]]:
             print(add_subscriber(product, email))
+        ok, msg = send_receipt_email(email)
+        print(f"Receipt sent to {email}" if ok else f"Receipt NOT sent: {msg}")
         return
 
     if cmd == "check":

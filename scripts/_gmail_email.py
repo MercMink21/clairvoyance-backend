@@ -49,6 +49,24 @@ EMAIL_WRAP_OPEN = (
 )
 EMAIL_WRAP_CLOSE = '</div>'
 
+# Same copy as clairvoyance-landing's footer disclaimer (docs/index.html
+# .footer-disc) -- kept word-for-word so the legal language reads
+# identically wherever a subscriber encounters it (site footer, every
+# picks/receipt email). Every email that reaches a paying subscriber
+# should close through EMAIL_WRAP_CLOSE_DISCLOSED rather than the plain
+# EMAIL_WRAP_CLOSE, so it's structurally present, not something each
+# caller has to remember to append. Internal-only emails (settlement
+# summary, ad-hoc admin sends) can keep using plain EMAIL_WRAP_CLOSE.
+DISCLAIMER_HTML = (
+    '<div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e5e5;'
+    'font-size:11px;line-height:1.5;color:#999">'
+    'Clairvoyance Engine outputs are probabilistic projections for informational and '
+    'analytical purposes only. Model outputs do not constitute financial or betting advice. '
+    'Past model performance does not guarantee future results. Always gamble responsibly.'
+    '</div>'
+)
+EMAIL_WRAP_CLOSE_DISCLOSED = DISCLAIMER_HTML + EMAIL_WRAP_CLOSE
+
 
 def send_email(subject: str, to: str | list[str], html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
     """Never raises -- returns (success, message) so callers can log the
