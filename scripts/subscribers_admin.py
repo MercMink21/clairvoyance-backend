@@ -74,9 +74,8 @@ body{
   clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
 }
 .sh{font-family:var(--orb);font-size:16px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-  margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid rgba(240,0,255,.45);
-  text-shadow:0 0 8px rgba(240,0,255,.3);color:var(--t)}
-.sh .n{color:var(--nc)}
+  margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid rgba(0,240,255,.45);
+  text-shadow:0 0 8px rgba(0,240,255,.4);color:var(--nc)}
 label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1.5px;color:var(--t3);
   text-transform:uppercase;margin-bottom:6px}
 input[type=email]{
@@ -127,7 +126,7 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
   </div>
 
   <div class="card">
-    <div class="sh">Add <span class="n">/</span> Renew</div>
+    <div class="sh">Add / Renew</div>
     <div class="row">
       <div>
         <label>Email</label>
@@ -141,7 +140,7 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
   </div>
 
   <div class="card">
-    <div class="sh">Check <span class="n">an</span> Email</div>
+    <div class="sh">Check an Email</div>
     <div class="row">
       <div>
         <input type="email" id="checkEmail" placeholder="someone@example.com">
