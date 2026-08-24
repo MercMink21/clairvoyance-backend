@@ -67,115 +67,119 @@ PAGE = """<!doctype html>
   --t:#f0f6ff;--t2:#c8d8f0;--t3:#9aabb8;
   --orb:'Orbitron',sans-serif;--mono:'Share Tech Mono',monospace;--ex:'Exo 2',sans-serif;
 }
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;max-width:100%}
+html{-webkit-text-size-adjust:100%}
 body{
-  font-family:var(--ex);color:var(--t);background-color:#0d0d0d;
+  font-family:var(--ex);font-size:16px;color:var(--t);background-color:#0d0d0d;
   background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(-45deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 1px,transparent 1px,transparent 50%),repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),repeating-linear-gradient(90deg,rgba(0,0,0,.25) 0px,rgba(0,0,0,.25) 1px,transparent 1px,transparent 22px),radial-gradient(ellipse at 0% 0%,rgba(240,0,255,.10) 0%,transparent 50%),radial-gradient(ellipse at 100% 0%,rgba(77,121,255,.08) 0%,transparent 45%),radial-gradient(ellipse at 50% 100%,rgba(0,240,255,.06) 0%,transparent 45%);
   background-size:22px 22px,22px 22px,22px 22px,22px 22px,100% 100%,100% 100%,100% 100%;
   background-attachment:fixed;
-  min-height:100vh;padding:30px 20px 70px;
+  min-height:100vh;padding:30px 20px 70px;overflow-x:hidden;
 }
 .wrap{max-width:880px;margin:0 auto}
 .hdr{text-align:center;margin-bottom:30px}
-.logo{font-family:var(--orb);font-weight:900;font-size:clamp(22px,4.5vw,34px);letter-spacing:6px;
+.logo{font-family:var(--orb);font-weight:900;font-size:clamp(24px,6vw,36px);letter-spacing:6px;
   color:#f000ff;text-shadow:0 0 10px #f000ff,0 0 28px rgba(240,0,255,.75),0 0 60px rgba(240,0,255,.35);
   animation:logoPulse 4s ease-in-out infinite}
 @keyframes logoPulse{0%,100%{text-shadow:0 0 10px #f000ff,0 0 28px rgba(240,0,255,.75),0 0 60px rgba(240,0,255,.35)}50%{text-shadow:0 0 16px #f000ff,0 0 42px rgba(240,0,255,.9),0 0 90px rgba(240,0,255,.55)}}
-.subtitle{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--t3);text-transform:uppercase;margin-top:8px}
+.subtitle{font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--nc);text-transform:uppercase;
+  margin-top:10px;text-shadow:0 0 8px rgba(0,240,255,.4)}
 .card{
   background:rgba(10,4,22,0.92);backdrop-filter:blur(2px);border:1px solid rgba(77,40,120,.55);
   box-shadow:0 0 8px rgba(240,0,255,.05),inset 0 0 8px rgba(0,0,0,.3);border-radius:3px;
-  padding:18px 20px;margin-bottom:20px;position:relative;overflow:hidden;
+  padding:20px;margin-bottom:20px;position:relative;overflow:hidden;
   clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
 }
-.sh{font-family:var(--orb);font-size:16px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-  margin:0 0 14px;padding-bottom:7px;border-bottom:1px solid rgba(240,0,255,.45);
+.sh{font-family:var(--orb);font-size:19px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  margin:0 0 16px;padding-bottom:8px;border-bottom:1px solid rgba(240,0,255,.45);
   text-shadow:0 0 8px rgba(240,0,255,.4);color:var(--pc)}
-label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:1.5px;color:var(--t3);
-  text-transform:uppercase;margin-bottom:6px}
+label{display:block;font-family:var(--mono);font-size:13px;letter-spacing:1.5px;color:var(--t3);
+  text-transform:uppercase;margin-bottom:7px}
 input[type=email]{
-  background:var(--b1);border:1px solid var(--w2);color:var(--t);border-radius:2px;padding:10px 12px;
-  font-family:var(--mono);font-size:14px;width:100%;box-sizing:border-box;transition:border-color .15s;
+  background:var(--b1);border:1px solid var(--w2);color:var(--t);border-radius:2px;padding:12px;
+  font-family:var(--mono);font-size:16px;width:100%;box-sizing:border-box;transition:border-color .15s;
 }
 input[type=email]:focus{outline:none;border-color:var(--pc);box-shadow:0 0 8px rgba(240,0,255,.25)}
 .row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end}
 .row > div{flex:1;min-width:200px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .chip{
-  font-family:var(--mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;
+  font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;
   background:transparent;border:1px solid var(--w2);color:var(--t3);border-radius:2px;
-  padding:6px 12px;cursor:pointer;user-select:none;transition:all .15s;
+  padding:7px 13px;cursor:pointer;user-select:none;transition:all .15s;
 }
 .chip.on{background:var(--p3);border-color:var(--pc);color:var(--pc);text-shadow:0 0 8px rgba(240,0,255,.5)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:4px;font-family:var(--mono);
   letter-spacing:1.5px;text-transform:uppercase;border:none;cursor:pointer;border-radius:2px;
   transition:all .15s;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));
-  padding:10px 20px;font-size:13px;font-weight:700;
+  padding:12px 22px;font-size:15px;font-weight:700;
 }
 .btn:active{filter:brightness(1.25);transform:scale(.97)}
 .btn-p{background:linear-gradient(135deg,var(--pc),var(--ic));color:#fff}
 .btn-n{background:linear-gradient(135deg,var(--nc),var(--ic));color:#000}
-.btn-h{background:var(--hc);color:#fff;padding:5px 10px;font-size:11px}
-.msg{font-family:var(--mono);font-size:12px;margin-top:10px;min-height:14px;letter-spacing:.5px}
+.btn-h{background:var(--hc);color:#fff;padding:6px 12px;font-size:13px}
+.msg{font-family:var(--mono);font-size:14px;margin-top:10px;min-height:16px;letter-spacing:.5px}
 .msg.ok{color:var(--rc)}
 .msg.err{color:var(--hc)}
-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+.tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;min-width:420px;border-collapse:collapse;font-family:var(--mono);font-size:15px}
 th{text-align:left;color:var(--t3);font-weight:400;letter-spacing:1px;text-transform:uppercase;
-  font-size:11px;padding:7px 8px;border-bottom:1px solid rgba(240,0,255,.25)}
-td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
-.empty{color:var(--t3);font-family:var(--mono);font-size:12px;padding:6px 8px}
+  font-size:12px;padding:8px;border-bottom:1px solid rgba(240,0,255,.25);white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2);white-space:nowrap}
+.empty{color:var(--t3);font-family:var(--mono);font-size:14px;padding:6px 8px}
 .days{color:var(--gc);font-weight:700}
 .days.low{color:var(--hc)}
-.expired-note{font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.5px}
-.count-note{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.5px;margin:-6px 0 14px}
+.expired-note{font-family:var(--mono);font-size:13px;color:var(--t3);margin-top:10px;letter-spacing:.5px}
+.count-note{font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;margin:-6px 0 14px}
 .emlist{display:flex;flex-direction:column}
-.emrow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.emrow{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.06)}
 .emrow:last-child{border-bottom:none;padding-bottom:0}
-.emaddr{font-family:var(--mono);font-size:15px;color:var(--t);margin-bottom:8px}
-.ptags{display:flex;flex-wrap:wrap;gap:7px}
+.emaddr{font-family:var(--mono);font-size:17px;color:var(--t);margin-bottom:9px;word-break:break-all}
+.ptags{display:flex;flex-wrap:wrap;gap:8px}
 .ptag{
-  display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+  display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;
   letter-spacing:1px;text-transform:uppercase;background:var(--p3);border:1px solid var(--pc);
-  color:var(--pc);border-radius:2px;padding:4px 9px;
+  color:var(--pc);border-radius:2px;padding:5px 10px;
 }
 .ptag.low{background:var(--h3);border-color:var(--hc);color:var(--hc)}
-.ptag .x{cursor:pointer;opacity:.6;font-family:var(--ex);font-size:13px;line-height:1;transition:opacity .15s}
+.ptag .x{cursor:pointer;opacity:.6;font-family:var(--ex);font-size:15px;line-height:1;transition:opacity .15s}
 .ptag .x:hover{opacity:1}
-.prodblock{margin-bottom:18px}
+.prodblock{margin-bottom:20px}
 .prodblock:last-child{margin-bottom:0}
-.prodblock h3{font-family:var(--orb);font-size:14px;color:var(--nc);margin:0 0 8px;
+.prodblock h3{font-family:var(--orb);font-size:16px;color:var(--nc);margin:0 0 9px;
   text-transform:uppercase;letter-spacing:2px}
 .priceval{color:var(--gc);font-weight:700}
-.priceavg{color:var(--t3);font-size:11px}
+.priceavg{color:var(--t3);font-size:13px}
 .pricebest{background:var(--p3);border-left:2px solid var(--pc)}
+.price-note{font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:.5px;margin:-8px 0 14px}
 
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:18px}
-.stat{background:var(--b1);border:1px solid var(--w2);border-radius:2px;padding:12px 14px}
-.stat-val{font-family:var(--orb);font-size:26px;font-weight:700;color:var(--nc);text-shadow:0 0 10px rgba(0,240,255,.4)}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
+.stat{background:var(--b1);border:1px solid var(--w2);border-radius:2px;padding:14px}
+.stat-val{font-family:var(--orb);font-size:30px;font-weight:700;color:var(--nc);text-shadow:0 0 10px rgba(0,240,255,.4)}
 .stat-val.money{color:var(--gc);text-shadow:0 0 10px rgba(255,221,0,.4)}
-.stat-lbl{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--t3);text-transform:uppercase;margin-top:4px}
-.stat-note{font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:2px}
-.analytics-sub{font-family:var(--orb);font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);
-  margin:20px 0 10px}
+.stat-lbl{font-family:var(--mono);font-size:12px;letter-spacing:1.5px;color:var(--t3);text-transform:uppercase;margin-top:5px}
+.stat-note{font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:2px}
+.analytics-sub{font-family:var(--orb);font-size:15px;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);
+  margin:22px 0 11px}
 .analytics-sub:first-child{margin-top:0}
-.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-family:var(--mono);font-size:12px}
-.bar-label{width:70px;color:var(--t3);text-transform:uppercase;flex-shrink:0}
-.bar-track{flex:1;background:var(--b1);border-radius:2px;height:14px;overflow:hidden;border:1px solid var(--w2)}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:var(--mono);font-size:14px}
+.bar-label{width:75px;color:var(--t3);text-transform:uppercase;flex-shrink:0}
+.bar-track{flex:1;background:var(--b1);border-radius:2px;height:16px;overflow:hidden;border:1px solid var(--w2)}
 .bar-fill{height:100%;background:linear-gradient(90deg,var(--pc),var(--ic));border-radius:2px}
-.bar-count{width:24px;text-align:right;color:var(--t2);flex-shrink:0}
-.activity-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;
-  padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.bar-count{width:26px;text-align:right;color:var(--t2);flex-shrink:0}
+.activity-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:15px;
+  padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)}
 .activity-row:last-child{border-bottom:none}
 .activity-row span:last-child{color:var(--t2);font-weight:700}
-.tracking-note{font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:16px}
+.tracking-note{font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:16px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hdr">
     <div class="logo">CLAIRVOYANCE</div>
-    <div class="subtitle" id="expiryNote">SUBSCRIBER ACCESS · 30-DAY WINDOWS</div>
+    <div class="subtitle">SUBSCRIBER ACCESS</div>
   </div>
 
   <div class="card">
@@ -228,17 +232,20 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
 
   <div class="card">
     <div class="sh">Pricing</div>
-    <table>
-      <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
-      <tr><td>1</td><td class="priceval">$20</td><td class="priceavg">$20.00</td></tr>
-      <tr><td>2</td><td class="priceval">$30</td><td class="priceavg">$15.00</td></tr>
-      <tr><td>3</td><td class="priceval">$40</td><td class="priceavg">$13.33</td></tr>
-      <tr><td>4</td><td class="priceval">$45</td><td class="priceavg">$11.25</td></tr>
-      <tr><td>5</td><td class="priceval">$55</td><td class="priceavg">$11.00</td></tr>
-      <tr><td>6</td><td class="priceval">$60</td><td class="priceavg">$10.00</td></tr>
-      <tr><td>7</td><td class="priceval">$70</td><td class="priceavg">$10.00</td></tr>
-      <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$75</td><td class="priceavg">$9.38</td></tr>
-    </table>
+    <div class="price-note" id="priceNote">All access windows last 30 days from the date added or renewed.</div>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
+        <tr><td>1</td><td class="priceval">$20</td><td class="priceavg">$20.00</td></tr>
+        <tr><td>2</td><td class="priceval">$30</td><td class="priceavg">$15.00</td></tr>
+        <tr><td>3</td><td class="priceval">$40</td><td class="priceavg">$13.33</td></tr>
+        <tr><td>4</td><td class="priceval">$45</td><td class="priceavg">$11.25</td></tr>
+        <tr><td>5</td><td class="priceval">$55</td><td class="priceavg">$11.00</td></tr>
+        <tr><td>6</td><td class="priceval">$60</td><td class="priceavg">$10.00</td></tr>
+        <tr><td>7</td><td class="priceval">$70</td><td class="priceavg">$10.00</td></tr>
+        <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$75</td><td class="priceavg">$9.38</td></tr>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -250,8 +257,8 @@ async function loadAll() {
   const res = await fetch('/api/subscribers');
   const data = await res.json();
   PRODUCTS = data.products;
-  document.getElementById('expiryNote').textContent =
-    'SUBSCRIBER ACCESS · ' + data.expiry_days + '-DAY WINDOWS';
+  document.getElementById('priceNote').textContent =
+    'All access windows last ' + data.expiry_days + ' days from the date added or renewed.';
   renderChips();
   renderAllList(data.data);
   renderByProduct(data.data);
@@ -357,13 +364,13 @@ function renderByProduct(data) {
   el.innerHTML = PRODUCTS.map(p => {
     const rows = data[p] || [];
     const body = rows.length
-      ? `<table><tr><th>Email</th><th>Days left</th><th>Added</th><th></th></tr>` +
+      ? `<div class="tablewrap"><table><tr><th>Email</th><th>Days left</th><th>Added</th><th></th></tr>` +
         rows.map(r => `<tr>
           <td>${escapeHtml(r.email)}</td>
           <td class="${daysClass(r.days_left)}">${r.days_left}</td>
           <td>${r.added.slice(0,10)}</td>
           <td><button class="btn btn-h" onclick="doRemove('${p}','${escapeAttr(r.email)}')">Remove</button></td>
-        </tr>`).join('') + `</table>`
+        </tr>`).join('') + `</table></div>`
       : `<div class="empty">no active subscribers</div>`;
     return `<div class="prodblock"><h3>${p} (${rows.length})</h3>${body}</div>`;
   }).join('');
@@ -418,9 +425,9 @@ async function doCheck() {
   const expired = j.rows.filter(r => !r.active);
   let html = '';
   if (active.length) {
-    html += '<table><tr><th>Product</th><th>Days left</th><th>Added</th></tr>' +
+    html += '<div class="tablewrap"><table><tr><th>Product</th><th>Days left</th><th>Added</th></tr>' +
       active.map(r => `<tr><td>${r.product}</td><td class="${daysClass(r.days_left)}">${r.days_left}</td><td>${r.added.slice(0,10)}</td></tr>`).join('') +
-      '</table>';
+      '</table></div>';
   } else {
     html += '<div class="empty">No active subscriptions.</div>';
   }
