@@ -47,9 +47,21 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 # per email builder. text-shadow (the glow) is stripped by some email
 # clients (Outlook, some Gmail views); the plain magenta/cyan colors
 # still come through everywhere, which is the part that actually matters.
+# Same background image the live site (clairvoyanceengine.info) uses
+# behind its own body -- referenced by its real public URL (not a data
+# URI: emails already run large from attachments, and this keeps the
+# image cacheable across every send instead of re-embedding ~1MB each
+# time) so the email actually looks like it belongs to the same product
+# instead of a plain flat card. background-color is the fallback for
+# clients that block remote images by default (Outlook, and Gmail until
+# "display images" is allowed) -- same dark tone the site itself falls
+# back to before its own image loads.
+_BG_STYLE = ("background-color:#16122a;background-image:url('https://clairvoyanceengine.info/bg.jpg');"
+             "background-size:cover;background-position:center center;")
+
 _BRAND_HEADER = (
-    '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-    'max-width:640px;margin:0 auto;text-align:center;padding:20px 16px 16px;background:#0a0014">'
+    f'<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+    f'max-width:640px;margin:0 auto;text-align:center;padding:20px 16px 16px;{_BG_STYLE}">'
     '<div style="font-size:24px;font-weight:900;letter-spacing:4px;color:#f000ff;'
     'text-shadow:0 0 10px #f000ff,0 0 24px rgba(240,0,255,.6)">CLAIRVOYANCE</div>'
     '<div style="font-size:11px;letter-spacing:3px;color:#00f0ff;'
@@ -59,15 +71,15 @@ _BRAND_HEADER = (
 )
 
 # Shared body chrome -- every email's actual content renders inside this
-# same dark card shell (not just the header above it) so every script
-# that sends mail through here reads as one consistent product instead
-# of some emails being dark-themed and others dropping into a plain
-# white body right below the branded header. Callers wrap their own
-# html_body with EMAIL_WRAP_OPEN/EMAIL_WRAP_CLOSE before passing it to
-# send_email() -- kept as two pieces (not done automatically here)
+# same card shell (not just the header above it) so every script that
+# sends mail through here reads as one consistent product instead of
+# some emails carrying the site's look and others dropping into a plain
+# flat background right below the branded header. Callers wrap their
+# own html_body with EMAIL_WRAP_OPEN/EMAIL_WRAP_CLOSE before passing it
+# to send_email() -- kept as two pieces (not done automatically here)
 # because some callers build multi-part content around it.
-EMAIL_WRAP_OPEN = ('<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-                    'max-width:640px;margin:0 auto;background:#0a0014;color:#e8e8e8;padding:20px 16px">')
+EMAIL_WRAP_OPEN = (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+                    f'max-width:640px;margin:0 auto;color:#e8e8e8;padding:20px 16px;{_BG_STYLE}">')
 EMAIL_WRAP_CLOSE = '</div>'
 
 
