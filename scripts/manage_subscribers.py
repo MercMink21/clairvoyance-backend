@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""
+manage_subscribers.py — easy CLI for adding/removing/listing paid mailing
+list subscribers (see _subscribers.py). MVP is Venmo + this script: someone
+pays, you run `add`, you commit data/subscribers.json.
+
+Usage:
+  python3 scripts/manage_subscribers.py add nba someone@example.com
+  python3 scripts/manage_subscribers.py add nba someone@example.com nfl mlb   # one email, multiple products
+  python3 scripts/manage_subscribers.py remove nba someone@example.com
+  python3 scripts/manage_subscribers.py list                                  # every product
+  python3 scripts/manage_subscribers.py list nba                              # one product
+  python3 scripts/manage_subscribers.py check someone@example.com             # what does this email get?
+  python3 scripts/manage_subscribers.py products                             # list valid product names
+
+Adding an email that's already active on a product renews it (resets its
+30-day window to today) instead of creating a duplicate entry -- so `add`
+doubles as the renewal command when someone pays again. `check` is the
+reverse lookup -- add someone, then immediately confirm what they're
+actually going to receive.
+"""
+from __future__ import annotations
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _subscribers import (
+    PRODUCTS, add_subscriber, remove_subscriber, list_subscribers,
+    products_for_email, EXPIRY_DAYS,
+)
+
+
+def _print_list(data: dict[str, list[dict]]) -> None:
+    total = 0
+    for product, entries in data.items():
+        total += len(entries)
+        if not entries:
+            print(f"{product}: (no active subscribers)")
+            continue
+        print(f"{product}:")
+        for e in sorted(entries, key=lambda x: x["days_left"]):
+            print(f"  {e['email']:<40} {e['days_left']} day(s) left (added {e['added'][:10]})")
+    print(f"\n{total} total active subscriber-product pair(s), {EXPIRY_DAYS}-day window")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        sys.exit(1)
+
+    cmd = args[0]
+
+    if cmd == "products":
+        print(", ".join(PRODUCTS))
+        return
+
+    if cmd == "list":
+        product = args[1] if len(args) > 1 else None
+        if product and product not in PRODUCTS:
+            print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
+            sys.exit(1)
+        _print_list(list_subscribers(product))
+        return
+
+    if cmd == "add":
+        if len(args) < 3:
+            print("Usage: manage_subscribers.py add <product> <email> [more products...]")
+            sys.exit(1)
+        email = args[2]
+        for product in [args[1], *args[3:]]:
+            if product not in PRODUCTS:
+                print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
+                sys.exit(1)
+        for product in [args[1], *args[3:]]:
+            print(add_subscriber(product, email))
+        return
+
+    if cmd == "check":
+        if len(args) < 2:
+            print("Usage: manage_subscribers.py check <email>")
+            sys.exit(1)
+        email = args[1]
+        rows = products_for_email(email)
+        if not rows:
+            print(f"{email} isn't on any product's list.")
+            return
+        active = [r for r in rows if r["active"]]
+        expired = [r for r in rows if not r["active"]]
+        if active:
+            print(f"{email} is actively receiving:")
+            for r in sorted(active, key=lambda x: x["days_left"]):
+                print(f"  {r['product']:<10} {r['days_left']} day(s) left (added {r['added'][:10]})")
+        else:
+            print(f"{email} has no active subscriptions.")
+        if expired:
+            print("Expired (no longer receiving):")
+            for r in expired:
+                print(f"  {r['product']:<10} added {r['added'][:10]}")
+        return
+
+    if cmd == "remove":
+        if len(args) < 3:
+            print("Usage: manage_subscribers.py remove <product> <email>")
+            sys.exit(1)
+        product, email = args[1], args[2]
+        if product not in PRODUCTS:
+            print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
+            sys.exit(1)
+        print(remove_subscriber(product, email))
+        return
+
+    print(f"Unknown command {cmd!r}\n")
+    print(__doc__)
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

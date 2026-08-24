@@ -87,12 +87,14 @@ SPORT_TO_LOCKPICK_TYPE = {
 # showing up in the "EUROPEAN SOCCER" email before this).
 EURO_SOCCER_SPORTS = frozenset({"SOC_CL", "SOC_PL", "SOC_LIGA", "SOC_BL", "SOC_ITA"})
 
-# The 7 paid products (confirmed structure, see _subscribers.py) -- each
+# The 8 paid products (confirmed structure, see _subscribers.py) -- each
 # maps to the exact sport tags gather_legs()/_autoLockCapture use. Soccer
 # bundles all 6 leagues (5 European + MLS) as one purchase. Hockey bundles
 # NHL with KHL/SHL/LIIGA -- those 3 have no real game cards wired up yet
 # (confirmed: no _autoLockCapture call exists for them), so today this is
 # functionally NHL-only, but the product already covers them once they are.
+# Tennis bundles ATP + WTA as one purchase (sets/games O/U only -- no
+# proprietary ML edge, same as CBB/NCAAH, so ML isn't part of this product).
 PRODUCT_SPORTS: dict[str, frozenset[str]] = {
     "nfl": frozenset({"NFL"}),
     "cfb": frozenset({"CFB"}),
@@ -101,10 +103,11 @@ PRODUCT_SPORTS: dict[str, frozenset[str]] = {
     "mlb": frozenset({"MLB"}),
     "hockey": frozenset({"NHL", "KHL", "SHL", "LIIGA"}),
     "soccer": EURO_SOCCER_SPORTS | frozenset({"SOC_MLS"}),
+    "tennis": frozenset({"ATP", "WTA"}),
 }
 PRODUCT_LABEL: dict[str, str] = {
     "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "wnba": "WNBA", "mlb": "MLB",
-    "hockey": "HOCKEY", "soccer": "SOCCER",
+    "hockey": "HOCKEY", "soccer": "SOCCER", "tennis": "TENNIS",
 }
 # OPTIMAL=2, PREMIUM=3 in _evalMkts()'s own tierN scale.
 QUALIFYING_TIERS = {2, 3}
@@ -744,12 +747,13 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
 def run_lock_segmented(page, live: bool) -> None:
     """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
     part: real browser + live data warmups), then split into a separate
-    qualifying-legs list + a separately-addressed email for each of the 7
+    qualifying-legs list + a separately-addressed email for each of the 8
     paid sport products (see _subscribers.py), plus one more pass for
-    whatever isn't covered by any product (tennis ATP/WTA today -- not a
-    purchasable product yet), sent to the owner only. A subscriber to one
-    product only ever sees that product's email; nothing is ever silently
-    dropped -- every qualifying leg lands in exactly one of these passes."""
+    whatever isn't covered by any product (CBB/NCAAH market-read-back legs
+    today, if/when those get wired into gather_legs), sent to the owner
+    only. A subscriber to one product only ever sees that product's email;
+    nothing is ever silently dropped -- every qualifying leg lands in
+    exactly one of these passes."""
     log("=== AUTO-LOCK (PREMIUM/OPTIMAL) — ALL PRODUCTS ===")
     result = gather_legs(page)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "

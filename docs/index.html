@@ -8147,6 +8147,14 @@ function _nhlGameCard(espnEv){
       const _nhlFavEV3=hP>=aP?hEV:aEV,_nhlDogEV3=hP>=aP?aEV:hEV;
       const _plDog3=Math.max(0.25,1-plP);
       const _ensStr3=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+      // Email-only summary: real MC-simulated score projection, no model-name
+      // breakdown (emails show best market + MC sim scores only, not the
+      // MC/xGF/ELO ensemble weighting -- that stays on-screen via _ensStr3).
+      // ens here was reassigned above to a stripped {mc,xgf,elo} shape with
+      // no .mcD, so nhlEns() is called again for the real MC score data --
+      // same pattern the explanation branches below already use.
+      const _nhlMcD=nhlEns(hn,an)?.mcD;
+      const _nhlEmailMc=_nhlMcD?`MC PROJ: ${an} ${_nhlMcD.avgA.toFixed(1)} – ${hn} ${_nhlMcD.avgH.toFixed(1)} (Total ${_nhlMcD.avgT.toFixed(1)}, 25k sims)`:null;
       const _nm3=_evalMkts([
         {label:`${_nhlFav3} ML`,prob:_nhlFavP3,evVal:_nhlFavEV3,side:'mlFav'},
         {label:`${_nhlDog3} ML`,prob:_nhlDogP3,evVal:_nhlDogEV3,side:'mlDog'},
@@ -8155,7 +8163,7 @@ function _nhlGameCard(espnEv){
         {label:`OVER ${nhlOuL}`,prob:ouP,evVal:ev(ouP,1.91),side:'over'},
         {label:`UNDER ${nhlOuL}`,prob:1-ouP,evVal:ev(1-ouP,1.91),side:'under'},
       ]);
-      _autoLockCapture('NHL',hn,an,_nm3,_ensStr3);
+      _autoLockCapture('NHL',hn,an,_nm3,_nhlEmailMc);
       const topTier=_nm3.tierN,topTierLabel=_nm3.lbl,topTierCol=_nm3.col;
       const _bm3=_nm3.best,_topP3=_nhlFavP3;
       let explanation='';
@@ -9964,6 +9972,9 @@ function _nbaGameCard(espnEv){
       const _nbaFavEV=hP>=aP?hEV:aEV,_nbaDogEV=hP>=aP?aEV:hEV;
       const _nbaDogSprdP=Math.max(0.28,1-sprdP);
       const _nbaEnsStr=`MC ${(ens.mc*100).toFixed(0)}% / BAY ${(ens.bay*100).toFixed(0)}% / ELO ${(ens.elo*100).toFixed(0)}%`;
+      // Email-only summary: real MC-simulated score projection, no model-name
+      // breakdown (see NHL's _nhlEmailMc for why).
+      const _nbaEmailMc=nbaEnsD?.mcD?`MC PROJ: ${an} ${nbaEnsD.mcD.avgA.toFixed(1)} – ${hn} ${nbaEnsD.mcD.avgH.toFixed(1)} (Total ${nbaEnsD.mcD.avgT.toFixed(1)}, 25k sims)`:null;
       const _nbaMkts=[
         {label:`${_nbaFav} ML`,prob:_nbaFavP,evVal:_nbaFavEV,side:'mlFav'},
         {label:`${_nbaDog} ML`,prob:_nbaDogP,evVal:_nbaDogEV,side:'mlDog'},
@@ -9975,7 +9986,7 @@ function _nbaGameCard(espnEv){
         ]:[]),
       ];
       const _nmNBA=_evalMkts(_nbaMkts);
-      _autoLockCapture('NBA',hn,an,_nmNBA,`${_nbaEnsStr}${mcProjSpread?' · Proj margin: '+(mcProjSpread>=0?'+':'')+mcProjSpread.toFixed(1)+' ('+hn+')':''}`);
+      _autoLockCapture('NBA',hn,an,_nmNBA,_nbaEmailMc);
       const topTier=_nmNBA.tierN,topTierLabel=_nmNBA.lbl,topTierCol=_nmNBA.col;
       const _bmNBA=_nmNBA.best,evPct=(_bmNBA.evVal*100).toFixed(1);
       let explanation='';
@@ -24624,6 +24635,9 @@ async function _renderWNBAGamesInner(el,dateEl,force){
       var _wnbaDogCoverP=1-_wnbaFavCoverP;
       var _wnbaProjMargin=Math.abs(_wnbaFavProjMargin);
       var _wnbaEnsStr='MC:'+Math.round(ens.mcP*100)+'% / BAY:'+Math.round(ens.bayP*100)+'% / ELO:'+Math.round(ens.eloP*100)+'%';
+      // Email-only summary: real MC-simulated score projection, no model-name
+      // breakdown (see NHL's _nhlEmailMc for why).
+      var _wnbaEmailMc='MC PROJ: '+aab+' '+_wnbaMCResult.avgA.toFixed(1)+' – '+hab+' '+_wnbaMCResult.avgH.toFixed(1)+' (Total '+_wnbaMCResult.avgT.toFixed(1)+', 25k sims)';
       var _wnbaMCCoverStr=_wnbaFavCoverMC!=null?('MC cover rate: '+(_wnbaFavCoverMC*100).toFixed(1)+'% fav / '+(_wnbaDogCoverMC*100).toFixed(1)+'% dog (10k sims)'):'';
       var _wnbaSprdStr=_wnbaFavProjMargin.toFixed(1)+'-pt proj margin vs '+Math.abs(_wnbaLineNum).toFixed(1)+' line';
       var _wnbaMkts=_evalMkts([
@@ -24634,7 +24648,7 @@ async function _renderWNBAGamesInner(el,dateEl,force){
         {label:'OVER '+ouStr,prob:_wnbaOvP,evVal:ev(_wnbaOvP,1.91),side:'over'},
         {label:'UNDER '+ouStr,prob:_wnbaUnP,evVal:ev(_wnbaUnP,1.91),side:'under'},
       ]);
-      _autoLockCapture('WNBA',hab,aab,_wnbaMkts,_wnbaEnsStr+' · '+_wnbaSprdStr);
+      _autoLockCapture('WNBA',hab,aab,_wnbaMkts,_wnbaEmailMc);
       var _wnbaTier=_wnbaMkts.tierN;
       var _wnbaBM=_wnbaMkts.best,_wnbaBP=(_wnbaBM.prob*100).toFixed(1),_wnbaBE=(_wnbaBM.evVal*100).toFixed(1);
       var _wnbaNetCtx='Net rating: '+_wnbaFav+' '+hNetStr+' vs '+_wnbaDogT+' '+aNetStr+' (+'+netDiff+' pts/100)';
@@ -28177,7 +28191,11 @@ function renderTennisScheduleOdds(filterTour='all'){
       ]:[]),
     ];
     const _tenMkts=_evalMkts(_tenAllMkts);
-    _autoLockCapture(m.tour||'TEN',m.p1,m.p2,_tenMkts,`ELO model: ${m.p1} ${(modelP1*100).toFixed(0)}% – ${m.p2} ${(modelP2*100).toFixed(0)}% · Sets line ${_tenSetLine} (${(_tenSetOverP*100).toFixed(0)}% over)`);
+    // Email-only summary: tennis has no MC score simulation (win prob is
+    // ELO-derived), so no summary line is passed -- email falls back to
+    // showing just best-market value for tennis, per the no-model-name rule
+    // (see NHL's _nhlEmailMc for why).
+    _autoLockCapture(m.tour||'TEN',m.p1,m.p2,_tenMkts,null);
     const _tenBM=_tenMkts.best,_tenTopTier=_tenMkts.tierN,_tenTopLbl=_tenMkts.lbl,_tenTopCol=_tenMkts.col;
     // ── Chips ─────────────────────────────────────────────────
     function _tenChip(p,d,lbl,ml){const t=tier(p,ev(p,d));const c=t===3?'chip-g':t===2?'chip-p':t===1?'chip-n':'chip-h';const pl=t===3?'pg':t===2?'pp':t===1?'pn':'ph';const lb=t===3?'PREMIUM':t===2?'OPTIMAL':t===1?'LEAN':'SKIP';return`<div class="${c} chip" style="flex:1"><div class="cht">${lbl}</div><div class="cho">${ml>0?'+':''}${ml}</div><div class="chp">${(p*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${pl}">${lb}</span></div>${_highHitBadgeHTML(p)}</div>`;}
