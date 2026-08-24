@@ -6,14 +6,18 @@ manage_subscribers.py for anyone who'd rather click than type.
 
 Run:
   python3 scripts/subscribers_admin.py
-Then open http://127.0.0.1:8899 (opens automatically).
+Then open http://127.0.0.1:8899, or from a phone on the same Wi-Fi,
+http://<this Mac's LAN IP>:8899 (find it with `ipconfig getifaddr en0`).
 
-Binds to 127.0.0.1 only -- never reachable from the network, no auth
-needed. Edits write straight to data/subscribers.json on disk; nothing
-here talks to git, Supabase, or email. After editing, the usual workflow
-still applies: the file has to be committed and pushed for the change
-to actually reach the GitHub Actions lock/email runs -- this tool only
-edits your local working copy, same as manage_subscribers.py does.
+Binds to 0.0.0.0 -- reachable from any device on the same network, with
+NO auth. That's a deliberate choice for home-network convenience (so a
+phone can load and bookmark it), not an oversight -- do not run this on
+a network you don't trust every device on. Edits write straight to
+data/subscribers.json on disk; nothing here talks to git, Supabase, or
+email. After editing, the usual workflow still applies: the file has to
+be committed and pushed for the change to actually reach the GitHub
+Actions lock/email runs -- this tool only edits your local working copy,
+same as manage_subscribers.py does.
 """
 from __future__ import annotations
 import json
@@ -361,7 +365,10 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     url = f"http://127.0.0.1:{PORT}"
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        # 0.0.0.0, not 127.0.0.1 -- deliberately reachable from other
+        # devices on the same network (e.g. a phone), see the module
+        # docstring for the no-auth trade-off that comes with that.
+        server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     except OSError:
         # Most likely cause: the LaunchAgent (see setup_launch_agent.sh) is
         # already running this in the background -- that's fine, the
@@ -371,7 +378,7 @@ def main() -> None:
               f"at {url}. If that URL doesn't load, something else has "
               f"the port; check with `lsof -i :{PORT}`.")
         return
-    print(f"Subscriber admin running at {url}  (Ctrl+C to stop)")
+    print(f"Subscriber admin running at {url} (and on the LAN)  (Ctrl+C to stop)")
     if "--open" in sys.argv:
         try:
             webbrowser.open(url)
