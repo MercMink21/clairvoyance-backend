@@ -1,0 +1,73 @@
+name: Send Expiry Reminders
+
+# Daily: warns any subscriber whose 30-day access window is within 3
+# days of lapsing (scripts/send_expiry_reminders.py), so losing access
+# isn't a surprise. Each (email, product) pair only gets warned once
+# per window -- reminder_sent resets on every add/renew. No Playwright
+# needed (never touches the live app), just reads data/subscribers.json
+# and sends email -- runs shortly after the main lock email so the
+# reminder doesn't land before that day's picks do.
+
+on:
+  schedule:
+    # 8:45 MT = 14:45 UTC (MDT), 15min after auto-lock-settle.yml's own
+    # 14:30 UTC lock run. Fixed UTC cron -- drifts to ~7:45am once MST
+    # returns in November, same as every other MT time in this repo.
+    - cron: '45 14 * * *'
+  workflow_dispatch:
+    inputs:
+      days_before:
+        description: 'Send a reminder once this many days (or fewer) are left'
+        required: false
+        type: number
+        default: 3
+      dry_run:
+        description: 'Log what would be sent without actually sending'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  send-expiry-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Send reminders
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/send_expiry_reminders.py \
+            --days-before "${{ inputs.days_before || 3 }}" \
+            ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      # reminder_sent flags live in data/subscribers.json, same file
+      # manage_subscribers.py/subscribers_admin.py write to locally --
+      # has to be committed back or every run re-sends the same
+      # reminder forever.
+      - name: Commit reminder_sent state
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          git add data/subscribers.json
+          if git diff --cached --quiet; then
+            echo "No state change"
+          else
+            git commit -m "expiry-reminders: mark reminder_sent"
+            git pull --rebase origin main
+            git push
+          fi

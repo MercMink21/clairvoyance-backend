@@ -21,9 +21,15 @@ name: Auto Lock + Settle
 
 on:
   schedule:
-    # Lock: once daily, mid-morning MT, after that day's schedules/odds
-    # are loaded and before early games start. 10:15 MT = 16:15 UTC (MDT).
-    - cron: '15 16 * * *'
+    # Lock: once daily, so subscriber emails land ~8:30am MT, after that
+    # day's schedules/odds are loaded and before early games start.
+    # 8:30 MT = 14:30 UTC (MDT), clear of statmuse-daily.yml's 14:00 UTC
+    # cron (also Playwright-heavy -- landing on the exact same minute
+    # risks the runner queue-starvation pattern documented in social-
+    # cards-daily.yml). Like every other MT time in this file, this is a
+    # fixed UTC cron -- GitHub Actions doesn't shift for DST, so the
+    # real landing time drifts to ~7:30am once MST returns in November.
+    - cron: '30 14 * * *'
     # Settle: 4x daily -- 10am/3pm/6pm/11pm MT -- offset :20 past the hour,
     # staggered off scheduled-refresh.yml's own cron times (0 15/21/5) to
     # avoid the same runner-contention pattern that caused the queue-

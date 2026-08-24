@@ -108,7 +108,10 @@ def active_subscribers(product: str) -> list[dict]:
         if added is None or now - added >= timedelta(days=EXPIRY_DAYS):
             continue
         days_left = EXPIRY_DAYS - (now - added).days
-        out.append({"email": entry["email"], "added": entry["added"], "days_left": days_left})
+        out.append({
+            "email": entry["email"], "added": entry["added"], "days_left": days_left,
+            "reminder_sent": bool(entry.get("reminder_sent")),
+        })
     return out
 
 
@@ -136,10 +139,15 @@ def add_subscriber(product: str, email: str) -> str:
     for entry in entries:
         if entry.get("email", "").strip().lower() == email:
             entry["added"] = now_iso
+            # Fresh 30-day window means a fresh reminder cycle -- otherwise
+            # a renewal made mid-way through the old reminder period would
+            # leave reminder_sent=True carried over and they'd never get
+            # warned before the NEW window's own expiry.
+            entry["reminder_sent"] = False
             save_subscribers(data)
             _log_event("renew", product, email)
             return f"renewed {email} on {product} -- 30-day window reset from today"
-    entries.append({"email": email, "added": now_iso})
+    entries.append({"email": email, "added": now_iso, "reminder_sent": False})
     save_subscribers(data)
     _log_event("add", product, email)
     return f"added {email} to {product} -- active for {EXPIRY_DAYS} days"
@@ -158,6 +166,31 @@ def remove_subscriber(product: str, email: str) -> str:
     save_subscribers(data)
     _log_event("remove", product, email)
     return f"removed {email} from {product}"
+
+
+def subscribers_needing_reminder(days_before: int = 3) -> list[dict]:
+    """Active (product, email) pairs at or under `days_before` days left
+    that haven't been sent an expiry reminder for their CURRENT window
+    yet. reminder_sent resets on every add/renew (see add_subscriber()),
+    so this only ever fires once per 30-day window -- checking <= rather
+    than == means a subscriber still gets warned even if the reminder
+    workflow misses a day and only catches them at, say, 2 days left
+    instead of exactly 3."""
+    out = []
+    for product in PRODUCTS:
+        for entry in active_subscribers(product):
+            if entry["days_left"] <= days_before and not entry["reminder_sent"]:
+                out.append({"product": product, "email": entry["email"], "days_left": entry["days_left"]})
+    return out
+
+
+def mark_reminder_sent(product: str, email: str) -> None:
+    email = email.strip().lower()
+    data = load_subscribers()
+    for entry in data.get(product, []):
+        if entry.get("email", "").strip().lower() == email:
+            entry["reminder_sent"] = True
+    save_subscribers(data)
 
 
 def list_subscribers(product: str | None = None) -> dict[str, list[dict]]:
