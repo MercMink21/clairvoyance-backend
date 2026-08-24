@@ -331,13 +331,24 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}"
-    print(f"Subscriber admin running at {url}  (Ctrl+C to stop)")
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        # Most likely cause: the LaunchAgent (see setup_launch_agent.sh) is
+        # already running this in the background -- that's fine, the
+        # bookmark still works. Only a real problem if nothing answers at
+        # this URL at all.
+        print(f"Port {PORT} is already in use -- probably already running "
+              f"at {url}. If that URL doesn't load, something else has "
+              f"the port; check with `lsof -i :{PORT}`.")
+        return
+    print(f"Subscriber admin running at {url}  (Ctrl+C to stop)")
+    if "--open" in sys.argv:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:
