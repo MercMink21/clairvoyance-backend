@@ -1,0 +1,59 @@
+name: Daily Soccer Schedule Refresh
+
+# Snapshot of today's scoreboard/odds for all 6 tracked leagues (Champions
+# League/Premier League/La Liga/Bundesliga/MLS/Serie A), written to docs/
+# soccer_schedule.json. Same rationale as soccer-standings-daily.yml, but
+# for _fetchLeagueScoreboard()'s live browser fetch specifically: confirmed
+# by direct reproduction (headless browser hitting the live page) that that
+# fetch intermittently fails with a CORS error under what looks like
+# ESPN's own request-volume throttling -- the exact same endpoint returns
+# a normal 200 with a permissive CORS header for a plain server-to-server
+# request seconds later. This was the real cause of soccer-lock-early.yml
+# occasionally gathering "0 games" on a real matchday. See
+# scrape_soccer_schedule.py's module docstring for the full story.
+#
+# MLS isn't affected by any of this -- it already reads from its own
+# same-origin docs/mls_schedule.json (written by clairvoyance_update.py's
+# fetch_mls_schedule()), never a live ESPN fetch -- but this scrape still
+# covers it for parity/consistency with soccer_standings.json's own
+# 6-league shape; the frontend simply never reads that one key back out.
+
+on:
+  schedule:
+    # 5:55 AM MT = 11:55 UTC (MDT) / 12:55 UTC (MST) -- 5 min ahead of
+    # soccer-standings-daily.yml's 12:00 UTC run and ~25 min ahead of
+    # soccer-lock-early.yml's ~6:20 AM MT run, staggered off both by a few
+    # minutes rather than landing on the same cron minute (same runner-
+    # queue-starvation concern documented in social-cards-daily.yml).
+    - cron: '55 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-soccer-schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Scrape and push
+        env:
+          TZ: America/Denver
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          python3 scripts/scrape_soccer_schedule.py --push

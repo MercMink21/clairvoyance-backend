@@ -19471,6 +19471,7 @@ async function loadRemoteData(force=false){
   loadSoccerFBref();
   loadMLSOptaStats();
   loadSoccerStandingsSnapshot();
+  loadSoccerScheduleSnapshot();
 }
 
 window.__CV_FBREF = null;
@@ -27500,6 +27501,41 @@ function loadSoccerStandingsSnapshot(){
     })
     .catch(function(e){console.warn('[CV] Soccer standings snapshot load failed:',e.message);return null;});
   return _socStandSnapLoading;
+}
+// Pre-seeds _leagueScoreCache from the daily server-side snapshot (docs/
+// soccer_schedule.json, written by scripts/scrape_soccer_schedule.py) so
+// _fetchLeagueScoreboard() has real data immediately at boot instead of
+// depending on a live client-side ESPN fetch -- confirmed by direct
+// reproduction (headless browser hitting the live page) that that fetch
+// intermittently fails with a CORS error under what looks like ESPN's own
+// request-volume throttling (the exact same endpoint returns a normal 200
+// with a permissive CORS header for a plain server-to-server request
+// seconds later). See scrape_soccer_schedule.py's module docstring for
+// the full story -- this was the real cause of soccer-lock-early.yml
+// occasionally gathering "0 games" on a real matchday. Only seeds when
+// the snapshot's own date matches today (a stale snapshot -- e.g. this
+// morning's refresh workflow failed -- would show yesterday's fixtures as
+// today's, worse than no seed at all) and only leagues
+// _fetchLeagueScoreboard() hasn't already cached. Live fetch still
+// naturally supersedes it once _LEAGUE_TTL passes.
+var _socSchedSnapLoading=null;
+function loadSoccerScheduleSnapshot(){
+  if(_socSchedSnapLoading)return _socSchedSnapLoading;
+  _socSchedSnapLoading=fetch('soccer_schedule.json',{cache:'no-cache'})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){
+      if(!d||!d.leagues)return d;
+      var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+      if(d.date!==fmt(new Date())){console.warn('[CV] Soccer schedule snapshot stale, skipping seed:',d.date);return d;}
+      var now=Date.now();
+      Object.keys(d.leagues).forEach(function(lk){
+        if(_leagueScoreCache[lk])return;
+        _leagueScoreCache[lk]=d.leagues[lk]||[];_leagueScoreCacheTs[lk]=now;
+      });
+      return d;
+    })
+    .catch(function(e){console.warn('[CV] Soccer schedule snapshot load failed:',e.message);return null;});
+  return _socSchedSnapLoading;
 }
 
 // Per-league StatMuse feed -- filters the one shared, undifferentiated
