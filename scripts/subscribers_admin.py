@@ -34,11 +34,11 @@ from _subscribers import (
 )
 
 PORT = 8899
-# Same icon the main app uses for its own iOS home-screen add (see
-# docs/app.html's apple-touch-icon link) -- so this admin page's Home
-# Screen icon matches the real app's instead of Safari's generic favicon
-# screenshot fallback.
-ICON_PATH = Path(__file__).resolve().parent.parent / "docs" / "icon-1080.png"
+# TextLogo.png (the "CLAIRVOYANCE" wordmark on the diamond-grid brand
+# background) -- used ONLY for this admin page's own iOS home-screen add,
+# deliberately separate from docs/icon-1080.png, which is the live main
+# app's real icon and isn't touched here.
+ICON_PATH = Path(__file__).resolve().parent.parent / "docs" / "text_logo_icon.png"
 
 PAGE = """<!doctype html>
 <html>
@@ -49,7 +49,7 @@ PAGE = """<!doctype html>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CLAIRVOYANCE">
 <meta name="theme-color" content="#020008">
-<link rel="apple-touch-icon" sizes="1080x1080" href="/icon-1080.png">
+<link rel="apple-touch-icon" sizes="500x500" href="/home-icon.png">
 <title>Clairvoyance — Subscribers</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -173,6 +173,16 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
 .activity-row:last-child{border-bottom:none}
 .activity-row span:last-child{color:var(--t2);font-weight:700}
 .tracking-note{font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:16px}
+
+.rev-chart{display:flex;align-items:flex-end;gap:6px;height:130px;margin-bottom:8px;padding-top:20px}
+.rev-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.rev-bar-val{font-family:var(--mono);font-size:10px;color:var(--gc);margin-bottom:4px;white-space:nowrap}
+.rev-bar{width:100%;background:linear-gradient(180deg,var(--gc),var(--g2));border-radius:2px 2px 0 0;min-height:2px}
+.rev-bar-lbl{font-family:var(--mono);font-size:9px;color:var(--t3);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.empty-note{font-family:var(--mono);font-size:13px;color:var(--t3);padding:8px 0}
+.retn-good{color:var(--rc);font-weight:700}
+.retn-bad{color:var(--hc);font-weight:700}
+.retn-mid{color:var(--gc);font-weight:700}
 </style>
 </head>
 <body>
@@ -180,18 +190,6 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
   <div class="hdr">
     <div class="logo">CLAIRVOYANCE</div>
     <div class="subtitle">SUBSCRIBER ACCESS</div>
-  </div>
-
-  <div class="card">
-    <div class="sh">Analytics</div>
-    <div class="tracking-note" id="trackingNote"></div>
-    <div class="stat-grid" id="statGrid"></div>
-    <div class="analytics-sub">Active by Product</div>
-    <div id="barChart"></div>
-    <div class="analytics-sub">Activity (7d / 30d)</div>
-    <div id="activityBox"></div>
-    <div class="analytics-sub" id="expiringHdr" style="display:none">Expiring Soon (&le;5 days)</div>
-    <div id="expiringBox"></div>
   </div>
 
   <div class="card">
@@ -247,6 +245,30 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
       </table>
     </div>
   </div>
+
+  <div class="card">
+    <div class="sh">Analytics</div>
+    <div class="tracking-note" id="trackingNote"></div>
+    <div class="stat-grid" id="statGrid"></div>
+
+    <div class="analytics-sub">Revenue Trend (weekly)</div>
+    <div id="revenueChart"></div>
+
+    <div class="analytics-sub">Active by Product</div>
+    <div id="barChart"></div>
+
+    <div class="analytics-sub">Revenue by Product</div>
+    <div id="revenueBarChart"></div>
+
+    <div class="analytics-sub">Activity (7d / 30d)</div>
+    <div id="activityBox"></div>
+
+    <div class="analytics-sub" id="cohortHdr" style="display:none">Cohort Retention (30-day)</div>
+    <div id="cohortBox"></div>
+
+    <div class="analytics-sub" id="expiringHdr" style="display:none">Expiring Soon (&le;5 days)</div>
+    <div id="expiringBox"></div>
+  </div>
 </div>
 
 <script>
@@ -274,12 +296,32 @@ async function loadAnalytics() {
     ? 'Activity tracked since ' + a.events_since.slice(0, 10) + ' · estimated revenue is not a real payment ledger'
     : 'No activity tracked yet -- signup/renewal/removal trends start accumulating from today · estimated revenue is not a real payment ledger';
 
+  const lt = a.avg_customer_lifetime, ttr = a.time_to_renewal, adopt = a.multi_product_adoption;
   document.getElementById('statGrid').innerHTML = `
     <div class="stat"><div class="stat-val">${a.active_emails}</div><div class="stat-lbl">Active Subscribers</div></div>
     <div class="stat"><div class="stat-val">${a.active_subscriptions}</div><div class="stat-lbl">Active Subscriptions</div></div>
     <div class="stat"><div class="stat-val money">$${a.estimated_mrr}</div><div class="stat-lbl">Est. 30-Day Revenue</div></div>
     <div class="stat"><div class="stat-val">${a.renewal_rate_30d === null ? '—' : a.renewal_rate_30d + '%'}</div><div class="stat-lbl">Renewal Rate (30d)</div><div class="stat-note">${a.renewal_rate_30d === null ? 'no renewals/removes yet' : ''}</div></div>
+    <div class="stat"><div class="stat-val">${adopt.pct_multi === null ? '—' : adopt.pct_multi + '%'}</div><div class="stat-lbl">On 2+ Products</div><div class="stat-note">${adopt.pct_multi === null ? 'no active subscribers yet' : adopt.multi_product_emails + ' of ' + adopt.active_emails}</div></div>
+    <div class="stat"><div class="stat-val">${lt.avg_cycles === null ? '—' : lt.avg_cycles}</div><div class="stat-lbl">Avg Lifetime (cycles)</div><div class="stat-note">${lt.avg_days === null ? 'no completed subscriptions yet' : lt.avg_days + ' days avg · n=' + lt.sample_size}</div></div>
+    <div class="stat"><div class="stat-val">${ttr.avg_days_before_expiry === null ? '—' : (ttr.avg_days_before_expiry >= 0 ? ttr.avg_days_before_expiry + 'd early' : Math.abs(ttr.avg_days_before_expiry) + 'd late')}</div><div class="stat-lbl">Avg Renewal Timing</div><div class="stat-note">${ttr.sample_size === 0 ? 'no renewals yet' : ttr.on_time_count + ' on-time · ' + ttr.late_count + ' win-back'}</div></div>
   `;
+
+  const revEl = document.getElementById('revenueChart');
+  if (a.revenue_timeline.length) {
+    const maxRev = Math.max(1, ...a.revenue_timeline.map(w => w.estimated_revenue));
+    revEl.innerHTML = '<div class="rev-chart">' + a.revenue_timeline.map(w => {
+      const h = Math.round((w.estimated_revenue / maxRev) * 100);
+      const lbl = w.week_of.slice(5);
+      return `<div class="rev-bar-col">
+        <div class="rev-bar-val">$${w.estimated_revenue}</div>
+        <div class="rev-bar" style="height:${Math.max(h, 2)}%"></div>
+        <div class="rev-bar-lbl">${lbl}</div>
+      </div>`;
+    }).join('') + '</div>';
+  } else {
+    revEl.innerHTML = '<div class="empty-note">Not enough history yet -- this fills in as subscribers are added over time.</div>';
+  }
 
   const maxCount = Math.max(1, ...Object.values(a.per_product_counts));
   document.getElementById('barChart').innerHTML = PRODUCTS.map(p => {
@@ -292,11 +334,37 @@ async function loadAnalytics() {
     </div>`;
   }).join('');
 
+  const maxRevP = Math.max(1, ...Object.values(a.per_product_revenue));
+  document.getElementById('revenueBarChart').innerHTML = PRODUCTS.map(p => {
+    const v = a.per_product_revenue[p] || 0;
+    const pct = Math.round((v / maxRevP) * 100);
+    return `<div class="bar-row">
+      <div class="bar-label">${p}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--gc),var(--g2))"></div></div>
+      <div class="bar-count">$${Math.round(v)}</div>
+    </div>`;
+  }).join('');
+
   document.getElementById('activityBox').innerHTML = `
     <div class="activity-row"><span>New signups</span><span>${a.window_7d.add} / ${a.window_30d.add}</span></div>
     <div class="activity-row"><span>Renewals</span><span>${a.window_7d.renew} / ${a.window_30d.renew}</span></div>
     <div class="activity-row"><span>Removed</span><span>${a.window_7d.remove} / ${a.window_30d.remove}</span></div>
   `;
+
+  const cohortHdr = document.getElementById('cohortHdr');
+  const cohortBox = document.getElementById('cohortBox');
+  if (a.cohort_retention.length) {
+    cohortHdr.style.display = '';
+    cohortBox.innerHTML = '<div class="tablewrap"><table><tr><th>Cohort Week</th><th>Signups</th><th>Retained</th><th>Retention</th></tr>' +
+      a.cohort_retention.map(c => {
+        const cls = c.retention_pct >= 70 ? 'retn-good' : c.retention_pct >= 40 ? 'retn-mid' : 'retn-bad';
+        return `<tr><td>${c.cohort_week}</td><td>${c.signups}</td><td>${c.retained}</td><td class="${cls}">${c.retention_pct}%</td></tr>`;
+      }).join('') + '</table></div>';
+  } else {
+    cohortHdr.style.display = '';
+    cohortHdr.textContent = 'Cohort Retention (30-day)';
+    cohortBox.innerHTML = '<div class="empty-note">No cohort is old enough to grade yet -- a signup needs a full 30 days to either renew or lapse before it counts.</div>';
+  }
 
   const expHdr = document.getElementById('expiringHdr');
   const expBox = document.getElementById('expiringBox');
@@ -468,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self._html(PAGE)
-        elif parsed.path == "/icon-1080.png":
+        elif parsed.path == "/home-icon.png":
             try:
                 body = ICON_PATH.read_bytes()
             except Exception:

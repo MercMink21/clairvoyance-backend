@@ -167,6 +167,199 @@ def list_subscribers(product: str | None = None) -> dict[str, list[dict]]:
     return {p: active_subscribers(p) for p in products}
 
 
+def _reconstruct_periods() -> tuple[dict[tuple[str, str], list[dict]], list[float]]:
+    """Replays the event log per (email, product) pair into real access
+    periods -- the only way to answer any historical question (revenue
+    over time, retention, lifetime, renewal timing), since subscribers.json
+    only ever holds current state with no trace of what came before it.
+
+    A "renew" event only means add_subscriber() found this email already
+    sitting in the file -- it does NOT mean they were still within their
+    active window (nothing prunes a lapsed-but-never-manually-removed
+    entry). So periods are reconstructed from real elapsed time between
+    event timestamps, not trusted from the raw action label alone: a
+    "renew" that lands after the running period's computed end is treated
+    as a fresh period (a win-back), not an extension of the old one.
+
+    Returns (periods_by_key, renewal_gap_days) where periods_by_key maps
+    (email, product) -> ordered list of {start, end, cycles, removed}
+    dicts, and renewal_gap_days is one signed value per real "renew"
+    event: negative = renewed that many days before it would have expired
+    (a true on-time renewal), positive = renewed that many days after it
+    had already lapsed (a win-back, not a renewal)."""
+    events = _load_events()
+    by_key: dict[tuple[str, str], list[dict]] = {}
+    for e in events:
+        by_key.setdefault((e["email"], e["product"]), []).append(e)
+
+    periods_by_key: dict[tuple[str, str], list[dict]] = {}
+    renewal_gaps: list[float] = []
+    for key, evs in by_key.items():
+        periods: list[dict] = []
+        current: dict | None = None
+        for e in evs:
+            ts = _parse(e.get("ts", ""))
+            if ts is None:
+                continue
+            action = e.get("action")
+            if action in ("add", "renew"):
+                if current is not None:
+                    gap_days = (ts - current["end"]).total_seconds() / 86400
+                    if action == "renew":
+                        renewal_gaps.append(gap_days)
+                    if ts <= current["end"]:
+                        current["end"] = ts + timedelta(days=EXPIRY_DAYS)
+                        current["cycles"] += 1
+                        continue
+                    periods.append(current)
+                current = {"start": ts, "end": ts + timedelta(days=EXPIRY_DAYS), "cycles": 1, "removed": False}
+            elif action == "remove":
+                if current is not None:
+                    if ts < current["end"]:
+                        current["end"] = ts
+                    current["removed"] = True
+                    periods.append(current)
+                    current = None
+        if current is not None:
+            periods.append(current)
+        periods_by_key[key] = periods
+    return periods_by_key, renewal_gaps
+
+
+def revenue_timeline(weeks: int = 8) -> list[dict]:
+    """Estimated revenue at each weekly checkpoint going back up to
+    `weeks` weeks, reconstructed from the event log -- shows whether
+    revenue is actually growing instead of just what it is right now.
+    Only covers time since event logging started; empty until then."""
+    periods_by_key, _ = _reconstruct_periods()
+    if not periods_by_key:
+        return []
+    now = _now()
+    earliest = min((p["start"] for periods in periods_by_key.values() for p in periods), default=now)
+
+    checkpoints = []
+    t = now
+    for _ in range(weeks):
+        if t < earliest:
+            break
+        checkpoints.append(t)
+        t -= timedelta(days=7)
+    checkpoints.reverse()
+
+    out = []
+    for cp in checkpoints:
+        counts_by_email: dict[str, int] = {}
+        for (email, _product), periods in periods_by_key.items():
+            if any(p["start"] <= cp < p["end"] for p in periods):
+                counts_by_email[email] = counts_by_email.get(email, 0) + 1
+        revenue = sum(PRICING_BY_COUNT.get(min(n, 8), 0) for n in counts_by_email.values())
+        out.append({"week_of": cp.date().isoformat(), "active_emails": len(counts_by_email), "estimated_revenue": revenue})
+    return out
+
+
+def per_product_revenue() -> dict[str, float]:
+    """Current active revenue attributed to each product. When an email
+    is on multiple products at once, their single bundle price is split
+    evenly across those products -- there's no real separate per-product
+    price once bundled, so this is an allocation for comparing products
+    against each other, not a second ledger."""
+    active_counts_by_email: dict[str, int] = {}
+    active_by_product: dict[str, list[str]] = {p: [] for p in PRODUCTS}
+    for product in PRODUCTS:
+        for entry in active_subscribers(product):
+            active_counts_by_email[entry["email"]] = active_counts_by_email.get(entry["email"], 0) + 1
+            active_by_product[product].append(entry["email"])
+
+    out = {p: 0.0 for p in PRODUCTS}
+    for product, emails in active_by_product.items():
+        for email in emails:
+            n = active_counts_by_email[email]
+            out[product] += PRICING_BY_COUNT.get(min(n, 8), 0) / n
+    return {p: round(v, 2) for p, v in out.items()}
+
+
+def multi_product_adoption() -> dict:
+    """% of currently active subscribers on 2+ products at once -- the
+    real test of whether the bundle discount curve is pulling people to
+    buy more than a single product."""
+    active_counts_by_email: dict[str, int] = {}
+    for product in PRODUCTS:
+        for entry in active_subscribers(product):
+            active_counts_by_email[entry["email"]] = active_counts_by_email.get(entry["email"], 0) + 1
+    total = len(active_counts_by_email)
+    multi = sum(1 for n in active_counts_by_email.values() if n >= 2)
+    return {
+        "active_emails": total,
+        "multi_product_emails": multi,
+        "pct_multi": round(100 * multi / total) if total else None,
+    }
+
+
+def cohort_retention(weeks: int = 8) -> list[dict]:
+    """For each weekly signup cohort that's old enough to have had a full
+    30-day window to renew or lapse, what % were still active (renewed
+    within that window, or already on a later period) past it. A cohort
+    younger than EXPIRY_DAYS + 7 days simply isn't gradeable yet and is
+    left out rather than shown with a misleading 0%/100%."""
+    periods_by_key, _ = _reconstruct_periods()
+    now = _now()
+    cohorts: dict[str, dict] = {}
+    for (_email, _product), periods in periods_by_key.items():
+        if not periods:
+            continue
+        first = periods[0]
+        cohort_start = (first["start"] - timedelta(days=first["start"].weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        cohort_end = cohort_start + timedelta(days=7)
+        if now < cohort_end + timedelta(days=EXPIRY_DAYS):
+            continue
+        key = cohort_start.date().isoformat()
+        c = cohorts.setdefault(key, {"cohort_week": key, "signups": 0, "retained": 0})
+        c["signups"] += 1
+        if first["cycles"] > 1 or len(periods) > 1:
+            c["retained"] += 1
+    out = []
+    for c in sorted(cohorts.values(), key=lambda x: x["cohort_week"])[-weeks:]:
+        c["retention_pct"] = round(100 * c["retained"] / c["signups"]) if c["signups"] else None
+        out.append(c)
+    return out
+
+
+def avg_customer_lifetime() -> dict:
+    """Average number of consecutive 30-day cycles (and days) a
+    subscription lasts, across every access period that has definitively
+    ended -- either manually removed, or its window lapsed without a
+    renewal. Excludes still-ongoing periods since their lifetime isn't
+    over yet, which would bias the average down."""
+    periods_by_key, _ = _reconstruct_periods()
+    now = _now()
+    closed = [p for periods in periods_by_key.values() for p in periods if p["removed"] or p["end"] < now]
+    if not closed:
+        return {"sample_size": 0, "avg_cycles": None, "avg_days": None}
+    return {
+        "sample_size": len(closed),
+        "avg_cycles": round(sum(p["cycles"] for p in closed) / len(closed), 1),
+        "avg_days": round(sum((p["end"] - p["start"]).total_seconds() / 86400 for p in closed) / len(closed), 1),
+    }
+
+
+def time_to_renewal() -> dict:
+    """How early or late subscribers renew relative to their prior
+    expiry. Negative avg = renews before expiring, on average (a real
+    renewal habit); positive avg = typically comes back after already
+    lapsing (a win-back pattern, worth a reminder nudge before expiry)."""
+    _, gaps = _reconstruct_periods()
+    if not gaps:
+        return {"sample_size": 0, "avg_days_before_expiry": None, "on_time_count": 0, "late_count": 0}
+    avg = sum(gaps) / len(gaps)
+    return {
+        "sample_size": len(gaps),
+        "avg_days_before_expiry": round(-avg, 1),
+        "on_time_count": sum(1 for g in gaps if g <= 0),
+        "late_count": sum(1 for g in gaps if g > 0),
+    }
+
+
 def analytics_summary() -> dict:
     """Everything the admin page's Analytics card shows, computed fresh
     from current subscriber state + the event log. Two different kinds
@@ -236,6 +429,12 @@ def analytics_summary() -> dict:
         "window_30d": win30,
         "renewal_rate_30d": renewal_rate_30d,
         "recent_signups": recent_signups,
+        "revenue_timeline": revenue_timeline(),
+        "per_product_revenue": per_product_revenue(),
+        "multi_product_adoption": multi_product_adoption(),
+        "cohort_retention": cohort_retention(),
+        "avg_customer_lifetime": avg_customer_lifetime(),
+        "time_to_renewal": time_to_renewal(),
     }
 
 
