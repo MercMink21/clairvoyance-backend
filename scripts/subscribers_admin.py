@@ -40,7 +40,7 @@ PORT = 8899
 # app's real icon and isn't touched here.
 ICON_PATH = Path(__file__).resolve().parent.parent / "docs" / "text_logo_icon.png"
 
-PAGE = """<!doctype html>
+PAGE = r"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -447,7 +447,16 @@ function renderByProduct(data) {
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function escapeAttr(s) { return s.replace(/'/g, "\\'"); }
+function escapeAttr(s) {
+  // Used inside onclick="doRemove('product','EMAIL')" -- a single-quoted
+  // JS string literal nested inside a double-quoted HTML attribute. Both
+  // boundaries need escaping: an unescaped ' breaks out of the JS string,
+  // and an unescaped " breaks out of the HTML attribute entirely (a real
+  // stored-XSS vector, since these emails are saved to subscribers.json
+  // and re-rendered on every page load). & must be escaped before " so
+  // the resulting &quot; doesn't itself get double-encoded.
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
 
 async function doAdd() {
   const email = document.getElementById('addEmail').value.trim();
