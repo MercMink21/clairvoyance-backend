@@ -30,7 +30,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, active_subscribers,
-    products_for_email, EXPIRY_DAYS,
+    products_for_email, analytics_summary, EXPIRY_DAYS,
 )
 
 PORT = 8899
@@ -149,6 +149,26 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
 .priceval{color:var(--gc);font-weight:700}
 .priceavg{color:var(--t3);font-size:11px}
 .pricebest{background:var(--p3);border-left:2px solid var(--pc)}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:18px}
+.stat{background:var(--b1);border:1px solid var(--w2);border-radius:2px;padding:12px 14px}
+.stat-val{font-family:var(--orb);font-size:26px;font-weight:700;color:var(--nc);text-shadow:0 0 10px rgba(0,240,255,.4)}
+.stat-val.money{color:var(--gc);text-shadow:0 0 10px rgba(255,221,0,.4)}
+.stat-lbl{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--t3);text-transform:uppercase;margin-top:4px}
+.stat-note{font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:2px}
+.analytics-sub{font-family:var(--orb);font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);
+  margin:20px 0 10px}
+.analytics-sub:first-child{margin-top:0}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-family:var(--mono);font-size:12px}
+.bar-label{width:70px;color:var(--t3);text-transform:uppercase;flex-shrink:0}
+.bar-track{flex:1;background:var(--b1);border-radius:2px;height:14px;overflow:hidden;border:1px solid var(--w2)}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--pc),var(--ic));border-radius:2px}
+.bar-count{width:24px;text-align:right;color:var(--t2);flex-shrink:0}
+.activity-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;
+  padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.activity-row:last-child{border-bottom:none}
+.activity-row span:last-child{color:var(--t2);font-weight:700}
+.tracking-note{font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -156,6 +176,18 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
   <div class="hdr">
     <div class="logo">CLAIRVOYANCE</div>
     <div class="subtitle" id="expiryNote">SUBSCRIBER ACCESS · 30-DAY WINDOWS</div>
+  </div>
+
+  <div class="card">
+    <div class="sh">Analytics</div>
+    <div class="tracking-note" id="trackingNote"></div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="analytics-sub">Active by Product</div>
+    <div id="barChart"></div>
+    <div class="analytics-sub">Activity (7d / 30d)</div>
+    <div id="activityBox"></div>
+    <div class="analytics-sub" id="expiringHdr" style="display:none">Expiring Soon (&le;5 days)</div>
+    <div id="expiringBox"></div>
   </div>
 
   <div class="card">
@@ -200,12 +232,12 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)}
       <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
       <tr><td>1</td><td class="priceval">$20</td><td class="priceavg">$20.00</td></tr>
       <tr><td>2</td><td class="priceval">$30</td><td class="priceavg">$15.00</td></tr>
-      <tr><td>3</td><td class="priceval">$38</td><td class="priceavg">$12.67</td></tr>
+      <tr><td>3</td><td class="priceval">$40</td><td class="priceavg">$13.33</td></tr>
       <tr><td>4</td><td class="priceval">$45</td><td class="priceavg">$11.25</td></tr>
       <tr><td>5</td><td class="priceval">$55</td><td class="priceavg">$11.00</td></tr>
-      <tr><td>6</td><td class="priceval">$61</td><td class="priceavg">$10.17</td></tr>
-      <tr><td>7</td><td class="priceval">$66</td><td class="priceavg">$9.43</td></tr>
-      <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$70</td><td class="priceavg">$8.75</td></tr>
+      <tr><td>6</td><td class="priceval">$60</td><td class="priceavg">$10.00</td></tr>
+      <tr><td>7</td><td class="priceval">$70</td><td class="priceavg">$10.00</td></tr>
+      <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$75</td><td class="priceavg">$9.38</td></tr>
     </table>
   </div>
 </div>
@@ -223,6 +255,53 @@ async function loadAll() {
   renderChips();
   renderAllList(data.data);
   renderByProduct(data.data);
+  loadAnalytics();
+}
+
+async function loadAnalytics() {
+  const res = await fetch('/api/analytics');
+  const a = await res.json();
+
+  const trackEl = document.getElementById('trackingNote');
+  trackEl.textContent = a.events_since
+    ? 'Activity tracked since ' + a.events_since.slice(0, 10) + ' · estimated revenue is not a real payment ledger'
+    : 'No activity tracked yet -- signup/renewal/removal trends start accumulating from today · estimated revenue is not a real payment ledger';
+
+  document.getElementById('statGrid').innerHTML = `
+    <div class="stat"><div class="stat-val">${a.active_emails}</div><div class="stat-lbl">Active Subscribers</div></div>
+    <div class="stat"><div class="stat-val">${a.active_subscriptions}</div><div class="stat-lbl">Active Subscriptions</div></div>
+    <div class="stat"><div class="stat-val money">$${a.estimated_mrr}</div><div class="stat-lbl">Est. 30-Day Revenue</div></div>
+    <div class="stat"><div class="stat-val">${a.renewal_rate_30d === null ? '—' : a.renewal_rate_30d + '%'}</div><div class="stat-lbl">Renewal Rate (30d)</div><div class="stat-note">${a.renewal_rate_30d === null ? 'no renewals/removes yet' : ''}</div></div>
+  `;
+
+  const maxCount = Math.max(1, ...Object.values(a.per_product_counts));
+  document.getElementById('barChart').innerHTML = PRODUCTS.map(p => {
+    const n = a.per_product_counts[p] || 0;
+    const pct = Math.round((n / maxCount) * 100);
+    return `<div class="bar-row">
+      <div class="bar-label">${p}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <div class="bar-count">${n}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('activityBox').innerHTML = `
+    <div class="activity-row"><span>New signups</span><span>${a.window_7d.add} / ${a.window_30d.add}</span></div>
+    <div class="activity-row"><span>Renewals</span><span>${a.window_7d.renew} / ${a.window_30d.renew}</span></div>
+    <div class="activity-row"><span>Removed</span><span>${a.window_7d.remove} / ${a.window_30d.remove}</span></div>
+  `;
+
+  const expHdr = document.getElementById('expiringHdr');
+  const expBox = document.getElementById('expiringBox');
+  if (a.expiring_soon.length) {
+    expHdr.style.display = '';
+    expBox.innerHTML = a.expiring_soon.map(r =>
+      `<div class="activity-row"><span>${escapeHtml(r.email)} · ${r.product.toUpperCase()}</span><span class="${daysClass(r.days_left)}">${r.days_left}d</span></div>`
+    ).join('');
+  } else {
+    expHdr.style.display = 'none';
+    expBox.innerHTML = '';
+  }
 }
 
 function renderChips() {
@@ -403,6 +482,8 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/check":
             email = parse_qs(parsed.query).get("email", [""])[0]
             self._json({"email": email, "rows": products_for_email(email)})
+        elif parsed.path == "/api/analytics":
+            self._json(analytics_summary())
         else:
             self._json({"error": "not found"}, 404)
 
