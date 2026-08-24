@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
+from _subscribers import recipients_for, OWNER_EMAIL  # noqa: E402
 
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 # Separate from SOCIAL_CARD_EMAIL_TO on purpose -- this is a personal daily
@@ -85,6 +86,26 @@ SPORT_TO_LOCKPICK_TYPE = {
 # soccer-lock-early.yml exists to solve (confirmed real bug: MLS legs were
 # showing up in the "EUROPEAN SOCCER" email before this).
 EURO_SOCCER_SPORTS = frozenset({"SOC_CL", "SOC_PL", "SOC_LIGA", "SOC_BL", "SOC_ITA"})
+
+# The 7 paid products (confirmed structure, see _subscribers.py) -- each
+# maps to the exact sport tags gather_legs()/_autoLockCapture use. Soccer
+# bundles all 6 leagues (5 European + MLS) as one purchase. Hockey bundles
+# NHL with KHL/SHL/LIIGA -- those 3 have no real game cards wired up yet
+# (confirmed: no _autoLockCapture call exists for them), so today this is
+# functionally NHL-only, but the product already covers them once they are.
+PRODUCT_SPORTS: dict[str, frozenset[str]] = {
+    "nfl": frozenset({"NFL"}),
+    "cfb": frozenset({"CFB"}),
+    "nba": frozenset({"NBA"}),
+    "wnba": frozenset({"WNBA"}),
+    "mlb": frozenset({"MLB"}),
+    "hockey": frozenset({"NHL", "KHL", "SHL", "LIIGA"}),
+    "soccer": EURO_SOCCER_SPORTS | frozenset({"SOC_MLS"}),
+}
+PRODUCT_LABEL: dict[str, str] = {
+    "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "wnba": "WNBA", "mlb": "MLB",
+    "hockey": "HOCKEY", "soccer": "SOCCER",
+}
 # OPTIMAL=2, PREMIUM=3 in _evalMkts()'s own tierN scale.
 QUALIFYING_TIERS = {2, 3}
 TIER_LABEL = {0: "SKIP", 1: "LEAN", 2: "OPTIMAL", 3: "PREMIUM"}
@@ -215,22 +236,38 @@ def run_settle(page, live: bool) -> list[dict]:
     return newly
 
 
-def _settle_result_line(b: dict) -> str:
-    """One human-readable result line per settled bet: what happened
-    (score for game bets, actual stat value for props) alongside the
-    win/loss/push outcome, so the email doubles as a same-day reference
-    for the picks that were locked and have now completed."""
-    outcome = (b.get("outcome") or "").upper()
+def _esc(s) -> str:
+    return str(s if s is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# Shared email chrome -- both emails render inside this same dark card
+# shell so they read as one product, not two differently-styled scripts.
+_EMAIL_WRAP_OPEN = ('<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+                     'max-width:640px;margin:0 auto;background:#0a0014;color:#e8e8e8;padding:20px 16px">')
+_EMAIL_WRAP_CLOSE = '</div>'
+_OUTCOME_COLOR = {"win": "#00e676", "loss": "#ff3b5c", "push": "#ffb300"}
+
+
+def _settle_result_html(b: dict) -> str:
+    """One result row per settled bet: what happened (score for game bets,
+    actual stat value for props) alongside the win/loss/push outcome, so
+    the email doubles as a same-day reference for picks that have now
+    completed."""
+    outcome = (b.get("outcome") or "").lower()
+    color = _OUTCOME_COLOR.get(outcome, "#999")
     if b.get("hScore") is not None and b.get("aScore") is not None:
-        result = f"{b.get('hA')} {b['hScore']} – {b.get('awA')} {b['aScore']}"
+        result = f"{_esc(b.get('hA'))} {b['hScore']} – {_esc(b.get('awA'))} {b['aScore']}"
     elif b.get("playerResult") is not None:
-        result = f"actual: {b['playerResult']}"
+        result = f"actual: {_esc(b['playerResult'])}"
     else:
         result = "no score/result captured"
-    return f"{b.get('betOn')} — {outcome} ({result})"
+    return (f'<div style="padding:5px 0;font-size:14px;color:#ddd">'
+            f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
+            f'border-radius:3px;margin-right:8px;text-transform:uppercase">{_esc(outcome)}</span>'
+            f'{_esc(b.get("betOn"))} <span style="color:#999">({result})</span></div>')
 
 
-def build_settlement_email_body(settled: list[dict]) -> str:
+def build_settlement_email_html(settled: list[dict]) -> str:
     by_sport: dict[str, list[dict]] = {}
     for b in settled:
         by_sport.setdefault(b.get("sport") or "?", []).append(b)
@@ -238,20 +275,27 @@ def build_settlement_email_body(settled: list[dict]) -> str:
     wins = sum(1 for b in settled if b.get("outcome") == "win")
     losses = sum(1 for b in settled if b.get("outcome") == "loss")
     pushes = sum(1 for b in settled if b.get("outcome") not in ("win", "loss"))
-    lines = [f"{len(settled)} bets settled — {wins}W-{losses}L" + (f"-{pushes}P" if pushes else ""), ""]
+    record = f"{wins}W-{losses}L" + (f"-{pushes}P" if pushes else "")
+    parts = [_EMAIL_WRAP_OPEN,
+              f'<div style="font-size:12px;letter-spacing:1px;color:#999;text-transform:uppercase">'
+              f'{len(settled)} bets settled — {record}</div>']
     if not settled:
-        lines.append("No bets settled this run.")
-        return "\n".join(lines)
+        parts.append('<div style="padding:20px 0;color:#999;font-size:14px">No bets settled this run.</div>')
+        parts.append(_EMAIL_WRAP_CLOSE)
+        return "".join(parts)
 
     for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
         bets = by_sport[sport]
         sw = sum(1 for b in bets if b.get("outcome") == "win")
         sl = sum(1 for b in bets if b.get("outcome") == "loss")
-        lines.append(f"=== {SPORT_DISPLAY_NAME.get(sport, sport)} ({sw}W-{sl}L) ===")
-        for b in bets:
-            lines.append(f"  • {_settle_result_line(b)}")
-        lines.append("")
-    return "\n".join(lines)
+        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#00e5ff;text-transform:uppercase;'
+                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,229,255,.25);padding-bottom:4px">'
+                      f'{_esc(SPORT_DISPLAY_NAME.get(sport, sport))} ({sw}W-{sl}L)</div>')
+        parts.append('<div style="background:#14001f;border-radius:6px;padding:10px 14px">')
+        parts.append("".join(_settle_result_html(b) for b in bets))
+        parts.append('</div>')
+    parts.append(_EMAIL_WRAP_CLOSE)
+    return "".join(parts)
 
 
 def send_settlement_email(settled: list[dict], live: bool) -> None:
@@ -261,14 +305,12 @@ def send_settlement_email(settled: list[dict], live: bool) -> None:
     if not settled:
         log("Nothing settled this run — skipping settlement email")
         return
-    body_text = build_settlement_email_body(settled)
+    body_html = build_settlement_email_html(settled)
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     wins = sum(1 for b in settled if b.get("outcome") == "win")
     losses = sum(1 for b in settled if b.get("outcome") == "loss")
     prefix = "" if live else "[DRY RUN] "
     subject = f"Clairvoyance — {prefix}Settled {date_str}: {wins}W-{losses}L ({len(settled)})"
-    body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
-        body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
     ok, msg = _send_gmail(subject, LOCKS_EMAIL_TO, body_html)
     log(f"Settlement email sent to {LOCKS_EMAIL_TO}" if ok else f"Settlement email send failed: {msg}")
 
@@ -423,7 +465,7 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
                     "side": m.get("side"), "label": m.get("label"), "prob": m.get("prob"),
                     "ml": m.get("ml"), "dec": m.get("dec"), "tierN": tier_n, "evVal": m.get("evVal"),
                     # Same for every qualifying market on this game -- carried
-                    # per-leg (not de-duped) so build_locks_email_body can
+                    # per-leg (not de-duped) so build_locks_email_html can
                     # regroup by matchup without needing a second pass over
                     # gameLegs.
                     "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
@@ -528,28 +570,42 @@ def _market_type(side: str | None) -> str:
     return "ML"
 
 
-def _leg_line(q: dict) -> str:
-    """One human-readable line per qualifying leg, for the email body --
-    tier, probability, EV, both odds formats, and (for a moneyline pick
-    at 75%+ model probability) the same HIGH HIT % tag the game cards
-    show, so a heavy favorite that clears the hit-rate bar but not the
-    EV bar still gets flagged here even if its tier is only LEAN."""
+_TIER_COLOR = {3: "#ffdd00", 2: "#00e5ff", 1: "#6699ff", 0: "#666"}  # PREMIUM/OPTIMAL/LEAN/SKIP
+_GRADE_COLOR = {"PREMIUM": "#ffdd00", "OPTIMAL": "#00e5ff", "LEAN": "#6699ff"}
+
+
+def _leg_html(q: dict) -> str:
+    """One row per qualifying leg: a colored tier badge, probability, EV,
+    both odds formats, and (for a moneyline pick at 75%+ model
+    probability) the same HIGH HIT % tag the game cards show, so a heavy
+    favorite that clears the hit-rate bar but not the EV bar still gets
+    flagged here even if its tier is only LEAN."""
     if q["kind"] == "GAME":
+        tier_n = q["tierN"]
+        tier_lbl = TIER_LABEL.get(tier_n, "?")
+        color = _TIER_COLOR.get(tier_n, "#666")
         ev_val = q.get("evVal")
-        ev_str = f" · EV {ev_val*100:+.1f}%" if ev_val is not None else ""
+        ev_str = f' · EV {ev_val*100:+.1f}%' if ev_val is not None else ''
         ml, dec = q.get("ml"), q.get("dec")
-        odds_str = (f" · {ml}" if ml else "") + (f" ({dec:.2f})" if dec else "")
+        odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
         prob = q.get("prob") or 0
-        hh = " · 🔥 HIGH HIT %" if _market_type(q.get("side")) == "ML" and prob >= _HIGH_HIT_P else ""
-        return f"{q['label']} — {TIER_LABEL.get(q['tierN'], '?')} · {prob*100:.0f}%{ev_str}{odds_str}{hh}"
+        hh = ' <span style="color:#ffdd00">🔥 HIGH HIT %</span>' if _market_type(q.get("side")) == "ML" and prob >= _HIGH_HIT_P else ''
+        return (f'<div style="padding:4px 0;font-size:14px;color:#ddd">'
+                f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
+                f'border-radius:3px;margin-right:8px">{tier_lbl}</span>'
+                f'{_esc(q["label"])} — {prob*100:.0f}%{ev_str}{odds_str}{hh}</div>')
     leg = q["leg"]
     direction = "UNDER" if leg.get("over") is False else "OVER"
     prob = leg.get("prob") if leg.get("prob") is not None else (leg.get("conf", 0) / 100)
     prob = prob or 0
     ml, dec = leg.get("ml"), leg.get("dec")
-    odds_str = (f" · {ml}" if ml else "") + (f" ({dec:.2f})" if dec else "")
-    return (f"{leg.get('player')} {direction} {leg.get('line')} {leg.get('stat')} "
-            f"— {leg.get('grade')} · {prob*100:.0f}%{odds_str}")
+    odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
+    grade = leg.get("grade") or ""
+    color = _GRADE_COLOR.get(grade, "#666")
+    return (f'<div style="padding:4px 0;font-size:14px;color:#ddd">'
+            f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
+            f'border-radius:3px;margin-right:8px">{_esc(grade)}</span>'
+            f'{_esc(leg.get("player"))} {direction} {_esc(leg.get("line"))} {_esc(leg.get("stat"))} — {prob*100:.0f}%{odds_str}</div>')
 
 
 def _prop_matchup_key(leg: dict) -> str:
@@ -558,14 +614,11 @@ def _prop_matchup_key(leg: dict) -> str:
     return f"{team} vs {opp}" if opp else team
 
 
-def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int | None = None) -> str:
+def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int | None = None) -> str:
     """Groups qualifying legs by sport/league, then by matchup within each
-    sport, for a personal daily reference email — not the public social
-    content pipeline, just a plain readable rundown of what the engine
-    locked (or would lock) today: the matchup, every qualifying pick for
-    it, the real MC/model projection behind it, and the single best-value
-    market on that game (not necessarily one of the qualifying picks
-    itself -- shown either way as useful context)."""
+    sport: the matchup, every qualifying pick for it (grade, probability,
+    EV, odds), and the real MC/model reasoning behind it (not necessarily
+    one of the qualifying picks itself -- shown either way as context)."""
     by_sport: dict[str, dict[str, list[dict]]] = {}
     for q in qualifying:
         sport = q["sport"]
@@ -577,53 +630,84 @@ def build_locks_email_body(qualifying: list[dict], live: bool, locked_count: int
         if live else
         f"DRY RUN — {len(qualifying)} legs qualified, nothing was written"
     )
-    lines = [status_line]
+    parts = [_EMAIL_WRAP_OPEN, f'<div style="font-size:12px;letter-spacing:1px;color:#999;text-transform:uppercase">{_esc(status_line)}</div>']
+
     high_hit = [q for q in qualifying if q["kind"] == "GAME" and _market_type(q.get("side")) == "ML"
                 and (q.get("prob") or 0) >= _HIGH_HIT_P]
     if high_hit:
-        lines.append(f"🔥 {len(high_hit)} HIGH HIT % moneyline pick{'s' if len(high_hit) != 1 else ''} today "
-                      f"(75%+ model win probability, regardless of tier/EV)")
-    lines.append("")
+        n = len(high_hit)
+        parts.append(f'<div style="background:rgba(255,221,0,.12);border:1px solid rgba(255,221,0,.4);'
+                      f'border-radius:4px;padding:8px 12px;margin:10px 0;font-size:13px;color:#ffdd00">'
+                      f'🔥 {n} HIGH HIT % moneyline pick{"s" if n != 1 else ""} today '
+                      f'(75%+ model win probability, regardless of tier/EV)</div>')
+
     if not qualifying:
-        lines.append("No PREMIUM/OPTIMAL legs cleared the bar today.")
-        return "\n".join(lines)
+        parts.append('<div style="padding:20px 0;color:#999;font-size:14px">No PREMIUM/OPTIMAL legs cleared the bar today.</div>')
+        parts.append(_EMAIL_WRAP_CLOSE)
+        return "".join(parts)
 
     for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
         matchups = by_sport[sport]
         total_legs = sum(len(v) for v in matchups.values())
-        lines.append(f"=== {SPORT_DISPLAY_NAME.get(sport, sport)} ({total_legs}) ===")
+        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#00e5ff;text-transform:uppercase;'
+                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,229,255,.25);padding-bottom:4px">'
+                      f'{_esc(SPORT_DISPLAY_NAME.get(sport, sport))} ({total_legs})</div>')
         for matchup, legs in matchups.items():
-            lines.append(f"{matchup}")
-            lines.append("  Worth taking:")
-            for q in legs:
-                lines.append(f"    • {_leg_line(q)}")
+            parts.append('<div style="background:#14001f;border-radius:6px;padding:12px 14px;margin-bottom:10px">')
+            parts.append(f'<div style="font-weight:700;font-size:15px;color:#fff;margin-bottom:6px">{_esc(matchup)}</div>')
+            parts.append("".join(_leg_html(q) for q in legs))
             mc_summary = next((l.get("mcSummary") for l in legs if l.get("mcSummary")), None)
             best = next((l.get("best") for l in legs if l.get("best")), None)
             if mc_summary or best:
-                lines.append("  Reasoning:")
+                bits = []
                 if mc_summary:
-                    lines.append(f"    {mc_summary}")
+                    bits.append(_esc(mc_summary))
                 if best:
-                    lines.append(f"    Best market value on this game: {best['label']} ({TIER_LABEL.get(best.get('tierN'), '?')})")
-            lines.append("")
-    return "\n".join(lines)
+                    bits.append(f'Best market value on this game: {_esc(best["label"])} ({TIER_LABEL.get(best.get("tierN"), "?")})')
+                parts.append(f'<div style="border-top:1px solid rgba(255,255,255,.08);margin-top:8px;padding-top:8px;'
+                              f'font-size:12px;color:#999;line-height:1.5">{"<br>".join(bits)}</div>')
+            parts.append('</div>')
+    parts.append(_EMAIL_WRAP_CLOSE)
+    return "".join(parts)
 
 
-def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None, label: str = "") -> None:
-    if not LOCKS_EMAIL_TO:
-        log("LOCKS_EMAIL_TO not set — skipping locked-picks email")
+def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None,
+                      label: str = "", to: list[str] | None = None) -> None:
+    recipients = to if to is not None else ([LOCKS_EMAIL_TO] if LOCKS_EMAIL_TO else [])
+    if not recipients:
+        log("No recipients (LOCKS_EMAIL_TO unset and none passed) — skipping locked-picks email")
         return
-    body_text = build_locks_email_body(qualifying, live, locked_count)
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     tag = f"{label} " if label else ""
     subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} {tag}picks for {date_str} ({len(qualifying)})"
-    body_html = "<pre style=\"font-family:monospace;font-size:13px;white-space:pre-wrap\">" + \
-        body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</pre>"
-    ok, msg = _send_gmail(subject, LOCKS_EMAIL_TO, body_html)
-    log(f"Locks email sent to {LOCKS_EMAIL_TO}" if ok else f"Locks email send failed: {msg}")
+    body_html = build_locks_email_html(qualifying, live, locked_count)
+    ok, msg = _send_gmail(subject, recipients, body_html)
+    log(f"Locks email ({label or 'ALL'}) sent to {len(recipients)} recipient(s)" if ok else f"Locks email ({label or 'ALL'}) send failed: {msg}")
 
 
-def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "") -> None:
+def _lock_qualifying_legs(page, qualifying: list[dict]) -> int:
+    """Actually calls the real lockPick()/lockProp()/etc. for each leg.
+    Shared by run_lock() (single-product early passes) and
+    run_lock_segmented() (the main run's per-product loop) so there's one
+    place this logic lives, not two copies that could drift."""
+    locked = 0
+    for q in qualifying:
+        try:
+            outcome = lock_game_leg(page, q) if q["kind"] == "GAME" else lock_prop_leg(page, q["sport"], q["leg"])
+            if outcome == "locked":
+                locked += 1
+            else:
+                log(f"  {outcome}: {q.get('label') or q.get('leg', {}).get('player')}")
+        except Exception as exc:
+            log(f"  FAILED to lock: {exc}")
+    return locked
+
+
+def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "",
+              to: list[str] | None = None) -> None:
+    """Single-product lock pass -- used by the early soccer/CFB workflows,
+    which each run their own gather_legs() call at their own scheduled
+    time (not part of the main run's per-product loop)."""
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
     qualifying = build_qualifying(result, only_sports=only_sports)
@@ -642,29 +726,63 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
 
     if not live:
         log(f"[DRY RUN] Would lock {len(qualifying)} legs above (pass --live to write)")
-        send_locks_email(qualifying, live=False, label=label)
+        send_locks_email(qualifying, live=False, label=label, to=to)
         return
 
     if not qualifying:
-        send_locks_email(qualifying, live=True, locked_count=0, label=label)
+        send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to)
         return
 
-    locked = 0
-    for q in qualifying:
-        try:
-            outcome = lock_game_leg(page, q) if q["kind"] == "GAME" else lock_prop_leg(page, q["sport"], q["leg"])
-            if outcome == "locked":
-                locked += 1
-            else:
-                log(f"  {outcome}: {q.get('label') or q.get('leg', {}).get('player')}")
-        except Exception as exc:
-            log(f"  FAILED to lock: {exc}")
-
+    locked = _lock_qualifying_legs(page, qualifying)
     log(f"Locked {locked}/{len(qualifying)} legs")
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    send_locks_email(qualifying, live=True, locked_count=locked, label=label)
+    send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
+
+
+def run_lock_segmented(page, live: bool) -> None:
+    """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
+    part: real browser + live data warmups), then split into a separate
+    qualifying-legs list + a separately-addressed email for each of the 7
+    paid sport products (see _subscribers.py), plus one more pass for
+    whatever isn't covered by any product (tennis ATP/WTA today -- not a
+    purchasable product yet), sent to the owner only. A subscriber to one
+    product only ever sees that product's email; nothing is ever silently
+    dropped -- every qualifying leg lands in exactly one of these passes."""
+    log("=== AUTO-LOCK (PREMIUM/OPTIMAL) — ALL PRODUCTS ===")
+    result = gather_legs(page)
+    log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
+        f"{len(result.get('propLegs') or [])} prop legs total")
+    all_qualifying = build_qualifying(result)
+    covered_sports: set[str] = set().union(*PRODUCT_SPORTS.values())
+    total_locked = 0
+
+    for product, sports in PRODUCT_SPORTS.items():
+        qualifying = [q for q in all_qualifying if q["sport"] in sports]
+        label = PRODUCT_LABEL[product]
+        recipients = recipients_for(product)
+        log(f"[{product}] {len(qualifying)} qualifying legs -> {len(recipients)} recipient(s)")
+        if not live:
+            send_locks_email(qualifying, live=False, label=label, to=recipients)
+            continue
+        locked = _lock_qualifying_legs(page, qualifying) if qualifying else 0
+        total_locked += locked
+        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
+
+    other_qualifying = [q for q in all_qualifying if q["sport"] not in covered_sports]
+    log(f"[other] {len(other_qualifying)} qualifying legs (not a paid product yet -- owner only)")
+    owner_to = [OWNER_EMAIL] if OWNER_EMAIL else None
+    if not live:
+        send_locks_email(other_qualifying, live=False, label="OTHER", to=owner_to)
+    else:
+        locked = _lock_qualifying_legs(page, other_qualifying) if other_qualifying else 0
+        total_locked += locked
+        send_locks_email(other_qualifying, live=True, locked_count=locked, label="OTHER", to=owner_to)
+
+    if total_locked > 0:
+        flush_to_supabase(page)
+        log(f"Flushed {total_locked} total locks to Supabase")
 
 
 def main() -> None:
@@ -687,6 +805,11 @@ def main() -> None:
         raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
     only_sports = EURO_SOCCER_SPORTS if args.only_soccer else frozenset({"CFB"}) if args.only_cfb else None
     label = "EUROPEAN SOCCER" if args.only_soccer else "CFB" if args.only_cfb else ""
+    # Early passes route to that product's real (owner + paying
+    # subscribers) list; soccer's early pass shares the same "soccer"
+    # subscriber list the main run's MLS pass uses, so a soccer subscriber
+    # gets both without needing two separate purchases.
+    early_to = recipients_for("soccer") if args.only_soccer else recipients_for("cfb") if args.only_cfb else None
 
     from playwright.sync_api import sync_playwright
 
@@ -705,7 +828,10 @@ def main() -> None:
             settled = run_settle(page, args.live)
             send_settlement_email(settled, args.live)
         if do_lock:
-            run_lock(page, args.live, only_sports=only_sports, label=label)
+            if only_sports is None:
+                run_lock_segmented(page, args.live)
+            else:
+                run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to)
 
         browser.close()
 

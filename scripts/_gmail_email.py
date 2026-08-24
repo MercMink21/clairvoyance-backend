@@ -17,6 +17,7 @@ Usage:
   from _gmail_email import send_email
   ok, msg = send_email("Subject", "recipient@example.com", "<p>html body</p>")
   ok, msg = send_email("Subject", "recipient@example.com", "<p>html body</p>", attachments=[Path("card.png")])
+  ok, msg = send_email("Subject", ["a@x.com", "b@x.com"], "<p>html body</p>")  # BCC'd -- see note below
 """
 from __future__ import annotations
 import os
@@ -31,17 +32,23 @@ GMAIL_USER = "clairvoyanceengine@gmail.com"
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
 
-def send_email(subject: str, to: str, html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
+def send_email(subject: str, to: str | list[str], html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
     """Never raises -- returns (success, message) so callers can log the
-    result themselves the same way they logged Resend's HTTP response."""
+    result themselves the same way they logged Resend's HTTP response.
+
+    `to` as a list (multiple paying subscribers on the same sport) sends
+    to every address via BCC -- the To: header itself stays the sending
+    account, so subscribers never see each other's email addresses. A
+    single string still populates a real To: header as before."""
     if not GMAIL_APP_PASSWORD:
         return False, "GMAIL_APP_PASSWORD not set"
-    if not to:
+    recipients = [to] if isinstance(to, str) else list(dict.fromkeys(r for r in to if r))
+    if not recipients:
         return False, "no recipient"
 
     msg = MIMEMultipart()
     msg["From"] = f"Clairvoyance Engine <{GMAIL_USER}>"
-    msg["To"] = to
+    msg["To"] = recipients[0] if len(recipients) == 1 else GMAIL_USER
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
@@ -58,7 +65,7 @@ def send_email(subject: str, to: str, html_body: str, attachments: list[Path] | 
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, [to], msg.as_string())
+            server.sendmail(GMAIL_USER, recipients, msg.as_string())
         return True, "sent"
     except Exception as exc:
         return False, str(exc)
