@@ -68,7 +68,7 @@ DISCLAIMER_HTML = (
     'font-size:11px;line-height:1.5;color:#f20cff;font-weight:600">'
     'Clairvoyance Engine outputs are probabilistic projections for informational and '
     'analytical purposes only. Model outputs do not constitute financial or betting advice. '
-    'Past model performance does not guarantee future results. Always gamble responsibly.'
+    'Past model performance does not guarantee future results.'
     '</div>'
 )
 EMAIL_WRAP_CLOSE_DISCLOSED = DISCLAIMER_HTML + EMAIL_WRAP_CLOSE
