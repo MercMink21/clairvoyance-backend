@@ -545,10 +545,10 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     now = _now()
     expiry_rows = "".join(
         f'<div style="padding:14px 0;'
-        f'{"border-bottom:1px solid rgba(255,255,255,.08);" if i < len(rows) - 1 else ""}'
+        f'{"border-bottom:1px solid #ececec;" if i < len(rows) - 1 else ""}'
         f'font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:12px">'
-        f'<strong style="color:#fff;letter-spacing:.3px">{r["product"].upper()}</strong>'
-        f'<span style="color:#a8a8b8;font-size:12px;white-space:nowrap">active through '
+        f'<strong style="color:#1a1a2e;letter-spacing:.3px">{r["product"].upper()}</strong>'
+        f'<span style="color:#666;font-size:12px;white-space:nowrap">active through '
         f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
         f'</div>'
         for i, r in enumerate(rows)
@@ -579,7 +579,8 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         '<div style="font-size:19px;font-weight:700;color:#1a1a2e;margin-bottom:6px;line-height:1.3">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
         f'<div style="font-size:13px;color:#000;margin-bottom:26px">Confirmed {now.strftime("%b %d, %Y")}</div>'
-        f'<div style="background:#14001f;border-radius:6px;padding:4px 20px;margin-bottom:20px">{expiry_rows}</div>'
+        f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
+        f'padding:4px 20px;margin-bottom:20px">{expiry_rows}</div>'
         f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
         f'padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center">'
         f'<span style="font-size:12px;letter-spacing:1px;color:#000;text-transform:uppercase">'
