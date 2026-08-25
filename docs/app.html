@@ -3720,9 +3720,20 @@ window._autoLockLegs=window._autoLockLegs||[];
 // transparency the live UI already gives a human looking at the card.
 function _autoLockCapture(sport,hA,awA,nm,mcSummary){
   try{
-    window._autoLockLegs.push({sport,hA,awA,mcSummary:mcSummary||null,
+    var entry={sport,hA,awA,mcSummary:mcSummary||null,
       best:nm.best?{label:nm.best.label,side:nm.best.side,tierN:nm.tierN}:null,
-      markets:(nm.mkts||[]).map(m=>({label:m.label,side:m.side,prob:m.prob,evVal:m.evVal,dec:m.dec,ml:m.ml,tierN:m.tierN}))});
+      markets:(nm.mkts||[]).map(m=>({label:m.label,side:m.side,prob:m.prob,evVal:m.evVal,dec:m.dec,ml:m.ml,tierN:m.tierN}))};
+    // Replace, don't append, if this exact matchup was already captured --
+    // some cards genuinely re-render the same game later in the same page
+    // load (e.g. soccer's renderLeagueMatches() re-renders once Opta stats
+    // finish loading, for pl/liga/ita/bl/mls -- see _OPTA_LEAGUES), and
+    // without this a plain push() left BOTH the pre-Opta and post-Opta
+    // capture in window._autoLockLegs, so a qualifying market on that game
+    // showed up twice (with two slightly different EV numbers) in the
+    // daily locks email and this file's own social-post generator. The
+    // later capture is kept since it reflects the more complete data.
+    var i=window._autoLockLegs.findIndex(function(l){return l.sport===sport&&l.hA===hA&&l.awA===awA;});
+    if(i>=0)window._autoLockLegs[i]=entry;else window._autoLockLegs.push(entry);
   }catch(e){}
 }
 // ── Universal best-market evaluator — used by all sport reasoning blocks ──────
