@@ -547,34 +547,54 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         f'<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:15px;'
         f'color:#eee;display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
         f'<strong style="color:#fff;letter-spacing:.5px">{r["product"].upper()}</strong>'
-        f'<span style="color:#888;font-size:12px;white-space:nowrap">active through '
+        f'<span style="color:#fff;font-size:12px;white-space:nowrap">active through '
         f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
         f'</div>'
         for r in rows
     )
     subject = f"Clairvoyance — Receipt: {n} product{'s' if n != 1 else ''} active (${price}/mo)"
+    # Custom open (not the shared EMAIL_WRAP_OPEN) so the receipt can pull
+    # in the banner's own palette -- a faint cyan crosshatch echoing the
+    # banner's grid line texture, plus a soft cyan glow border -- so the
+    # body doesn't go flat-white right under a neon header. Still closes
+    # through EMAIL_WRAP_CLOSE_DISCLOSED (just "</div>" + the disclaimer),
+    # which doesn't care what opened the div. Gradient background-image
+    # is unsupported in some mail clients (notably classic Outlook); the
+    # plain white background it's layered on is declared right alongside
+    # it, so the fallback there is simply today's flat-white look, not a
+    # broken one.
+    receipt_wrap_open = (
+        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+        'max-width:640px;margin:0 auto;background-color:#ffffff;'
+        'background-image:'
+        'repeating-linear-gradient(45deg, rgba(0,240,255,.05) 0, rgba(0,240,255,.05) 1px, transparent 1px, transparent 22px),'
+        'repeating-linear-gradient(-45deg, rgba(0,240,255,.05) 0, rgba(0,240,255,.05) 1px, transparent 1px, transparent 22px);'
+        'color:#1a1a2e;padding:20px 16px;border:1px solid rgba(0,240,255,.25);'
+        'border-top:0;box-shadow:0 0 24px rgba(0,240,255,.12)">'
+    )
     body = (
-        # Banner sits outside EMAIL_WRAP_OPEN's padding so it bleeds edge-
-        # to-edge across the full 640px card width instead of sitting
-        # inset inside the padded body.
+        # Banner sits outside the padded wrap so it bleeds edge-to-edge
+        # across the full 640px card width instead of sitting inset.
         f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
         f'alt="Clairvoyance Engine" width="640" '
         f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
         f'font-family:-apple-system,sans-serif;color:#999" /></div>' +
-        EMAIL_WRAP_OPEN +
+        receipt_wrap_open +
         '<div style="font-size:11px;letter-spacing:2px;color:#00b8cc;text-transform:uppercase;'
         'font-weight:700;margin-bottom:10px">Payment Receipt</div>'
         '<div style="font-size:18px;font-weight:700;color:#1a1a2e;margin-bottom:4px">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
-        f'<div style="font-size:13px;color:#888;margin-bottom:20px">Confirmed {now.strftime("%b %d, %Y")}</div>'
-        f'<div style="background:#14001f;border-radius:8px;padding:6px 16px;margin-bottom:18px">{expiry_rows}</div>'
-        f'<div style="background:#f4fbfc;border:1px solid rgba(0,184,204,.3);border-radius:8px;'
-        f'padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">'
+        f'<div style="font-size:13px;color:#000;margin-bottom:20px">Confirmed {now.strftime("%b %d, %Y")}</div>'
+        f'<div style="background:#14001f;border-radius:8px;padding:6px 16px;margin-bottom:18px;'
+        f'box-shadow:0 0 16px rgba(0,240,255,.15)">{expiry_rows}</div>'
+        f'<div style="background:#f4fbfc;border:1px solid rgba(0,240,255,.4);border-radius:8px;'
+        f'padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;'
+        f'box-shadow:0 0 16px rgba(0,240,255,.15)">'
+        f'<span style="font-size:12px;letter-spacing:1px;color:#000;text-transform:uppercase">'
         f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
-        f'<span style="font-size:22px;font-weight:800;color:#1a1a2e">${price}<span '
-        f'style="font-size:13px;font-weight:500;color:#777">/month</span></span></div>'
-        '<div style="font-size:13px;color:#777;line-height:1.6">'
+        f'<span style="font-size:24px;font-weight:800;color:#f20cff">${price}<span '
+        f'style="font-size:13px;font-weight:500;color:#000">/month</span></span></div>'
+        '<div style="font-size:13px;color:#000;line-height:1.6">'
         'This confirms the access currently live on your account -- not a record of a specific '
         'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
         f'for another {EXPIRY_DAYS} days whenever you pay again; reply to this email with any '
