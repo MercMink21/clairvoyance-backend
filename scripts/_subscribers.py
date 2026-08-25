@@ -548,7 +548,7 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         f'{"border-bottom:1px solid #ececec;" if i < len(rows) - 1 else ""}'
         f'font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:12px">'
         f'<strong style="color:#1a1a2e;letter-spacing:.3px">{r["product"].upper()}</strong>'
-        f'<span style="color:#666;font-size:12px;white-space:nowrap">active through '
+        f'<span style="color:#1a1a2e;font-size:12px;white-space:nowrap">active through '
         f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
         f'</div>'
         for i, r in enumerate(rows)
@@ -600,7 +600,7 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         f'<span style="font-size:12px;letter-spacing:1px;color:{BLACK};text-transform:uppercase">'
         f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
         f'<span style="font-size:24px;font-weight:800;color:#f20cff">${price}<span '
-        f'style="font-size:13px;font-weight:500;color:{BLACK};margin-left:6px">/month</span></span></div>'
+        f'style="font-size:13px;font-weight:500;color:{BLACK};margin-left:6px">month</span></span></div>'
         f'<div style="font-size:13px;color:{BLACK};line-height:1.7">'
         'This confirms the access currently live on your account -- not a record of a specific '
         'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
