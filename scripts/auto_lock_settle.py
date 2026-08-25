@@ -586,37 +586,36 @@ def _leg_html(q: dict) -> str:
     ABOVE the pick (not inline before it) -- applies identically to every
     sport and league since both branches (game markets, player props)
     share this one function, no per-sport variant to keep in sync.
-    Probability, EV, both odds formats, and (for a moneyline pick at
-    75%+ model probability) the same HIGH HIT % tag the game cards show,
-    so a heavy favorite that clears the hit-rate bar but not the EV bar
-    still gets flagged here even if its tier is only LEAN."""
+    Probability and EV only -- no betting line/odds shown (explicitly
+    requested) -- plus (for a moneyline pick at 75%+ model probability)
+    the same HIGH HIT % tag the game cards show, so a heavy favorite
+    that clears the hit-rate bar but not the EV bar still gets flagged
+    here even if its tier is only LEAN. Props carry no EV field in the
+    underlying data (only game markets do), so a prop leg's line only
+    ever shows probability -- not a fabricated EV."""
     if q["kind"] == "GAME":
         tier_n = q["tierN"]
         tier_lbl = TIER_LABEL.get(tier_n, "?")
         color = _TIER_COLOR.get(tier_n, "#666")
         ev_val = q.get("evVal")
         ev_str = f' · EV {ev_val*100:+.1f}%' if ev_val is not None else ''
-        ml, dec = q.get("ml"), q.get("dec")
-        odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
         prob = q.get("prob") or 0
         hh = ' <span style="color:#ffdd00">🔥 HIGH HIT %</span>' if _market_type(q.get("side")) == "ML" and prob >= _HIGH_HIT_P else ''
         return (f'<div style="padding:5px 0">'
                 f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
                 f'border-radius:3px;display:inline-block;margin-bottom:3px">{tier_lbl}</span>'
-                f'<div style="font-size:14px;color:#eee">{_esc(q["label"])} — {prob*100:.0f}%{ev_str}{odds_str}{hh}</div>'
+                f'<div style="font-size:14px;color:#eee">{_esc(q["label"])} — {prob*100:.0f}%{ev_str}{hh}</div>'
                 f'</div>')
     leg = q["leg"]
     direction = "UNDER" if leg.get("over") is False else "OVER"
     prob = leg.get("prob") if leg.get("prob") is not None else (leg.get("conf", 0) / 100)
     prob = prob or 0
-    ml, dec = leg.get("ml"), leg.get("dec")
-    odds_str = (f' · {_esc(ml)}' if ml else '') + (f' ({dec:.2f})' if dec else '')
     grade = leg.get("grade") or ""
     color = _GRADE_COLOR.get(grade, "#666")
     return (f'<div style="padding:5px 0">'
             f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
             f'border-radius:3px;display:inline-block;margin-bottom:3px">{_esc(grade)}</span>'
-            f'<div style="font-size:14px;color:#eee">{_esc(leg.get("player"))} {direction} {_esc(leg.get("line"))} {_esc(leg.get("stat"))} — {prob*100:.0f}%{odds_str}</div>'
+            f'<div style="font-size:14px;color:#eee">{_esc(leg.get("player"))} {direction} {_esc(leg.get("line"))} {_esc(leg.get("stat"))} — {prob*100:.0f}%</div>'
             f'</div>')
 
 
@@ -666,6 +665,33 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
                       f'border-radius:4px;padding:8px 12px;margin:10px 0;font-size:13px;color:#7a5900">'
                       f'🔥 {n} HIGH HIT % moneyline pick{"s" if n != 1 else ""} today '
                       f'(75%+ model win probability, regardless of tier/EV)</div>')
+
+    # Grade + EV legend -- explains what every reader needs to interpret
+    # the picks below before they hit any of them: what PREMIUM/OPTIMAL
+    # mean (only these two tiers ever appear here -- QUALIFYING_TIERS is
+    # {2, 3} for game legs, and build_qualifying() only ever includes
+    # PREMIUM/OPTIMAL-graded props, so LEAN never actually shows up in
+    # this email and isn't listed). Shown on every send, including the
+    # empty/no-picks-today one, since it's reference material, not
+    # something tied to today's specific picks.
+    parts.append(
+        '<div style="background:#14001f;border-radius:6px;padding:14px 18px;margin:14px 0 18px">'
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#f20cff;text-transform:uppercase;'
+        'font-weight:700;margin-bottom:8px">What the grades mean</div>'
+        f'<div style="font-size:13px;color:#eee;line-height:1.6"><span style="background:{_TIER_COLOR[3]};'
+        'color:#000;font-weight:700;font-size:11px;padding:1px 7px;border-radius:3px">PREMIUM</span> '
+        'the model\'s highest-confidence picks -- the strongest combination of win probability and '
+        f'edge. &nbsp; <span style="background:{_TIER_COLOR[2]};color:#000;font-weight:700;font-size:11px;'
+        'padding:1px 7px;border-radius:3px">OPTIMAL</span> still clears our bar, just with somewhat '
+        'less confidence or edge than PREMIUM.</div>'
+        '<div style="font-size:13px;color:#eee;line-height:1.6;margin-top:10px">'
+        '<strong style="color:#fff">EV (Expected Value)</strong> the model\'s estimated long-run profit '
+        'edge over the listed price, as a percentage of stake -- e.g. EV +8.1% means the model expects '
+        'this pick to profit about 8.1% of stake on average if made repeatedly at this probability and '
+        'price. Game picks show EV; player props don\'t carry an EV figure in the underlying data, so '
+        'only probability is shown for those.</div>'
+        '</div>'
+    )
 
     if not qualifying:
         parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No PREMIUM/OPTIMAL legs cleared the bar today.</div>')
