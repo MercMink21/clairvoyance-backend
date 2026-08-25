@@ -544,50 +544,34 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     price = PRICING_BY_COUNT.get(min(n, 8), 0)
     now = _now()
     expiry_rows = "".join(
-        f'<div class="cv-item-row" style="padding:14px 0;'
+        f'<div style="padding:14px 0;'
         f'{"border-bottom:1px solid #ececec;" if i < len(rows) - 1 else ""}'
-        f'font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:12px">'
-        f'<strong style="color:#1a1a2e;letter-spacing:.3px">{r["product"].upper()}</strong>'
-        f'<span style="color:#1a1a2e;font-size:12px;white-space:nowrap">active through '
-        f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
+        f'">'
+        f'<div style="font-size:14px;color:#1a1a2e;font-weight:700;letter-spacing:.3px">{r["product"].upper()}</div>'
+        f'<div style="color:#1a1a2e;font-size:12px;margin-top:3px">active through '
+        f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%B %d, %Y")}</div>'
         f'</div>'
         for i, r in enumerate(rows)
     )
     subject = f"Clairvoyance — Receipt: {n} product{'s' if n != 1 else ''} active (${price}/mo)"
-    # Below ~480px (most phones), the fixed desktop padding/flex-row
-    # layout was cramming the item rows and price box -- name/date or
-    # label/price fighting for space with no room to breathe. Real <style>
-    # + classes (not just inline styles) so the media query can actually
-    # override them; embedded <style> blocks render fine in Gmail/Apple
-    # Mail/Outlook mobile even without a <head> wrapper around this HTML
-    # fragment. Stacks each row (label above value) rather than shrinking
-    # fonts/padding further -- the same fix already proven on the landing
-    # page's Sport Performance rows, which had the identical squeeze.
-    responsive_style = (
-        '<style>@media only screen and (max-width:480px){'
-        '.cv-wrap{padding:18px 16px!important}'
-        '.cv-item-row{flex-direction:column!important;align-items:flex-start!important;gap:2px!important}'
-        '.cv-price-row{flex-direction:column!important;align-items:flex-start!important;gap:10px!important}'
-        '.cv-price-row .cv-price-value{align-self:flex-end}'
-        '}</style>'
-    )
     # Custom open (not the shared EMAIL_WRAP_OPEN) so the receipt can carry
     # its own bordered card instead of going flat-white right under a neon
     # header. Kept deliberately restrained (no background texture, no glow
     # shadows, no accent bar) -- a receipt reads as more professional with
     # a plain neutral border than any colored line under it.
     receipt_wrap_open = (
-        '<div class="cv-wrap" style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
         'max-width:640px;margin:0 auto;background:#ffffff;color:#1a1a2e;'
         'border:1px solid #ececec;padding:28px 24px">'
     )
     # Black disclaimer here, not the shared magenta EMAIL_WRAP_CLOSE_DISCLOSED
     # (picks emails keep magenta, per the standing "disclaimer stays neon
     # magenta in all emails" instruction -- explicitly overridden for the
-    # receipt only). Same copy, just recolored + closes the wrap div.
+    # receipt only). Same copy, just recolored + closes the wrap div. Same
+    # font-weight (400, i.e. unset/normal) as the "Confirmed" line above it.
     receipt_close = (
         '<div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e5e5;'
-        'font-size:11px;line-height:1.5;color:#1a1a2e;font-weight:600">'
+        'font-size:11px;line-height:1.5;color:#1a1a2e;font-weight:400">'
         'Clairvoyance Engine outputs are probabilistic projections for informational and '
         'analytical purposes only. Model outputs do not constitute financial or betting advice. '
         'Past model performance does not guarantee future results.'
@@ -597,8 +581,16 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     # near-black, already used for the headline/price) instead of a mix of
     # plain #000 and #1a1a2e.
     BLACK = '#1a1a2e'
+    # Item rows and this price block are plain stacked (block-flow) markup,
+    # not a side-by-side flex row -- deliberately NOT conditioned behind a
+    # max-width media query, since a prior attempt at that (media query +
+    # classes) rendered fine in a browser preview but still cramped in the
+    # real send: several mobile mail clients (Gmail's app chief among them)
+    # silently strip <style> blocks that aren't inside a proper <head>,
+    # which this HTML-fragment email doesn't have. A layout that's simply
+    # never side-by-side needs no client CSS support at all to render
+    # correctly, on any screen width.
     body = (
-        responsive_style +
         # Banner sits outside the padded wrap so it bleeds edge-to-edge
         # across the full 640px card width instead of sitting inset.
         f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
@@ -610,15 +602,15 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         'font-weight:700;margin-bottom:14px">Payment Receipt</div>'
         f'<div style="font-size:19px;font-weight:700;color:{BLACK};margin-bottom:6px;line-height:1.3">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
-        f'<div style="font-size:13px;color:{BLACK};margin-bottom:26px">Confirmed {now.strftime("%b %d, %Y")}</div>'
+        f'<div style="font-size:13px;color:{BLACK};margin-bottom:26px">Confirmed {now.strftime("%B %d, %Y")}</div>'
         f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
         f'padding:4px 20px;margin-bottom:20px">{expiry_rows}</div>'
-        f'<div class="cv-price-row" style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
-        f'padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="font-size:12px;letter-spacing:1px;color:{BLACK};text-transform:uppercase">'
-        f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
-        f'<span class="cv-price-value" style="font-size:24px;font-weight:800;color:#f20cff">${price}<span '
-        f'style="font-size:13px;font-weight:500;color:{BLACK};margin-left:6px">month</span></span></div>'
+        f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
+        f'padding:18px 22px;margin-bottom:24px">'
+        f'<div style="font-size:12px;letter-spacing:1px;color:{BLACK};text-transform:uppercase">'
+        f'{n} simultaneous product{"s" if n != 1 else ""}</div>'
+        f'<div style="font-size:24px;font-weight:800;color:#f20cff;margin-top:8px">${price}<span '
+        f'style="font-size:13px;font-weight:500;color:{BLACK};margin-left:6px">per month</span></div></div>'
         f'<div style="font-size:13px;color:{BLACK};line-height:1.7">'
         'This confirms the access currently live on your account -- not a record of a specific '
         'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
