@@ -1,0 +1,52 @@
+name: Daily Pick-of-Day Social Posts
+
+on:
+  schedule:
+    # ~12:23 MT. The 11:00-16:45 UTC window is packed with other daily
+    # workflows (soccer/CFB locks, stats/props scrapers, social-cards-daily
+    # itself) -- several of them Playwright-heavy, and social-cards-daily's
+    # own history (2026-08-06) shows two such jobs landing ~22min apart can
+    # queue-starve each other entirely (never assigned a runner). This job
+    # is also Playwright + ffmpeg heavy, so it lands in the genuinely open
+    # 17:00-21:00 UTC gap instead of adding to that cluster -- same-day
+    # timely (real picks were already locked hours earlier, ~8:30am MT),
+    # just not competing for runners with the morning rush.
+    - cron: '23 18 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  generate-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests imageio-ffmpeg
+          playwright install chromium --with-deps
+
+      - name: Generate top-3-picks posts and email
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/generate_pick_of_day_social.py
+
+      # Same rationale as social-cards-daily.yml's own failure alert --
+      # GitHub's scheduled-workflow queue can delay a run by 30-90+
+      # minutes past the nominal cron time on its own; that's normal.
+      # A genuinely failed run is not.
+      - name: Alert on failure
+        if: failure()
+        run: echo "::error::Daily Pick-of-Day Social Posts run did not complete."
