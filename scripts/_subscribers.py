@@ -544,26 +544,27 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     price = PRICING_BY_COUNT.get(min(n, 8), 0)
     now = _now()
     expiry_rows = "".join(
-        f'<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:14px;'
-        f'display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
+        f'<div style="padding:14px 0;'
+        f'{"border-bottom:1px solid rgba(255,255,255,.08);" if i < len(rows) - 1 else ""}'
+        f'font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:12px">'
         f'<strong style="color:#fff;letter-spacing:.3px">{r["product"].upper()}</strong>'
-        f'<span style="color:#fff;opacity:.65;font-size:12px;white-space:nowrap">active through '
+        f'<span style="color:#a8a8b8;font-size:12px;white-space:nowrap">active through '
         f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
         f'</div>'
-        for r in rows
+        for i, r in enumerate(rows)
     )
     subject = f"Clairvoyance — Receipt: {n} product{'s' if n != 1 else ''} active (${price}/mo)"
     # Custom open (not the shared EMAIL_WRAP_OPEN) so the receipt can carry
-    # its own accent bar instead of going flat-white right under a neon
+    # its own bordered card instead of going flat-white right under a neon
     # header. Kept deliberately restrained (no background texture, no glow
-    # shadows) -- a receipt reads as more professional with a single clean
-    # accent than a busy one, even on an otherwise neon-branded product.
-    # Still closes through EMAIL_WRAP_CLOSE_DISCLOSED (just "</div>" + the
-    # disclaimer), which doesn't care what opened the div.
+    # shadows, no accent bar) -- a receipt reads as more professional with
+    # a plain neutral border than any colored line under it. Still closes
+    # through EMAIL_WRAP_CLOSE_DISCLOSED (just "</div>" + the disclaimer),
+    # which doesn't care what opened the div.
     receipt_wrap_open = (
         '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
         'max-width:640px;margin:0 auto;background:#ffffff;color:#1a1a2e;'
-        'border:1px solid #ececec;border-top:3px solid #00d8ec;padding:28px 24px">'
+        'border:1px solid #ececec;padding:28px 24px">'
     )
     body = (
         # Banner sits outside the padded wrap so it bleeds edge-to-edge
@@ -573,14 +574,14 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
         f'font-family:-apple-system,sans-serif;color:#999" /></div>' +
         receipt_wrap_open +
-        '<div style="font-size:11px;letter-spacing:2.5px;color:#0090a8;text-transform:uppercase;'
+        '<div style="font-size:11px;letter-spacing:2.5px;color:#000;text-transform:uppercase;'
         'font-weight:700;margin-bottom:14px">Payment Receipt</div>'
         '<div style="font-size:19px;font-weight:700;color:#1a1a2e;margin-bottom:6px;line-height:1.3">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
         f'<div style="font-size:13px;color:#000;margin-bottom:26px">Confirmed {now.strftime("%b %d, %Y")}</div>'
-        f'<div style="background:#14001f;border-radius:6px;padding:2px 18px;margin-bottom:20px">{expiry_rows}</div>'
+        f'<div style="background:#14001f;border-radius:6px;padding:4px 20px;margin-bottom:20px">{expiry_rows}</div>'
         f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
-        f'padding:16px 20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center">'
+        f'padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center">'
         f'<span style="font-size:12px;letter-spacing:1px;color:#000;text-transform:uppercase">'
         f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
         f'<span style="font-size:24px;font-weight:800;color:#f20cff">${price}<span '
