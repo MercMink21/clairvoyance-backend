@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, active_subscribers,
     products_for_email, analytics_summary, send_receipt_email, EXPIRY_DAYS,
-    PRICING_BY_COUNT,
+    PRICING_BY_COUNT, sync_subscribers_to_git,
 )
 
 PORT = 8899
@@ -184,6 +184,10 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
 .retn-good{color:var(--rc);font-weight:700}
 .retn-bad{color:var(--hc);font-weight:700}
 .retn-mid{color:var(--gc);font-weight:700}
+.sync-status{font-family:var(--mono);font-size:12px;letter-spacing:1px;text-align:center;
+  margin-top:10px;min-height:14px}
+.sync-status.ok{color:var(--rc)}
+.sync-status.err{color:var(--hc)}
 </style>
 </head>
 <body>
@@ -191,6 +195,7 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
   <div class="hdr">
     <div class="logo">CLAIRVOYANCE</div>
     <div class="subtitle">SUBSCRIBER ACCESS</div>
+    <div class="sync-status" id="syncStatus"></div>
   </div>
 
   <div class="card">
@@ -461,7 +466,8 @@ async function doAdd() {
     return;
   }
   const results = [];
-  for (const product of selectedProducts) {
+  const productList = [...selectedProducts];
+  for (const product of productList) {
     const res = await fetch('/api/add', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({product, email})
@@ -481,6 +487,7 @@ async function doAdd() {
   document.getElementById('addEmail').value = '';
   renderChips();
   loadAll();
+  await syncNow(`Add ${email} to ${productList.join(', ')}`, msgEl, results);
 }
 
 async function doRemove(product, email) {
@@ -489,6 +496,23 @@ async function doRemove(product, email) {
     body: JSON.stringify({product, email})
   });
   loadAll();
+  await syncNow(`Remove ${email} from ${product}`, null, null);
+}
+
+async function syncNow(message, displayEl, priorResults) {
+  const res = await fetch('/api/sync', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message})
+  });
+  const j = await res.json();
+  const syncEl = document.getElementById('syncStatus');
+  syncEl.className = 'sync-status ' + (j.ok ? 'ok' : 'err');
+  syncEl.textContent = j.ok ? '✓ ' + j.message : '⚠ ' + j.message;
+  if (priorResults && displayEl) {
+    priorResults.push(j.ok ? 'synced to GitHub' : `sync failed (${j.message})`);
+    displayEl.className = j.ok ? 'msg ok' : 'msg err';
+    displayEl.textContent = priorResults.join(' · ');
+  }
 }
 
 async function doCheck() {
@@ -623,6 +647,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "invalid email"}, 400)
                 return
             ok, msg = send_receipt_email(email)
+            self._json({"ok": ok, "message": msg})
+        elif parsed.path == "/api/sync":
+            # Called once at the end of an add/remove batch so the change
+            # actually reaches GitHub Actions -- see sync_subscribers_to_git()
+            # docstring for why this used to be a manual step nobody wants
+            # to remember.
+            ok, msg = sync_subscribers_to_git(body.get("message") or "Update subscribers.json")
             self._json({"ok": ok, "message": msg})
         else:
             self._json({"error": "not found"}, 404)

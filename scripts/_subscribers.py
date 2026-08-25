@@ -30,6 +30,7 @@ bundled as one purchase).
 from __future__ import annotations
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -105,6 +106,60 @@ def load_subscribers() -> dict[str, list[dict]]:
 
 def save_subscribers(data: dict[str, list[dict]]) -> None:
     SUBSCRIBERS_FILE.write_text(json.dumps(data, indent=2) + "\n")
+
+
+REPO_ROOT = SUBSCRIBERS_FILE.parent.parent
+
+
+def sync_subscribers_to_git(message: str) -> tuple[bool, str]:
+    """Commits + pushes data/subscribers.json so an add/remove made
+    locally (CLI or the web admin tool) actually reaches the GitHub
+    Actions runs without a separate manual step -- this used to be a
+    "don't forget to commit and push" step every caller had to remember
+    by hand. Mirrors the same pull --rebase-then-push pattern
+    send-expiry-reminders.yml already uses safely against this exact
+    file (it flips reminder_sent daily), since that file is the only
+    other writer subscribers.json can collide with. GIT_TERMINAL_PROMPT=0
+    so a credential/auth problem fails fast instead of hanging this
+    script waiting for input nobody will provide."""
+    def run(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+
+    rel = "data/subscribers.json"
+    run("add", rel)
+    diff = run("diff", "--cached", "--quiet", "--", rel)
+    if diff.returncode == 0:
+        return True, "no changes to sync"
+
+    commit = run("commit", "-m", message)
+    if commit.returncode != 0:
+        return False, f"commit failed: {commit.stderr.strip() or commit.stdout.strip()}"
+
+    # --autostash: this repo almost always has *something* else dirty
+    # (in-progress edits, or automation's own docs/version.json churn) --
+    # without it, pull --rebase refuses to run at all over unrelated
+    # uncommitted files, even though our commit only touched
+    # subscribers.json. --autostash sets those aside and restores them
+    # after, whether the rebase succeeds or gets aborted below.
+    pull = run("pull", "--rebase", "--autostash", "origin", "main")
+    if pull.returncode != 0:
+        run("rebase", "--abort")
+        return False, (
+            "committed locally but couldn't sync with GitHub (pull --rebase failed) "
+            f"-- resolve manually: {pull.stderr.strip()[:200]}"
+        )
+
+    push = run("push", "origin", "main")
+    if push.returncode != 0:
+        return False, (
+            f"committed locally but push failed -- run `git -C {REPO_ROOT} push` "
+            f"manually: {push.stderr.strip()[:200]}"
+        )
+    return True, "synced to GitHub"
 
 
 def _is_active(entry: dict, now: datetime) -> bool:

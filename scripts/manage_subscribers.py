@@ -2,7 +2,8 @@
 """
 manage_subscribers.py — easy CLI for adding/removing/listing paid mailing
 list subscribers (see _subscribers.py). MVP is Venmo + this script: someone
-pays, you run `add`, you commit data/subscribers.json.
+pays, you run `add`, and it commits + pushes data/subscribers.json for you
+(see sync_subscribers_to_git()) -- nothing else to remember afterward.
 
 Usage:
   python3 scripts/manage_subscribers.py add nba someone@example.com
@@ -31,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, list_subscribers,
-    products_for_email, send_receipt_email, EXPIRY_DAYS,
+    products_for_email, send_receipt_email, EXPIRY_DAYS, sync_subscribers_to_git,
 )
 
 
@@ -97,6 +98,8 @@ def main() -> None:
             print(add_subscriber(product, email))
         ok, msg = send_receipt_email(email)
         print(f"Receipt sent to {email}" if ok else f"Receipt NOT sent: {msg}")
+        synced, sync_msg = sync_subscribers_to_git(f"Add {email} to {', '.join(products)}")
+        print(sync_msg if synced else f"WARNING: {sync_msg}")
         return
 
     if cmd == "check":
@@ -143,6 +146,8 @@ def main() -> None:
                 sys.exit(1)
         for product in products:
             print(remove_subscriber(product, email))
+        synced, sync_msg = sync_subscribers_to_git(f"Remove {email} from {', '.join(products)}")
+        print(sync_msg if synced else f"WARNING: {sync_msg}")
         return
 
     print(f"Unknown command {cmd!r}\n")
