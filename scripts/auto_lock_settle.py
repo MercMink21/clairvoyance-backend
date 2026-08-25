@@ -466,7 +466,16 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
             continue
         for m in gl.get("markets") or []:
             tier_n = m.get("tierN")
-            if tier_n in QUALIFYING_TIERS:
+            prob = m.get("prob") or 0
+            # The one exception to PREMIUM/OPTIMAL-only: a moneyline pick
+            # at 75%+ model win probability qualifies regardless of tier,
+            # even LEAN or SKIP -- flagged as HIGH HIT % in the email (see
+            # _leg_html) rather than blended in silently. A heavy favorite
+            # can fail the EV/tier bar (the price is too short to be a
+            # good-value bet) while still being a very likely winner, and
+            # that's worth surfacing even though it's not a normal pick.
+            is_high_hit = _market_type(m.get("side")) == "ML" and prob >= _HIGH_HIT_P
+            if tier_n in QUALIFYING_TIERS or is_high_hit:
                 qualifying.append({
                     "kind": "GAME", "sport": sport, "hA": gl.get("hA"), "awA": gl.get("awA"),
                     "side": m.get("side"), "label": m.get("label"), "prob": m.get("prob"),
@@ -668,12 +677,15 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
 
     # Grade + EV legend -- explains what every reader needs to interpret
     # the picks below before they hit any of them: what PREMIUM/OPTIMAL
-    # mean (only these two tiers ever appear here -- QUALIFYING_TIERS is
-    # {2, 3} for game legs, and build_qualifying() only ever includes
-    # PREMIUM/OPTIMAL-graded props, so LEAN never actually shows up in
-    # this email and isn't listed). Shown on every send, including the
-    # empty/no-picks-today one, since it's reference material, not
-    # something tied to today's specific picks.
+    # mean (the only two tiers/grades a pick normally qualifies on --
+    # QUALIFYING_TIERS is {2, 3} for game legs, and build_qualifying()
+    # only ever includes PREMIUM/OPTIMAL-graded props), what EV means,
+    # and the one deliberate exception: a HIGH HIT % moneyline pick can
+    # appear even at LEAN or SKIP tier (see build_qualifying()'s
+    # is_high_hit branch) -- called out explicitly here so a LEAN/SKIP
+    # badge showing up doesn't read as a mistake. Shown on every send,
+    # including the empty/no-picks-today one, since it's reference
+    # material, not something tied to today's specific picks.
     parts.append(
         '<div style="background:#14001f;border-radius:6px;padding:14px 18px;margin:14px 0 18px">'
         '<div style="font-size:11px;letter-spacing:1.5px;color:#f20cff;text-transform:uppercase;'
@@ -683,13 +695,22 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
         'the model\'s highest-confidence picks -- the strongest combination of win probability and '
         f'edge. &nbsp; <span style="background:{_TIER_COLOR[2]};color:#000;font-weight:700;font-size:11px;'
         'padding:1px 7px;border-radius:3px">OPTIMAL</span> still clears our bar, just with somewhat '
-        'less confidence or edge than PREMIUM.</div>'
+        'less confidence or edge than PREMIUM. These two grades are the only ones a pick normally '
+        'qualifies on.</div>'
         '<div style="font-size:13px;color:#eee;line-height:1.6;margin-top:10px">'
         '<strong style="color:#fff">EV (Expected Value)</strong> the model\'s estimated long-run profit '
         'edge over the listed price, as a percentage of stake -- e.g. EV +8.1% means the model expects '
         'this pick to profit about 8.1% of stake on average if made repeatedly at this probability and '
         'price. Game picks show EV; player props don\'t carry an EV figure in the underlying data, so '
         'only probability is shown for those.</div>'
+        '<div style="font-size:13px;color:#eee;line-height:1.6;margin-top:10px">'
+        '🔥 <strong style="color:#fff">HIGH HIT %</strong> the one exception to PREMIUM/OPTIMAL-only: a '
+        'moneyline pick at 75%+ model win probability is included regardless of tier -- even a '
+        f'<span style="background:{_TIER_COLOR[1]};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
+        f'border-radius:3px">LEAN</span> or <span style="background:{_TIER_COLOR[0]};color:#fff;font-weight:700;'
+        'font-size:11px;padding:1px 7px;border-radius:3px">SKIP</span> grade. That happens when a heavy '
+        'favorite\'s price is too short to be good EV, but the model still thinks it wins very often -- '
+        'worth knowing about even though it\'s not a normal pick.</div>'
         '</div>'
     )
 
