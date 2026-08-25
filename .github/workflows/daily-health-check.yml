@@ -1,0 +1,40 @@
+name: Daily Health Check
+
+# Durable replacement for the old session-only "did the daily jobs
+# actually run" check -- this used to depend on a person remembering to
+# look. Runs once a day, checks every other scheduled workflow in this
+# repo for a missing or failed run, and only emails if it finds something
+# wrong (silent on a healthy day, matching hands-off preference).
+on:
+  schedule:
+    # ~14:30 MT (20:30 UTC) -- after every job it checks has had its
+    # chance to run for the day, in the same open 17:00-21:00 UTC gap
+    # other lightweight non-Playwright jobs in this repo use.
+    - cron: '30 20 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run health check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+        run: |
+          python3 scripts/daily_health_check.py
