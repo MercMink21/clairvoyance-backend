@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, active_subscribers,
     products_for_email, analytics_summary, send_receipt_email, EXPIRY_DAYS,
-    PRICING_BY_COUNT, sync_subscribers_to_git,
+    sync_subscribers_to_git,
 )
 
 PORT = 8899
@@ -150,11 +150,6 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
 .prodblock:last-child{margin-bottom:0}
 .prodblock h3{font-family:var(--orb);font-size:16px;color:var(--nc);margin:0 0 9px;
   text-transform:uppercase;letter-spacing:2px}
-.priceval{color:var(--gc);font-weight:700}
-.priceavg{color:var(--t3);font-size:13px}
-.pricebest{background:var(--p3);border-left:2px solid var(--pc)}
-.price-note{font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:.5px;margin:-8px 0 14px}
-
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
 .stat{background:var(--b1);border:1px solid var(--w2);border-radius:2px;padding:14px}
 .stat-val{font-family:var(--orb);font-size:30px;font-weight:700;color:var(--nc);text-shadow:0 0 10px rgba(0,240,255,.4)}
@@ -235,17 +230,6 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
   </div>
 
   <div class="card">
-    <div class="sh">Pricing</div>
-    <div class="price-note" id="priceNote">All access windows last 30 days from the date added or renewed.</div>
-    <div class="tablewrap">
-      <table>
-        <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
-__PRICING_ROWS__
-      </table>
-    </div>
-  </div>
-
-  <div class="card">
     <div class="sh">Analytics</div>
     <div class="tracking-note" id="trackingNote"></div>
     <div class="stat-grid" id="statGrid"></div>
@@ -278,8 +262,6 @@ async function loadAll() {
   const res = await fetch('/api/subscribers');
   const data = await res.json();
   PRODUCTS = data.products;
-  document.getElementById('priceNote').textContent =
-    'All access windows last ' + data.expiry_days + ' days from the date added or renewed.';
   renderChips();
   renderAllList(data.data);
   renderByProduct(data.data);
@@ -543,29 +525,6 @@ loadAll();
 </body>
 </html>
 """
-
-# Pricing table rows are generated from PRICING_BY_COUNT itself (rather than
-# hand-typed HTML) so this page can never drift out of sync with the actual
-# prices _subscribers.py charges -- a stale hand-typed copy of these numbers
-# previously sat here and silently fell out of date when PRICING_BY_COUNT
-# changed, with no restart or reload able to fix it since the HTML itself
-# was wrong, not stale server state.
-def _pricing_rows_html() -> str:
-    rows = []
-    max_n = max(PRICING_BY_COUNT)
-    for n in sorted(PRICING_BY_COUNT):
-        price = PRICING_BY_COUNT[n]
-        avg = price / n
-        label = f"{n} (ALL ACCESS)" if n == max_n else str(n)
-        cls = ' class="pricebest"' if n == max_n else ""
-        rows.append(
-            f'<tr{cls}><td>{label}</td><td class="priceval">${price}</td>'
-            f'<td class="priceavg">${avg:.2f}</td></tr>'
-        )
-    return "\n".join(rows)
-
-
-PAGE = PAGE.replace("__PRICING_ROWS__", _pricing_rows_html())
 
 
 class Handler(BaseHTTPRequestHandler):
