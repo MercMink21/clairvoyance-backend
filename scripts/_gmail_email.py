@@ -57,9 +57,15 @@ EMAIL_WRAP_CLOSE = '</div>'
 # EMAIL_WRAP_CLOSE, so it's structurally present, not something each
 # caller has to remember to append. Internal-only emails (settlement
 # summary, ad-hoc admin sends) can keep using plain EMAIL_WRAP_CLOSE.
+# Neon magenta sampled directly from the brand banner (Desktop/
+# bannerlogo2.png's glow text, #f20cff) rather than picked by eye, so
+# it's an exact match to the header art above it. text-shadow is
+# deliberately NOT used for a glow effect -- unreliable across mail
+# clients (see module docstring) -- the solid saturated hue alone
+# reads as "neon" against the white body.
 DISCLAIMER_HTML = (
     '<div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e5e5;'
-    'font-size:11px;line-height:1.5;color:#999">'
+    'font-size:11px;line-height:1.5;color:#f20cff;font-weight:600">'
     'Clairvoyance Engine outputs are probabilistic projections for informational and '
     'analytical purposes only. Model outputs do not constitute financial or betting advice. '
     'Past model performance does not guarantee future results. Always gamble responsibly.'

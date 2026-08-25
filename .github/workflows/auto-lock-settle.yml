@@ -76,15 +76,12 @@ jobs:
       - name: Determine step flags from trigger
         id: flags
         run: |
-          # Scheduled runs stay dry-run through Sat 2026-08-29 regardless of
-          # LIVE_MODE, so a full week (from 2026-08-23) of dry-run monitoring
-          # happens automatically without anyone needing to remember to flip
-          # a switch -- live locking/settling starts with the first scheduled
-          # run on/after Sun 2026-08-30. workflow_dispatch is exempt (always
-          # honors the `live` input directly) so a manual test run can still
-          # go live/dry-run on demand before then if explicitly requested.
-          LIVE_GATE_DATE="2026-08-30"
-          TODAY="$(date -u +%Y-%m-%d)"
+          # Scheduled runs now honor LIVE_MODE directly, same as
+          # workflow_dispatch -- the dry-run gate that held scheduled runs
+          # to dry-run through 2026-08-29 regardless of LIVE_MODE has been
+          # removed (monitoring period judged sufficient; explicitly
+          # requested to go live immediately rather than waiting for
+          # 2026-08-30).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ inputs.mode }}" in
               lock)   echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
@@ -94,10 +91,10 @@ jobs:
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "30 14 * * *" ]; then
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
-            if [ "$TODAY" \< "$LIVE_GATE_DATE" ]; then echo "live_flag=" >> "$GITHUB_OUTPUT"; else echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"; fi
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           else
             echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
-            if [ "$TODAY" \< "$LIVE_GATE_DATE" ]; then echo "live_flag=" >> "$GITHUB_OUTPUT"; else echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"; fi
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run auto-lock / auto-settle
