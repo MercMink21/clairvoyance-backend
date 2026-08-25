@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _subscribers import subscribers_needing_reminder, mark_reminder_sent  # noqa: E402
+from _subscribers import subscribers_needing_reminder, mark_reminder_sent, EMAIL_BANNER_URL  # noqa: E402
 from auto_lock_settle import PRODUCT_LABEL  # noqa: E402
 from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE  # noqa: E402
 
@@ -44,7 +44,17 @@ def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
         for p, d in sorted(products_and_days, key=lambda x: x[1])
     )
     urgency = "expires today" if soonest <= 0 else f"expires in {soonest} day{'s' if soonest != 1 else ''}"
+    # Same hosted banner every other subscriber email uses (see
+    # EMAIL_BANNER_URL in _subscribers.py) -- outside EMAIL_WRAP_OPEN's
+    # padding so it bleeds edge-to-edge across the full 640px card width.
+    banner_html = (
+        f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
+        f'alt="Clairvoyance Engine" width="640" '
+        f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
+        f'font-family:-apple-system,sans-serif;color:#999" /></div>'
+    )
     body = (
+        banner_html +
         EMAIL_WRAP_OPEN +
         f'<div style="font-size:16px;color:#1a1a2e;margin-bottom:14px">'
         f'Your access to {", ".join(names)} {urgency}.</div>'
