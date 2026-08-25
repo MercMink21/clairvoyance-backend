@@ -6282,7 +6282,13 @@ function loadCFBData(){
     fetch('cfb_power.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('cfb_team_stats.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     fetch('cfb_schedule.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
-  ]).then(([teams,power,stats,schedule])=>{
+    // Permanent one-time 2025 snapshot (see scripts/snapshot_cfb_2025.py)
+    // -- never refreshed, never overwritten. Used as a small 15%-weighted
+    // historical signal in cfbMC() once 2026's roster/results are still
+    // thin early in the season, same rationale as weighting a European
+    // soccer league's prior season.
+    fetch('cfb_team_stats_2025.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+  ]).then(([teams,power,stats,schedule,stats2025])=>{
     const conferences=teams?.conferences||{};
     const teamConf={};
     const venueCapacity={},venueName={},venueIndoorByAbbr={};
@@ -6306,6 +6312,7 @@ function loadCFBData(){
       fpi:fpiByAbbr, resume:resumeByAbbr, efficiency:efficiencyByAbbr,
       rankings:power?.rankings||[], rankByAbbr,
       stats:stats?.teams||{},
+      stats2025:stats2025?.teams||{},
       weeks,
       elo:_cfbBuildElo(weeks),
       generatedAt:{teams:teams?.generated_at,power:power?.generated_at,stats:stats?.generated_at,schedule:schedule?.generated_at},
@@ -6511,13 +6518,59 @@ function cfbMC(hA,awA,n,ouLine,g){
     toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
   }
 
+  // Special teams: FG% and net punting edge, same small-capped-nudge
+  // treatment as yards/turnovers above. Collected all season (fetch_cfb.py's
+  // _ST_FIELDS) but never actually used in the sim before now.
+  let stAdjPts=0;
+  const hST=D.stats[hA]?.specialTeams||{},aST=D.stats[awA]?.specialTeams||{};
+  const hFG=_n(hST.fieldGoalPct),aFG=_n(aST.fieldGoalPct);
+  const hPunt=_n(hST.netAvgPuntYards),aPunt=_n(aST.netAvgPuntYards);
+  if(hFG!=null&&aFG!=null)stAdjPts+=(hFG-aFG)*0.03;
+  if(hPunt!=null&&aPunt!=null)stAdjPts+=(hPunt-aPunt)*0.06;
+  stAdjPts=Math.max(-1,Math.min(1,stAdjPts));
+
+  // Top 25 ranking (AP Poll, already fetched weekly into rankByAbbr but
+  // only ever used for a display badge/filter before now): deliberately
+  // tiny nudge -- FPI already reflects most of what makes a team rank
+  // highly, so this only fills in the small remainder (resume/eye-test
+  // factors voters weigh that a pure power rating can underweight), not
+  // a second copy of team quality FPI already prices in. Linear from
+  // ~1pt at #1 down to ~0.04pt at #25, 0 if unranked.
+  const _rankBonus=r=>r?(26-r)/25:0;
+  const hRank=D.rankByAbbr?.[hA]?.rank,aRank=D.rankByAbbr?.[awA]?.rank;
+  const rankAdjPts=(hRank||aRank)?Math.max(-1,Math.min(1,_rankBonus(hRank)-_rankBonus(aRank))):0;
+
+  // 2025 historical signal: own points-scored minus own points-allowed
+  // per game from last season (same shape as nflMC's real standings-
+  // differential margin), from the permanent snapshot in stats2025 (see
+  // scripts/snapshot_cfb_2025.py). Blended at a fixed 15% weight against
+  // the current-season margin below -- same rationale as weighting a
+  // prior European soccer season: 2025's roster differs from 2026's, but
+  // the signal is still informative, especially early in a season when
+  // 2026 data is thin. Capped at +/-20 before weighting so even an
+  // extreme 2025 gap can never contribute more than +/-3 points after
+  // the 15% weight applies -- "small nudge, never a primary driver,"
+  // same philosophy as every other adjustment in this function.
+  let hist2025Margin=null;
+  const h25=D.stats2025?.[hA],a25=D.stats2025?.[awA];
+  if(h25&&a25){
+    const hPtsFor=_n(h25.offense?.totalPointsPerGame),hPtsAgainst=_n(h25.defenseAllowed?.totalPointsPerGame);
+    const aPtsFor=_n(a25.offense?.totalPointsPerGame),aPtsAgainst=_n(a25.defenseAllowed?.totalPointsPerGame);
+    if(hPtsFor!=null&&hPtsAgainst!=null&&aPtsFor!=null&&aPtsAgainst!=null){
+      const hDiff25=hPtsFor-hPtsAgainst,aDiff25=aPtsFor-aPtsAgainst;
+      hist2025Margin=Math.max(-20,Math.min(20,hDiff25-aDiff25));
+    }
+  }
+
   // FPI is explicitly "vs an average opponent on a neutral field" (ESPN's
   // own definition), so home-field still needs to be added on top of an
   // FPI-based margin. A market spread, by contrast, is a sportsbook's
   // final number and already has HFA priced into it — adding it again on
   // top would double-count it. Neutral-site games get no HFA either way.
   const hfaApplied=g?.neutralSite?0:_cfbTeamHFA(hA);
-  const margin0=hasFpi?((fpiH-fpiA)+hfaApplied+yardsAdjPts+toAdjPts):(marketMargin+yardsAdjPts+toAdjPts);
+  const currentMargin=hasFpi?((fpiH-fpiA)+hfaApplied+yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts)
+    :(marketMargin+yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts);
+  const margin0=hist2025Margin!=null?(currentMargin*0.85+hist2025Margin*0.15):currentMargin;
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
   // FCS opponents have no defenseAllowed entry (FBS-only stats pipeline) —
@@ -6556,6 +6609,7 @@ function cfbMC(hA,awA,n,ouLine,g){
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
     n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
     wx,wxImpact,hasFpi,marketMargin,
+    stAdjPts,rankAdjPts,hist2025Margin, // exposed for debugging/transparency, same convention as the other adjustment terms above
   };
 }
 // Analytical cover probability for an arbitrary spread/total line, reusing

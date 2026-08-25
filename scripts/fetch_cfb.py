@@ -37,18 +37,37 @@ WWW_HEADERS = {
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
 }
 
-# The 9 conferences this engine tracks, keyed by ESPN's own group id
-# (confirmed via GET .../standings?group=80's children listing).
+# The 11 conferences this engine tracks, keyed by ESPN's own group id.
+# Conference USA (12) and Sun Belt (167) were missing entirely until this
+# was caught during a coverage audit -- confirmed by resolving real 2026
+# member teams' own groups.id field directly (verified against 3 real
+# C-USA teams for 12; 2 real Sun Belt teams for 167). ESPN's old
+# .../standings?group=80 children-listing endpoint this comment used to
+# cite no longer returns that shape (verified directly -- it now just
+# returns a fullViewLink), hence resolving via real member teams instead.
+# Note Sun Belt's own group id (167) is NOT its groups.parent.id (37) --
+# 37 returned zero teams when tried first; ESPN marks 167 isConference:
+# False despite it being the correct, consistently-used id for every
+# actual Sun Belt team checked.
 TARGET_CONFERENCES = {
     "151": "American",
     "1":   "ACC",
     "4":   "Big 12",
     "5":   "Big Ten",
+    "12":  "Conference USA",
     "18":  "FBS Independents",
     "15":  "MAC",
     "17":  "Mountain West",
     "9":   "Pac-12",
     "8":   "SEC",
+    "167": "Sun Belt",
+    "168": "Sun Belt",  # Sun Belt actually has 2 sub-group ids (divisions),
+                         # both parented under 37 -- confirmed via real
+                         # members on each (James Madison/Marshall -> 167,
+                         # Arkansas State/Troy -> 168). Both map to the
+                         # same conference name; roster building already
+                         # groups by resolved name, not by raw id, so this
+                         # just needs the second id present as a key.
 }
 
 
@@ -59,8 +78,15 @@ def _log(msg: str) -> None:
 def fetch_all_team_ids() -> list[dict]:
     """Full team list (all divisions — FBS, FCS, D2/D3 club programs ESPN
     also carries under this sport). Filtered down to FBS by conference
-    membership in the next step, not here."""
-    r = requests.get(f"{ESPN_BASE}/teams", params={"limit": 500}, headers=HEADERS, timeout=15)
+    membership in the next step, not here.
+
+    limit=1000, not 500 -- the endpoint actually has 759 teams across all
+    divisions (confirmed directly), so the old limit=500 silently
+    truncated the list. Caught during a coverage audit: it happened to
+    not matter for the original 9 tracked conferences (apparently sorted
+    early enough in ESPN's ordering to survive the cutoff), but Conference
+    USA and Sun Belt teams were getting cut off, undercounting both."""
+    r = requests.get(f"{ESPN_BASE}/teams", params={"limit": 1000}, headers=HEADERS, timeout=15)
     r.raise_for_status()
     d = r.json()
     teams = d.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", [])
@@ -154,6 +180,15 @@ _OFFENSE_FIELDS = {
     "receiving":     ["receivingYards", "receivingYardsPerGame", "receivingTouchdowns", "yardsPerReception"],
     "miscellaneous": ["firstDowns", "thirdDownConvPct", "fourthDownConvPct", "totalPenaltyYards",
                         "possessionTimeSeconds", "turnOverDifferential"],
+    # Own points scored per game -- confirmed present in ESPN's response
+    # under a dedicated "scoring" category (own-side mirror of
+    # defenseAllowed's totalPointsPerGame, which comes from the opponent
+    # split). Never pulled before now, so no real point-differential
+    # signal existed anywhere in this pipeline -- added specifically to
+    # support a real "own points scored minus own points allowed" margin
+    # signal (same shape as nflMC's real standings-differential margin),
+    # for the 2025 season snapshot used as a small weighted-blend input.
+    "scoring":       ["totalPointsPerGame"],
 }
 _DEFENSE_ALLOWED_FIELDS = {
     # from the "opponent" split — what opponents did against this team,
