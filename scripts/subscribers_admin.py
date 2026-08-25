@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import (
     PRODUCTS, add_subscriber, remove_subscriber, active_subscribers,
     products_for_email, analytics_summary, send_receipt_email, EXPIRY_DAYS,
+    PRICING_BY_COUNT,
 )
 
 PORT = 8899
@@ -234,14 +235,7 @@ td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--t2)
     <div class="tablewrap">
       <table>
         <tr><th>Sports</th><th>Price</th><th>Avg / sport</th></tr>
-        <tr><td>1</td><td class="priceval">$20</td><td class="priceavg">$20.00</td></tr>
-        <tr><td>2</td><td class="priceval">$30</td><td class="priceavg">$15.00</td></tr>
-        <tr><td>3</td><td class="priceval">$40</td><td class="priceavg">$13.33</td></tr>
-        <tr><td>4</td><td class="priceval">$45</td><td class="priceavg">$11.25</td></tr>
-        <tr><td>5</td><td class="priceval">$55</td><td class="priceavg">$11.00</td></tr>
-        <tr><td>6</td><td class="priceval">$60</td><td class="priceavg">$10.00</td></tr>
-        <tr><td>7</td><td class="priceval">$70</td><td class="priceavg">$10.00</td></tr>
-        <tr class="pricebest"><td>8 (ALL ACCESS)</td><td class="priceval">$75</td><td class="priceavg">$9.38</td></tr>
+__PRICING_ROWS__
       </table>
     </div>
   </div>
@@ -525,6 +519,29 @@ loadAll();
 </body>
 </html>
 """
+
+# Pricing table rows are generated from PRICING_BY_COUNT itself (rather than
+# hand-typed HTML) so this page can never drift out of sync with the actual
+# prices _subscribers.py charges -- a stale hand-typed copy of these numbers
+# previously sat here and silently fell out of date when PRICING_BY_COUNT
+# changed, with no restart or reload able to fix it since the HTML itself
+# was wrong, not stale server state.
+def _pricing_rows_html() -> str:
+    rows = []
+    max_n = max(PRICING_BY_COUNT)
+    for n in sorted(PRICING_BY_COUNT):
+        price = PRICING_BY_COUNT[n]
+        avg = price / n
+        label = f"{n} (ALL ACCESS)" if n == max_n else str(n)
+        cls = ' class="pricebest"' if n == max_n else ""
+        rows.append(
+            f'<tr{cls}><td>{label}</td><td class="priceval">${price}</td>'
+            f'<td class="priceavg">${avg:.2f}</td></tr>'
+        )
+    return "\n".join(rows)
+
+
+PAGE = PAGE.replace("__PRICING_ROWS__", _pricing_rows_html())
 
 
 class Handler(BaseHTTPRequestHandler):
