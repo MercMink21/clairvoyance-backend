@@ -626,16 +626,15 @@ def _prop_matchup_key(leg: dict) -> str:
     return f"{team} vs {opp}" if opp else team
 
 
-def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int | None = None,
-                            soccer_split: bool = False) -> str:
+def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int | None = None) -> str:
     """Groups qualifying legs by sport/league, then by matchup within each
     sport: the matchup, every qualifying pick for it (grade, probability,
     EV, odds), and the real MC/model reasoning behind it (not necessarily
     one of the qualifying picks itself -- shown either way as context).
-    soccer_split: when True (the combined soccer product/early pass), adds
-    an EUROPE / NORTH AMERICA (MLS) region header above the usual per-
-    league sections, so a mixed CL/PL/La Liga/Bundesliga/Serie A/MLS email
-    reads as two regions instead of six same-weight league sections."""
+    Every league gets its own same-weight section header, sorted by
+    display name -- no Europe/North America region grouping (explicitly
+    removed; a mixed soccer email now reads as six flat league sections,
+    same as any other multi-league product)."""
     by_sport: dict[str, dict[str, list[dict]]] = {}
     for q in qualifying:
         sport = q["sport"]
@@ -676,8 +675,9 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
     def _render_sport_section(sport: str) -> None:
         matchups = by_sport[sport]
         total_legs = sum(len(v) for v in matchups.values())
-        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#0090a8;text-transform:uppercase;'
-                      f'margin:22px 0 10px;border-bottom:1px solid rgba(0,144,168,.3);padding-bottom:4px">'
+        parts.append(f'<div style="font-size:13px;letter-spacing:2px;color:#f20cff;text-transform:uppercase;'
+                      f'text-shadow:0 0 8px rgba(242,12,255,.6);margin:22px 0 10px;'
+                      f'border-bottom:1px solid rgba(242,12,255,.3);padding-bottom:4px">'
                       f'{_esc(SPORT_DISPLAY_NAME.get(sport, sport))} ({total_legs})</div>')
         for matchup, legs in matchups.items():
             parts.append('<div style="background:#14001f;border-radius:6px;padding:12px 14px;margin-bottom:10px">')
@@ -695,37 +695,15 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
                               f'font-size:12px;color:#bbb;line-height:1.5">{"<br>".join(bits)}</div>')
             parts.append('</div>')
 
-    def _region_header(name: str) -> None:
-        parts.append(f'<div style="font-weight:800;font-size:15px;letter-spacing:3px;color:#1a1a2e;'
-                      f'text-transform:uppercase;margin:26px 0 4px;padding-bottom:6px;'
-                      f'border-bottom:2px solid #1a1a2e">{_esc(name)}</div>')
-
-    has_soccer = soccer_split and any(s in by_sport for s in EURO_SOCCER_SPORTS | {"SOC_MLS"})
-    if has_soccer:
-        euro_sports = sorted((s for s in by_sport if s in EURO_SOCCER_SPORTS), key=lambda s: SPORT_DISPLAY_NAME.get(s, s))
-        mls_sports = [s for s in by_sport if s == "SOC_MLS"]
-        other_sports = sorted((s for s in by_sport if s not in EURO_SOCCER_SPORTS and s != "SOC_MLS"),
-                               key=lambda s: SPORT_DISPLAY_NAME.get(s, s))
-        if euro_sports:
-            _region_header("Europe")
-            for sport in euro_sports:
-                _render_sport_section(sport)
-        if mls_sports:
-            _region_header("North America (MLS)")
-            for sport in mls_sports:
-                _render_sport_section(sport)
-        for sport in other_sports:
-            _render_sport_section(sport)
-    else:
-        for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
-            _render_sport_section(sport)
+    for sport in sorted(by_sport, key=lambda s: SPORT_DISPLAY_NAME.get(s, s)):
+        _render_sport_section(sport)
 
     parts.append(_LOCKS_EMAIL_CLOSE)
     return "".join(parts)
 
 
 def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None,
-                      label: str = "", to: list[str] | None = None, soccer_split: bool = False) -> None:
+                      label: str = "", to: list[str] | None = None) -> None:
     recipients = to if to is not None else ([LOCKS_EMAIL_TO] if LOCKS_EMAIL_TO else [])
     if not recipients:
         log("No recipients (LOCKS_EMAIL_TO unset and none passed) — skipping locked-picks email")
@@ -733,7 +711,7 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     tag = f"{label} " if label else ""
     subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} {tag}picks for {date_str} ({len(qualifying)})"
-    body_html = build_locks_email_html(qualifying, live, locked_count, soccer_split=soccer_split)
+    body_html = build_locks_email_html(qualifying, live, locked_count)
     ok, msg = _send_gmail(subject, recipients, body_html)
     log(f"Locks email ({label or 'ALL'}) sent to {len(recipients)} recipient(s)" if ok else f"Locks email ({label or 'ALL'}) send failed: {msg}")
 
@@ -757,7 +735,7 @@ def _lock_qualifying_legs(page, qualifying: list[dict]) -> int:
 
 
 def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "",
-              to: list[str] | None = None, soccer_split: bool = False) -> None:
+              to: list[str] | None = None) -> None:
     """Single-product lock pass -- used by the early soccer/CFB workflows,
     which each run their own gather_legs() call at their own scheduled
     time (not part of the main run's per-product loop)."""
@@ -779,11 +757,11 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
 
     if not live:
         log(f"[DRY RUN] Would lock {len(qualifying)} legs above (pass --live to write)")
-        send_locks_email(qualifying, live=False, label=label, to=to, soccer_split=soccer_split)
+        send_locks_email(qualifying, live=False, label=label, to=to)
         return
 
     if not qualifying:
-        send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to, soccer_split=soccer_split)
+        send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to)
         return
 
     locked = _lock_qualifying_legs(page, qualifying)
@@ -791,7 +769,7 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, soccer_split=soccer_split)
+    send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
 
 
 def run_lock_segmented(page, live: bool) -> None:
@@ -816,14 +794,13 @@ def run_lock_segmented(page, live: bool) -> None:
         qualifying = [q for q in all_qualifying if q["sport"] in sports]
         label = PRODUCT_LABEL[product]
         recipients = recipients_for(product)
-        soccer_split = product == "soccer"
         log(f"[{product}] {len(qualifying)} qualifying legs -> {len(recipients)} recipient(s)")
         if not live:
-            send_locks_email(qualifying, live=False, label=label, to=recipients, soccer_split=soccer_split)
+            send_locks_email(qualifying, live=False, label=label, to=recipients)
             continue
         locked = _lock_qualifying_legs(page, qualifying) if qualifying else 0
         total_locked += locked
-        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients, soccer_split=soccer_split)
+        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
 
     other_qualifying = [q for q in all_qualifying if q["sport"] not in covered_sports]
     log(f"[other] {len(other_qualifying)} qualifying legs (not a paid product yet -- owner only)")
@@ -886,8 +863,7 @@ def main() -> None:
             if only_sports is None:
                 run_lock_segmented(page, args.live)
             else:
-                run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to,
-                          soccer_split=args.only_soccer)
+                run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to)
 
         browser.close()
 
