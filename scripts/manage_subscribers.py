@@ -6,12 +6,17 @@ pays, you run `add`, you commit data/subscribers.json.
 
 Usage:
   python3 scripts/manage_subscribers.py add nba someone@example.com
-  python3 scripts/manage_subscribers.py add nba someone@example.com nfl mlb   # one email, multiple products
+  python3 scripts/manage_subscribers.py add nba nfl mlb someone@example.com  # one email, multiple products -- any order, email can go anywhere
   python3 scripts/manage_subscribers.py remove nba someone@example.com
   python3 scripts/manage_subscribers.py list                                  # every product
   python3 scripts/manage_subscribers.py list nba                              # one product
   python3 scripts/manage_subscribers.py check someone@example.com             # what does this email get?
   python3 scripts/manage_subscribers.py products                             # list valid product names
+
+For add/remove, the email is found by looking for the one argument that
+contains "@" -- so `add soccer hockey someone@x.com` and
+`add someone@x.com soccer hockey` both work identically. Whatever's left
+after pulling out the email is treated as the product list.
 
 Adding an email that's already active on a product renews it (resets its
 30-day window to today) instead of creating a duplicate entry -- so `add`
@@ -65,14 +70,30 @@ def main() -> None:
 
     if cmd == "add":
         if len(args) < 3:
-            print("Usage: manage_subscribers.py add <product> <email> [more products...]")
+            print("Usage: manage_subscribers.py add <product> [more products...] <email>  (any order)")
             sys.exit(1)
-        email = args[2]
-        for product in [args[1], *args[3:]]:
+        # Email detected by "@" rather than a fixed position -- the old
+        # strict "product, email, more products..." order silently
+        # misparsed a perfectly reasonable `add soccer hockey
+        # someone@x.com` (typing every product before the email, which is
+        # how most people would naturally type it) as email="hockey" and
+        # "someone@x.com" as an unknown product. Detecting by "@" instead
+        # accepts the email in any position, so every ordering works.
+        email_candidates = [a for a in args[1:] if "@" in a]
+        if len(email_candidates) != 1:
+            print(f"Usage: manage_subscribers.py add <product> [more products...] <email>  (any order)\n"
+                  f"Expected exactly one argument containing '@' (the email) -- found {len(email_candidates)}.")
+            sys.exit(1)
+        email = email_candidates[0]
+        products = [a for a in args[1:] if a != email]
+        if not products:
+            print("No product given -- need at least one, e.g.: add soccer someone@example.com")
+            sys.exit(1)
+        for product in products:
             if product not in PRODUCTS:
                 print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
                 sys.exit(1)
-        for product in [args[1], *args[3:]]:
+        for product in products:
             print(add_subscriber(product, email))
         ok, msg = send_receipt_email(email)
         print(f"Receipt sent to {email}" if ok else f"Receipt NOT sent: {msg}")
@@ -103,13 +124,25 @@ def main() -> None:
 
     if cmd == "remove":
         if len(args) < 3:
-            print("Usage: manage_subscribers.py remove <product> <email>")
+            print("Usage: manage_subscribers.py remove <product> [more products...] <email>  (any order)")
             sys.exit(1)
-        product, email = args[1], args[2]
-        if product not in PRODUCTS:
-            print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
+        # Same "@" detection as add -- see the comment there.
+        email_candidates = [a for a in args[1:] if "@" in a]
+        if len(email_candidates) != 1:
+            print(f"Usage: manage_subscribers.py remove <product> [more products...] <email>  (any order)\n"
+                  f"Expected exactly one argument containing '@' (the email) -- found {len(email_candidates)}.")
             sys.exit(1)
-        print(remove_subscriber(product, email))
+        email = email_candidates[0]
+        products = [a for a in args[1:] if a != email]
+        if not products:
+            print("No product given -- need at least one, e.g.: remove soccer someone@example.com")
+            sys.exit(1)
+        for product in products:
+            if product not in PRODUCTS:
+                print(f"Unknown product {product!r} -- must be one of: {', '.join(PRODUCTS)}")
+                sys.exit(1)
+        for product in products:
+            print(remove_subscriber(product, email))
         return
 
     print(f"Unknown command {cmd!r}\n")
