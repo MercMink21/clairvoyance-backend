@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gmail_email import send_email as _send_gmail, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE_DISCLOSED  # noqa: E402
+from _gmail_email import send_email as _send_gmail  # noqa: E402
 
 SUBSCRIBERS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscribers.json"
 EVENTS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscriber_events.json"
@@ -558,14 +558,28 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     # its own bordered card instead of going flat-white right under a neon
     # header. Kept deliberately restrained (no background texture, no glow
     # shadows, no accent bar) -- a receipt reads as more professional with
-    # a plain neutral border than any colored line under it. Still closes
-    # through EMAIL_WRAP_CLOSE_DISCLOSED (just "</div>" + the disclaimer),
-    # which doesn't care what opened the div.
+    # a plain neutral border than any colored line under it.
     receipt_wrap_open = (
         '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
         'max-width:640px;margin:0 auto;background:#ffffff;color:#1a1a2e;'
         'border:1px solid #ececec;padding:28px 24px">'
     )
+    # Black disclaimer here, not the shared magenta EMAIL_WRAP_CLOSE_DISCLOSED
+    # (picks emails keep magenta, per the standing "disclaimer stays neon
+    # magenta in all emails" instruction -- explicitly overridden for the
+    # receipt only). Same copy, just recolored + closes the wrap div.
+    receipt_close = (
+        '<div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e5e5;'
+        'font-size:11px;line-height:1.5;color:#1a1a2e;font-weight:600">'
+        'Clairvoyance Engine outputs are probabilistic projections for informational and '
+        'analytical purposes only. Model outputs do not constitute financial or betting advice. '
+        'Past model performance does not guarantee future results.'
+        '</div></div>'
+    )
+    # Every "black" text element uses the same #1a1a2e shade (the brand's
+    # near-black, already used for the headline/price) instead of a mix of
+    # plain #000 and #1a1a2e.
+    BLACK = '#1a1a2e'
     body = (
         # Banner sits outside the padded wrap so it bleeds edge-to-edge
         # across the full 640px card width instead of sitting inset.
@@ -574,24 +588,24 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
         f'font-family:-apple-system,sans-serif;color:#999" /></div>' +
         receipt_wrap_open +
-        '<div style="font-size:11px;letter-spacing:2.5px;color:#000;text-transform:uppercase;'
+        f'<div style="font-size:11px;letter-spacing:2.5px;color:{BLACK};text-transform:uppercase;'
         'font-weight:700;margin-bottom:14px">Payment Receipt</div>'
-        '<div style="font-size:19px;font-weight:700;color:#1a1a2e;margin-bottom:6px;line-height:1.3">'
+        f'<div style="font-size:19px;font-weight:700;color:{BLACK};margin-bottom:6px;line-height:1.3">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
-        f'<div style="font-size:13px;color:#000;margin-bottom:26px">Confirmed {now.strftime("%b %d, %Y")}</div>'
+        f'<div style="font-size:13px;color:{BLACK};margin-bottom:26px">Confirmed {now.strftime("%b %d, %Y")}</div>'
         f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
         f'padding:4px 20px;margin-bottom:20px">{expiry_rows}</div>'
         f'<div style="background:#fafafa;border:1px solid #e8e8e8;border-radius:6px;'
         f'padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="font-size:12px;letter-spacing:1px;color:#000;text-transform:uppercase">'
+        f'<span style="font-size:12px;letter-spacing:1px;color:{BLACK};text-transform:uppercase">'
         f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
         f'<span style="font-size:24px;font-weight:800;color:#f20cff">${price}<span '
-        f'style="font-size:13px;font-weight:500;color:#000">/month</span></span></div>'
-        '<div style="font-size:13px;color:#000;line-height:1.7">'
+        f'style="font-size:13px;font-weight:500;color:{BLACK};margin-left:6px">/month</span></span></div>'
+        f'<div style="font-size:13px;color:{BLACK};line-height:1.7">'
         'This confirms the access currently live on your account -- not a record of a specific '
         'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
         f'for another {EXPIRY_DAYS} days whenever you pay again; reply to this email with any '
         'questions.</div>' +
-        EMAIL_WRAP_CLOSE_DISCLOSED
+        receipt_close
     )
     return _send_gmail(subject, email, body)
