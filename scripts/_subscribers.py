@@ -112,16 +112,21 @@ REPO_ROOT = SUBSCRIBERS_FILE.parent.parent
 
 
 def sync_subscribers_to_git(message: str) -> tuple[bool, str]:
-    """Commits + pushes data/subscribers.json so an add/remove made
-    locally (CLI or the web admin tool) actually reaches the GitHub
-    Actions runs without a separate manual step -- this used to be a
-    "don't forget to commit and push" step every caller had to remember
-    by hand. Mirrors the same pull --rebase-then-push pattern
-    send-expiry-reminders.yml already uses safely against this exact
-    file (it flips reminder_sent daily), since that file is the only
-    other writer subscribers.json can collide with. GIT_TERMINAL_PROMPT=0
-    so a credential/auth problem fails fast instead of hanging this
-    script waiting for input nobody will provide."""
+    """Commits + pushes data/subscribers.json (and data/subscriber_events.json,
+    the add/remove/renew history add_subscriber()/remove_subscriber() also
+    write locally) so an add/remove made locally (CLI or the web admin
+    tool) actually reaches the GitHub Actions runs without a separate
+    manual step -- this used to be a "don't forget to commit and push"
+    step every caller had to remember by hand. The events file was left
+    out of the first version of this function, which meant it silently
+    accumulated uncommitted local history forever even after
+    subscribers.json itself started auto-syncing -- caught during a
+    session audit. Mirrors the same pull --rebase-then-push pattern
+    send-expiry-reminders.yml already uses safely against subscribers.json
+    (it flips reminder_sent daily), since that file is the only other
+    writer either of these can collide with. GIT_TERMINAL_PROMPT=0 so a
+    credential/auth problem fails fast instead of hanging this script
+    waiting for input nobody will provide."""
     def run(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["git", "-C", str(REPO_ROOT), *args],
@@ -129,9 +134,9 @@ def sync_subscribers_to_git(message: str) -> tuple[bool, str]:
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
 
-    rel = "data/subscribers.json"
-    run("add", rel)
-    diff = run("diff", "--cached", "--quiet", "--", rel)
+    rels = ["data/subscribers.json", "data/subscriber_events.json"]
+    run("add", *rels)
+    diff = run("diff", "--cached", "--quiet", "--", *rels)
     if diff.returncode == 0:
         return True, "no changes to sync"
 
