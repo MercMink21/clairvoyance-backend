@@ -1,0 +1,48 @@
+name: Verify Lock Workflows Live
+
+# Durable replacement for the manual "did all 3 lock workflows actually
+# go live and lock+send today" check -- previously a session-only
+# reminder that died when the session ended and auto-expired after 7
+# days regardless. This is the deep, content-aware check: confirms each
+# of the 3 lock workflows' run actually invoked --live (not silently
+# dry-run) and produced its real log output, not just that GitHub
+# reports the run as "success" (a script can complete without an
+# unhandled exception while still having failed to go live or produced
+# no output). See daily-health-check.yml for the shallower "did it run
+# at all" net across all 6 daily workflows -- this one is specific to
+# the 3 business-critical lock workflows and checks deeper.
+on:
+  schedule:
+    # 17:30 UTC (~11:30am MT) -- comfortably after all 3 lock workflows'
+    # nominal times plus GitHub's documented 30-90+ minute scheduling
+    # delay (main lock nominal 14:30 UTC, CFB early nominal ~15:00-15:30
+    # UTC, soccer early nominal ~12:20 UTC -- latest of the three plus
+    # worst-case delay lands comfortably before this).
+    - cron: '30 17 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/verify_lock_workflows.py
