@@ -48,7 +48,7 @@ EXPIRY_DAYS = 30
 # revenue from active subscription counts -- this is not a real payment
 # ledger (Venmo payments aren't tracked here at all), just what someone
 # following the standard pricing would owe for their current product count.
-PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 45, 5: 55, 6: 60, 7: 70, 8: 75}
+PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 50, 5: 60, 6: 65, 7: 70, 8: 80}
 
 # Hosted (not inline-attached) so it actually renders across mail clients --
 # many strip inline/CID images or require an extra click, while a plain
