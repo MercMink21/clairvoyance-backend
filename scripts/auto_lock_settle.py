@@ -55,7 +55,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
 from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
 from _gmail_email import EMAIL_WRAP_CLOSE_DISCLOSED as _LOCKS_EMAIL_CLOSE  # noqa: E402
-from _subscribers import recipients_for, OWNER_EMAIL  # noqa: E402
+from _subscribers import recipients_for, OWNER_EMAIL, EMAIL_BANNER_URL  # noqa: E402
 
 # _LOCKS_EMAIL_CLOSE (the disclaimer-bearing close, defined in
 # _gmail_email.py so _subscribers.py's receipt email can share the exact
@@ -647,7 +647,17 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
         if live else
         f"DRY RUN — {len(qualifying)} legs qualified, nothing was written"
     )
-    parts = [_EMAIL_WRAP_OPEN, f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">{_esc(status_line)}</div>']
+    # Banner sits outside _EMAIL_WRAP_OPEN's padding (same hosted asset as
+    # the receipt email in _subscribers.py -- see EMAIL_BANNER_URL there
+    # for the hosting rationale) so it bleeds edge-to-edge across the
+    # full 640px card width instead of sitting inset.
+    banner_html = (
+        f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
+        f'alt="Clairvoyance Engine" width="640" '
+        f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
+        f'font-family:-apple-system,sans-serif;color:#999" /></div>'
+    )
+    parts = [banner_html, _EMAIL_WRAP_OPEN, f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">{_esc(status_line)}</div>']
 
     high_hit = [q for q in qualifying if q["kind"] == "GAME" and _market_type(q.get("side")) == "ML"
                 and (q.get("prob") or 0) >= _HIGH_HIT_P]

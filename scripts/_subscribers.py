@@ -50,6 +50,17 @@ EXPIRY_DAYS = 30
 # following the standard pricing would owe for their current product count.
 PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 45, 5: 55, 6: 60, 7: 70, 8: 75}
 
+# Hosted (not inline-attached) so it actually renders across mail clients --
+# many strip inline/CID images or require an extra click, while a plain
+# HTTPS <img src> is the standard transactional-email approach. Same
+# GitHub Pages origin every other live asset (app.html, sport_
+# performance.json) is already served from. docs/email_banner.jpg is a
+# resized+recompressed copy of Desktop/bannerlogo2.png (1280px wide @
+# JPEG q78 -- the source PNG was 843KB uncompressed at that width, too
+# heavy for an email header; JPEG compresses its soft glow/gradient
+# background far better than PNG does).
+EMAIL_BANNER_URL = "https://mercmink21.github.io/clairvoyance-backend/email_banner.jpg"
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -533,22 +544,36 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
     price = PRICING_BY_COUNT.get(min(n, 8), 0)
     now = _now()
     expiry_rows = "".join(
-        f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12);font-size:15px;color:#eee">'
-        f'<strong style="color:#fff">{r["product"].upper()}</strong> — '
-        f'<span style="color:#bbb">active through '
+        f'<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:15px;'
+        f'color:#eee;display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
+        f'<strong style="color:#fff;letter-spacing:.5px">{r["product"].upper()}</strong>'
+        f'<span style="color:#888;font-size:12px;white-space:nowrap">active through '
         f'{(_parse(r["added"]) + timedelta(days=EXPIRY_DAYS)).strftime("%b %d, %Y")}</span>'
         f'</div>'
         for r in rows
     )
     subject = f"Clairvoyance — Receipt: {n} product{'s' if n != 1 else ''} active (${price}/mo)"
     body = (
+        # Banner sits outside EMAIL_WRAP_OPEN's padding so it bleeds edge-
+        # to-edge across the full 640px card width instead of sitting
+        # inset inside the padded body.
+        f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
+        f'alt="Clairvoyance Engine" width="640" '
+        f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
+        f'font-family:-apple-system,sans-serif;color:#999" /></div>' +
         EMAIL_WRAP_OPEN +
-        '<div style="font-size:16px;color:#1a1a2e;margin-bottom:4px">'
+        '<div style="font-size:11px;letter-spacing:2px;color:#00b8cc;text-transform:uppercase;'
+        'font-weight:700;margin-bottom:10px">Payment Receipt</div>'
+        '<div style="font-size:18px;font-weight:700;color:#1a1a2e;margin-bottom:4px">'
         'Thanks for subscribing to Clairvoyance Engine.</div>'
-        f'<div style="font-size:13px;color:#777;margin-bottom:16px">Confirmed {now.strftime("%b %d, %Y")}</div>'
-        f'<div style="background:#14001f;border-radius:6px;padding:4px 14px;margin-bottom:16px">{expiry_rows}</div>'
-        f'<div style="font-size:14px;color:#1a1a2e;margin-bottom:4px">'
-        f'Standard price for {n} simultaneous product{"s" if n != 1 else ""}: <strong>${price}/month</strong></div>'
+        f'<div style="font-size:13px;color:#888;margin-bottom:20px">Confirmed {now.strftime("%b %d, %Y")}</div>'
+        f'<div style="background:#14001f;border-radius:8px;padding:6px 16px;margin-bottom:18px">{expiry_rows}</div>'
+        f'<div style="background:#f4fbfc;border:1px solid rgba(0,184,204,.3);border-radius:8px;'
+        f'padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">'
+        f'<span style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">'
+        f'{n} simultaneous product{"s" if n != 1 else ""}</span>'
+        f'<span style="font-size:22px;font-weight:800;color:#1a1a2e">${price}<span '
+        f'style="font-size:13px;font-weight:500;color:#777">/month</span></span></div>'
         '<div style="font-size:13px;color:#777;line-height:1.6">'
         'This confirms the access currently live on your account -- not a record of a specific '
         'Venmo payment (payments aren\'t processed or tracked here). Each product above renews '
