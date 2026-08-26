@@ -6486,144 +6486,131 @@ function cfbMC(hA,awA,n,ouLine,g){
   const hOff=D.stats[hA]?.offense||{},aOff=D.stats[awA]?.offense||{};
   const hDefAllowed=D.stats[hA]?.defenseAllowed||{},aDefAllowed=D.stats[awA]?.defenseAllowed||{};
 
-  // FPI is the primary margin driver -- ESPN defines it as expected point
-  // margin vs an average opponent on a neutral field, so it's already a
-  // point-scale power rating. Yardage and turnover matchup data are folded
-  // in as small, capped adjustments on top, never allowed to swing the
-  // margin more than a few points, so no single stat category can dominate
-  // or double-count what FPI already reflects. When falling back to the
-  // market margin instead, the same capped adjustments still apply using
-  // whichever side (usually just the FBS team) has real stats.
-  let yardsAdjPts=0;
-  const hOffYds=(_n(hOff.passingYardsPerGame)??0)+(_n(hOff.rushingYardsPerGame)??0);
-  const aDefYdsAllowed=(_n(aDefAllowed.passingYardsPerGame)??0)+(_n(aDefAllowed.rushingYardsPerGame)??0);
-  const aOffYds=(_n(aOff.passingYardsPerGame)??0)+(_n(aOff.rushingYardsPerGame)??0);
-  const hDefYdsAllowed=(_n(hDefAllowed.passingYardsPerGame)??0)+(_n(hDefAllowed.rushingYardsPerGame)??0);
-  if(hOffYds&&aDefYdsAllowed&&aOffYds&&hDefYdsAllowed){
-    // Net matchup-specific yards edge (each team's own output vs this
-    // specific opponent's allowed average), converted at a rough 16
-    // yards-per-point rule of thumb -- an approximation, not a precise
-    // conversion -- then capped at +/-3 points.
-    const hEdgeYds=hOffYds-aDefYdsAllowed;
-    const aEdgeYds=aOffYds-hDefYdsAllowed;
-    yardsAdjPts=Math.max(-3,Math.min(3,(hEdgeYds-aEdgeYds)/16));
-  }
+  // ARCHITECTURE (per explicit direction: FPI should carry real weight but
+  // not dominate outright): the margin is now a weighted BLEND of two
+  // independent estimates -- FPI (ESPN's opponent-adjusted composite) at
+  // 55%, and a from-scratch "box score margin" built directly from real
+  // season stats at 45% -- rather than the old "FPI + small capped
+  // nudges" shape. Special teams and 2025 history are each blended in on
+  // top at their own fixed weights (3% and 15% respectively); ranking
+  // stays a small flat nudge. When there's no FPI, market margin fills
+  // the same 55% slot instead.
+  //
+  // Box score margin covers every category below -- passing, rushing,
+  // receiving, miscellaneous, scoring, defense passing, defense rushing.
+  // Each stat is converted to a "points of margin" contribution using
+  // the same 16-yards-per-point rule of thumb already used elsewhere in
+  // this app for yardage, with modest per-unit values for counting stats
+  // (TDs, INTs, first downs). Receiving yards/TDs are deliberately NOT
+  // counted here -- confirmed directly against real data that ESPN
+  // reports identical passingYardsPerGame/receivingYardsPerGame and
+  // passingTouchdowns/receivingTouchdowns for a team's own offense (same
+  // completions, two category labels) -- only yards/reception (a
+  // genuinely distinct explosiveness signal) is unique to receiving.
+  const hDefAllowedYds=_n(hDefAllowed.yardsPerGame),aDefAllowedYds=_n(aDefAllowed.yardsPerGame);
 
-  let toAdjPts=0;
-  const hTO=_n(hOff.turnOverDifferential),aTO=_n(aOff.turnOverDifferential);
-  if(hTO!=null&&aTO!=null){
-    // Turnover differential gap, capped at +/-1.5 points -- turnovers are
-    // high-variance and already partly reflected in FPI, so this stays a
-    // small nudge rather than a primary driver.
-    toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
-  }
+  let passingMargin=0;
+  if(_n(hOff.completionPct)!=null&&_n(aOff.completionPct)!=null)passingMargin+=(_n(hOff.completionPct)-_n(aOff.completionPct))*0.08;
+  if(_n(hOff.passingYardsPerGame)!=null&&_n(aOff.passingYardsPerGame)!=null)passingMargin+=(_n(hOff.passingYardsPerGame)-_n(aOff.passingYardsPerGame))/16;
+  if(_n(hOff.passingTouchdowns)!=null&&_n(aOff.passingTouchdowns)!=null)passingMargin+=(_n(hOff.passingTouchdowns)-_n(aOff.passingTouchdowns))*0.3;
+  if(_n(hOff.interceptions)!=null&&_n(aOff.interceptions)!=null)passingMargin+=(_n(aOff.interceptions)-_n(hOff.interceptions))*0.3; // fewer INTs = advantage
+  if(_n(hOff.QBRating)!=null&&_n(aOff.QBRating)!=null)passingMargin+=(_n(hOff.QBRating)-_n(aOff.QBRating))*0.02;
+
+  let rushingMargin=0;
+  if(_n(hOff.rushingYardsPerGame)!=null&&_n(aOff.rushingYardsPerGame)!=null)rushingMargin+=(_n(hOff.rushingYardsPerGame)-_n(aOff.rushingYardsPerGame))/16;
+  if(_n(hOff.yardsPerRushAttempt)!=null&&_n(aOff.yardsPerRushAttempt)!=null)rushingMargin+=(_n(hOff.yardsPerRushAttempt)-_n(aOff.yardsPerRushAttempt))*0.5;
+  if(_n(hOff.rushingTouchdowns)!=null&&_n(aOff.rushingTouchdowns)!=null)rushingMargin+=(_n(hOff.rushingTouchdowns)-_n(aOff.rushingTouchdowns))*0.3;
+  if(_n(hOff.rushingFirstDowns)!=null&&_n(aOff.rushingFirstDowns)!=null)rushingMargin+=(_n(hOff.rushingFirstDowns)-_n(aOff.rushingFirstDowns))*0.05;
+
+  let receivingMargin=0;
+  if(_n(hOff.yardsPerReception)!=null&&_n(aOff.yardsPerReception)!=null)receivingMargin+=(_n(hOff.yardsPerReception)-_n(aOff.yardsPerReception))*0.15;
+
+  let miscMargin=0;
+  if(_n(hOff.firstDowns)!=null&&_n(aOff.firstDowns)!=null)miscMargin+=(_n(hOff.firstDowns)-_n(aOff.firstDowns))*0.05;
+  if(_n(hOff.thirdDownConvPct)!=null&&_n(aOff.thirdDownConvPct)!=null)miscMargin+=(_n(hOff.thirdDownConvPct)-_n(aOff.thirdDownConvPct))*0.06;
+  if(_n(hOff.fourthDownConvPct)!=null&&_n(aOff.fourthDownConvPct)!=null)miscMargin+=(_n(hOff.fourthDownConvPct)-_n(aOff.fourthDownConvPct))*0.02;
+  if(_n(hOff.possessionTimeSeconds)!=null&&_n(aOff.possessionTimeSeconds)!=null)miscMargin+=((_n(hOff.possessionTimeSeconds)-_n(aOff.possessionTimeSeconds))/60)*0.05;
+  if(_n(hOff.turnOverDifferential)!=null&&_n(aOff.turnOverDifferential)!=null)miscMargin+=(_n(hOff.turnOverDifferential)-_n(aOff.turnOverDifferential))*0.15;
+
+  // Scoring + defense points-allowed together form a real points-for-
+  // minus-points-against margin, same shape as hist2025Margin below, just
+  // for the current season.
+  let scoringMargin=0;
+  const hPtsFor=_n(hOff.totalPointsPerGame),hPtsAgainst=_n(hDefAllowed.totalPointsPerGame);
+  const aPtsFor=_n(aOff.totalPointsPerGame),aPtsAgainst=_n(aDefAllowed.totalPointsPerGame);
+  if(hPtsFor!=null&&hPtsAgainst!=null&&aPtsFor!=null&&aPtsAgainst!=null)scoringMargin=(hPtsFor-hPtsAgainst)-(aPtsFor-aPtsAgainst);
+
+  // Defense passing (totalPointsPerGame already used above in scoringMargin
+  // -- the remaining 3 fields only) and defense rushing. Sign flipped
+  // throughout: allowing MORE is worse for the team doing the allowing.
+  let defPassMargin=0;
+  if(hDefAllowedYds!=null&&aDefAllowedYds!=null)defPassMargin+=-(hDefAllowedYds-aDefAllowedYds)/16;
+  if(_n(hDefAllowed.passingYardsPerGame)!=null&&_n(aDefAllowed.passingYardsPerGame)!=null)defPassMargin+=-(_n(hDefAllowed.passingYardsPerGame)-_n(aDefAllowed.passingYardsPerGame))/20;
+  if(_n(hDefAllowed.passingTouchdowns)!=null&&_n(aDefAllowed.passingTouchdowns)!=null)defPassMargin+=-(_n(hDefAllowed.passingTouchdowns)-_n(aDefAllowed.passingTouchdowns))*0.2;
+
+  let defRushMargin=0;
+  if(_n(hDefAllowed.rushingYardsPerGame)!=null&&_n(aDefAllowed.rushingYardsPerGame)!=null)defRushMargin+=-(_n(hDefAllowed.rushingYardsPerGame)-_n(aDefAllowed.rushingYardsPerGame))/20;
+  if(_n(hDefAllowed.yardsPerRushAttempt)!=null&&_n(aDefAllowed.yardsPerRushAttempt)!=null)defRushMargin+=-(_n(hDefAllowed.yardsPerRushAttempt)-_n(aDefAllowed.yardsPerRushAttempt))*0.4;
+  if(_n(hDefAllowed.rushingTouchdowns)!=null&&_n(aDefAllowed.rushingTouchdowns)!=null)defRushMargin+=-(_n(hDefAllowed.rushingTouchdowns)-_n(aDefAllowed.rushingTouchdowns))*0.2;
+
+  // Sanity-bounded to a realistic FPI-like range (+/-30) so the 45%
+  // weight below is meaningful rather than either side accidentally
+  // dwarfing the other numerically -- this is a real margin estimate now,
+  // not a small nudge, so it needs its own realistic ceiling the way FPI
+  // itself naturally has one.
+  const boxScoreMarginRaw=passingMargin+rushingMargin+receivingMargin+miscMargin+scoringMargin+defPassMargin+defRushMargin;
+  const hasBoxScore=(hPtsFor!=null&&aPtsFor!=null); // scoring is the one component every real game has; treat as the completeness gate
+  const boxScoreMargin=hasBoxScore?Math.max(-30,Math.min(30,boxScoreMarginRaw)):null;
 
   // Special teams: kicking (FG%, XP%, total kicking points) and punting
-  // (net avg yards, punts inside the 20) edges, same small-capped-nudge
-  // treatment as yards/turnovers above. Collected all season (fetch_cfb.py's
-  // _ST_FIELDS) but never actually used in the sim before now. Every
-  // multiplier below is scaled from this season's REAL observed range for
-  // that field (checked directly against docs/cfb_team_stats.json) so a
-  // typical differential lands well inside the category, and only a
-  // genuinely extreme mismatch pushes toward the +/-1 overall cap on this
-  // whole category (unchanged -- more sub-signals refines what special
-  // teams means, it doesn't enlarge its overall influence).
-  let stAdjPts=0;
+  // (net avg yards, punts inside the 20). Collected all season
+  // (fetch_cfb.py's _ST_FIELDS) but never actually used in the sim
+  // before now. No longer a small additive capped nudge -- per explicit
+  // direction this is now blended in at a fixed 3% weight (same
+  // mechanism as the 2025-history blend below), so it's a real, if
+  // small, weighted component rather than a point-capped afterthought.
+  let stMarginRaw=0,hasST=false;
   const hST=D.stats[hA]?.specialTeams||{},aST=D.stats[awA]?.specialTeams||{};
   const hFG=_n(hST.fieldGoalPct),aFG=_n(aST.fieldGoalPct);
   const hPunt=_n(hST.netAvgPuntYards),aPunt=_n(aST.netAvgPuntYards);
-  // FG% multiplier doubled (0.03 -> 0.06) per explicit request to weigh
-  // it more heavily -- a 20-point FG% gap now contributes ~1.2 pts on its
-  // own, meaning FG% alone can now reach the category's +/-1 overall cap
-  // rather than needing to combine with other terms to get there.
-  if(hFG!=null&&aFG!=null)stAdjPts+=(hFG-aFG)*0.06;
-  if(hPunt!=null&&aPunt!=null)stAdjPts+=(hPunt-aPunt)*0.06;
-  // XP% real range this season is tight (~87-100, most teams near 100) --
-  // deliberately the smallest multiplier here, since a make-or-miss extra
-  // point is genuinely low-stakes (1 point) and most differentials are
-  // only a few percentage points.
+  if(hFG!=null&&aFG!=null){stMarginRaw+=(hFG-aFG)*0.06;hasST=true;}
+  if(hPunt!=null&&aPunt!=null){stMarginRaw+=(hPunt-aPunt)*0.06;hasST=true;}
   const hXP=_n(hST.extraPointPct),aXP=_n(aST.extraPointPct);
-  if(hXP!=null&&aXP!=null)stAdjPts+=(hXP-aXP)*0.02;
-  // Total kicking points is a season CUMULATIVE total (FGs+XPs made,
-  // summed), not a rate -- real range this season spans ~27-152. Multiplier
-  // doubled (0.008 -> 0.016) per explicit request; the full-season spread
-  // can now reach the category cap on its own too, not just at the extreme.
+  if(hXP!=null&&aXP!=null)stMarginRaw+=(hXP-aXP)*0.02;
   const hKP=_n(hST.totalKickingPoints),aKP=_n(aST.totalKickingPoints);
-  if(hKP!=null&&aKP!=null)stAdjPts+=(hKP-aKP)*0.016;
-  // Punts inside the 20 -- a real, distinct field-position/precision
-  // signal from net punt yards (a punter can average solid net yardage
-  // while still missing the coffin-corner placement that pins an
-  // opponent deep, or vice versa). Multiplier doubled (0.04 -> 0.08) per
-  // explicit request.
+  if(hKP!=null&&aKP!=null)stMarginRaw+=(hKP-aKP)*0.016;
   const hP20=_n(hST.puntsInside20),aP20=_n(aST.puntsInside20);
-  if(hP20!=null&&aP20!=null)stAdjPts+=(hP20-aP20)*0.08;
-  stAdjPts=Math.max(-1,Math.min(1,stAdjPts));
-
-  // Third-down conversion edge -- each team's own efficiency, same
-  // "own differential vs own differential" shape as turnovers above, not
-  // a yardage restatement (a team can move the ball between the 20s and
-  // still stall on 3rd down, or vice versa) -- genuinely distinct signal
-  // from yardsAdjPts. Collected (_OFFENSE_FIELDS) but never used before now.
-  let thirdDownAdjPts=0;
-  const h3rd=_n(hOff.thirdDownConvPct),a3rd=_n(aOff.thirdDownConvPct);
-  if(h3rd!=null&&a3rd!=null)thirdDownAdjPts=Math.max(-1.5,Math.min(1.5,(h3rd-a3rd)*0.06));
-
-  // QB efficiency (ESPN's own passer-rating composite -- completion%,
-  // yards/attempt, TD/INT already folded into one number) -- distinct
-  // from raw passing yardage, which rewards volume over efficiency.
-  let qbrAdjPts=0;
-  const hQBR=_n(hOff.QBRating),aQBR=_n(aOff.QBRating);
-  if(hQBR!=null&&aQBR!=null)qbrAdjPts=Math.max(-1.5,Math.min(1.5,(hQBR-aQBR)*0.02));
-
-  // Penalty discipline -- fewer penalty yards is an advantage, so the
-  // sign is flipped (aPen-hPen: home benefits when AWAY is more
-  // penalized). Small on purpose -- discipline matters but far less than
-  // the drivers above.
-  let penaltyAdjPts=0;
-  const hPen=_n(hOff.totalPenaltyYards),aPen=_n(aOff.totalPenaltyYards);
-  if(hPen!=null&&aPen!=null)penaltyAdjPts=Math.max(-1,Math.min(1,(aPen-hPen)*0.012));
+  if(hP20!=null&&aP20!=null)stMarginRaw+=(hP20-aP20)*0.08;
+  const stMargin=hasST?Math.max(-10,Math.min(10,stMarginRaw)):null; // loosely bounded, not tightly capped -- the 3% blend weight is what keeps this small, not a point cap
 
   // Top 25 ranking (AP Poll, already fetched weekly into rankByAbbr but
-  // only ever used for a display badge/filter before now): deliberately
-  // tiny nudge -- FPI already reflects most of what makes a team rank
-  // highly, so this only fills in the small remainder (resume/eye-test
-  // factors voters weigh that a pure power rating can underweight), not
-  // a second copy of team quality FPI already prices in. Linear from
-  // ~1pt at #1 down to ~0.04pt at #25, 0 if unranked.
+  // only ever used for a display badge/filter before now): stays a small
+  // flat nudge, not a percentage blend -- FPI already reflects most of
+  // what makes a team rank highly, so this only fills in the small
+  // remainder (resume/eye-test factors voters weigh that a pure power
+  // rating can underweight). Linear from ~1pt at #1 down to ~0.04pt at
+  // #25, 0 if unranked.
   const _rankBonus=r=>r?(26-r)/25:0;
   const hRank=D.rankByAbbr?.[hA]?.rank,aRank=D.rankByAbbr?.[awA]?.rank;
   const rankAdjPts=(hRank||aRank)?Math.max(-1,Math.min(1,_rankBonus(hRank)-_rankBonus(aRank))):0;
 
-  // Overall cap on the SUM of every secondary/tertiary adjustment above
-  // (yards, turnovers, special teams, ranking, 3rd down, QBR, penalties).
-  // Each is individually small-capped already, but as more signals get
-  // added over time their combined swing could otherwise creep past what
-  // "never a primary driver" actually means if several happen to align
-  // in the same direction for one team. This is the real backstop for
-  // that -- FPI (which can legitimately span +/-20-30 for a real
-  // mismatch) always stays the dominant term regardless of how many
-  // secondary signals get added later.
-  const secondaryAdjPtsRaw=yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts+thirdDownAdjPts+qbrAdjPts+penaltyAdjPts;
-  const secondaryAdjPts=Math.max(-6,Math.min(6,secondaryAdjPtsRaw));
-
   // 2025 historical signal: own points-scored minus own points-allowed
-  // per game from last season (same shape as nflMC's real standings-
-  // differential margin), from the permanent snapshot in stats2025 (see
-  // scripts/snapshot_cfb_2025.py). Blended at a fixed 15% weight against
-  // the current-season margin below -- same rationale as weighting a
-  // prior European soccer season: 2025's roster differs from 2026's, but
-  // the signal is still informative, especially early in a season when
-  // 2026 data is thin. Capped at +/-20 before weighting so even an
-  // extreme 2025 gap can never contribute more than +/-3 points after
-  // the 15% weight applies -- "small nudge, never a primary driver,"
-  // same philosophy as every other adjustment in this function.
+  // per game from last season (same shape as scoringMargin above, and as
+  // nflMC's real standings-differential margin), from the permanent
+  // snapshot in stats2025 (see scripts/snapshot_cfb_2025.py). Blended at
+  // a fixed 15% weight -- same rationale as weighting a prior European
+  // soccer season: 2025's roster differs from 2026's, but the signal is
+  // still informative, especially early in a season when 2026 data is
+  // thin. Capped at +/-20 before weighting so even an extreme 2025 gap
+  // can never contribute more than +/-3 points after the 15% weight
+  // applies.
   let hist2025Margin=null;
   const h25=D.stats2025?.[hA],a25=D.stats2025?.[awA];
   if(h25&&a25){
-    const hPtsFor=_n(h25.offense?.totalPointsPerGame),hPtsAgainst=_n(h25.defenseAllowed?.totalPointsPerGame);
-    const aPtsFor=_n(a25.offense?.totalPointsPerGame),aPtsAgainst=_n(a25.defenseAllowed?.totalPointsPerGame);
-    if(hPtsFor!=null&&hPtsAgainst!=null&&aPtsFor!=null&&aPtsAgainst!=null){
-      const hDiff25=hPtsFor-hPtsAgainst,aDiff25=aPtsFor-aPtsAgainst;
+    const h25PtsFor=_n(h25.offense?.totalPointsPerGame),h25PtsAgainst=_n(h25.defenseAllowed?.totalPointsPerGame);
+    const a25PtsFor=_n(a25.offense?.totalPointsPerGame),a25PtsAgainst=_n(a25.defenseAllowed?.totalPointsPerGame);
+    if(h25PtsFor!=null&&h25PtsAgainst!=null&&a25PtsFor!=null&&a25PtsAgainst!=null){
+      const hDiff25=h25PtsFor-h25PtsAgainst,aDiff25=a25PtsFor-a25PtsAgainst;
       hist2025Margin=Math.max(-20,Math.min(20,hDiff25-aDiff25));
     }
   }
@@ -6634,7 +6621,15 @@ function cfbMC(hA,awA,n,ouLine,g){
   // final number and already has HFA priced into it — adding it again on
   // top would double-count it. Neutral-site games get no HFA either way.
   const hfaApplied=g?.neutralSite?0:_cfbTeamHFA(hA);
-  const currentMargin=hasFpi?((fpiH-fpiA)+hfaApplied+secondaryAdjPts):(marketMargin+secondaryAdjPts);
+  // Primary quality estimate (FPI or market) at 55%, box score margin at
+  // 45% -- falls back to the primary estimate alone only when box score
+  // data isn't available for this matchup (e.g. an FCS opponent with no
+  // stats pipeline coverage), same "never block the card" philosophy as
+  // the FPI/market fallback above.
+  const primaryMargin=hasFpi?((fpiH-fpiA)+hfaApplied):(marketMargin+hfaApplied);
+  const coreMargin=(boxScoreMargin!=null)?(primaryMargin*0.55+boxScoreMargin*0.45):primaryMargin;
+  const mainMargin=coreMargin+rankAdjPts;
+  const currentMargin=(stMargin!=null)?(mainMargin*0.97+stMargin*0.03):mainMargin;
   const margin0=hist2025Margin!=null?(currentMargin*0.85+hist2025Margin*0.15):currentMargin;
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
@@ -6674,7 +6669,8 @@ function cfbMC(hA,awA,n,ouLine,g){
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
     n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
     wx,wxImpact,hasFpi,marketMargin,
-    stAdjPts,rankAdjPts,hist2025Margin,thirdDownAdjPts,qbrAdjPts,penaltyAdjPts,secondaryAdjPts, // exposed for debugging/transparency, same convention as the other adjustment terms above
+    rankAdjPts,hist2025Margin,boxScoreMargin,stMargin,primaryMargin,coreMargin,
+    passingMargin,rushingMargin,receivingMargin,miscMargin,scoringMargin,defPassMargin,defRushMargin, // exposed for debugging/transparency, same convention as the other adjustment terms above
   };
 }
 // Analytical cover probability for an arbitrary spread/total line, reusing
