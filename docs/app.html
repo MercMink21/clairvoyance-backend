@@ -6518,15 +6518,40 @@ function cfbMC(hA,awA,n,ouLine,g){
     toAdjPts=Math.max(-1.5,Math.min(1.5,(hTO-aTO)*0.15));
   }
 
-  // Special teams: FG% and net punting edge, same small-capped-nudge
+  // Special teams: kicking (FG%, XP%, total kicking points) and punting
+  // (net avg yards, punts inside the 20) edges, same small-capped-nudge
   // treatment as yards/turnovers above. Collected all season (fetch_cfb.py's
-  // _ST_FIELDS) but never actually used in the sim before now.
+  // _ST_FIELDS) but never actually used in the sim before now. Every
+  // multiplier below is scaled from this season's REAL observed range for
+  // that field (checked directly against docs/cfb_team_stats.json) so a
+  // typical differential lands well inside the category, and only a
+  // genuinely extreme mismatch pushes toward the +/-1 overall cap on this
+  // whole category (unchanged -- more sub-signals refines what special
+  // teams means, it doesn't enlarge its overall influence).
   let stAdjPts=0;
   const hST=D.stats[hA]?.specialTeams||{},aST=D.stats[awA]?.specialTeams||{};
   const hFG=_n(hST.fieldGoalPct),aFG=_n(aST.fieldGoalPct);
   const hPunt=_n(hST.netAvgPuntYards),aPunt=_n(aST.netAvgPuntYards);
   if(hFG!=null&&aFG!=null)stAdjPts+=(hFG-aFG)*0.03;
   if(hPunt!=null&&aPunt!=null)stAdjPts+=(hPunt-aPunt)*0.06;
+  // XP% real range this season is tight (~87-100, most teams near 100) --
+  // deliberately the smallest multiplier here, since a make-or-miss extra
+  // point is genuinely low-stakes (1 point) and most differentials are
+  // only a few percentage points.
+  const hXP=_n(hST.extraPointPct),aXP=_n(aST.extraPointPct);
+  if(hXP!=null&&aXP!=null)stAdjPts+=(hXP-aXP)*0.02;
+  // Total kicking points is a season CUMULATIVE total (FGs+XPs made,
+  // summed), not a rate -- real range this season spans ~27-152, so the
+  // multiplier is small enough that even that full-season spread lands
+  // near, not wildly past, the category cap.
+  const hKP=_n(hST.totalKickingPoints),aKP=_n(aST.totalKickingPoints);
+  if(hKP!=null&&aKP!=null)stAdjPts+=(hKP-aKP)*0.008;
+  // Punts inside the 20 -- a real, distinct field-position/precision
+  // signal from net punt yards (a punter can average solid net yardage
+  // while still missing the coffin-corner placement that pins an
+  // opponent deep, or vice versa).
+  const hP20=_n(hST.puntsInside20),aP20=_n(aST.puntsInside20);
+  if(hP20!=null&&aP20!=null)stAdjPts+=(hP20-aP20)*0.04;
   stAdjPts=Math.max(-1,Math.min(1,stAdjPts));
 
   // Third-down conversion edge -- each team's own efficiency, same
