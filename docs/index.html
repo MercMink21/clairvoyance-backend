@@ -6588,14 +6588,19 @@ function cfbMC(hA,awA,n,ouLine,g){
   // nudge, not a percentage blend -- FPI already reflects most of what
   // makes a team rank highly, so this only fills in the small remainder
   // (resume/eye-test factors voters weigh that a pure power rating can
-  // underweight). Tripled per explicit request (was capped +/-1, barely
-  // reachable in practice since the raw differential only spans about
-  // +/-1 even at its most extreme, #1 vs unranked) -- now scales from
-  // ~3pt at #1 down to ~0.1pt at #25, capped +/-3, so a real ranking gap
-  // is felt on typical differentials too, not just the extreme case.
-  const _rankBonus=r=>r?(26-r)/25:0;
+  // underweight). Curve reshaped from linear to convex (exponent 1.8)
+  // per explicit request to weigh high-ranked-vs-unranked matchups more
+  // heavily specifically -- a flat linear scale barely differentiated a
+  // top-5 team from a bottom-of-the-poll one (rank 1 -> 1.00, rank 10 ->
+  // 0.64 bonus). The convex curve spreads that out: rank 1 -> 1.00, rank
+  // 5 -> 0.73, rank 10 -> 0.45, rank 20 -> 0.08 -- so an elite team
+  // against an unranked opponent now gets close to the full +/-5 cap
+  // (raised from +/-3), while a barely-ranked #20-25 team against an
+  // unranked opponent gets next to nothing, matching how lopsided that
+  // matchup actually is.
+  const _rankBonus=r=>r?Math.pow((26-r)/25,1.8):0;
   const hRank=D.rankByAbbr?.[hA]?.rank,aRank=D.rankByAbbr?.[awA]?.rank;
-  const rankAdjPts=(hRank||aRank)?Math.max(-3,Math.min(3,(_rankBonus(hRank)-_rankBonus(aRank))*3)):0;
+  const rankAdjPts=(hRank||aRank)?Math.max(-5,Math.min(5,(_rankBonus(hRank)-_rankBonus(aRank))*5)):0;
 
   // 2025 historical signal: own points-scored minus own points-allowed
   // per game from last season (same shape as scoringMargin above, and as
