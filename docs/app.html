@@ -7586,6 +7586,13 @@ function startCFBSettle(){
 // betOn===p.hA -> home win, betOn==='DRAW' -> draw, betOn===p.awA -> away
 // win, /^(OVER|UNDER) N$/ -> goals total.
 const _SOC_SETTLE_LEAGUES=[
+  // World Cup (and any other FIFA international tournament under the same
+  // ESPN slug) -- previously missing entirely, so a real World Cup bet
+  // (country-vs-country, _normSport() tags these 'WC') could never auto-
+  // settle no matter how correct the date-window logic was. 'fifa.world'
+  // confirmed directly against ESPN's real API (returns real 2026 World
+  // Cup fixtures/scores, e.g. the real ARG 2-1 ENG semifinal).
+  {key:'wc',espn:'fifa.world',sport:'WC'},
   {key:'cl',espn:'UEFA.champions',sport:'CL'},
   {key:'pl',espn:'eng.1',sport:'PL'},
   {key:'liga',espn:'esp.1',sport:'LIGA'},
@@ -7611,21 +7618,32 @@ async function autoSettleSoccer(targetDate){
         const home=comp.competitors?.find(c=>c.homeAway==='home');
         const away=comp.competitors?.find(c=>c.homeAway==='away');
         const hn=home?.team?.displayName,an=away?.team?.displayName;
+        // International/World Cup bets store hA/awA as the country
+        // ABBREVIATION ("ENG"/"ARG"), not the club-league convention of a
+        // full display name ("Real Madrid") -- confirmed live against a
+        // real stuck bet. ESPN's own team object exposes both, so match
+        // against either instead of assuming one convention.
+        const hAbbr=home?.team?.abbreviation,aAbbr=away?.team?.abbreviation;
         if(!hn||!an)continue;
         const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
         for(const p of preds){
           if(p.outcome!=='pending'||_normSport(p)!==lg.sport||p.date!==targetDate)continue;
-          const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
+          const pHomeMatch=p.hA===hn||p.hA===hAbbr,pAwayMatch=p.awA===an||p.awA===aAbbr;
+          const pSwapMatch=p.hA===an||p.hA===aAbbr,pSwapAwayMatch=p.awA===hn||p.awA===hAbbr;
+          const sameGame=(pHomeMatch&&pAwayMatch)||(pSwapMatch&&pSwapAwayMatch);
           if(!sameGame)continue;
           let outcome=null;
           const ouMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)$/i.exec(p.betOn||'');
           // "TEAM Win"/"TEAM ML" suffixes (real formats seen in the live
-          // ledger, e.g. betOn:"Real Madrid Win") never matched the bare-
-          // equality check below -- a real soccer moneyline pick could
-          // silently never settle.
+          // ledger, e.g. betOn:"Real Madrid Win") never matched a bare-
+          // equality check -- a real soccer moneyline pick could silently
+          // never settle. Compared against the FETCHED team's own name/
+          // abbreviation directly (not p.hA/p.awA, whose own naming
+          // convention varies by bet -- already resolved via sameGame).
           const betOn=p.betOn||'';
-          if(betOn===p.hA||betOn===p.hA+' Win'||betOn===p.hA+' ML')outcome=hs>as?'win':(hs===as?'loss':'loss');
-          else if(betOn===p.awA||betOn===p.awA+' Win'||betOn===p.awA+' ML')outcome=as>hs?'win':(hs===as?'loss':'loss');
+          const matchesTeam=(names)=>names.some(n=>n&&(betOn===n||betOn===n+' Win'||betOn===n+' ML'));
+          if(matchesTeam([hn,hAbbr]))outcome=hs>as?'win':(hs===as?'loss':'loss');
+          else if(matchesTeam([an,aAbbr]))outcome=as>hs?'win':(hs===as?'loss':'loss');
           else if(betOn.toUpperCase()==='DRAW')outcome=hs===as?'win':'loss';
           else if(ouMatch){
             const line=parseFloat(ouMatch[2]),total=hs+as;
