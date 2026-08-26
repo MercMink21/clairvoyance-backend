@@ -3866,7 +3866,20 @@ async function loadGames(dateStr){
     const events=await fetchESPN(d);
     if(!events){
       if(el&&isToday)el.innerHTML='<div class="empty">SCHEDULE UNAVAILABLE<br><button class="btn btn-p btn-sm" style="margin-top:8px" onclick="loadGames()">↻ RETRY</button></div>';
-      if(st)st.textContent='ESPN: FAILED';return;
+      if(st)st.textContent='ESPN: FAILED';
+      // Real bug, found and fixed: this used to `return` here without
+      // touching ESPN_GAMES, silently leaving it holding whatever date's
+      // games were loaded last (e.g. today's, from the page's own initial
+      // load). A caller settling a BACKLOG of historical dates would then
+      // grade that stale/wrong date's bets against the WRONG game's real
+      // score whenever this fetch had a transient failure -- confirmed
+      // live: a rapid multi-date backfill loop hit exactly this, and an
+      // 2026-08-25 pending bet got settled using 2026-08-26's real result.
+      // Clearing to [] instead makes a fetch failure a safe no-op (nothing
+      // matches, nothing gets wrongly settled, the date just retries next
+      // run) instead of silent data corruption.
+      ESPN_GAMES=[];window._mlbGames=[];
+      return;
     }
     games=events.map(parseESPNGame).filter(Boolean);
     if(st)st.textContent=`ESPN: ${games.length} GAMES`;
@@ -4061,40 +4074,59 @@ async function loadTmrw(){
   }
 }
 // ═══ AUTO-SETTLEMENT ════════════════════════════════════════
-function autoSettleFromESPN(games){
+function autoSettleFromESPN(games,targetDate){
+  // targetDate: which day's pending bets to match against `games` (which
+  // the caller is responsible for having fetched for that same day --
+  // see run_settle()'s multi-day backfill loop in auto_lock_settle.py).
+  // Defaults to today() so any other real-time caller (e.g. a live
+  // in-session interval) keeps working unchanged. This used to be
+  // hardcoded to today() here, which meant any bet that missed
+  // settlement on its own calendar day became permanently unsettleable
+  // -- caught via a real ~2-month-old backlog of stuck pending bets.
+  targetDate=targetDate||today();
   const preds=getP();let changed=false;
   for(const g of games){
     if(g.status!=='post'||g.hScore===null)continue;
+    // Defense in depth: only grade with a game that's actually FROM
+    // targetDate. Guards against any caller (loadGames' internal cache,
+    // a future refactor) ever handing this stale/wrong-date games data --
+    // without this a mismatched games array silently grades a pending
+    // bet against the wrong real-world game. See loadGames' own fix for
+    // the specific failure mode this was caught from.
+    if(g.date&&g.date!==targetDate)continue;
     // Find matching pending bets
     for(const p of preds){
       if(p.outcome!=='pending')continue;
-      if(p.date!==today())continue;
+      if(p.date!==targetDate)continue;
       const sameGame=(p.hA===g.hA&&p.awA===g.awA)||(p.hA===g.awA&&p.awA===g.hA);
       if(!sameGame)continue;
       if(p.sport!=='MLB')continue;
       const hW=g.hScore>g.aScore;const aW=g.aScore>g.hScore;
       let outcome=null;
-      if(p.betType==='ML'){
-        if(p.betOn===g.hA)outcome=hW?'win':'loss';
-        else if(p.betOn===g.awA)outcome=aW?'win':'loss';
-      }else if(p.betType==='RL'){
-        // MLB run lines are always ±1.5 in practice, so this isn't wrong
-        // today, but it's an assumption baked into the win-margin check
-        // rather than read from the actual locked line — a run line ever
-        // locked at a non-standard number would still be graded as if it
-        // were 1.5.
-        const fav=p.betOn.includes('-1.5');const diff=g.hScore-g.aScore;
-        if(p.betOn.includes(g.hA))outcome=(fav?diff>=2:diff<=-2)?'win':'loss';
-        else if(p.betOn.includes(g.awA))outcome=(fav?diff<=-2:diff>=2)?'win':'loss';
-      }else if(p.betType==='OU'){
-        const total=g.hScore+g.aScore;
-        // Trailing-number extraction — see identical comment in
-        // autoSettleNBA. betOn's "TEAM/TEAM Under 9.5" prefix means a
-        // keyword-only strip leaves non-numeric text in front of the
-        // number and parseFloat returns NaN, so the pick never settles.
-        const m=(p.betOn||'').match(/(\d+\.?\d*)\s*$/);
-        const ou=m?parseFloat(m[1]):NaN;
-        if(!isNaN(ou))outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+      // Classify from betOn TEXT, not the stored betType field — the
+      // automated lock pipeline (auto_lock_settle.py's lock_game_leg)
+      // passes the SPORT tag ('MLB') as lockPick's type param rather than
+      // a bet-type keyword ('RL'/'OU'), so _betTypeNorm in lockPick always
+      // falls through to its 'ML' default regardless of what the pick
+      // actually is. Confirmed live: the real ledger has run-line picks
+      // like "TB +1.5" and totals like "OVER 7.5" stored with
+      // betType:'ML' -- betType can't be trusted here. betOn's own text
+      // is always correct regardless (same fix pattern already used by
+      // autoSettleWNBA/autoSettleSoccer).
+      const betOn=p.betOn||'';
+      const isOU=/^(over|under)/i.test(betOn);
+      const ouM=isOU?/(\d+\.?\d*)\s*$/.exec(betOn):null;
+      const spreadM=!isOU?/([+-]\d+\.?\d*)\s*$/.exec(betOn):null;
+      if(isOU&&ouM){
+        const total=g.hScore+g.aScore;const ou=parseFloat(ouM[1]);
+        if(!isNaN(ou))outcome=(/over/i.test(betOn)?total>ou:total<ou)?'win':'loss';
+      }else if(spreadM&&(betOn.includes(g.hA)||betOn.includes(g.awA))){
+        const line=parseFloat(spreadM[1]);
+        if(betOn.includes(g.hA)){const covered=(g.hScore-g.aScore)+line;outcome=covered>0?'win':covered<0?'loss':'push';}
+        else{const covered=(g.aScore-g.hScore)+line;outcome=covered>0?'win':covered<0?'loss':'push';}
+      }else{
+        if(betOn===g.hA||betOn===g.hA+' ML')outcome=hW?'win':'loss';
+        else if(betOn===g.awA||betOn===g.awA+' ML')outcome=aW?'win':'loss';
       }
       if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=g.hScore;p.aScore=g.aScore;changed=true;
         // Update daily log
@@ -4105,9 +4137,11 @@ function autoSettleFromESPN(games){
   if(changed){saveP(preds);updHdr();}
 }
 // Auto-settle NHL picks from NHL API
-async function autoSettleNHL(){
+async function autoSettleNHL(targetDate){
+  // See autoSettleFromESPN's comment -- same targetDate backfill pattern.
+  targetDate=targetDate||today();
   try{
-    const r=await fetch(`https://api-web.nhle.com/v1/score/${today()}`,{mode:'cors'});
+    const r=await fetch(`https://api-web.nhle.com/v1/score/${targetDate}`,{mode:'cors'});
     if(!r.ok)return;const d=await r.json();
     const preds=getP();let changed=false;
     for(const g of(d.games||[])){
@@ -4116,7 +4150,7 @@ async function autoSettleNHL(){
       const hs=g.homeTeam?.score||0,as=g.awayTeam?.score||0;
       for(const p of preds){
         if(p.outcome!=='pending'||p.sport!=='NHL')continue;
-        if(p.date!==today())continue;
+        if(p.date!==targetDate)continue;
         const nhlSameGame=(p.hA===h&&p.awA===a)||(p.hA===a&&p.awA===h);
         if(!nhlSameGame)continue;
         let outcome=null;
@@ -7435,9 +7469,13 @@ function lockCFBGame(hA,awA,betType,betOn,ml,winProb,ouLine){
 // number extraction for SPREAD's signed line) established during the
 // earlier accuracy audit — built in from the start here rather than
 // needing a follow-up fix.
-async function autoSettleCFB(){
+async function autoSettleCFB(targetDate){
+  // See autoSettleFromESPN's comment -- same targetDate backfill pattern.
+  // dates= param confirmed directly against ESPN's real API to return
+  // real historical events for an arbitrary past date, not just "today".
+  targetDate=targetDate||today();
   try{
-    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?limit=300');
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?limit=300&dates='+targetDate.replace(/-/g,''));
     if(!r.ok)return;
     const d=await r.json();
     const preds=getP();let changed=false;
@@ -7453,7 +7491,7 @@ async function autoSettleCFB(){
         // tagged sport:'FOOTBALL'/league:'CFB', so this correctly matches
         // regardless of which field ended up holding 'CFB'.
         if(p.outcome!=='pending'||_normSport(p)!=='CFB')continue;
-        if(p.date!==today())continue;
+        if(p.date!==targetDate)continue;
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
         let outcome=null;
@@ -7514,11 +7552,15 @@ const _SOC_SETTLE_LEAGUES=[
   {key:'mls',espn:'usa.1',sport:'MLS'},
   {key:'ita',espn:'ita.1',sport:'SERIEA'},
 ];
-async function autoSettleSoccer(){
+async function autoSettleSoccer(targetDate){
+  // Same fix as autoSettleWNBA -- no date param or date check before now,
+  // silently stuck on ESPN's default "today" scoreboard response forever
+  // once a matchday's games rolled off it.
+  targetDate=targetDate||today();
   const preds=getP();let changed=false;
   for(const lg of _SOC_SETTLE_LEAGUES){
     try{
-      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+lg.espn+'/scoreboard');
+      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+lg.espn+'/scoreboard?dates='+targetDate.replace(/-/g,''));
       if(!r.ok)continue;
       const d=await r.json();
       for(const ev of(d.events||[])){
@@ -7530,7 +7572,7 @@ async function autoSettleSoccer(){
         if(!hn||!an)continue;
         const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
         for(const p of preds){
-          if(p.outcome!=='pending'||_normSport(p)!==lg.sport)continue;
+          if(p.outcome!=='pending'||_normSport(p)!==lg.sport||p.date!==targetDate)continue;
           const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
           if(!sameGame)continue;
           let outcome=null;
@@ -7972,9 +8014,11 @@ function lockNFLGame(hA,awA,betType,betOn,ml,winProb,ouLine){
 // Same settlement shape/fixes established for CFB's autoSettleCFB (AND-
 // logic same-game match, today-only, case-insensitive OVER, trailing-
 // number extraction for SPREAD's signed line).
-async function autoSettleNFL2(){
+async function autoSettleNFL2(targetDate){
+  // See autoSettleFromESPN's comment -- same targetDate backfill pattern.
+  targetDate=targetDate||today();
   try{
-    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100');
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100&dates='+targetDate.replace(/-/g,''));
     if(!r.ok)return;
     const d=await r.json();
     const preds=getP();let changed=false;
@@ -7987,7 +8031,7 @@ async function autoSettleNFL2(){
       const hs=parseInt(home?.score||0),as=parseInt(away?.score||0);
       for(const p of preds){
         if(p.outcome!=='pending'||_normSport(p)!=='NFL')continue;
-        if(p.date!==today())continue;
+        if(p.date!==targetDate)continue;
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
         let outcome=null;
@@ -13893,10 +13937,13 @@ function renderCrossDeviceSync(){
 // linescores[], a real but separate addition -- not built here since
 // this app's own O/U tennis volume is low and ML is what actually needs
 // covering).
-async function autoSettleTennis(){
+async function autoSettleTennis(targetDate){
+  // Same fix as autoSettleWNBA/Soccer -- no date param or date check
+  // before now.
+  targetDate=targetDate||today();
   for(const tour of['atp','wta']){
     try{
-      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/tennis/'+tour+'/scoreboard');
+      const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/tennis/'+tour+'/scoreboard?dates='+targetDate.replace(/-/g,''));
       if(!r.ok)continue;const d=await r.json();
       const preds=getP();let changed=false;
       for(const ev of(d.events||[])){
@@ -13909,7 +13956,7 @@ async function autoSettleTennis(){
             const n1=c1.athlete?.displayName,n2=c2.athlete?.displayName;
             if(!n1||!n2)continue;
             for(const p of preds){
-              if(p.outcome!=='pending'||_normSport(p)!=='TEN')continue;
+              if(p.outcome!=='pending'||_normSport(p)!=='TEN'||p.date!==targetDate)continue;
               const sameMatch=(p.hA===n1&&p.awA===n2)||(p.hA===n2&&p.awA===n1);
               if(!sameMatch)continue;
               const betOn=p.betOn||'';
@@ -13948,9 +13995,17 @@ function startTennisSettle(){
 // buttons instead. Parses the always-correct betOn text directly
 // instead (same approach as autoSettleSoccer): "TEAM" -> ML,
 // "TEAM -3.5"/"TEAM +3.5" -> spread, "OVER/UNDER N" -> total.
-async function autoSettleWNBA(){
+async function autoSettleWNBA(targetDate){
+  // Previously had NO date parameter or date check at all -- relied
+  // entirely on ESPN's scoreboard defaulting to "today" when no dates=
+  // param is given, which meant it could never see or settle a bet from
+  // any prior day once that day's games rolled off the default response.
+  // Now takes the same explicit targetDate backfill pattern as the other
+  // sports (see autoSettleFromESPN's comment), plus an explicit p.date
+  // match added for the same cross-date-rematch safety the others have.
+  targetDate=targetDate||today();
   try{
-    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?limit=100');
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?limit=100&dates='+targetDate.replace(/-/g,''));
     if(!r.ok)return;const d=await r.json();
     const preds=getP();let changed=false;
     for(const ev of(d.events||[])){
@@ -13961,7 +14016,7 @@ async function autoSettleWNBA(){
       if(!hn||!an)continue;
       const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
       for(const p of preds){
-        if(p.outcome!=='pending'||_normSport(p)!=='WNBA')continue;
+        if(p.outcome!=='pending'||_normSport(p)!=='WNBA'||p.date!==targetDate)continue;
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
         let outcome=null;
@@ -13999,9 +14054,11 @@ function startWNBASettle(){
 }
 
 // NBA auto-settlement from ESPN
-async function autoSettleNBA(){
+async function autoSettleNBA(targetDate){
+  // See autoSettleFromESPN's comment -- same targetDate backfill pattern.
+  targetDate=targetDate||today();
   try{
-    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3');
+    const r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3&dates='+targetDate.replace(/-/g,''));
     if(!r.ok)return;const d=await r.json();
     const preds=getP();let changed=false;
     for(const ev of(d.events||[])){
@@ -14012,7 +14069,7 @@ async function autoSettleNBA(){
       const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
       for(const p of preds){
         if(p.outcome!=='pending'||_normSport(p)!=='NBA')continue;
-        if(p.date!==today())continue;
+        if(p.date!==targetDate)continue;
         // Both teams must match (either home/away order) — the previous
         // OR check let a pending bet settle off any game sharing just
         // ONE team code with the actual locked matchup.
@@ -14143,7 +14200,14 @@ async function autoSettleTextFormat(){
 }
 
 // Settle PROP bets using ESPN box score player stats
-async function autoSettlePropsESPN(){
+async function autoSettlePropsESPN(targetDate){
+  // Same fix as the other auto-settle functions -- scoreboards below had
+  // no date param before now, so this could only ever see today's props.
+  // The evDate===p.date check further down already correctly ties a
+  // matched event's real date to the bet's date (not hardcoded to
+  // today()), so adding the dates= param alone is enough here -- no
+  // separate targetDate-based prediction filter needed.
+  targetDate=targetDate||today();
   const preds=getP();
   const pending=preds.filter(p=>p.outcome==='pending'&&p.betType==='PROP');
   if(!pending.length)return;
@@ -14271,7 +14335,8 @@ async function autoSettlePropsESPN(){
     if(!scoreboards[sport])continue;
     let events=[];
     try{
-      const r=await fetch(scoreboards[sport]);
+      const dSep=scoreboards[sport].includes('?')?'&':'?';
+      const r=await fetch(scoreboards[sport]+dSep+'dates='+targetDate.replace(/-/g,''));
       if(!r.ok)continue;
       const d=await r.json();
       events=(d.events||[]).filter(ev=>ev.competitions?.[0]?.status?.type?.state==='post');

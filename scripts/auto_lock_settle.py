@@ -51,6 +51,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
 from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
@@ -129,6 +131,50 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+# Real bug, found and fixed: every autoSettle*() function fetches its own
+# scores directly from the browser via fetch() -- but site.api.espn.com and
+# api-web.nhle.com both reject requests from this exact headless Chromium
+# session outright (confirmed directly: 3 different endpoints across 2
+# hosts, 100% "Failed to fetch" at the network level, while a neutral host
+# like api.github.com succeeds fine from the same page in the same run --
+# this isn't a sandbox network restriction, it's these two hosts
+# fingerprinting and rejecting the automated browser itself, matching the
+# identical, already-documented block on the LOCK side -- see gather_legs()'s
+# own comment on this same issue for ESPN). That means every autoSettle*()
+# call in this pipeline has likely never had real data to work with, no
+# matter what date-handling or betType logic sits downstream of it -- almost
+# certainly the dominant reason bets have been piling up unsettled.
+#
+# requests (plain Python HTTP, no browser fingerprint at all) hits these
+# same hosts successfully -- already proven throughout this codebase (see
+# fetch_cfb.py, fetch_nfl.py). Rather than rewrite 9 separate JS fetch call
+# sites, this transparently relays each blocked in-page fetch() through a
+# real Python requests.get() to the exact same URL and hands the JS side
+# back a normal-looking response -- every autoSettle*() function keeps
+# working completely unchanged.
+_ESPN_RELAY_HOSTS = ("site.api.espn.com", "api-web.nhle.com")
+
+
+def _route_relay_espn(route) -> None:
+    url = route.request.url
+    if not any(h in url for h in _ESPN_RELAY_HOSTS):
+        route.continue_()
+        return
+    try:
+        r = requests.get(url, timeout=15)
+        route.fulfill(status=r.status_code, content_type="application/json", body=r.text)
+    except Exception as e:
+        log(f"  [relay] {url} -> failed: {e}")
+        route.fulfill(status=502, content_type="application/json", body="{}")
+
+
+def install_espn_relay(page) -> None:
+    """Route every in-page fetch to ESPN/NHL through a real Python request
+    instead, since the browser's own network path to those two hosts is
+    blocked (see _route_relay_espn's comment)."""
+    page.route("**/*", _route_relay_espn)
+
+
 def load_bet_ledger(page) -> int:
     """Same paginated Supabase pull generate_social_cards.py already uses
     (PostgREST caps a single response at 1000 rows), loaded straight into
@@ -184,42 +230,53 @@ def run_settle(page, live: bool) -> list[dict]:
     before = page.evaluate("() => getP().filter(p => p.outcome === 'pending').length")
     log(f"Pending bets before settle: {before}")
 
-    # Warm the live game caches each autoSettle*() function reads, same
-    # warmup every render path already does — settlement can't verify a
-    # bet against a game it never loaded.
-    page.evaluate(
-        """
-        async () => {
-          const warmups = [];
-          if (typeof loadGames === 'function' && !(window.ESPN_GAMES && window.ESPN_GAMES.length)) warmups.push(loadGames().catch(() => {}));
-          if (typeof renderNHLGames === 'function') warmups.push(renderNHLGames().catch(() => {}));
-          if (typeof renderGenericWeek === 'function') {
-            warmups.push(renderGenericWeek('cfb-week-list', 'football/college-football', 'CFB').catch(() => {}));
-            warmups.push(renderGenericWeek('nfl-week-list', 'football/nfl', 'NFL').catch(() => {}));
-          }
-          await Promise.allSettled(warmups);
-        }
-        """
-    )
-
+    # Real bug, found and fixed: every autoSettle*() function used to be
+    # hardcoded to "today" only -- either an explicit `p.date !== today()`
+    # filter, or (WNBA/soccer/tennis/props) no date check at all, relying
+    # on ESPN's scoreboard defaulting to today when no dates= param is
+    # given. Either way, a bet that missed settlement on its own calendar
+    # day (a late West Coast night game, a missed run, an API hiccup)
+    # became PERMANENTLY unsettleable -- confirmed via a real backlog of
+    # pending bets up to ~2 months old. Every autoSettle*() function now
+    # takes an optional targetDate and actually uses it in its fetch URL
+    # (dates=, confirmed directly against ESPN's real API to return real
+    # historical events for a past date). This loop drives that: instead
+    # of one pass for "today", it runs one full settlement pass per
+    # DISTINCT date that actually has a pending bet -- self-limiting by
+    # design, since once the backlog clears there are normally only 1-2
+    # recent dates to check per run, not an ever-growing blind lookback
+    # window.
     result = page.evaluate(
         """
         async () => {
-          const results = {};
-          try { if (typeof autoSettleFromESPN === 'function' && window.ESPN_GAMES) autoSettleFromESPN(window.ESPN_GAMES); results.mlb = 'ok'; } catch (e) { results.mlb = 'err:' + e.message; }
-          try { if (typeof autoSettleNBA === 'function') await autoSettleNBA(); results.nba = 'ok'; } catch (e) { results.nba = 'err:' + e.message; }
-          try { if (typeof autoSettleNHL === 'function') await autoSettleNHL(); results.nhl = 'ok'; } catch (e) { results.nhl = 'err:' + e.message; }
-          try { if (typeof autoSettleCFB === 'function') await autoSettleCFB(); results.cfb = 'ok'; } catch (e) { results.cfb = 'err:' + e.message; }
-          try { if (typeof autoSettleSoccer === 'function') await autoSettleSoccer(); results.soccer = 'ok'; } catch (e) { results.soccer = 'err:' + e.message; }
-          try { if (typeof autoSettleWNBA === 'function') await autoSettleWNBA(); results.wnba = 'ok'; } catch (e) { results.wnba = 'err:' + e.message; }
-          try { if (typeof autoSettleTennis === 'function') await autoSettleTennis(); results.tennis = 'ok'; } catch (e) { results.tennis = 'err:' + e.message; }
-          try { if (typeof autoSettleNFL2 === 'function') await autoSettleNFL2(); results.nfl = 'ok'; } catch (e) { results.nfl = 'err:' + e.message; }
-          try { if (typeof autoSettlePropsESPN === 'function') await autoSettlePropsESPN(); results.props = 'ok'; } catch (e) { results.props = 'err:' + e.message; }
+          const results = {perDate: {}};
+          const pendingDates = [...new Set(
+            getP().filter(p => p.outcome === 'pending').map(p => p.date).filter(Boolean)
+          )].sort();
+          results.datesChecked = pendingDates.length;
+          for (const targetDate of pendingDates) {
+            const dEspn = targetDate.replace(/-/g, '');
+            const r = {};
+            try {
+              if (typeof loadGames === 'function') await loadGames(dEspn).catch(() => {});
+              if (typeof autoSettleFromESPN === 'function' && typeof ESPN_GAMES !== 'undefined' && ESPN_GAMES) autoSettleFromESPN(ESPN_GAMES, targetDate);
+              r.mlb = 'ok';
+            } catch (e) { r.mlb = 'err:' + e.message; }
+            try { if (typeof autoSettleNBA === 'function') await autoSettleNBA(targetDate); r.nba = 'ok'; } catch (e) { r.nba = 'err:' + e.message; }
+            try { if (typeof autoSettleNHL === 'function') await autoSettleNHL(targetDate); r.nhl = 'ok'; } catch (e) { r.nhl = 'err:' + e.message; }
+            try { if (typeof autoSettleCFB === 'function') await autoSettleCFB(targetDate); r.cfb = 'ok'; } catch (e) { r.cfb = 'err:' + e.message; }
+            try { if (typeof autoSettleSoccer === 'function') await autoSettleSoccer(targetDate); r.soccer = 'ok'; } catch (e) { r.soccer = 'err:' + e.message; }
+            try { if (typeof autoSettleWNBA === 'function') await autoSettleWNBA(targetDate); r.wnba = 'ok'; } catch (e) { r.wnba = 'err:' + e.message; }
+            try { if (typeof autoSettleTennis === 'function') await autoSettleTennis(targetDate); r.tennis = 'ok'; } catch (e) { r.tennis = 'err:' + e.message; }
+            try { if (typeof autoSettleNFL2 === 'function') await autoSettleNFL2(targetDate); r.nfl = 'ok'; } catch (e) { r.nfl = 'err:' + e.message; }
+            try { if (typeof autoSettlePropsESPN === 'function') await autoSettlePropsESPN(targetDate); r.props = 'ok'; } catch (e) { r.props = 'err:' + e.message; }
+            results.perDate[targetDate] = r;
+          }
           return results;
         }
         """
     )
-    log(f"Settlement function results: {result}")
+    log(f"Settlement dates checked: {result.get('datesChecked')} -> {sorted(result.get('perDate', {}).keys())}")
 
     after = page.evaluate("() => getP().filter(p => p.outcome === 'pending').length")
     settled_count = before - after
@@ -896,6 +953,7 @@ def main() -> None:
         browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 1400, "height": 1000})
         page = context.new_page()
+        install_espn_relay(page)
         log(f"Loading {args.app_url} …")
         page.goto(args.app_url, wait_until="load", timeout=60000)
         page.wait_for_timeout(3000)
