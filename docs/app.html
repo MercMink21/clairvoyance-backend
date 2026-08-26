@@ -6532,7 +6532,11 @@ function cfbMC(hA,awA,n,ouLine,g){
   const hST=D.stats[hA]?.specialTeams||{},aST=D.stats[awA]?.specialTeams||{};
   const hFG=_n(hST.fieldGoalPct),aFG=_n(aST.fieldGoalPct);
   const hPunt=_n(hST.netAvgPuntYards),aPunt=_n(aST.netAvgPuntYards);
-  if(hFG!=null&&aFG!=null)stAdjPts+=(hFG-aFG)*0.03;
+  // FG% multiplier doubled (0.03 -> 0.06) per explicit request to weigh
+  // it more heavily -- a 20-point FG% gap now contributes ~1.2 pts on its
+  // own, meaning FG% alone can now reach the category's +/-1 overall cap
+  // rather than needing to combine with other terms to get there.
+  if(hFG!=null&&aFG!=null)stAdjPts+=(hFG-aFG)*0.06;
   if(hPunt!=null&&aPunt!=null)stAdjPts+=(hPunt-aPunt)*0.06;
   // XP% real range this season is tight (~87-100, most teams near 100) --
   // deliberately the smallest multiplier here, since a make-or-miss extra
@@ -6541,17 +6545,18 @@ function cfbMC(hA,awA,n,ouLine,g){
   const hXP=_n(hST.extraPointPct),aXP=_n(aST.extraPointPct);
   if(hXP!=null&&aXP!=null)stAdjPts+=(hXP-aXP)*0.02;
   // Total kicking points is a season CUMULATIVE total (FGs+XPs made,
-  // summed), not a rate -- real range this season spans ~27-152, so the
-  // multiplier is small enough that even that full-season spread lands
-  // near, not wildly past, the category cap.
+  // summed), not a rate -- real range this season spans ~27-152. Multiplier
+  // doubled (0.008 -> 0.016) per explicit request; the full-season spread
+  // can now reach the category cap on its own too, not just at the extreme.
   const hKP=_n(hST.totalKickingPoints),aKP=_n(aST.totalKickingPoints);
-  if(hKP!=null&&aKP!=null)stAdjPts+=(hKP-aKP)*0.008;
+  if(hKP!=null&&aKP!=null)stAdjPts+=(hKP-aKP)*0.016;
   // Punts inside the 20 -- a real, distinct field-position/precision
   // signal from net punt yards (a punter can average solid net yardage
   // while still missing the coffin-corner placement that pins an
-  // opponent deep, or vice versa).
+  // opponent deep, or vice versa). Multiplier doubled (0.04 -> 0.08) per
+  // explicit request.
   const hP20=_n(hST.puntsInside20),aP20=_n(aST.puntsInside20);
-  if(hP20!=null&&aP20!=null)stAdjPts+=(hP20-aP20)*0.04;
+  if(hP20!=null&&aP20!=null)stAdjPts+=(hP20-aP20)*0.08;
   stAdjPts=Math.max(-1,Math.min(1,stAdjPts));
 
   // Third-down conversion edge -- each team's own efficiency, same
