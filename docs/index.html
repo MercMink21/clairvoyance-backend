@@ -6584,15 +6584,18 @@ function cfbMC(hA,awA,n,ouLine,g){
   const stMargin=hasST?Math.max(-10,Math.min(10,stMarginRaw)):null; // loosely bounded, not tightly capped -- the 3% blend weight is what keeps this small, not a point cap
 
   // Top 25 ranking (AP Poll, already fetched weekly into rankByAbbr but
-  // only ever used for a display badge/filter before now): stays a small
-  // flat nudge, not a percentage blend -- FPI already reflects most of
-  // what makes a team rank highly, so this only fills in the small
-  // remainder (resume/eye-test factors voters weigh that a pure power
-  // rating can underweight). Linear from ~1pt at #1 down to ~0.04pt at
-  // #25, 0 if unranked.
+  // only ever used for a display badge/filter before now): stays a flat
+  // nudge, not a percentage blend -- FPI already reflects most of what
+  // makes a team rank highly, so this only fills in the small remainder
+  // (resume/eye-test factors voters weigh that a pure power rating can
+  // underweight). Tripled per explicit request (was capped +/-1, barely
+  // reachable in practice since the raw differential only spans about
+  // +/-1 even at its most extreme, #1 vs unranked) -- now scales from
+  // ~3pt at #1 down to ~0.1pt at #25, capped +/-3, so a real ranking gap
+  // is felt on typical differentials too, not just the extreme case.
   const _rankBonus=r=>r?(26-r)/25:0;
   const hRank=D.rankByAbbr?.[hA]?.rank,aRank=D.rankByAbbr?.[awA]?.rank;
-  const rankAdjPts=(hRank||aRank)?Math.max(-1,Math.min(1,_rankBonus(hRank)-_rankBonus(aRank))):0;
+  const rankAdjPts=(hRank||aRank)?Math.max(-3,Math.min(3,(_rankBonus(hRank)-_rankBonus(aRank))*3)):0;
 
   // 2025 historical signal: own points-scored minus own points-allowed
   // per game from last season (same shape as scoringMargin above, and as

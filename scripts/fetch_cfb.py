@@ -432,19 +432,52 @@ def write_schedule(year: int = 2026) -> None:
     _log(f"wrote {sched_path}")
 
 
-def write_stats(year: int = 2025) -> None:
+def write_stats(year: int | None = None) -> None:
+    """year=None (the default, used by the scheduled workflow with no
+    --stats-season override) auto-detects: tries the real current
+    calendar year first, and only falls back to the prior season if most
+    teams come back with no stats at all (i.e. this season's games
+    genuinely haven't started yet -- fetch_team_stats() already returns
+    None per-team for a season with zero games played, confirmed
+    directly against ESPN's API).
+
+    This auto-detection did NOT actually exist before -- a prior version
+    of this docstring (on fetch_all_team_stats) claimed "main() below
+    already tries the current year first and falls back", but the real
+    entry point just hardcoded --stats-season=2025 with no fallback logic
+    at all, meaning the scheduled weekly workflow would have kept
+    fetching 2025 forever even once 2026 games started, with nothing
+    ever automatically switching over. Caught and fixed directly in
+    response to being asked to verify this."""
     if not OUT_PATH.exists():
         _log("No roster on disk yet (docs/cfb_teams.json) — run --mode roster first")
         return
     roster = json.loads(OUT_PATH.read_text())["conferences"]
-    stats = fetch_all_team_stats(roster, season=year)
+    total_teams = sum(len(v) for v in roster.values())
+
+    if year is not None:
+        stats = fetch_all_team_stats(roster, season=year)
+    else:
+        current_year = int(time.strftime("%Y", time.gmtime()))
+        stats = fetch_all_team_stats(roster, season=current_year)
+        # Majority of teams with real stats = the season has genuinely
+        # started; a handful of early-week partial results is still a
+        # real signal worth using immediately, not a reason to wait.
+        if len(stats) < total_teams * 0.5:
+            _log(f"season={current_year} returned stats for only {len(stats)}/{total_teams} teams "
+                 f"-- season hasn't started yet, falling back to {current_year - 1}")
+            year = current_year - 1
+            stats = fetch_all_team_stats(roster, season=year)
+        else:
+            year = current_year
+
     stats_path = ROOT / "docs" / "cfb_team_stats.json"
     stats_path.write_text(json.dumps({
         "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
         "season": year,
         "teams": stats,
     }, indent=2))
-    _log(f"wrote {stats_path}")
+    _log(f"wrote {stats_path} (season={year}, {len(stats)}/{total_teams} teams)")
 
 
 def git_push(paths: list[str], message: str) -> None:
@@ -475,7 +508,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["roster", "rankings", "stats", "schedule", "all"], default="all")
     parser.add_argument("--push", action="store_true")
-    parser.add_argument("--stats-season", type=int, default=2025)
+    # None (the default) auto-detects the real current season vs. falling
+    # back to last season -- see write_stats()'s docstring. Pass this
+    # explicitly only to force a specific season (e.g. regenerating a
+    # historical snapshot).
+    parser.add_argument("--stats-season", type=int, default=None)
     parser.add_argument("--schedule-year", type=int, default=2026)
     args = parser.parse_args()
 
