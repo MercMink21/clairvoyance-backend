@@ -6529,6 +6529,30 @@ function cfbMC(hA,awA,n,ouLine,g){
   if(hPunt!=null&&aPunt!=null)stAdjPts+=(hPunt-aPunt)*0.06;
   stAdjPts=Math.max(-1,Math.min(1,stAdjPts));
 
+  // Third-down conversion edge -- each team's own efficiency, same
+  // "own differential vs own differential" shape as turnovers above, not
+  // a yardage restatement (a team can move the ball between the 20s and
+  // still stall on 3rd down, or vice versa) -- genuinely distinct signal
+  // from yardsAdjPts. Collected (_OFFENSE_FIELDS) but never used before now.
+  let thirdDownAdjPts=0;
+  const h3rd=_n(hOff.thirdDownConvPct),a3rd=_n(aOff.thirdDownConvPct);
+  if(h3rd!=null&&a3rd!=null)thirdDownAdjPts=Math.max(-1.5,Math.min(1.5,(h3rd-a3rd)*0.06));
+
+  // QB efficiency (ESPN's own passer-rating composite -- completion%,
+  // yards/attempt, TD/INT already folded into one number) -- distinct
+  // from raw passing yardage, which rewards volume over efficiency.
+  let qbrAdjPts=0;
+  const hQBR=_n(hOff.QBRating),aQBR=_n(aOff.QBRating);
+  if(hQBR!=null&&aQBR!=null)qbrAdjPts=Math.max(-1.5,Math.min(1.5,(hQBR-aQBR)*0.02));
+
+  // Penalty discipline -- fewer penalty yards is an advantage, so the
+  // sign is flipped (aPen-hPen: home benefits when AWAY is more
+  // penalized). Small on purpose -- discipline matters but far less than
+  // the drivers above.
+  let penaltyAdjPts=0;
+  const hPen=_n(hOff.totalPenaltyYards),aPen=_n(aOff.totalPenaltyYards);
+  if(hPen!=null&&aPen!=null)penaltyAdjPts=Math.max(-1,Math.min(1,(aPen-hPen)*0.012));
+
   // Top 25 ranking (AP Poll, already fetched weekly into rankByAbbr but
   // only ever used for a display badge/filter before now): deliberately
   // tiny nudge -- FPI already reflects most of what makes a team rank
@@ -6539,6 +6563,18 @@ function cfbMC(hA,awA,n,ouLine,g){
   const _rankBonus=r=>r?(26-r)/25:0;
   const hRank=D.rankByAbbr?.[hA]?.rank,aRank=D.rankByAbbr?.[awA]?.rank;
   const rankAdjPts=(hRank||aRank)?Math.max(-1,Math.min(1,_rankBonus(hRank)-_rankBonus(aRank))):0;
+
+  // Overall cap on the SUM of every secondary/tertiary adjustment above
+  // (yards, turnovers, special teams, ranking, 3rd down, QBR, penalties).
+  // Each is individually small-capped already, but as more signals get
+  // added over time their combined swing could otherwise creep past what
+  // "never a primary driver" actually means if several happen to align
+  // in the same direction for one team. This is the real backstop for
+  // that -- FPI (which can legitimately span +/-20-30 for a real
+  // mismatch) always stays the dominant term regardless of how many
+  // secondary signals get added later.
+  const secondaryAdjPtsRaw=yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts+thirdDownAdjPts+qbrAdjPts+penaltyAdjPts;
+  const secondaryAdjPts=Math.max(-6,Math.min(6,secondaryAdjPtsRaw));
 
   // 2025 historical signal: own points-scored minus own points-allowed
   // per game from last season (same shape as nflMC's real standings-
@@ -6568,8 +6604,7 @@ function cfbMC(hA,awA,n,ouLine,g){
   // final number and already has HFA priced into it — adding it again on
   // top would double-count it. Neutral-site games get no HFA either way.
   const hfaApplied=g?.neutralSite?0:_cfbTeamHFA(hA);
-  const currentMargin=hasFpi?((fpiH-fpiA)+hfaApplied+yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts)
-    :(marketMargin+yardsAdjPts+toAdjPts+stAdjPts+rankAdjPts);
+  const currentMargin=hasFpi?((fpiH-fpiA)+hfaApplied+secondaryAdjPts):(marketMargin+secondaryAdjPts);
   const margin0=hist2025Margin!=null?(currentMargin*0.85+hist2025Margin*0.15):currentMargin;
   const hAllowed=_n(hDefAllowed.totalPointsPerGame);
   const aAllowed=_n(aDefAllowed.totalPointsPerGame);
@@ -6609,7 +6644,7 @@ function cfbMC(hA,awA,n,ouLine,g){
     overP:ov/n,underP:1-ov/n,ouLine:+finalOU.toFixed(1),
     n, // exposed so the UI can label "MC SIM (N runs)" from the real value, not a hardcoded string
     wx,wxImpact,hasFpi,marketMargin,
-    stAdjPts,rankAdjPts,hist2025Margin, // exposed for debugging/transparency, same convention as the other adjustment terms above
+    stAdjPts,rankAdjPts,hist2025Margin,thirdDownAdjPts,qbrAdjPts,penaltyAdjPts,secondaryAdjPts, // exposed for debugging/transparency, same convention as the other adjustment terms above
   };
 }
 // Analytical cover probability for an arbitrary spread/total line, reusing
