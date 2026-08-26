@@ -954,6 +954,26 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1400, "height": 1000})
         page = context.new_page()
         install_espn_relay(page)
+        # Real bug, found and fixed: the app has ~20 setInterval-based
+        # background timers (live score tickers, per-sport settle polling,
+        # data-sync pulls -- 30s to 90s cadence) that start automatically
+        # on page load for a normal interactive session. In this headless
+        # one-shot session they serve no purpose (this script calls every
+        # settle/lock function explicitly and exits when done) and are a
+        # real hazard: once one of these intervals fires mid-run, its own
+        # fetch() to ESPN/NHL gets routed through the SAME synchronous
+        # Python relay handler as this script's own deliberate calls --
+        # concurrent blocking requests.get() calls dispatched through
+        # Playwright's route handler can pile up and stall the whole
+        # session. Confirmed live: a settle run that used to finish in
+        # ~7 minutes instead sat with near-zero CPU progress for 30+
+        # minutes once enough settle functions started actually succeeding
+        # (i.e. once the relay fix above started working, taking long
+        # enough for these timers to kick in). Neutralizing setInterval
+        # before any of the page's own scripts run removes the whole
+        # class of risk instead of hunting down and disabling ~20 named
+        # interval variables one at a time.
+        page.add_init_script("window.setInterval = () => 0;")
         log(f"Loading {args.app_url} …")
         page.goto(args.app_url, wait_until="load", timeout=60000)
         page.wait_for_timeout(3000)

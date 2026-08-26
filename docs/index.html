@@ -4074,6 +4074,38 @@ async function loadTmrw(){
   }
 }
 // ═══ AUTO-SETTLEMENT ════════════════════════════════════════
+// Classifies a bet from its own betOn TEXT rather than the stored betType
+// field -- the automated lock pipeline can't be trusted to set betType
+// correctly (lockPick's `type` param doubles as the sport tag for most
+// sports, so _betTypeNorm silently defaults every auto-locked non-ML pick
+// to 'ML' -- see auto_lock_settle.py's lock_game_leg comment; confirmed
+// live against the real ledger, e.g. MLB run-line/total picks stored with
+// betType:'ML'). betOn is always accurate regardless of what betType says:
+// "OVER 7.5"/"UNDER 8.5" for totals, "TEAM +1.5"/"TEAM -7.0" for spread/
+// run-line/puck-line picks (team token exactly as it appears in the
+// matchup, e.g. an ESPN abbreviation), else moneyline (bare team code, or
+// "TEAM ML"). Same approach already proven out for MLB/WNBA/Soccer here;
+// shared so CFB/NFL/NBA/NHL don't each need their own copy.
+function _classifyBetOn(betOn){
+  betOn=(betOn||'').trim();
+  if(/^(over|under)/i.test(betOn)){
+    const m=/(\d+\.?\d*)\s*$/.exec(betOn);
+    if(m)return{type:'OU',over:/^over/i.test(betOn),line:parseFloat(m[1])};
+  }
+  const sm=/^(.+?)\s+([+-]\d+\.?\d*)\s*$/.exec(betOn);
+  if(sm)return{type:'SPREAD',team:sm[1].trim(),line:parseFloat(sm[2])};
+  return{type:'ML'};
+}
+// Defense in depth: an ESPN scoreboard fetched with dates=targetDate can
+// still (rarely, near a UTC day boundary) include an event whose own real
+// Denver-local calendar date differs from targetDate -- same Denver-local
+// conversion parseESPNGame already uses for MLB's own g.date, applied
+// here so every ESPN-scoreboard-based settle function can verify the
+// SPECIFIC event it's about to grade actually happened on the bet's own
+// date, not just trust the query param picked the right day.
+function _espnEventDenverDate(ev,comp){
+  try{return new Date(ev?.date||comp?.date).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});}catch(e){return null;}
+}
 function autoSettleFromESPN(games,targetDate){
   // targetDate: which day's pending bets to match against `games` (which
   // the caller is responsible for having fetched for that same day --
@@ -4146,24 +4178,35 @@ async function autoSettleNHL(targetDate){
     const preds=getP();let changed=false;
     for(const g of(d.games||[])){
       if(g.gameState!=='FINAL'&&g.gameState!=='OFF')continue;
+      // Defense in depth: NHL's endpoint is date-scoped by URL PATH
+      // (unlike ESPN's dates= query param), so this is lower-risk than
+      // the ESPN-scoreboard sports, but cheap to verify anyway.
+      if(g.gameDate&&g.gameDate!==targetDate)continue;
       const h=g.homeTeam?.abbrev,a=g.awayTeam?.abbrev;
       const hs=g.homeTeam?.score||0,as=g.awayTeam?.score||0;
       for(const p of preds){
-        if(p.outcome!=='pending'||p.sport!=='NHL')continue;
+        if(p.outcome!=='pending'||_normSport(p)!=='NHL')continue;
         if(p.date!==targetDate)continue;
         const nhlSameGame=(p.hA===h&&p.awA===a)||(p.hA===a&&p.awA===h);
         if(!nhlSameGame)continue;
         let outcome=null;
-        if(p.betType==='ML'){
-          if(p.betOn===h)outcome=hs>as?'win':'loss';
-          else if(p.betOn===a)outcome=as>hs?'win':'loss';
-        }else if(p.betType==='PL'){
-          const diff=hs-as;
-          if(p.betOn.includes(h))outcome=(p.betOn.includes('-1.5')?diff>=2:diff<=-2)?'win':'loss';
-          else if(p.betOn.includes(a))outcome=(p.betOn.includes('-1.5')?diff<=-2:diff>=2)?'win':'loss';
-        }else if(p.betType==='OU'){
-          const total=hs+as;const ou=parseFloat(p.ou||5.5);
-          outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        // See _classifyBetOn's comment -- betType can't be trusted for
+        // auto-locked picks, betOn's own text always can. NHL's puck line
+        // is always ±1.5 in practice; using the actual parsed line (not
+        // a hardcoded assumption) still handles that case exactly while
+        // generalizing correctly if it's ever not 1.5.
+        const cls=_classifyBetOn(p.betOn);
+        if(cls.type==='OU'){
+          const total=hs+as;
+          outcome=total===cls.line?'push':(cls.over?total>cls.line:total<cls.line)?'win':'loss';
+        }else if(cls.type==='SPREAD'&&(cls.team===h||cls.team===a)){
+          const favIsHome=cls.team===h;
+          const diff=favIsHome?(hs-as):(as-hs);
+          const covered=diff+cls.line;
+          outcome=covered>0?'win':covered<0?'loss':'push';
+        }else{
+          if(p.betOn===h||p.betOn===h+' ML')outcome=hs>as?'win':'loss';
+          else if(p.betOn===a||p.betOn===a+' ML')outcome=as>hs?'win':'loss';
         }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`// AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NHL',outcome,score:`${p.hA} ${hs} – ${p.awA} ${as}`});}catch(ex){}}
       }
@@ -7482,6 +7525,7 @@ async function autoSettleCFB(targetDate){
     for(const ev of(d.events||[])){
       const comp=(ev.competitions||[{}])[0];
       if(comp.status?.type?.state!=='post')continue;
+      if(_espnEventDenverDate(ev,comp)!==targetDate)continue;
       const home=comp.competitors?.find(c=>c.homeAway==='home');
       const away=comp.competitors?.find(c=>c.homeAway==='away');
       const hn=home?.team?.abbreviation,an=away?.team?.abbreviation;
@@ -7495,23 +7539,20 @@ async function autoSettleCFB(targetDate){
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
         let outcome=null;
-        if(p.betType==='ML'){
-          if(p.betOn===hn)outcome=hs>as?'win':'loss';
-          else if(p.betOn===an)outcome=as>hs?'win':'loss';
-        }else if(p.betType==='SPREAD'){
-          // betOn stored as "TCU -7.0" — favorite team + signed line
-          const m=(p.betOn||'').match(/(-?\d+\.?\d*)\s*$/);
-          const line=m?parseFloat(m[1]):NaN;
-          const favTeam=(p.betOn||'').split(' ')[0];
-          if(!isNaN(line)){
-            const favIsHome=favTeam===hn;
-            const diff=favIsHome?(hs-as):(as-hs);
-            const covered=diff+line;
-            outcome=covered>0?'win':covered<0?'loss':'push';
-          }
-        }else if(p.betType==='OU'){
-          const total=hs+as;const ou=parseFloat(p.ou);
-          if(!isNaN(ou))outcome=total===ou?'push':(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        // See _classifyBetOn's comment -- betType can't be trusted for
+        // auto-locked picks, betOn's own text always can.
+        const cls=_classifyBetOn(p.betOn);
+        if(cls.type==='OU'){
+          const total=hs+as;
+          outcome=total===cls.line?'push':(cls.over?total>cls.line:total<cls.line)?'win':'loss';
+        }else if(cls.type==='SPREAD'&&(cls.team===hn||cls.team===an)){
+          const favIsHome=cls.team===hn;
+          const diff=favIsHome?(hs-as):(as-hs);
+          const covered=diff+cls.line;
+          outcome=covered>0?'win':covered<0?'loss':'push';
+        }else{
+          if(p.betOn===hn||p.betOn===hn+' ML')outcome=hs>as?'win':'loss';
+          else if(p.betOn===an||p.betOn===an+' ML')outcome=as>hs?'win':'loss';
         }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
           toast(`✓ AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`,outcome==='win'?'#00e644':outcome==='loss'?'#ff1a1a':'#ff9000');
@@ -7566,6 +7607,7 @@ async function autoSettleSoccer(targetDate){
       for(const ev of(d.events||[])){
         const comp=(ev.competitions||[{}])[0];
         if(comp.status?.type?.state!=='post')continue;
+        if(_espnEventDenverDate(ev,comp)!==targetDate)continue;
         const home=comp.competitors?.find(c=>c.homeAway==='home');
         const away=comp.competitors?.find(c=>c.homeAway==='away');
         const hn=home?.team?.displayName,an=away?.team?.displayName;
@@ -7577,9 +7619,14 @@ async function autoSettleSoccer(targetDate){
           if(!sameGame)continue;
           let outcome=null;
           const ouMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)$/i.exec(p.betOn||'');
-          if(p.betOn===p.hA)outcome=hs>as?'win':(hs===as?'loss':'loss');
-          else if(p.betOn===p.awA)outcome=as>hs?'win':(hs===as?'loss':'loss');
-          else if((p.betOn||'').toUpperCase()==='DRAW')outcome=hs===as?'win':'loss';
+          // "TEAM Win"/"TEAM ML" suffixes (real formats seen in the live
+          // ledger, e.g. betOn:"Real Madrid Win") never matched the bare-
+          // equality check below -- a real soccer moneyline pick could
+          // silently never settle.
+          const betOn=p.betOn||'';
+          if(betOn===p.hA||betOn===p.hA+' Win'||betOn===p.hA+' ML')outcome=hs>as?'win':(hs===as?'loss':'loss');
+          else if(betOn===p.awA||betOn===p.awA+' Win'||betOn===p.awA+' ML')outcome=as>hs?'win':(hs===as?'loss':'loss');
+          else if(betOn.toUpperCase()==='DRAW')outcome=hs===as?'win':'loss';
           else if(ouMatch){
             const line=parseFloat(ouMatch[2]),total=hs+as;
             const over=ouMatch[1].toUpperCase()==='OVER';
@@ -8025,6 +8072,7 @@ async function autoSettleNFL2(targetDate){
     for(const ev of(d.events||[])){
       const comp=(ev.competitions||[{}])[0];
       if(comp.status?.type?.state!=='post')continue;
+      if(_espnEventDenverDate(ev,comp)!==targetDate)continue;
       const home=comp.competitors?.find(c=>c.homeAway==='home');
       const away=comp.competitors?.find(c=>c.homeAway==='away');
       const hn=home?.team?.abbreviation,an=away?.team?.abbreviation;
@@ -8035,22 +8083,20 @@ async function autoSettleNFL2(targetDate){
         const sameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!sameGame)continue;
         let outcome=null;
-        if(p.betType==='ML'){
-          if(p.betOn===hn)outcome=hs>as?'win':'loss';
-          else if(p.betOn===an)outcome=as>hs?'win':'loss';
-        }else if(p.betType==='SPREAD'){
-          const m=(p.betOn||'').match(/(-?\d+\.?\d*)\s*$/);
-          const line=m?parseFloat(m[1]):NaN;
-          const favTeam=(p.betOn||'').split(' ')[0];
-          if(!isNaN(line)){
-            const favIsHome=favTeam===hn;
-            const diff=favIsHome?(hs-as):(as-hs);
-            const covered=diff+line;
-            outcome=covered>0?'win':covered<0?'loss':'push';
-          }
-        }else if(p.betType==='OU'){
-          const total=hs+as;const ou=parseFloat(p.ou);
-          if(!isNaN(ou))outcome=total===ou?'push':(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+        // See _classifyBetOn's comment -- betType can't be trusted for
+        // auto-locked picks, betOn's own text always can.
+        const cls=_classifyBetOn(p.betOn);
+        if(cls.type==='OU'){
+          const total=hs+as;
+          outcome=total===cls.line?'push':(cls.over?total>cls.line:total<cls.line)?'win':'loss';
+        }else if(cls.type==='SPREAD'&&(cls.team===hn||cls.team===an)){
+          const favIsHome=cls.team===hn;
+          const diff=favIsHome?(hs-as):(as-hs);
+          const covered=diff+cls.line;
+          outcome=covered>0?'win':covered<0?'loss':'push';
+        }else{
+          if(p.betOn===hn||p.betOn===hn+' ML')outcome=hs>as?'win':'loss';
+          else if(p.betOn===an||p.betOn===an+' ML')outcome=as>hs?'win':'loss';
         }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;
           try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:'FOOTBALL',league:'NFL',outcome,score:`${p.awA} ${as} – ${p.hA} ${hs}`});}catch(ex){}
@@ -14011,6 +14057,7 @@ async function autoSettleWNBA(targetDate){
     for(const ev of(d.events||[])){
       const c=ev.competitions?.[0];if(!c)continue;
       if(c.status?.type?.state!=='post')continue;
+      if(_espnEventDenverDate(ev,c)!==targetDate)continue;
       const h=c.competitors?.find(t=>t.homeAway==='home');const a=c.competitors?.find(t=>t.homeAway==='away');
       const hn=h?.team?.abbreviation,an=a?.team?.abbreviation;
       if(!hn||!an)continue;
@@ -14023,8 +14070,12 @@ async function autoSettleWNBA(targetDate){
         const betOn=p.betOn||'';
         const spreadMatch=/^(\S+)\s+([+-]\d+\.?\d*)$/.exec(betOn);
         const ouMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)$/i.exec(betOn);
-        if(betOn===hn)outcome=hs>as?'win':(hs===as?'push':'loss');
-        else if(betOn===an)outcome=as>hs?'win':(hs===as?'push':'loss');
+        // "TEAM ML" suffix (the automated lock pipeline's own label
+        // format) never matched the bare-equality check below -- a real
+        // WNBA moneyline pick could silently never settle. Confirmed live
+        // against the real ledger (e.g. betOn:"SEA ML").
+        if(betOn===hn||betOn===hn+' ML')outcome=hs>as?'win':(hs===as?'push':'loss');
+        else if(betOn===an||betOn===an+' ML')outcome=as>hs?'win':(hs===as?'push':'loss');
         else if(ouMatch){
           const line=parseFloat(ouMatch[2]),total=hs+as;
           const over=ouMatch[1].toUpperCase()==='OVER';
@@ -14064,6 +14115,7 @@ async function autoSettleNBA(targetDate){
     for(const ev of(d.events||[])){
       const c=ev.competitions?.[0];if(!c)continue;
       if(c.status?.type?.state!=='post')continue;
+      if(_espnEventDenverDate(ev,c)!==targetDate)continue;
       const h=c.competitors?.find(t=>t.homeAway==='home');const a=c.competitors?.find(t=>t.homeAway==='away');
       const hn=h?.team?.abbreviation,an=a?.team?.abbreviation;
       const hs=parseInt(h?.score||0),as=parseInt(a?.score||0);
@@ -14076,18 +14128,21 @@ async function autoSettleNBA(targetDate){
         const nbaSameGame=(p.hA===hn&&p.awA===an)||(p.hA===an&&p.awA===hn);
         if(!nbaSameGame)continue;
         let outcome=null;
-        if(p.betType==='ML'){if(p.betOn===hn)outcome=hs>as?'win':'loss';else if(p.betOn===an)outcome=as>hs?'win':'loss';}
-        else if(p.betType==='OU'){
+        // See _classifyBetOn's comment -- betType can't be trusted for
+        // auto-locked picks (this used to have NO spread handling at all
+        // as a result -- a real NBA spread pick could never settle here).
+        const cls=_classifyBetOn(p.betOn);
+        if(cls.type==='OU'){
           const total=hs+as;
-          // Trailing-number extraction, not prefix-stripping — betOn is
-          // stored as "TEAM/TEAM Under 9.5" elsewhere in this app, and a
-          // regex that only strips the OVER/UNDER keyword leaves the
-          // team-code prefix in place, so parseFloat returns NaN and the
-          // pick silently never settles. Grabbing the last number in the
-          // string works regardless of whatever prefix text precedes it.
-          const m=(p.betOn||'').match(/(\d+\.?\d*)\s*$/);
-          const ou=m?parseFloat(m[1]):NaN;
-          if(!isNaN(ou))outcome=(/over/i.test(p.betOn)?total>ou:total<ou)?'win':'loss';
+          outcome=total===cls.line?'push':(cls.over?total>cls.line:total<cls.line)?'win':'loss';
+        }else if(cls.type==='SPREAD'&&(cls.team===hn||cls.team===an)){
+          const favIsHome=cls.team===hn;
+          const diff=favIsHome?(hs-as):(as-hs);
+          const covered=diff+cls.line;
+          outcome=covered>0?'win':covered<0?'loss':'push';
+        }else{
+          if(p.betOn===hn||p.betOn===hn+' ML')outcome=hs>as?'win':'loss';
+          else if(p.betOn===an||p.betOn===an+' ML')outcome=as>hs?'win':'loss';
         }
         if(outcome){p.outcome=outcome;p.settledAt=Date.now();p.hScore=hs;p.aScore=as;changed=true;toast(`AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);try{notifySettlement(p.betOn,outcome);}catch(e){};try{window.showBetPopup({type:'settle',betOn:p.betOn,sport:p.sport||'NBA',outcome,score:(p.hScore!=null&&p.aScore!=null)?`${p.hA} ${p.hScore} – ${p.awA} ${p.aScore}`:null});}catch(ex){}}
       }
