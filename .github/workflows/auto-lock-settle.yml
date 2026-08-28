@@ -53,7 +53,7 @@ on:
         default: 'both'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   auto-lock-settle:
@@ -93,7 +93,29 @@ jobs:
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           else
-            echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
+            # Real bug, found and fixed: this used to be a flat "anything
+            # that isn't exactly the 30 14 * * * schedule string is a
+            # settle-only run" -- but GitHub Actions can (and does, under
+            # load) silently DROP a scheduled trigger entirely rather than
+            # just delay it. Confirmed live: 2026-08-28 had zero runs where
+            # github.event.schedule matched "30 14 * * *" at all -- every
+            # one of that day's 4 runs fell through to settle-only, so no
+            # lock pass ever ran, and nothing here would have ever noticed
+            # or recovered, no matter how many more scheduled runs fired
+            # later that day. data/last_lock_date.txt (written below only
+            # after a real --live lock pass) is checked here so ANY run
+            # that does fire can catch a missed lock, instead of every
+            # future trigger depending on that one exact cron string
+            # firing again.
+            TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+            HOUR_MT=$(TZ=America/Denver date +%H)
+            LAST_LOCK_DATE=$(cat data/last_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 9 ]; then
+              echo "step_flags=" >> "$GITHUB_OUTPUT"
+              echo "catchup=1" >> "$GITHUB_OUTPUT"
+            else
+              echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
+            fi
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -109,4 +131,24 @@ jobs:
           LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
           SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
         run: |
+          if [ -n "${{ steps.flags.outputs.catchup }}" ]; then
+            echo "::notice::Today's dedicated 8:30am MT lock slot never fired -- running a catch-up lock+settle pass."
+          fi
           python3 scripts/auto_lock_settle.py ${{ steps.flags.outputs.step_flags }} ${{ steps.flags.outputs.live_flag }}
+
+      - name: Record successful lock date
+        # Only after a run that actually included a LIVE lock pass (the
+        # dedicated 14:30 UTC slot, workflow_dispatch with lock/both, or
+        # today's catch-up above) -- a dry-run or settle-only run must
+        # never mark today as locked, or a later real catch-up would
+        # wrongly skip itself.
+        if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' }}
+        run: |
+          TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+          echo "$TODAY_MT" > data/last_lock_date.txt
+          git add data/last_lock_date.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record lock for $TODAY_MT"
+            git pull --rebase origin main
+            git push origin main
+          fi

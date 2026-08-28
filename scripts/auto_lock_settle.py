@@ -329,10 +329,20 @@ def _settle_result_html(b: dict) -> str:
         result = f"actual: {_esc(b['playerResult'])}"
     else:
         result = "no score/result captured"
+    # Real bug, found and fixed: this never showed which calendar date a
+    # result actually happened on. Harmless back when a settle run only
+    # ever processed "today" -- became actively misleading once run_settle
+    # started backfilling every distinct pending date in one pass (needed
+    # to actually clear a real backlog), since a single run's email can
+    # now legitimately contain results from many different real dates
+    # while its own subject line still named just one. Confirmed live:
+    # a settlement email dated 2026-08-28 included games that never
+    # happened on 8/28 at all -- this label is the fix.
+    date_label = f' <span style="color:#666;font-size:12px">[{_esc(b.get("date") or "?")}]</span>' if b.get("date") else ""
     return (f'<div style="padding:5px 0;font-size:14px;color:#eee">'
             f'<span style="background:{color};color:#000;font-weight:700;font-size:11px;padding:1px 7px;'
             f'border-radius:3px;margin-right:8px;text-transform:uppercase">{_esc(outcome)}</span>'
-            f'{_esc(b.get("betOn"))} <span style="color:#bbb">({result})</span></div>')
+            f'{_esc(b.get("betOn"))} <span style="color:#bbb">({result})</span>{date_label}</div>')
 
 
 def build_settlement_email_html(settled: list[dict]) -> str:
@@ -374,7 +384,19 @@ def send_settlement_email(settled: list[dict], live: bool) -> None:
         log("Nothing settled this run — skipping settlement email")
         return
     body_html = build_settlement_email_html(settled)
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Real bug, found and fixed: this always used TODAY's date regardless
+    # of which real date(s) the settled bets actually came from -- always
+    # correct back when a settle run only ever processed "today", wrong
+    # as soon as run_settle started backfilling a real multi-date backlog
+    # in one pass. Reflect the actual distinct dates covered instead of
+    # asserting a single date that may not match any of the games listed.
+    bet_dates = sorted({b["date"] for b in settled if b.get("date")})
+    if len(bet_dates) <= 1:
+        date_str = bet_dates[0] if bet_dates else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    elif len(bet_dates) == 2:
+        date_str = f"{bet_dates[0]} & {bet_dates[1]}"
+    else:
+        date_str = f"{bet_dates[0]}..{bet_dates[-1]} ({len(bet_dates)} dates)"
     wins = sum(1 for b in settled if b.get("outcome") == "win")
     losses = sum(1 for b in settled if b.get("outcome") == "loss")
     prefix = "" if live else "[DRY RUN] "

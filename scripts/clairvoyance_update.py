@@ -5218,7 +5218,23 @@ def git_push(summary: str = "") -> bool:
             log("git: nothing to commit"); return True
         msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}\n\nhttps://mercmink21.github.io/clairvoyance-backend/app.html"
         subprocess.run(["git","-C",str(ROOT),"commit","-m",msg], check=True, capture_output=True)
-        subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
+        try:
+            subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            # Real bug, found and fixed in run_live_window's own push (this
+            # repo also gets pushed to by GitHub Actions workflows running
+            # concurrently, so a non-fast-forward rejection here isn't rare)
+            # -- previously this just alerted and gave up for the whole run,
+            # leaving the rejected commit to alert again identically on the
+            # NEXT scheduled run hours later, since nothing ever reconciled
+            # with origin in between. One fetch+rebase retry lets a
+            # transient race self-heal within the same run instead.
+            subprocess.run(["git","-C",str(ROOT),"fetch","origin","main"], check=True, capture_output=True)
+            rebase_res = subprocess.run(["git","-C",str(ROOT),"rebase","origin/main"], capture_output=True)
+            if rebase_res.returncode != 0:
+                subprocess.run(["git","-C",str(ROOT),"rebase","--abort"], capture_output=True)
+                raise
+            subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
         note("git push → main ✓")
         return True
     except Exception as exc:
@@ -5315,8 +5331,34 @@ def run_live_window(push: bool = True, interval_sec: int = 120) -> None:
                 if diff.returncode != 0:
                     subprocess.run(["git","-C",str(ROOT),"commit","-m",
                         f"live: {now_mt.strftime('%H:%M')} MT scores"], capture_output=True)
-                    subprocess.run(["git","-C",str(ROOT),"push","origin","main"],
-                                   capture_output=True)
+                    # Real bug, found and fixed: this push had NO error
+                    # checking at all (no check=True, no try/except, no
+                    # alert) -- unlike git_push() above, which does. A
+                    # rejected push (non-fast-forward -- this repo also
+                    # gets pushed to by GitHub Actions workflows running
+                    # concurrently) failed COMPLETELY SILENTLY, every
+                    # 120s, forever: no exception, no log line, no alert.
+                    # Confirmed live: 41 local commits piled up unpushed
+                    # over several hours with zero visible sign anything
+                    # was wrong. Fixed with a fetch+rebase retry so a
+                    # rejection self-heals on the very next push instead
+                    # of accumulating, plus an actual alert if it still
+                    # can't recover.
+                    push_res = subprocess.run(["git","-C",str(ROOT),"push","origin","main"],
+                                   capture_output=True, text=True)
+                    if push_res.returncode != 0:
+                        subprocess.run(["git","-C",str(ROOT),"fetch","origin","main"], capture_output=True)
+                        rebase_res = subprocess.run(["git","-C",str(ROOT),"rebase","origin/main"], capture_output=True)
+                        if rebase_res.returncode == 0:
+                            retry_res = subprocess.run(["git","-C",str(ROOT),"push","origin","main"],
+                                           capture_output=True, text=True)
+                            if retry_res.returncode != 0:
+                                log(f"live push retry failed: {retry_res.stderr}", "WARN")
+                                _alert("Live Push Failed", f"git push (after rebase retry) failed: {retry_res.stderr[:300]}", "error")
+                        else:
+                            subprocess.run(["git","-C",str(ROOT),"rebase","--abort"], capture_output=True)
+                            log(f"live push failed, rebase also failed: {push_res.stderr}", "WARN")
+                            _alert("Live Push Failed", f"git push failed and rebase onto origin/main failed too -- local commits are accumulating unpushed: {push_res.stderr[:300]}", "error")
         except Exception as exc:
             log(f"Live refresh error: {exc}", "WARN")
         time.sleep(interval_sec)
