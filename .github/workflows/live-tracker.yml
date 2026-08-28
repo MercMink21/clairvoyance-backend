@@ -1,0 +1,70 @@
+name: Live Score Tracker
+
+# Migrates live_tracker.py from a local launchd daemon (45s continuous
+# polling, requires the Mac to be on) to GitHub Actions -- per explicit
+# request, one poll every ~5 min instead. Real trade-off accepted: live
+# scores / in-game win-probability go from 45s-fresh to up to 5min-stale.
+#
+# Also replaces run_update.sh's own --mode live cron entry (retired from
+# the local crontab) rather than running both: that entry's
+# run_live_window() computed nearly identical live-score/win-probability
+# data to the SAME docs/live_data.json file via a completely separate,
+# redundant 120s-interval local process -- two writers racing on one
+# file for no real benefit. live_tracker.py is the more complete of the
+# two (also writes frontend/live_data.json, tighter interval), so it's
+# the one that survives.
+
+on:
+  schedule:
+    # Every 5 min, 9am-11pm MT -- matches live_tracker.py's own default
+    # game-window gate (11am-1am ET). 9am MT = 15:00 UTC, 11pm MT = 05:00
+    # UTC next day (MDT), hence the split hour range below. Like every
+    # other fixed-UTC cron in this repo, drifts ~1hr earlier MT once MST
+    # returns in November.
+    - cron: '*/5 15-23,0-5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  live-tracker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Poll live scores
+        env:
+          TZ: America/Denver
+        run: python3 scripts/live_tracker.py
+
+      - name: Commit and push live data
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          git add docs/live_data.json frontend/live_data.json
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "live: $(TZ=America/Denver date +%H:%M) MT scores"
+            if ! git push origin main; then
+              # Same fetch+rebase+retry pattern already proven elsewhere
+              # in this repo (see run_live_window's own comment on the
+              # real 41-unpushed-commits incident this exact failure mode
+              # caused when it silently had no retry logic at all).
+              git fetch origin main
+              git rebase origin/main
+              git push origin main
+            fi
+          fi
