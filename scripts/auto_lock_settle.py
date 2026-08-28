@@ -135,6 +135,29 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+def _commit_and_push(paths: list[str], message: str) -> None:
+    """Shared by every marker file this module writes (automation_status.json,
+    last_lock_date.txt, last_lock_email_date.txt, ...) -- add + commit +
+    push with one fetch+rebase retry on a rejected push, same pattern
+    already proven in clairvoyance_update.py's git_push()/run_live_window
+    for the same reason: this repo gets pushed to from multiple places
+    concurrently, so a plain push failing once is a normal race, not a
+    real error, and deserves one retry before giving up."""
+    subprocess.run(["git", "-C", str(ROOT), "add", *paths], capture_output=True)
+    diff = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--quiet"], capture_output=True)
+    if diff.returncode == 0:
+        return
+    subprocess.run(["git", "-C", str(ROOT), "commit", "-m", message], capture_output=True)
+    push_res = subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True, text=True)
+    if push_res.returncode != 0:
+        subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", "main"], capture_output=True)
+        if subprocess.run(["git", "-C", str(ROOT), "rebase", "origin/main"], capture_output=True).returncode == 0:
+            subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True)
+        else:
+            subprocess.run(["git", "-C", str(ROOT), "rebase", "--abort"], capture_output=True)
+            log(f"_commit_and_push: push failed and rebase also failed: {push_res.stderr}")
+
+
 def write_automation_status(kind: str, ok: bool, detail: str) -> None:
     """kind: 'lastLock' or 'lastSettle'. Drives the header's LAST LOCK/LAST
     SETTLE indicators (docs/app.html reads this same file, same-origin, no
@@ -160,19 +183,7 @@ def write_automation_status(kind: str, ok: bool, detail: str) -> None:
     }
     try:
         path.write_text(json.dumps(status, indent=2))
-        subprocess.run(["git", "-C", str(ROOT), "add", "docs/automation_status.json"], capture_output=True)
-        diff = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--quiet"], capture_output=True)
-        if diff.returncode != 0:
-            subprocess.run(["git", "-C", str(ROOT), "commit", "-m", f"chore: {kind} status ({'ok' if ok else 'FAILED'})"],
-                            capture_output=True)
-            push_res = subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True, text=True)
-            if push_res.returncode != 0:
-                subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", "main"], capture_output=True)
-                if subprocess.run(["git", "-C", str(ROOT), "rebase", "origin/main"], capture_output=True).returncode == 0:
-                    subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True)
-                else:
-                    subprocess.run(["git", "-C", str(ROOT), "rebase", "--abort"], capture_output=True)
-                    log(f"write_automation_status: push failed and rebase also failed: {push_res.stderr}")
+        _commit_and_push(["docs/automation_status.json"], f"chore: {kind} status ({'ok' if ok else 'FAILED'})")
     except Exception as exc:
         log(f"write_automation_status failed: {exc}")
 
@@ -977,11 +988,35 @@ def _lock_qualifying_legs(page, qualifying: list[dict]) -> int:
     return locked
 
 
+def verify_todays_locks(page) -> int:
+    """The actual TEST behind "make sure picks locked correctly": a fresh,
+    independent re-pull straight from Supabase (not just trusting the
+    in-page state _lock_qualifying_legs already mutated) confirming
+    today's locked picks are really persisted and readable. Catches the
+    class of bug where lockPick() succeeds locally but flush_to_supabase's
+    own write silently fails (network hiccup, etc) -- "the function didn't
+    throw" is not the same guarantee as "the data is actually there."
+    Safe/cheap to call after every lock attempt, including redundant ones
+    in the same morning."""
+    today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+    n = load_bet_ledger(page)
+    count = page.evaluate(
+        "(today) => getP().filter(p => p.date === today && p.outcome === 'pending').length",
+        today_mt,
+    )
+    log(f"VERIFY: fresh Supabase pull ({n} total bets) shows {count} pick(s) locked for {today_mt}")
+    return count
+
+
 def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "",
-              to: list[str] | None = None) -> None:
+              to: list[str] | None = None, send_email: bool = True) -> None:
     """Single-product lock pass -- used by the early soccer/CFB workflows,
     which each run their own gather_legs() call at their own scheduled
-    time (not part of the main run's per-product loop)."""
+    time (not part of the main run's per-product loop). send_email=False
+    for a redundant same-morning retry that already had its one email
+    sent by an earlier attempt today -- still locks (idempotent -- see
+    _lock_qualifying_legs/lockPick's own dedup) and still verifies, just
+    doesn't duplicate the subscriber email."""
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
     qualifying = build_qualifying(result, only_sports=only_sports)
@@ -1000,11 +1035,15 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
 
     if not live:
         log(f"[DRY RUN] Would lock {len(qualifying)} legs above (pass --live to write)")
-        send_locks_email(qualifying, live=False, label=label, to=to)
+        if send_email:
+            send_locks_email(qualifying, live=False, label=label, to=to)
         return
 
     if not qualifying:
-        send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to)
+        if send_email:
+            send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to)
+        else:
+            log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
         return
 
     locked = _lock_qualifying_legs(page, qualifying)
@@ -1012,10 +1051,13 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
+    if send_email:
+        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
+    else:
+        log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
 
 
-def run_lock_segmented(page, live: bool) -> None:
+def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
     part: real browser + live data warmups), then split into a separate
     qualifying-legs list + a separately-addressed email for each of the 8
@@ -1024,7 +1066,9 @@ def run_lock_segmented(page, live: bool) -> None:
     today, if/when those get wired into gather_legs), sent to the owner
     only. A subscriber to one product only ever sees that product's email;
     nothing is ever silently dropped -- every qualifying leg lands in
-    exactly one of these passes."""
+    exactly one of these passes. send_email=False for a redundant same-
+    morning retry (see run_lock's own docstring) -- still locks and
+    verifies, just skips re-sending every product's email."""
     log("=== AUTO-LOCK (PREMIUM/OPTIMAL) — ALL PRODUCTS ===")
     result = gather_legs(page)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
@@ -1039,21 +1083,29 @@ def run_lock_segmented(page, live: bool) -> None:
         recipients = recipients_for(product)
         log(f"[{product}] {len(qualifying)} qualifying legs -> {len(recipients)} recipient(s)")
         if not live:
-            send_locks_email(qualifying, live=False, label=label, to=recipients)
+            if send_email:
+                send_locks_email(qualifying, live=False, label=label, to=recipients)
             continue
         locked = _lock_qualifying_legs(page, qualifying) if qualifying else 0
         total_locked += locked
-        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
+        if send_email:
+            send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
+        else:
+            log(f"Locks email ({label}) skipped -- already sent today ({locked} locked this pass)")
 
     other_qualifying = [q for q in all_qualifying if q["sport"] not in covered_sports]
     log(f"[other] {len(other_qualifying)} qualifying legs (not a paid product yet -- owner only)")
     owner_to = [OWNER_EMAIL] if OWNER_EMAIL else None
     if not live:
-        send_locks_email(other_qualifying, live=False, label="OTHER", to=owner_to)
+        if send_email:
+            send_locks_email(other_qualifying, live=False, label="OTHER", to=owner_to)
     else:
         locked = _lock_qualifying_legs(page, other_qualifying) if other_qualifying else 0
         total_locked += locked
-        send_locks_email(other_qualifying, live=True, locked_count=locked, label="OTHER", to=owner_to)
+        if send_email:
+            send_locks_email(other_qualifying, live=True, locked_count=locked, label="OTHER", to=owner_to)
+        else:
+            log(f"Locks email (OTHER) skipped -- already sent today ({locked} locked this pass)")
 
     if total_locked > 0:
         flush_to_supabase(page)
@@ -1166,13 +1218,43 @@ def main() -> None:
                     write_automation_status("lastSettle", False, f"error: {exc}")
                 raise
         if do_lock:
+            # Per explicit request: multiple lock attempts across the
+            # morning, each one a real test that picks locked correctly --
+            # not just "did the function throw". Locking itself
+            # (_lock_qualifying_legs/lockPick) is already idempotent, so
+            # every attempt safely re-locks anything a dropped/failed
+            # earlier attempt missed. What must NOT repeat is the
+            # subscriber-facing email -- last_lock_email_date.txt gates
+            # that to once/day regardless of how many attempts actually
+            # run; every attempt still locks and verifies.
+            email_marker_path = ROOT / "data" / "last_lock_email_date.txt"
+            today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+            already_emailed_today = False
+            if args.live:
+                try:
+                    already_emailed_today = email_marker_path.read_text().strip() == today_mt
+                except Exception:
+                    already_emailed_today = False
             try:
                 if only_sports is None:
-                    run_lock_segmented(page, args.live)
+                    run_lock_segmented(page, args.live, send_email=not already_emailed_today)
                 else:
-                    run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to)
+                    run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to,
+                             send_email=not already_emailed_today)
+                # The actual verification test: a fresh, independent
+                # Supabase re-pull confirming today's picks are really
+                # persisted, not just that lockPick() didn't throw.
+                verified_count = verify_todays_locks(page) if args.live else None
                 if args.live:
-                    write_automation_status("lastLock", True, "lock pass completed")
+                    detail = f"lock pass completed, {verified_count} pick(s) verified for {today_mt}"
+                    write_automation_status("lastLock", True, detail)
+                    if not already_emailed_today:
+                        try:
+                            email_marker_path.write_text(today_mt)
+                            _commit_and_push(["data/last_lock_email_date.txt"],
+                                              f"chore: record lock email sent for {today_mt}")
+                        except Exception as exc:
+                            log(f"failed to record lock-email marker: {exc}")
             except Exception as exc:
                 log(f"lock step failed: {exc}")
                 if args.live:

@@ -26,15 +26,26 @@ on:
     # emailed the morning of 7/29, not mixed into a same-day or multi-date
     # dump). 8:15 MT = 14:15 UTC, 15 min ahead of lock below.
     - cron: '15 14 * * *'
-    # Lock: once daily, so subscriber emails land ~8:30am MT, after that
-    # day's schedules/odds are loaded and before early games start.
-    # 8:30 MT = 14:30 UTC (MDT), clear of statmuse-daily.yml's 14:00 UTC
-    # cron (also Playwright-heavy -- landing on the exact same minute
-    # risks the runner queue-starvation pattern documented in social-
-    # cards-daily.yml). Like every other MT time in this file, this is a
-    # fixed UTC cron -- GitHub Actions doesn't shift for DST, so the
-    # real landing time drifts to ~7:30am once MST returns in November.
+    # Lock: 3 dedicated attempts across the morning (8:30/8:45/9:05am MT),
+    # not just one -- per explicit request, multiple lock runs each
+    # morning, each one independently verifying picks locked correctly
+    # (see verify_todays_locks in auto_lock_settle.py). Locking itself is
+    # idempotent (lockPick() dedupes), so redundant attempts are safe;
+    # only the FIRST successful one each day actually emails subscribers
+    # (data/last_lock_email_date.txt gates that in the script itself) --
+    # the other two are silent unless something's actually wrong, in
+    # which case they're the ones that catch and fix it same-morning
+    # instead of the day just going without a lock. 8:30 MT = 14:30 UTC
+    # is clear of statmuse-daily.yml's 14:00 UTC cron (also Playwright-
+    # heavy -- landing on the exact same minute risks the runner queue-
+    # starvation pattern documented in social-cards-daily.yml); the other
+    # two are spaced to avoid landing on each other too. Like every other
+    # MT time in this file, these are fixed UTC crons -- GitHub Actions
+    # doesn't shift for DST, so real landing times drift ~1hr earlier MT
+    # once MST returns in November.
     - cron: '30 14 * * *'
+    - cron: '45 14 * * *'
+    - cron: '5 15 * * *'
     # Settle: 4x daily -- 10am/3pm/6pm/11pm MT -- offset :20 past the hour,
     # staggered off scheduled-refresh.yml's own cron times (0 15/21/5) to
     # avoid the same runner-contention pattern that caused the queue-
@@ -105,7 +116,7 @@ jobs:
           elif [ "${{ github.event.schedule }}" = "15 14 * * *" ]; then
             echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "30 14 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 14 * * *" ] || [ "${{ github.event.schedule }}" = "45 14 * * *" ] || [ "${{ github.event.schedule }}" = "5 15 * * *" ]; then
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           else
