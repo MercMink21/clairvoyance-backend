@@ -671,6 +671,7 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
         sport = gl.get("sport")
         if not _wanted(sport):
             continue
+        game_qualifying: list[dict] = []
         for m in gl.get("markets") or []:
             tier_n = m.get("tierN")
             prob = m.get("prob") or 0
@@ -683,7 +684,7 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
             # that's worth surfacing even though it's not a normal pick.
             is_high_hit = _market_type(m.get("side")) == "ML" and prob >= _HIGH_HIT_P
             if tier_n in QUALIFYING_TIERS or is_high_hit:
-                qualifying.append({
+                game_qualifying.append({
                     "kind": "GAME", "sport": sport, "hA": gl.get("hA"), "awA": gl.get("awA"),
                     "side": m.get("side"), "label": m.get("label"), "prob": m.get("prob"),
                     "ml": m.get("ml"), "dec": m.get("dec"), "tierN": tier_n, "evVal": m.get("evVal"),
@@ -693,6 +694,28 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
                     # gameLegs.
                     "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
                 })
+        # MLB-specific cap: real ledger data showed MLB routinely locking
+        # all 3 markets on one game at once (ML + run line + O/U each
+        # independently qualifying) -- explicitly identified as a drag
+        # dragging overall accuracy down (3 correlated shots at the same
+        # game reads as diversification but isn't). Capped at 2 now: the
+        # single best market by default, plus a 2nd ONLY when it's a
+        # genuinely complementary combo (ML+O/U or spread+O/U). ML+spread
+        # specifically excluded -- those two are essentially the same
+        # directional read on the game (who wins/covers) priced two
+        # different ways, not an independent second edge.
+        if sport == "MLB" and len(game_qualifying) > 1:
+            game_qualifying.sort(key=lambda q: (q["tierN"] or 0, q.get("evVal") or 0), reverse=True)
+            best = game_qualifying[0]
+            best_type = _market_type(best["side"])
+            picked = [best]
+            for cand in game_qualifying[1:]:
+                cand_type = _market_type(cand["side"])
+                if {best_type, cand_type} in ({"ML", "OU"}, {"SPREAD", "OU"}):
+                    picked.append(cand)
+                    break
+            game_qualifying = picked
+        qualifying.extend(game_qualifying)
     # Props only exist for NBA/WNBA/NHL/NFL -- neither early pass (soccer,
     # CFB) needs or has any to filter, so props are simply included only on
     # the unscoped (full) run.
