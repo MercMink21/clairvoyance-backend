@@ -51,7 +51,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
@@ -271,8 +271,13 @@ def flush_to_supabase(page) -> None:
 # ─────────────────────────────────────────────────────────────────────────
 # SETTLE
 # ─────────────────────────────────────────────────────────────────────────
-def run_settle(page, live: bool) -> list[dict]:
-    log("=== AUTO-SETTLE ===")
+def run_settle(page, live: bool, only_dates: list[str] | None = None) -> list[dict]:
+    """only_dates: settle exactly these date(s) instead of every distinct
+    pending date -- used for the once-daily settlement digest's final,
+    targeted check on yesterday specifically (see
+    send_daily_settlement_digest). None (the default) keeps the normal
+    intraday behavior: backfill every distinct pending date found."""
+    log("=== AUTO-SETTLE ===" if only_dates is None else f"=== AUTO-SETTLE (targeted: {only_dates}) ===")
     before = page.evaluate("() => getP().filter(p => p.outcome === 'pending').length")
     log(f"Pending bets before settle: {before}")
 
@@ -294,9 +299,9 @@ def run_settle(page, live: bool) -> list[dict]:
     # window.
     result = page.evaluate(
         """
-        async () => {
+        async (onlyDates) => {
           const results = {perDate: {}};
-          const pendingDates = [...new Set(
+          const pendingDates = onlyDates || [...new Set(
             getP().filter(p => p.outcome === 'pending').map(p => p.date).filter(Boolean)
           )].sort();
           results.datesChecked = pendingDates.length;
@@ -320,7 +325,8 @@ def run_settle(page, live: bool) -> list[dict]:
           }
           return results;
         }
-        """
+        """,
+        only_dates,
     )
     log(f"Settlement dates checked: {result.get('datesChecked')} -> {sorted(result.get('perDate', {}).keys())}")
 
@@ -391,7 +397,7 @@ def _settle_result_html(b: dict) -> str:
             f'{_esc(b.get("betOn"))} <span style="color:#bbb">({result})</span>{date_label}</div>')
 
 
-def build_settlement_email_html(settled: list[dict]) -> str:
+def build_settlement_email_html(settled: list[dict], unresolved: list[dict] | None = None) -> str:
     by_sport: dict[str, list[dict]] = {}
     for b in settled:
         by_sport.setdefault(b.get("sport") or "?", []).append(b)
@@ -403,6 +409,19 @@ def build_settlement_email_html(settled: list[dict]) -> str:
     parts = [_EMAIL_WRAP_OPEN,
               f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">'
               f'{len(settled)} bets settled — {record}</div>']
+    # Surfacing unresolved bets directly in the email (rather than just
+    # silently omitting them) is the whole point of running a final,
+    # targeted settle pass right before building this -- if something is
+    # STILL pending after that, that's a real gap worth knowing about the
+    # same morning, not discovering days later that a pick silently never
+    # got graded.
+    if unresolved:
+        parts.append(f'<div style="margin-top:10px;padding:10px 14px;background:#3a0000;border:1px solid #ff3b5c;'
+                      f'border-radius:6px;color:#ff9090;font-size:13px">'
+                      f'⚠ {len(unresolved)} pick(s) from this date could not be confirmed settled yet -- '
+                      f'real score/result not found. Will keep retrying automatically.<ul style="margin:6px 0 0;padding-left:18px">'
+                      + "".join(f'<li>{_esc(b.get("sport"))}: {_esc(b.get("betOn"))}</li>' for b in unresolved)
+                      + '</ul></div>')
     if not settled:
         parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No bets settled this run.</div>')
         parts.append(_EMAIL_WRAP_CLOSE)
@@ -422,33 +441,85 @@ def build_settlement_email_html(settled: list[dict]) -> str:
     return "".join(parts)
 
 
-def send_settlement_email(settled: list[dict], live: bool) -> None:
+def send_settlement_email(settled: list[dict], live: bool, forced_date: str | None = None,
+                           unresolved: list[dict] | None = None) -> None:
+    """forced_date: used by the once-daily digest (see
+    send_daily_settlement_digest) to assert exactly which date this email
+    covers, rather than inferring it from whatever settled this run --
+    the digest is always scoped to exactly one date (yesterday, MT) by
+    design, so this should always be set from that caller. Left optional
+    only so any other/future caller without a fixed date still gets a
+    sane subject line instead of a crash."""
     if not LOCKS_EMAIL_TO:
         log("LOCKS_EMAIL_TO not set — skipping settlement email")
         return
-    if not settled:
+    if not settled and not unresolved:
         log("Nothing settled this run — skipping settlement email")
         return
-    body_html = build_settlement_email_html(settled)
-    # Real bug, found and fixed: this always used TODAY's date regardless
-    # of which real date(s) the settled bets actually came from -- always
-    # correct back when a settle run only ever processed "today", wrong
-    # as soon as run_settle started backfilling a real multi-date backlog
-    # in one pass. Reflect the actual distinct dates covered instead of
-    # asserting a single date that may not match any of the games listed.
-    bet_dates = sorted({b["date"] for b in settled if b.get("date")})
-    if len(bet_dates) <= 1:
-        date_str = bet_dates[0] if bet_dates else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    elif len(bet_dates) == 2:
-        date_str = f"{bet_dates[0]} & {bet_dates[1]}"
+    body_html = build_settlement_email_html(settled, unresolved=unresolved)
+    if forced_date:
+        date_str = forced_date
     else:
-        date_str = f"{bet_dates[0]}..{bet_dates[-1]} ({len(bet_dates)} dates)"
+        # Real bug, found and fixed: this always used TODAY's date
+        # regardless of which real date(s) the settled bets actually came
+        # from -- always correct back when a settle run only ever
+        # processed "today", wrong as soon as run_settle started
+        # backfilling a real multi-date backlog in one pass. Reflect the
+        # actual distinct dates covered instead of asserting a single
+        # date that may not match any of the games listed.
+        bet_dates = sorted({b["date"] for b in settled if b.get("date")})
+        if len(bet_dates) <= 1:
+            date_str = bet_dates[0] if bet_dates else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        elif len(bet_dates) == 2:
+            date_str = f"{bet_dates[0]} & {bet_dates[1]}"
+        else:
+            date_str = f"{bet_dates[0]}..{bet_dates[-1]} ({len(bet_dates)} dates)"
     wins = sum(1 for b in settled if b.get("outcome") == "win")
     losses = sum(1 for b in settled if b.get("outcome") == "loss")
     prefix = "" if live else "[DRY RUN] "
-    subject = f"Clairvoyance — {prefix}Settled {date_str}: {wins}W-{losses}L ({len(settled)})"
+    unresolved_note = f" · {len(unresolved)} unresolved" if unresolved else ""
+    subject = f"Clairvoyance — {prefix}Settled {date_str}: {wins}W-{losses}L ({len(settled)}){unresolved_note}"
     ok, msg = _send_gmail(subject, LOCKS_EMAIL_TO, body_html)
     log(f"Settlement email sent to {LOCKS_EMAIL_TO}" if ok else f"Settlement email send failed: {msg}")
+
+
+def send_daily_settlement_digest(page, live: bool) -> None:
+    """Once-daily digest covering EXACTLY yesterday's (America/Denver)
+    locked picks -- decoupled from the frequent intraday settle passes,
+    which must keep running often to actually mark bets win/loss as soon
+    as real results are available, but must never each fire their own
+    email (a backlog-clearing pass can span many dates at once, which
+    would read as a confusing multi-date dump rather than a clean daily
+    report). Runs one final, targeted settle pass for yesterday's date
+    specifically first -- the "multiple checks" pass -- so this report
+    reflects the most complete, correct picture available: anything the
+    day's earlier intraday passes might have missed gets one more real
+    chance to resolve before the email goes out, and anything that STILL
+    can't be confirmed gets called out explicitly in the email itself
+    (see build_settlement_email_html's unresolved section) instead of
+    just silently vanishing from the report."""
+    yesterday = (datetime.now(ZoneInfo("America/Denver")) - timedelta(days=1)).strftime("%Y-%m-%d")
+    log(f"=== DAILY SETTLEMENT DIGEST for {yesterday} ===")
+    run_settle(page, live, only_dates=[yesterday])
+
+    rows = page.evaluate(
+        """
+        (targetDate) => getP().filter(p => p.date === targetDate)
+          .map(p => ({
+            betOn: p.betOn, sport: p.sport, outcome: p.outcome, date: p.date,
+            hA: p.hA, awA: p.awA, hScore: p.hScore, aScore: p.aScore,
+            playerResult: p.playerResult,
+          }))
+        """,
+        yesterday,
+    )
+    settled = [r for r in rows if r.get("outcome") != "pending"]
+    unresolved = [r for r in rows if r.get("outcome") == "pending"]
+    if unresolved:
+        log(f"WARNING: {len(unresolved)} bet(s) from {yesterday} still unresolved after final digest check: "
+            + ", ".join(r.get("betOn") or "?" for r in unresolved))
+    log(f"Digest for {yesterday}: {len(settled)} settled, {len(unresolved)} unresolved")
+    send_settlement_email(settled, live, forced_date=yesterday, unresolved=unresolved)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -993,7 +1064,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true", help="Actually write to Supabase. Default is dry-run (logs only).")
     ap.add_argument("--lock", action="store_true", help="Run only the auto-lock step")
-    ap.add_argument("--settle", action="store_true", help="Run only the auto-settle step")
+    ap.add_argument("--settle", action="store_true", help="Run only the auto-settle step (no email -- see --daily-digest)")
+    ap.add_argument("--daily-digest", action="store_true",
+                     help="Send the once-daily settlement email covering exactly YESTERDAY's "
+                          "(America/Denver) locked picks. Decoupled from --settle: intraday settle "
+                          "passes keep bets accurate throughout the day but never email; this is the "
+                          "one email/day, run each morning, per explicit request that settlement "
+                          "emails only ever cover the prior day's results.")
+    ap.add_argument("--alert-lock-missed", action="store_true",
+                     help="Send a same-day alert that today's lock pass never ran (neither the "
+                          "primary morning slot nor the morning catch-up window). Does not touch "
+                          "the browser/Supabase -- just an email.")
     ap.add_argument("--only-soccer", action="store_true",
                      help="Lock step only: restrict to all 6 soccer leagues (CL/PL/La Liga/"
                           "Bundesliga/Serie A/MLS) -- the resulting email splits legs into an "
@@ -1004,7 +1085,27 @@ def main() -> None:
                           "ahead of the earliest college football kickoffs (10 AM MT+).")
     ap.add_argument("--app-url", default=APP_URL, help="Override the app URL (e.g. a local server for testing).")
     args = ap.parse_args()
+
+    if args.alert_lock_missed:
+        to = OWNER_EMAIL or LOCKS_EMAIL_TO
+        if not to:
+            log("alert-lock-missed: no OWNER_EMAIL/LOCKS_EMAIL_TO configured -- cannot send")
+            return
+        today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+        body = (f"{_EMAIL_WRAP_OPEN}"
+                f'<div style="font-size:16px;color:#ff9090;font-weight:700">⚠ Lock did not run today ({today_mt})</div>'
+                f'<div style="margin-top:10px;font-size:14px;color:#ccc">Neither the primary 8:30am MT lock slot '
+                f'nor the 9am-12pm MT catch-up window produced a real lock pass today -- no new picks were '
+                f'locked, and no locks email went out. This is a same-day alert so it gets noticed today, '
+                f'not whenever someone happens to check the app.</div>'
+                f"{_EMAIL_WRAP_CLOSE}")
+        ok, msg = _send_gmail(f"Clairvoyance — Lock FAILED to run {today_mt}", to, body)
+        log(f"Lock-missed alert sent to {to}" if ok else f"Lock-missed alert failed: {msg}")
+        return
+
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
+    if args.daily_digest:
+        do_lock = do_settle = False
     if args.only_soccer and args.only_cfb:
         raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
     only_sports = PRODUCT_SPORTS["soccer"] if args.only_soccer else frozenset({"CFB"}) if args.only_cfb else None
@@ -1050,9 +1151,13 @@ def main() -> None:
         log(f"Loaded {bet_count} real bets from Supabase into headless session")
 
         if do_settle:
+            # No email here by design -- intraday settle passes exist to
+            # keep bets accurate as soon as real results are available,
+            # not to report to anyone. See --daily-digest for the actual
+            # once-daily "yesterday's results" email, run separately each
+            # morning per explicit request.
             try:
                 settled = run_settle(page, args.live)
-                send_settlement_email(settled, args.live)
                 if args.live:
                     write_automation_status("lastSettle", True, f"{len(settled)} bet(s) settled")
             except Exception as exc:
@@ -1072,6 +1177,12 @@ def main() -> None:
                 log(f"lock step failed: {exc}")
                 if args.live:
                     write_automation_status("lastLock", False, f"error: {exc}")
+                raise
+        if args.daily_digest:
+            try:
+                send_daily_settlement_digest(page, args.live)
+            except Exception as exc:
+                log(f"daily digest failed: {exc}")
                 raise
 
         browser.close()

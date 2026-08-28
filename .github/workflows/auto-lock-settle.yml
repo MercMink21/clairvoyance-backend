@@ -21,6 +21,11 @@ name: Auto Lock + Settle
 
 on:
   schedule:
+    # Daily settlement digest: yesterday's results ONLY, once/day, ahead
+    # of lock -- per explicit request (picks locked 7/28 get their results
+    # emailed the morning of 7/29, not mixed into a same-day or multi-date
+    # dump). 8:15 MT = 14:15 UTC, 15 min ahead of lock below.
+    - cron: '15 14 * * *'
     # Lock: once daily, so subscriber emails land ~8:30am MT, after that
     # day's schedules/odds are loaded and before early games start.
     # 8:30 MT = 14:30 UTC (MDT), clear of statmuse-daily.yml's 14:00 UTC
@@ -33,7 +38,14 @@ on:
     # Settle: 4x daily -- 10am/3pm/6pm/11pm MT -- offset :20 past the hour,
     # staggered off scheduled-refresh.yml's own cron times (0 15/21/5) to
     # avoid the same runner-contention pattern that caused the queue-
-    # starvation failures fixed earlier this session.
+    # starvation failures fixed earlier this session. These keep bets
+    # accurate throughout the day but never email -- see the 14:15 UTC
+    # digest above for the one daily email. Only the 16:20 UTC (10:20am
+    # MT) slot falls inside the lock catch-up window below (9am-12pm MT,
+    # strictly bounded so a catch-up lock can never land in the afternoon
+    # or evening per explicit request) -- the later three settle-only
+    # slots never attempt a lock catch-up, only a same-day failure alert
+    # if lock still hasn't run by then.
     - cron: '20 16 * * *'
     - cron: '20 21 * * *'
     - cron: '20 0 * * *'
@@ -49,7 +61,7 @@ on:
         description: 'Which step(s) to run'
         required: false
         type: choice
-        options: ['both', 'lock', 'settle']
+        options: ['both', 'lock', 'settle', 'daily-digest']
         default: 'both'
 
 permissions:
@@ -84,11 +96,15 @@ jobs:
           # 2026-08-30).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ inputs.mode }}" in
-              lock)   echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
-              settle) echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
-              *)      echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
+              lock)          echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
+              settle)        echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
+              daily-digest)  echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT" ;;
+              *)             echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
             esac
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "15 14 * * *" ]; then
+            echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT"
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "30 14 * * *" ]; then
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
@@ -107,14 +123,26 @@ jobs:
             # that does fire can catch a missed lock, instead of every
             # future trigger depending on that one exact cron string
             # firing again.
+            #
+            # Catch-up window strictly bounded to 9am-12pm MT -- per
+            # explicit request, lock must only ever land in the morning,
+            # never afternoon/evening. Past noon with no lock yet today,
+            # this fires (deduped) a same-day failure alert instead of
+            # attempting a late lock that would violate that.
             TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
             HOUR_MT=$(TZ=America/Denver date +%H)
             LAST_LOCK_DATE=$(cat data/last_lock_date.txt 2>/dev/null || echo "")
-            if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 9 ]; then
+            if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 9 ] && [ "$HOUR_MT" -lt 12 ]; then
               echo "step_flags=" >> "$GITHUB_OUTPUT"
               echo "catchup=1" >> "$GITHUB_OUTPUT"
             else
               echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
+              if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 12 ]; then
+                LAST_ALERT_DATE=$(cat data/last_lock_alert_date.txt 2>/dev/null || echo "")
+                if [ "$LAST_ALERT_DATE" != "$TODAY_MT" ]; then
+                  echo "lock_missed_alert=1" >> "$GITHUB_OUTPUT"
+                fi
+              fi
             fi
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           fi
@@ -139,16 +167,37 @@ jobs:
       - name: Record successful lock date
         # Only after a run that actually included a LIVE lock pass (the
         # dedicated 14:30 UTC slot, workflow_dispatch with lock/both, or
-        # today's catch-up above) -- a dry-run or settle-only run must
-        # never mark today as locked, or a later real catch-up would
-        # wrongly skip itself.
-        if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' }}
+        # today's catch-up above) -- a dry-run, settle-only, or digest-only
+        # run must never mark today as locked, or a later real catch-up
+        # would wrongly skip itself.
+        if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' && steps.flags.outputs.step_flags != '--daily-digest' }}
         run: |
           TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
           echo "$TODAY_MT" > data/last_lock_date.txt
           git add data/last_lock_date.txt
           if ! git diff --cached --quiet; then
             git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record lock for $TODAY_MT"
+            git pull --rebase origin main
+            git push origin main
+          fi
+
+      - name: Send lock-missed alert
+        # Fires once per calendar day (deduped via data/last_lock_alert_date.txt)
+        # the first time a settle-only run notices it's past noon MT with no
+        # real lock yet today -- a same-day heads-up instead of relying on
+        # someone noticing the header's LAST LOCK indicator on their own.
+        if: ${{ steps.flags.outputs.lock_missed_alert == '1' }}
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/auto_lock_settle.py --alert-lock-missed
+          TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+          echo "$TODAY_MT" > data/last_lock_alert_date.txt
+          git add data/last_lock_alert_date.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record lock-missed alert for $TODAY_MT"
             git pull --rebase origin main
             git push origin main
           fi
