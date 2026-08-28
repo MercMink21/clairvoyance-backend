@@ -21,32 +21,39 @@ name: Auto Lock + Settle
 
 on:
   schedule:
-    # Daily settlement digest: yesterday's results ONLY, once/day, ahead
-    # of lock -- per explicit request (picks locked 7/28 get their results
-    # emailed the morning of 7/29, not mixed into a same-day or multi-date
-    # dump). 8:15 MT = 14:15 UTC, 15 min ahead of lock below.
+    # Main lock: 3 dedicated attempts, shifted earlier to 7:00/7:15/7:35am
+    # MT -- per explicit request, multiple lock runs each morning, each
+    # one independently verifying picks locked correctly (see
+    # verify_todays_locks in auto_lock_settle.py). Locking itself is
+    # idempotent (lockPick() dedupes), so all 3 running is safe; per
+    # explicit request the subscriber email now waits until the LAST of
+    # the 3 (7:35am MT) -- passed --final-lock-check below -- rather than
+    # firing after just the first success, so it reflects everything all
+    # 3 attempts together managed to lock. The first two are silent
+    # unless something's actually wrong, in which case they're what
+    # catches and fixes it before the email goes out, not after. 7:00 MT
+    # = 13:00 UTC, clear of statmuse-daily.yml's 14:00 UTC cron (also
+    # Playwright-heavy -- landing on the exact same minute risks the
+    # runner queue-starvation pattern documented in social-cards-
+    # daily.yml); the other two are spaced to avoid landing on each other
+    # too. Like every other MT time in this file, these are fixed UTC
+    # crons -- GitHub Actions doesn't shift for DST, so real landing
+    # times drift ~1hr earlier MT once MST returns in November.
+    - cron: '0 13 * * *'
+    - cron: '15 13 * * *'
+    - cron: '35 13 * * *'
+    # Daily settlement digest: yesterday's results ONLY, once/day, after
+    # the 3 lock checks above -- per explicit request (picks locked 7/28
+    # get their results emailed the morning of 7/29, not mixed into a
+    # same-day or multi-date dump). 8:15 MT = 14:15 UTC.
     - cron: '15 14 * * *'
-    # Lock: 3 dedicated attempts across the morning (8:30/8:45/9:05am MT),
-    # not just one -- per explicit request, multiple lock runs each
-    # morning, each one independently verifying picks locked correctly
-    # (see verify_todays_locks in auto_lock_settle.py). Locking itself is
-    # idempotent (lockPick() dedupes), so redundant attempts are safe;
-    # only the FIRST successful one each day actually emails subscribers
-    # (data/last_lock_email_date.txt gates that in the script itself) --
-    # the other two are silent unless something's actually wrong, in
-    # which case they're the ones that catch and fix it same-morning
-    # instead of the day just going without a lock. 8:30 MT = 14:30 UTC
-    # is clear of statmuse-daily.yml's 14:00 UTC cron (also Playwright-
-    # heavy -- landing on the exact same minute risks the runner queue-
-    # starvation pattern documented in social-cards-daily.yml); the other
-    # two are spaced to avoid landing on each other too. Like every other
-    # MT time in this file, these are fixed UTC crons -- GitHub Actions
-    # doesn't shift for DST, so real landing times drift ~1hr earlier MT
-    # once MST returns in November.
-    - cron: '30 14 * * *'
-    - cron: '45 14 * * *'
-    - cron: '5 15 * * *'
-    # Settle: 4x daily -- 10am/3pm/6pm/11pm MT -- offset :20 past the hour,
+    # Settle: 7x daily -- 2 daytime (10am/3pm MT) plus 5 evening/
+    # overnight (6:20pm/8:20pm/11:20pm/1:20am/4:20am MT) -- per explicit
+    # request, extra evening/night coverage specifically so late-
+    # finishing games (West Coast night games routinely end past
+    # midnight MT) are as likely as possible to already be settled by
+    # the time the NEXT morning's 8:15am digest runs, rather than
+    # showing up as unresolved in that email. Offset :20 past the hour,
     # staggered off scheduled-refresh.yml's own cron times (0 15/21/5) to
     # avoid the same runner-contention pattern that caused the queue-
     # starvation failures fixed earlier this session. These keep bets
@@ -54,13 +61,16 @@ on:
     # digest above for the one daily email. Only the 16:20 UTC (10:20am
     # MT) slot falls inside the lock catch-up window below (9am-12pm MT,
     # strictly bounded so a catch-up lock can never land in the afternoon
-    # or evening per explicit request) -- the later three settle-only
-    # slots never attempt a lock catch-up, only a same-day failure alert
-    # if lock still hasn't run by then.
+    # or evening per explicit request) -- the other settle-only slots
+    # never attempt a lock catch-up, only a same-day failure alert if
+    # lock still hasn't run by then.
     - cron: '20 16 * * *'
     - cron: '20 21 * * *'
     - cron: '20 0 * * *'
+    - cron: '20 2 * * *'
     - cron: '20 5 * * *'
+    - cron: '20 7 * * *'
+    - cron: '20 10 * * *'
   workflow_dispatch:
     inputs:
       live:
@@ -116,8 +126,16 @@ jobs:
           elif [ "${{ github.event.schedule }}" = "15 14 * * *" ]; then
             echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "30 14 * * *" ] || [ "${{ github.event.schedule }}" = "45 14 * * *" ] || [ "${{ github.event.schedule }}" = "5 15 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 13 * * *" ] || [ "${{ github.event.schedule }}" = "15 13 * * *" ]; then
+            # First two of the 3 main lock checks -- lock + verify, no
+            # email yet (see --final-lock-check on the 3rd below).
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "35 13 * * *" ]; then
+            # 3rd and final main lock check -- this is the one that
+            # actually emails subscribers, after the first two already
+            # had their chance to lock anything qualifying.
+            echo "step_flags=--lock --final-lock-check" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           else
             # Real bug, found and fixed: this used to be a flat "anything
@@ -144,7 +162,15 @@ jobs:
             HOUR_MT=$(TZ=America/Denver date +%H)
             LAST_LOCK_DATE=$(cat data/last_lock_date.txt 2>/dev/null || echo "")
             if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 9 ] && [ "$HOUR_MT" -lt 12 ]; then
-              echo "step_flags=" >> "$GITHUB_OUTPUT"
+              # --final-lock-check here too -- this catch-up run is, by
+              # definition, the last realistic chance to get subscribers
+              # their picks that day (it only fires after all 3 scheduled
+              # morning checks' windows have already passed). Without this
+              # the main lock path would lock+verify but never email,
+              # since it otherwise only emails on an explicit final check.
+              # --settle kept alongside it, matching the original (pre-
+              # this-change) catch-up behavior of also running settle.
+              echo "step_flags=--lock --settle --final-lock-check" >> "$GITHUB_OUTPUT"
               echo "catchup=1" >> "$GITHUB_OUTPUT"
             else
               echo "step_flags=--settle" >> "$GITHUB_OUTPUT"
@@ -171,7 +197,7 @@ jobs:
           SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
         run: |
           if [ -n "${{ steps.flags.outputs.catchup }}" ]; then
-            echo "::notice::Today's dedicated 8:30am MT lock slot never fired -- running a catch-up lock+settle pass."
+            echo "::notice::None of today's 3 dedicated 7:00-7:35am MT lock checks fired -- running a catch-up lock+settle pass (this one emails, since it's the last realistic chance today)."
           fi
           python3 scripts/auto_lock_settle.py ${{ steps.flags.outputs.step_flags }} ${{ steps.flags.outputs.live_flag }}
 

@@ -1127,6 +1127,14 @@ def main() -> None:
                      help="Send a same-day alert that today's lock pass never ran (neither the "
                           "primary morning slot nor the morning catch-up window). Does not touch "
                           "the browser/Supabase -- just an email.")
+    ap.add_argument("--final-lock-check", action="store_true",
+                     help="Main (all-sports) lock only: this IS the last of the day's scheduled "
+                          "lock attempts -- send the subscriber locks email now, after the earlier "
+                          "attempts already had a chance to lock anything qualifying. Earlier "
+                          "attempts should omit this flag: they still lock + verify (idempotent, "
+                          "safe to repeat), just don't email yet. Ignored for the early single-"
+                          "product (soccer/CFB) passes, which always email immediately -- each is "
+                          "its own dedicated once-daily run, not part of this multi-check flow.")
     ap.add_argument("--only-soccer", action="store_true",
                      help="Lock step only: restrict to all 6 soccer leagues (CL/PL/La Liga/"
                           "Bundesliga/Serie A/MLS) -- the resulting email splits legs into an "
@@ -1146,10 +1154,10 @@ def main() -> None:
         today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
         body = (f"{_EMAIL_WRAP_OPEN}"
                 f'<div style="font-size:16px;color:#ff9090;font-weight:700">⚠ Lock did not run today ({today_mt})</div>'
-                f'<div style="margin-top:10px;font-size:14px;color:#ccc">Neither the primary 8:30am MT lock slot '
-                f'nor the 9am-12pm MT catch-up window produced a real lock pass today -- no new picks were '
-                f'locked, and no locks email went out. This is a same-day alert so it gets noticed today, '
-                f'not whenever someone happens to check the app.</div>'
+                f'<div style="margin-top:10px;font-size:14px;color:#ccc">None of the 3 dedicated 7:00-7:35am MT '
+                f'lock checks, nor the 9am-12pm MT catch-up window, produced a real lock pass today -- no new '
+                f'picks were locked, and no locks email went out. This is a same-day alert so it gets noticed '
+                f'today, not whenever someone happens to check the app.</div>'
                 f"{_EMAIL_WRAP_CLOSE}")
         ok, msg = _send_gmail(f"Clairvoyance — Lock FAILED to run {today_mt}", to, body)
         log(f"Lock-missed alert sent to {to}" if ok else f"Lock-missed alert failed: {msg}")
@@ -1218,48 +1226,70 @@ def main() -> None:
                     write_automation_status("lastSettle", False, f"error: {exc}")
                 raise
         if do_lock:
-            # Per explicit request: multiple lock attempts across the
-            # morning, each one a real test that picks locked correctly --
-            # not just "did the function throw". Locking itself
-            # (_lock_qualifying_legs/lockPick) is already idempotent, so
-            # every attempt safely re-locks anything a dropped/failed
-            # earlier attempt missed. What must NOT repeat is the
-            # subscriber-facing email -- last_lock_email_date.txt gates
-            # that to once/day regardless of how many attempts actually
-            # run; every attempt still locks and verifies.
-            email_marker_path = ROOT / "data" / "last_lock_email_date.txt"
             today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
-            already_emailed_today = False
-            if args.live:
+            if only_sports is None:
+                # Main (all-sports) lock: per explicit request, 3 scheduled
+                # attempts each morning, each a real test that picks locked
+                # correctly (not just "did the function throw") -- but the
+                # subscriber email only goes out ONCE, after the LAST of
+                # the 3 checks, so it reflects everything all 3 attempts
+                # together managed to lock rather than racing to report
+                # after just the first. Locking itself
+                # (_lock_qualifying_legs/lockPick) is already idempotent,
+                # so every attempt safely re-locks anything a dropped/
+                # failed earlier attempt missed regardless of whether it
+                # emails. --final-lock-check (passed only by the
+                # workflow's last scheduled attempt) controls the email;
+                # last_lock_email_date.txt is kept only as a backup dedup
+                # in case that flag is ever passed more than once in a day.
+                email_marker_path = ROOT / "data" / "last_lock_email_date.txt"
+                already_emailed_today = False
+                if args.live:
+                    try:
+                        already_emailed_today = email_marker_path.read_text().strip() == today_mt
+                    except Exception:
+                        already_emailed_today = False
+                want_email = args.final_lock_check and not already_emailed_today
                 try:
-                    already_emailed_today = email_marker_path.read_text().strip() == today_mt
-                except Exception:
-                    already_emailed_today = False
-            try:
-                if only_sports is None:
-                    run_lock_segmented(page, args.live, send_email=not already_emailed_today)
-                else:
+                    run_lock_segmented(page, args.live, send_email=want_email)
+                    # The actual verification test: a fresh, independent
+                    # Supabase re-pull confirming today's picks are really
+                    # persisted, not just that lockPick() didn't throw.
+                    verified_count = verify_todays_locks(page) if args.live else None
+                    if args.live:
+                        detail = f"lock pass completed, {verified_count} pick(s) verified for {today_mt}"
+                        write_automation_status("lastLock", True, detail)
+                        if want_email:
+                            try:
+                                email_marker_path.write_text(today_mt)
+                                _commit_and_push(["data/last_lock_email_date.txt"],
+                                                  f"chore: record lock email sent for {today_mt}")
+                            except Exception as exc:
+                                log(f"failed to record lock-email marker: {exc}")
+                except Exception as exc:
+                    log(f"lock step failed: {exc}")
+                    if args.live:
+                        write_automation_status("lastLock", False, f"error: {exc}")
+                    raise
+            else:
+                # Early single-product pass (soccer 6am / CFB 9am) -- its
+                # own dedicated once-daily run at a time chosen for that
+                # sport's earliest kickoffs, not part of the main flow's
+                # "wait for the final check" pattern -- always emails
+                # immediately, same as before.
+                try:
                     run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to,
-                             send_email=not already_emailed_today)
-                # The actual verification test: a fresh, independent
-                # Supabase re-pull confirming today's picks are really
-                # persisted, not just that lockPick() didn't throw.
-                verified_count = verify_todays_locks(page) if args.live else None
-                if args.live:
-                    detail = f"lock pass completed, {verified_count} pick(s) verified for {today_mt}"
-                    write_automation_status("lastLock", True, detail)
-                    if not already_emailed_today:
-                        try:
-                            email_marker_path.write_text(today_mt)
-                            _commit_and_push(["data/last_lock_email_date.txt"],
-                                              f"chore: record lock email sent for {today_mt}")
-                        except Exception as exc:
-                            log(f"failed to record lock-email marker: {exc}")
-            except Exception as exc:
-                log(f"lock step failed: {exc}")
-                if args.live:
-                    write_automation_status("lastLock", False, f"error: {exc}")
-                raise
+                             send_email=True)
+                    verified_count = verify_todays_locks(page) if args.live else None
+                    if args.live:
+                        write_automation_status(
+                            "lastLock", True,
+                            f"{label} lock pass completed, {verified_count} pick(s) verified for {today_mt}")
+                except Exception as exc:
+                    log(f"{label} lock step failed: {exc}")
+                    if args.live:
+                        write_automation_status("lastLock", False, f"{label} error: {exc}")
+                    raise
         if args.daily_digest:
             try:
                 send_daily_settlement_digest(page, args.live)
