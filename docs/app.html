@@ -549,7 +549,9 @@ body{line-height:1.5}
       <div id="hdr-clock-et" style="font-family:var(--mono);font-size:18px;color:rgba(240,0,255,.65);letter-spacing:.5px;white-space:nowrap"></div>
     </div>
   </div>
-  <div class="hdr-r" style="display:flex;align-items:center;justify-content:flex-end"></div>
+  <div class="hdr-r" style="display:flex;align-items:center;justify-content:flex-end">
+    <div id="hdr-automation-status" style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-family:var(--mono);font-size:11px;letter-spacing:.3px;line-height:1.3"></div>
+  </div>
 </header>
 <nav id="sbar">
   <button class="sp act" onclick="SS('home');showND(this,'home')" onmouseenter="showND(this,'home')" onmouseleave="startHideND()">HOME</button>
@@ -14901,6 +14903,46 @@ function renderHomePage(){
   }
   tickClock();
   setInterval(tickClock,1000);
+})();
+// ── Header LAST LOCK / LAST SETTLE automation-health indicators ────────────
+// Reads docs/automation_status.json, written by scripts/auto_lock_settle.py
+// after every real --live lock/settle run (same-origin, no CORS concerns).
+// Built directly in response to a real incident: a scheduled lock trigger
+// silently never fired one day and nothing on the page gave any hint
+// anything was wrong. Flags STALENESS (the last known success is now too
+// old to still be trustworthy) in addition to an outright recorded
+// failure -- a dropped trigger never produces a "failed" run to report,
+// just an increasingly stale "last success", so staleness alone has to be
+// enough to warn.
+(function(){
+  const STALE_HOURS={lastLock:26,lastSettle:8};
+  const LABEL={lastLock:'LAST LOCK',lastSettle:'LAST SETTLE'};
+  function _escHdr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  async function renderAutomationStatus(){
+    const el=document.getElementById('hdr-automation-status');
+    if(!el)return;
+    let status=null;
+    try{
+      const r=await fetch('automation_status.json?_v='+Date.now());
+      if(r.ok)status=await r.json();
+    }catch(e){}
+    if(!status){el.innerHTML='';return;}
+    const rows=['lastLock','lastSettle'].map(kind=>{
+      const s=status[kind];
+      const label=LABEL[kind];
+      if(!s)return `<div style="color:#666">${label}: NO DATA</div>`;
+      const ageHrs=(Date.now()-new Date(s.tsUTC).getTime())/3600000;
+      const stale=ageHrs>STALE_HOURS[kind];
+      const failed=s.ok===false;
+      const color=failed?'#ff1a1a':stale?'#ff9000':'#00e644';
+      const icon=failed?'✗':stale?'⚠':'✓';
+      const staleNote=(stale&&!failed)?` (${ageHrs<48?Math.round(ageHrs)+'h ago':Math.round(ageHrs/24)+'d ago'})`:'';
+      return `<div title="${_escHdr(s.detail||'')}" style="color:${color}">${icon} ${label}: ${_escHdr(s.tsMT||'?')}${staleNote}</div>`;
+    });
+    el.innerHTML=rows.join('');
+  }
+  renderAutomationStatus();
+  setInterval(renderAutomationStatus,120000);
 })();
 // ── Home live games renderer (called from renderHomePage + loadLiveData) ───────
 function renderHomeLiveGames(){

@@ -46,10 +46,13 @@ writes nothing anywhere). Pass --live to actually write to Supabase.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -66,6 +69,7 @@ from _subscribers import recipients_for, OWNER_EMAIL, EMAIL_BANNER_URL  # noqa: 
 # today" early return -- structurally impossible to add a new return
 # path that skips it.
 
+ROOT = Path(__file__).resolve().parent.parent
 APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
 # Separate from SOCIAL_CARD_EMAIL_TO on purpose -- this is a personal daily
 # betting reference, not public social content, so it can (and probably
@@ -129,6 +133,48 @@ TIER_LABEL = {0: "SKIP", 1: "LEAN", 2: "OPTIMAL", 3: "PREMIUM"}
 def log(msg: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}", flush=True)
+
+
+def write_automation_status(kind: str, ok: bool, detail: str) -> None:
+    """kind: 'lastLock' or 'lastSettle'. Drives the header's LAST LOCK/LAST
+    SETTLE indicators (docs/app.html reads this same file, same-origin, no
+    CORS concerns). Written only for real --live runs -- a dry-run
+    represents nothing that actually happened, so surfacing one here would
+    misrepresent real automation health to anyone reading the indicator.
+    Built directly in response to today's real incident: a scheduled lock
+    trigger silently never fired and nothing on the page gave any hint
+    anything was wrong -- this makes that failure mode visible without
+    needing to go dig through GitHub Actions run history to notice it."""
+    path = ROOT / "docs" / "automation_status.json"
+    try:
+        status = json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        status = {}
+    now_utc = datetime.now(timezone.utc)
+    now_mt = now_utc.astimezone(ZoneInfo("America/Denver"))
+    status[kind] = {
+        "tsUTC": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tsMT": now_mt.strftime("%Y-%m-%d %I:%M %p MT"),
+        "ok": ok,
+        "detail": detail,
+    }
+    try:
+        path.write_text(json.dumps(status, indent=2))
+        subprocess.run(["git", "-C", str(ROOT), "add", "docs/automation_status.json"], capture_output=True)
+        diff = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--quiet"], capture_output=True)
+        if diff.returncode != 0:
+            subprocess.run(["git", "-C", str(ROOT), "commit", "-m", f"chore: {kind} status ({'ok' if ok else 'FAILED'})"],
+                            capture_output=True)
+            push_res = subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True, text=True)
+            if push_res.returncode != 0:
+                subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", "main"], capture_output=True)
+                if subprocess.run(["git", "-C", str(ROOT), "rebase", "origin/main"], capture_output=True).returncode == 0:
+                    subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True)
+                else:
+                    subprocess.run(["git", "-C", str(ROOT), "rebase", "--abort"], capture_output=True)
+                    log(f"write_automation_status: push failed and rebase also failed: {push_res.stderr}")
+    except Exception as exc:
+        log(f"write_automation_status failed: {exc}")
 
 
 # Real bug, found and fixed: every autoSettle*() function fetches its own
@@ -1004,13 +1050,29 @@ def main() -> None:
         log(f"Loaded {bet_count} real bets from Supabase into headless session")
 
         if do_settle:
-            settled = run_settle(page, args.live)
-            send_settlement_email(settled, args.live)
+            try:
+                settled = run_settle(page, args.live)
+                send_settlement_email(settled, args.live)
+                if args.live:
+                    write_automation_status("lastSettle", True, f"{len(settled)} bet(s) settled")
+            except Exception as exc:
+                log(f"settle step failed: {exc}")
+                if args.live:
+                    write_automation_status("lastSettle", False, f"error: {exc}")
+                raise
         if do_lock:
-            if only_sports is None:
-                run_lock_segmented(page, args.live)
-            else:
-                run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to)
+            try:
+                if only_sports is None:
+                    run_lock_segmented(page, args.live)
+                else:
+                    run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to)
+                if args.live:
+                    write_automation_status("lastLock", True, "lock pass completed")
+            except Exception as exc:
+                log(f"lock step failed: {exc}")
+                if args.live:
+                    write_automation_status("lastLock", False, f"error: {exc}")
+                raise
 
         browser.close()
 
