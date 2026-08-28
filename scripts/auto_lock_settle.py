@@ -188,6 +188,75 @@ def write_automation_status(kind: str, ok: bool, detail: str) -> None:
         log(f"write_automation_status failed: {exc}")
 
 
+def run_adaptive_recalibration(page, live: bool) -> None:
+    """Runs the real adaptiveTick() calibration against the full real
+    settled-bet history and persists the resulting ensemble weights to
+    docs/adaptive_weights.json (git-committed). Durable fix for a real
+    gap: adaptiveTick() only ever wrote its learned weights to THIS
+    browser's own localStorage -- meaningless for the automated lock
+    pipeline, which runs a fresh headless session (no persisted
+    localStorage) on every single invocation, so none of that learning
+    ever reached the picks actually locked and sold. docs/app.html's own
+    boot sequence now fetches this same file before falling back to the
+    hardcoded literal defaults, so every fresh session -- including the
+    automated one -- starts from real learned state, nudged further each
+    time this recalibration re-runs against the latest settled results."""
+    log("=== ADAPTIVE RECALIBRATION ===")
+    result = page.evaluate(
+        """
+        () => {
+          if (typeof adaptiveTick !== 'function') return null;
+          const state = adaptiveTick();
+          return {
+            state,
+            // Raw ensemble objects, not state.weights' flattened sub-objects --
+            // NHL_ENS carries an extra `hv` field state.weights.NHL doesn't
+            // capture, and overwriting NHL_ENS with an incomplete object at
+            // boot would silently drop it.
+            raw: {ens: ENS, nhl_ens: NHL_ENS, nba_ens: NBA_ENS, wnba_ens: WNBA_ENS, ten_ens: TEN_ENS},
+          };
+        }
+        """
+    )
+    if not result:
+        log("adaptiveTick() unavailable on this page -- skipping")
+        return
+    state = result.get("state") or {}
+    raw = result.get("raw") or {}
+    if state.get("status") == "INSUFFICIENT_DATA":
+        log(f"Skipping: {state.get('msg')}")
+        return
+
+    log(f"Recalibrated on {state.get('betsAnalyzed')} settled bets (of {state.get('totalBets')} total) -- "
+        f"overall {state.get('overallAcc', 0)*100:.1f}%, recent-10 {state.get('recentAcc', 0)*100:.1f}%")
+    for sport, perf in sorted((state.get("sportPerf") or {}).items()):
+        log(f"  {sport}: {perf.get('acc', 0)*100:.1f}% ({perf.get('wins')}W-{perf.get('losses')}L)")
+    for rec in state.get("recommendations") or []:
+        log(f"  [{rec.get('priority')}] {rec.get('action')}: {rec.get('detail')}")
+
+    if not live:
+        log("[DRY RUN] Would write docs/adaptive_weights.json (pass --live to write)")
+        return
+
+    snapshot = {
+        "ens": raw.get("ens"),
+        "nhl_ens": raw.get("nhl_ens"),
+        "nba_ens": raw.get("nba_ens"),
+        "wnba_ens": raw.get("wnba_ens"),
+        "ten_ens": raw.get("ten_ens"),
+        "evt": state.get("evThreshold"),
+        "betsAnalyzed": state.get("betsAnalyzed"),
+        "overallAcc": state.get("overallAcc"),
+        "generatedUTC": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    path = ROOT / "docs" / "adaptive_weights.json"
+    try:
+        path.write_text(json.dumps(snapshot, indent=2))
+        _commit_and_push(["docs/adaptive_weights.json"], "chore: adaptive recalibration")
+    except Exception as exc:
+        log(f"run_adaptive_recalibration failed to write/push: {exc}")
+
+
 # Real bug, found and fixed: every autoSettle*() function fetches its own
 # scores directly from the browser via fetch() -- but site.api.espn.com and
 # api-web.nhle.com both reject requests from this exact headless Chromium
@@ -1150,6 +1219,11 @@ def main() -> None:
                      help="Send a same-day alert that today's lock pass never ran (neither the "
                           "primary morning slot nor the morning catch-up window). Does not touch "
                           "the browser/Supabase -- just an email.")
+    ap.add_argument("--adaptive-recalibration", action="store_true",
+                     help="Run adaptiveTick() against the full real settled-bet history and commit "
+                          "the resulting ensemble weights to docs/adaptive_weights.json, so the "
+                          "learning actually reaches the automated lock pipeline (not just a real "
+                          "user's own browser localStorage). See run_adaptive_recalibration.")
     ap.add_argument("--final-lock-check", action="store_true",
                      help="Main (all-sports) lock only: this IS the last of the day's scheduled "
                           "lock attempts -- send the subscriber locks email now, after the earlier "
@@ -1187,7 +1261,7 @@ def main() -> None:
         return
 
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
-    if args.daily_digest:
+    if args.daily_digest or args.adaptive_recalibration:
         do_lock = do_settle = False
     if args.only_soccer and args.only_cfb:
         raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
@@ -1318,6 +1392,12 @@ def main() -> None:
                 send_daily_settlement_digest(page, args.live)
             except Exception as exc:
                 log(f"daily digest failed: {exc}")
+                raise
+        if args.adaptive_recalibration:
+            try:
+                run_adaptive_recalibration(page, args.live)
+            except Exception as exc:
+                log(f"adaptive recalibration failed: {exc}")
                 raise
 
         browser.close()

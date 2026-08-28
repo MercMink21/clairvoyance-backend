@@ -19513,7 +19513,11 @@ function adaptiveTick(){
   const calErrors={};
   for(const[bk,d]of Object.entries(bkts)){
     if(!d.n)continue;
-    calErrors[bk]={predicted:d.sp/d.n,actual:d.w/d.n,n:d.n,error:(d.sp/d.n)-(d.w/d.n)};
+    // Real bug, found and fixed: lo/hi were never carried over from the
+    // bucket definition, so the recommendation text further down (which
+    // reads calErrors[bk].lo/.hi, not bkts[bk].lo/.hi) always rendered
+    // "NaN–NaN% range" -- confirmed live via a real recalibration run.
+    calErrors[bk]={predicted:d.sp/d.n,actual:d.w/d.n,n:d.n,error:(d.sp/d.n)-(d.w/d.n),lo:d.lo,hi:d.hi};
   }
 
   // Bet type performance
@@ -23117,9 +23121,37 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
       };
     }
   }catch(e){}
+  // Real gap, found and fixed: adaptiveTick()'s learned ensemble weights
+  // used to ONLY ever persist to this browser's own localStorage --
+  // meaningless for the automated lock pipeline, which runs a fresh
+  // headless session (no localStorage) every single time. This file is
+  // the durable fix: a periodic server-side recalibration (see
+  // run_adaptive_recalibration in auto_lock_settle.py) commits the
+  // latest learned weights here, so EVERY fresh session -- including the
+  // automated one that actually decides what gets locked -- starts from
+  // real learned state instead of the hardcoded defaults below. A real
+  // interactive session's own localStorage (restored right after this)
+  // still layers further adjustments on top for that session, unchanged
+  // from before.
+  try{
+    const _aw=await fetch('adaptive_weights.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null);
+    if(_aw){
+      if(_aw.ens)ENS=_aw.ens;
+      if(_aw.nhl_ens)NHL_ENS=_aw.nhl_ens;
+      if(_aw.nba_ens)NBA_ENS=_aw.nba_ens;
+      if(_aw.wnba_ens)WNBA_ENS=_aw.wnba_ens;
+      if(_aw.ten_ens)TEN_ENS=_aw.ten_ens;
+      if(_aw.evt!=null)S.s('evt',_aw.evt);
+    }
+  }catch(e){}
   try{const se=S.g('ens');if(se)ENS=se;}catch{}
   try{const ne=S.g('nhl_ens');if(ne)NHL_ENS=ne;}catch{}
   try{const be=S.g('nba_ens');if(be)NBA_ENS=be;}catch{}
+  // Real bug, found and fixed alongside the above: adaptiveTick() already
+  // wrote WNBA_ENS to localStorage on every run, but nothing ever read it
+  // back at boot -- WNBA's own adaptive learning has never actually
+  // persisted across sessions, even before this file-based fix existed.
+  try{const we=S.g('wnba_ens');if(we)WNBA_ENS=we;}catch{}
   try{const te=S.g('ten_ens');if(te)TEN_ENS=te;}catch{}
   try{resetTodayIncorrectSettlements();}catch(e){console.error('resetSettlements',e);}
   try{buildMLB();}catch(e){console.error('buildMLB',e);}

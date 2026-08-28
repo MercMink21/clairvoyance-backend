@@ -47,6 +47,15 @@ on:
     # get their results emailed the morning of 7/29, not mixed into a
     # same-day or multi-date dump). 8:15 MT = 14:15 UTC.
     - cron: '15 14 * * *'
+    # Daily adaptive recalibration: 8:20 MT = 14:20 UTC, right after the
+    # digest above so it reflects yesterday's now-fully-settled results.
+    # Runs after TODAY's own 3 lock checks (7:00-7:35am MT) have already
+    # happened, by design -- this commits the freshly-learned weights for
+    # TOMORROW's lock to pick up, not a same-day effect. See
+    # run_adaptive_recalibration/docs/adaptive_weights.json: the durable
+    # fix for adaptiveTick() previously only ever writing to browser
+    # localStorage, invisible to the automated headless lock pipeline.
+    - cron: '20 14 * * *'
     # Settle: 7x daily -- 2 daytime (10am/3pm MT) plus 5 evening/
     # overnight (6:20pm/8:20pm/11:20pm/1:20am/4:20am MT) -- per explicit
     # request, extra evening/night coverage specifically so late-
@@ -82,7 +91,7 @@ on:
         description: 'Which step(s) to run'
         required: false
         type: choice
-        options: ['both', 'lock', 'settle', 'daily-digest']
+        options: ['both', 'lock', 'settle', 'daily-digest', 'adaptive-recalibration']
         default: 'both'
 
 permissions:
@@ -117,14 +126,18 @@ jobs:
           # 2026-08-30).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ inputs.mode }}" in
-              lock)          echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
-              settle)        echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
-              daily-digest)  echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT" ;;
-              *)             echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
+              lock)                    echo "step_flags=--lock" >> "$GITHUB_OUTPUT" ;;
+              settle)                  echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
+              daily-digest)            echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT" ;;
+              adaptive-recalibration)  echo "step_flags=--adaptive-recalibration" >> "$GITHUB_OUTPUT" ;;
+              *)                       echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
             esac
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "15 14 * * *" ]; then
             echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT"
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "20 14 * * *" ]; then
+            echo "step_flags=--adaptive-recalibration" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "0 13 * * *" ] || [ "${{ github.event.schedule }}" = "15 13 * * *" ]; then
             # First two of the 3 main lock checks -- lock + verify, no
@@ -207,7 +220,7 @@ jobs:
         # today's catch-up above) -- a dry-run, settle-only, or digest-only
         # run must never mark today as locked, or a later real catch-up
         # would wrongly skip itself.
-        if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' && steps.flags.outputs.step_flags != '--daily-digest' }}
+        if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' && steps.flags.outputs.step_flags != '--daily-digest' && steps.flags.outputs.step_flags != '--adaptive-recalibration' }}
         run: |
           TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
           echo "$TODAY_MT" > data/last_lock_date.txt
