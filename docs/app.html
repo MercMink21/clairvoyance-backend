@@ -18852,6 +18852,29 @@ window._renderWimBracket=_renderWimBracket;
 // determined -- no manual re-entry needed as the tournament advances.
 const USO_ROUND_IDS=['r1','r2','r3','r4','qf','sf','f'];
 function _uww(rnd,k){try{return JSON.parse(localStorage.getItem('uso_wins_'+rnd+'_'+k)||'{}')}catch(e){return{}}}
+// Manual-edit path for match results -- previously the hand-authored
+// TEN_TOURNAMENTS winner/score fields and the live-score feed
+// (_usoLiveLookup) were the ONLY ways a winner could ever get set; there
+// was no UI at all for a human to correct/confirm one directly. Persists
+// to the SAME per-round win-tracking store _usoResolveWinners already
+// reads (uso_wins_<round>_<tour> in localStorage), so a manual entry is
+// picked up exactly like a live-confirmed one on the very next render --
+// no separate code path to keep in sync.
+function _usoSetWinnerManual(rnd,k,idx,winnerName,p1,p2){
+  const score=prompt(`Confirm score for ${winnerName}'s win (e.g. "6-4, 6-2") -- leave blank to skip:`,'');
+  if(score===null)return;
+  try{
+    const ww=_uww(rnd,k);
+    ww[idx]=winnerName;
+    localStorage.setItem('uso_wins_'+rnd+'_'+k,JSON.stringify(ww));
+    // Score isn't part of the ww map (that's win-tracking only) -- stash
+    // it alongside so _usoMatchCards/settlement can pick it up the same
+    // way a live-confirmed score would be read.
+    if(score)localStorage.setItem('uso_score_'+rnd+'_'+k+'_'+idx,score);
+    toast(`✓ Set ${winnerName} as winner (${p1} vs ${p2})`);
+  }catch(e){}
+  try{renderUSODraw(k==='atp'?'men':'women',rnd);}catch(e){}
+}
 function _usoValidWin(w,p1,p2){return(w&&(w===p1||w===p2))?w:null;}
 
 // Live score/winner lookup, matching Wimbledon's _wimLiveLookup pattern --
@@ -18946,13 +18969,13 @@ function _usoMatchCards(roundId,k){
   const roundMeta=t.rounds.find(r=>r.id===roundId)||{};
   const upcoming=[];
   rd.data.forEach((m,i)=>{
-    if(!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD')upcoming.push(m);
+    if(!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD')upcoming.push({m,i});
   });
   if(!upcoming.length)return`<div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.35);padding:16px;text-align:center;border:1px dashed rgba(255,255,255,.08);border-radius:4px;margin-bottom:8px">No matchups set yet for ${roundMeta.dates||''}</div>`;
   const DB=k==='atp'?ATP_DB:WTA_DB;
   const tour2=k==='atp'?'ATP':'WTA';
   const sCol=k==='atp'?'var(--nc)':'var(--mc)';
-  return upcoming.map(m=>{
+  return upcoming.map(({m,i})=>{
     const p1L=(m.p1).split('.').pop();const p2L=(m.p2).split('.').pop();
     const p1d=DB[m.p1],p2d=DB[m.p2];
     let wpH='',gradeH='',evH='',setsHtml='',gamesHtml='';
@@ -19002,6 +19025,10 @@ function _usoMatchCards(roundId,k){
   <div style="display:flex;gap:4px;margin-top:8px">
     <button onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','ML','p1',${m.p1ml||0},${m.p1ml||0},${m.p1ml?Math.abs(m.p1ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.28);color:var(--nc);border-radius:3px;cursor:pointer">LOCK ${p1L}</button>
     <button onclick="lockPick('${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','ML','p1',${m.p2ml||0},${m.p2ml||0},${m.p2ml?Math.abs(m.p2ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.28);color:var(--gc);border-radius:3px;cursor:pointer">LOCK ${p2L}</button>
+  </div>
+  <div style="display:flex;gap:4px;margin-top:4px">
+    <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p1.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p1L}</button>
+    <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p2L}</button>
   </div>
 </div>`;
   }).join('');
