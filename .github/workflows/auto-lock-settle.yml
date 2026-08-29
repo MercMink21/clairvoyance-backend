@@ -174,6 +174,11 @@ jobs:
             TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
             HOUR_MT=$(TZ=America/Denver date +%H)
             LAST_LOCK_DATE=$(cat data/last_lock_date.txt 2>/dev/null || echo "")
+            # Diagnostic: a real run on 2026-08-29 landed in the catchup
+            # branch at what should have been ~9pm MT (well outside the
+            # 9am-12pm bound below) -- added to self-diagnose on the next
+            # occurrence rather than guessing further without more data.
+            echo "::notice::step-flags debug: schedule='${{ github.event.schedule }}' TODAY_MT=$TODAY_MT HOUR_MT=$HOUR_MT LAST_LOCK_DATE=$LAST_LOCK_DATE"
             if [ "$LAST_LOCK_DATE" != "$TODAY_MT" ] && [ "$HOUR_MT" -ge 9 ] && [ "$HOUR_MT" -lt 12 ]; then
               # --final-lock-check here too -- this catch-up run is, by
               # definition, the last realistic chance to get subscribers
