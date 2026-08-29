@@ -46,6 +46,20 @@ on:
     # not a correctness bug, just marginally less fresh than the old
     # 6:20 timing guaranteed.
     - cron: '0 12 * * *'
+    # 3 catch-up slots, 15 min apart -- same self-healing pattern already
+    # proven on the main lock workflow and CFB's early lock. Confirmed
+    # live 2026-08-29: this workflow's own 6:00am slot didn't fire until
+    # 9:56am MT (almost 4 hours late), by which point every Premier
+    # League match that day had already kicked off or finished -- the
+    # whole point of running this early. With no catch-up at all before
+    # this, a dropped/delayed 6:00 slot meant the 5 European leagues
+    # simply never got a real pre-kickoff lock pass that day. Each catch-
+    # up only actually runs if today's real lock hasn't already
+    # succeeded (see the should_run check below), and all 4 slots land
+    # before the earliest confirmed 7:00am kickoffs.
+    - cron: '15 12 * * *'
+    - cron: '30 12 * * *'
+    - cron: '45 12 * * *'
   workflow_dispatch:
     inputs:
       live:
@@ -55,7 +69,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   soccer-lock-early:
@@ -86,11 +100,30 @@ jobs:
           # rather than waiting for 2026-08-30).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            echo "should_run=1" >> "$GITHUB_OUTPUT"
           else
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            # The first slot (6:00am) always runs unconditionally; every
+            # other cron entry above is a catch-up that only runs if
+            # today's real lock hasn't already succeeded -- same pattern
+            # as cfb-lock-early.yml, so adding/removing catch-up slots
+            # never needs a matching change here, just the schedule list.
+            if [ "${{ github.event.schedule }}" != "0 12 * * *" ]; then
+              TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+              LAST_SOCCER_LOCK=$(cat data/last_soccer_lock_date.txt 2>/dev/null || echo "")
+              if [ "$LAST_SOCCER_LOCK" = "$TODAY_MT" ]; then
+                echo "should_run=0" >> "$GITHUB_OUTPUT"
+              else
+                echo "should_run=1" >> "$GITHUB_OUTPUT"
+                echo "::notice::Soccer early lock hasn't recorded success yet today -- running this catch-up slot (schedule=${{ github.event.schedule }})."
+              fi
+            else
+              echo "should_run=1" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Run soccer-only auto-lock
+        if: ${{ steps.flags.outputs.should_run == '1' }}
         env:
           TZ: America/Denver
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -98,3 +131,18 @@ jobs:
           SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
         run: |
           python3 scripts/auto_lock_settle.py --lock --only-soccer ${{ steps.flags.outputs.live_flag }}
+
+      - name: Record successful soccer lock date
+        # Only after a run that actually included a LIVE lock pass -- a
+        # dry-run must never mark today as locked, or the catch-up slots
+        # would wrongly skip themselves.
+        if: ${{ steps.flags.outputs.should_run == '1' && steps.flags.outputs.live_flag == '--live' }}
+        run: |
+          TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+          echo "$TODAY_MT" > data/last_soccer_lock_date.txt
+          git add data/last_soccer_lock_date.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record soccer early lock for $TODAY_MT"
+            git pull --rebase origin main
+            git push origin main
+          fi
