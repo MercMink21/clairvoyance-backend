@@ -14046,14 +14046,34 @@ async function autoSettleTennis(targetDate){
             const [c1,c2]=competitors;
             const n1=c1.athlete?.displayName,n2=c2.athlete?.displayName;
             if(!n1||!n2)continue;
+            // Real gap, found and fixed: this only ever settled ML bets
+            // (betOn matched against a bare player name) -- a sets/games
+            // O/U bet's betOn text ("OVER 3.5 sets"/"UNDER 43.5 games")
+            // never matched either player's name, so it silently stayed
+            // pending forever. ESPN's own competitor.linescores (one
+            // entry per set, {value: games won that set}) has everything
+            // needed to grade both markets directly.
+            const c1LS=c1.linescores||[],c2LS=c2.linescores||[];
+            const totalSets=Math.max(c1LS.length,c2LS.length);
+            let totalGames=0;
+            for(let si=0;si<totalSets;si++)totalGames+=(c1LS[si]?.value||0)+(c2LS[si]?.value||0);
             for(const p of preds){
               if(p.outcome!=='pending'||_normSport(p)!=='TEN'||p.date!==targetDate)continue;
               const sameMatch=(p.hA===n1&&p.awA===n2)||(p.hA===n2&&p.awA===n1);
               if(!sameMatch)continue;
               const betOn=p.betOn||'';
               let outcome=null;
+              const setsMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)\s*sets?$/i.exec(betOn);
+              const gamesMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)\s*games?$/i.exec(betOn);
               if(betOn===n1)outcome=c1.winner?'win':'loss';
               else if(betOn===n2)outcome=c2.winner?'win':'loss';
+              else if(setsMatch){
+                const line=parseFloat(setsMatch[2]);const over=setsMatch[1].toUpperCase()==='OVER';
+                outcome=totalSets===line?'push':(over?totalSets>line:totalSets<line)?'win':'loss';
+              }else if(gamesMatch){
+                const line=parseFloat(gamesMatch[2]);const over=gamesMatch[1].toUpperCase()==='OVER';
+                outcome=totalGames===line?'push':(over?totalGames>line:totalGames<line)?'win':'loss';
+              }
               if(outcome){p.outcome=outcome;p.settledAt=Date.now();changed=true;
                 toast(`AUTO-SETTLED: ${p.betOn} ${outcome.toUpperCase()}`);
                 try{notifySettlement(p.betOn,outcome);}catch(e){}
@@ -17148,6 +17168,27 @@ const WIM_SCHEDULE={
   ],
   note:'Wimbledon 2026 — IN PROGRESS. Jun 29: First round begins. Centre Court opens with top seeds.'
 };
+
+// ── US Open 2026 ──────────────────────────────────────────────────────────
+const USO_SCHEDULE={
+  name:'US Open 2026',surface:'hard',location:'USTA Billie Jean King National Tennis Center, New York',
+  dates:{start:'2026-08-24',end:'2026-09-13'},
+  rounds:[
+    {round:'R1',dates:'Aug 30 – Sep 1',type:'main'},
+    {round:'R2',dates:'Sep 2–3',type:'main'},
+    {round:'R3',dates:'Sep 4–5',type:'main'},
+    {round:'R4 (Round of 16)',dates:'Sep 6–7',type:'main'},
+    {round:'Quarterfinals',dates:'Sep 8–9',type:'main'},
+    {round:"Women's Semifinals",dates:'Sep 10',type:'main'},
+    {round:"Men's Semifinals",dates:'Sep 11',type:'main'},
+    {round:"Women's Final",dates:'Sep 12',type:'final'},
+    {round:"Men's Final",dates:'Sep 13',type:'final'},
+  ],
+  note:'US Open 2026 — Round 1 begins Aug 30. Real draw fetched from ESPN (espn.com/tennis/us-open/bracket) on 2026-08-29.'
+};
+// ATP Seeds: (1)Zverev (2)Alcaraz (3)Auger-Aliassime (4)Djokovic (5)Cobolli (6)de Minaur (7)Medvedev (8)Shelton (9)Fritz (10)Fils
+// WTA Seeds: (1)Sabalenka (2)Rybakina (3)Pegula (4)Gauff (5)Andreeva (6)Noskova (7)Muchova (8)Swiatek (9)Svitolina (10)Anisimova
+
 // ATP Seeds: (1)Sinner (2)Zverev (3)Auger-Aliassime (4)Shelton (5)de Minaur (6)Fritz (7)Djokovic (8)Medvedev (11)Ruud (12)Rublev
 // WTA Seeds: (1)Sabalenka (2)Rybakina (3)Swiatek (4)Pegula (5)Andreeva (6)Anisimova (7)Gauff (8)Svitolina (13)Paolini
 const WIM_R1_MEN=[
@@ -17190,6 +17231,11 @@ const WIM_FUTURES=[
   {tour:'WTA',player:'E.Rybakina',seed:'(2)',country:'KAZ',ml:'+185',winPct:'7.0%',note:'OVERPRICED: Model gives Rybakina only 7.0% title probability. At +185 market implies 35.1% — massive gap vs model\'s 7.0%. Market is pricing on 2022 champion status; model reflects a quieter 2025-26 (yElo 2034, grass Elo 1884 — 4th in WTA field). R1 is safe, but do NOT back heavily in futures at current price.'},
   {tour:'WTA',player:'C.Gauff',seed:'(7)',country:'USA',ml:'+600',winPct:'4.0%',note:'Model: 4.0% title probability. Grass Elo only 1823 — improving but not a grass elite yet. +600 implies 14.3% — market overvalues vs model. Powerful serve and improving net game give her a ceiling, but grass Elo doesn\'t support top-3 futures pricing.'},
 ];
+// US Open futures -- not yet populated (no real market odds sourced for
+// this build pass); _renderUSOFutures() degrades gracefully to "not yet
+// available" while this stays empty. Same {tour,player,seed,country,ml,
+// winPct,note} shape as WIM_FUTURES above if/when this gets filled in.
+const USO_FUTURES=[];
 // ── Tournament rounds data structure ──────────────────────────
 // All active tournaments — add rounds as matchups are confirmed.
 // Each match inherits surface + bo5 from the tournament level.
@@ -17543,6 +17589,161 @@ const TEN_TOURNAMENTS=[{
         {p1:'K.Muchova',p2:'L.Noskova',winner:'L.Noskova',score:'4-6, 6-3, 6-4',p1ml:145,p2ml:-165,lean:2,grade:'LEAN',matchDate:'2026-07-11',
          basis:'Muchova\'s creative net game and variety vs Noskova\'s (9) massive flat grass serve (grass Elo 1875) — a stylistic coin-flip final. Slight lean Noskova on serve dominance and fresher run (straight-setted more of the draw), but this is close.'},
       ]},
+  ]
+},{
+  id:'uso2026',name:'US Open 2026',abbr:'USO',surface:'hard',
+  bo5Men:true,bo5Women:false,
+  dates:'Aug 24 – Sep 13, 2026',location:'New York, USA',prize:'$75M',
+  currentRound:'r1',
+  // Real 2026 US Open Round 1 draw (128-player main draw, both tours) --
+  // fetched live from ESPN's official bracket (espn.com/tennis/us-open/
+  // bracket, competitionType 1=ATP/2=WTA, season 2026) on 2026-08-29.
+  // R2 onward are intentionally empty -- _buildUSOGenderData() derives
+  // each later round's real pairings automatically from R1 (and each
+  // subsequent round's) winners as they're determined, exactly the same
+  // propagation pattern Wimbledon's bracket uses, just generalized to
+  // start from R1 instead of R3 (see _usoAdvanceRound/_usoResolveWinners
+  // below) -- no manual re-entry needed as the tournament progresses.
+  rounds:[
+    {id:'r1',name:'Round 1',dates:'Aug 30 – Sep 1',status:'active',
+      atp:[
+      {p1:'A.Zverev',s1:'(1)',p2:'L.Sonego',s2:'',matchDate:'2026-09-01'},
+      {p1:'Q.Halys',s1:'',p2:'F.Diaz Acosta',s2:'',matchDate:'2026-08-31'},
+      {p1:'G.Dimitrov',s1:'',p2:'A.Popyrin',s2:'',matchDate:'2026-08-31'},
+      {p1:'Y.Hanfmann',s1:'',p2:'A.Tabilo',s2:'(25)',matchDate:'2026-08-31'},
+      {p1:'L.Darderi',s1:'(21)',p2:'H.Wendelken',s2:'',matchDate:'2026-08-31'},
+      {p1:'D.Svrcina',s1:'',p2:'V.Royer',s2:'',matchDate:'2026-08-31'},
+      {p1:'D.Sweeny',s1:'',p2:'C.Moutet',s2:'',matchDate:'2026-09-01'},
+      {p1:'A.Fery',s1:'',p2:'L.Musetti',s2:'(13)',matchDate:'2026-09-01'},
+      {p1:'R.Jodar',s1:'(12)',p2:'T.Kokkinakis',s2:'',matchDate:'2026-09-01'},
+      {p1:'F.Marozsan',s1:'',p2:'M.Zheng',s2:'',matchDate:'2026-09-01'},
+      {p1:'Z.Svajda',s1:'',p2:'D.Altmaier',s2:'',matchDate:'2026-09-01'},
+      {p1:'J.Cerundolo',s1:'',p2:'C.Ruud',s2:'(19)',matchDate:'2026-09-01'},
+      {p1:'Z.Bergs',s1:'(31)',p2:'C.Taberner',s2:'',matchDate:'2026-09-01'},
+      {p1:'J.de Jong',s1:'',p2:'F.Passaro',s2:'',matchDate:'2026-09-01'},
+      {p1:'J.Choinski',s1:'',p2:'B.Van De Zandschulp',s2:'',matchDate:'2026-09-01'},
+      {p1:'A.Guerrieri',s1:'',p2:'A.de Minaur',s2:'(6)',matchDate:'2026-09-01'},
+      {p1:'F.Auger-Aliassime',s1:'(3)',p2:'R.Hijikata',s2:'',matchDate:'2026-08-31'},
+      {p1:'R.Burruchaga',s1:'',p2:'K.Khachanov',s2:'',matchDate:'2026-08-31'},
+      {p1:'A.Molcan',s1:'',p2:'B.Bonzi',s2:'',matchDate:'2026-09-01'},
+      {p1:'M.Giron',s1:'',p2:'I.Buse',s2:'(32)',matchDate:'2026-09-01'},
+      {p1:'J.Mensik',s1:'(17)',p2:'S.Mochizuki',s2:'',matchDate:'2026-08-31'},
+      {p1:'J.Rodionov',s1:'',p2:'G.Mpetshi Perricard',s2:'',matchDate:'2026-08-31'},
+      {p1:'A.Vallejo',s1:'',p2:'G.Monfils',s2:'',matchDate:'2026-09-01'},
+      {p1:'N.Borges',s1:'',p2:'L.Tien',s2:'(14)',matchDate:'2026-08-31'},
+      {p1:'T.Fritz',s1:'(9)',p2:'D.Blanch',s2:'',matchDate:'2026-09-01'},
+      {p1:'M.Bellucci',s1:'',p2:'Z.Piros',s2:'',matchDate:'2026-09-01'},
+      {p1:'C.Ugo Carabelli',s1:'',p2:'J.Struff',s2:'',matchDate:'2026-09-01'},
+      {p1:'F.Misolic',s1:'',p2:'F.Cerundolo',s2:'(24)',matchDate:'2026-09-01'},
+      {p1:'A.Blockx',s1:'(28)',p2:'T.Barrios Vera',s2:'',matchDate:'2026-08-31'},
+      {p1:'J.Shang',s1:'',p2:'M.Trungelliti',s2:'',matchDate:'2026-08-31'},
+      {p1:'N.Basavareddy',s1:'',p2:'T.Schoolkate',s2:'',matchDate:'2026-08-31'},
+      {p1:'F.Comesana',s1:'',p2:'F.Cobolli',s2:'(5)',matchDate:'2026-08-31'},
+      {p1:'D.Medvedev',s1:'(7)',p2:'H.Gaston',s2:'',matchDate:'2026-08-30'},
+      {p1:'S.Gorzny',s1:'',p2:'R.Collignon',s2:'',matchDate:'2026-08-30'},
+      {p1:'J.Munar',s1:'',p2:'T.Atmane',s2:'',matchDate:'2026-08-30'},
+      {p1:'S.Shimabukuro',s1:'',p2:'A.Rinderknech',s2:'(26)',matchDate:'2026-08-30'},
+      {p1:'V.Vacherot',s1:'(22)',p2:'A.Kovacevic',s2:'',matchDate:'2026-08-31'},
+      {p1:'K.Majchrzak',s1:'',p2:'H.Medjedovic',s2:'',matchDate:'2026-08-30'},
+      {p1:'A.Vukic',s1:'',p2:'R.Sakamoto',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Damm',s1:'',p2:'F.Tiafoe',s2:'(11)',matchDate:'2026-08-31'},
+      {p1:'B.Nakashima',s1:'(16)',p2:'S.Baez',s2:'',matchDate:'2026-08-31'},
+      {p1:'A.Michelsen',s1:'',p2:'F.Cina',s2:'',matchDate:'2026-08-30'},
+      {p1:'D.Merida',s1:'',p2:'M.Fucsovics',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Cilic',s1:'',p2:'A.Rublev',s2:'(23)',matchDate:'2026-08-31'},
+      {p1:'T.Etcheverry',s1:'(27)',p2:'V.Kopriva',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Landaluce',s1:'',p2:'J.Fearnley',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Berrettini',s1:'',p2:'S.Wawrinka',s2:'',matchDate:'2026-08-31'},
+      {p1:'M.Navone',s1:'',p2:'N.Djokovic',s2:'(4)',matchDate:'2026-08-30'},
+      {p1:'B.Shelton',s1:'(8)',p2:'T.Griekspoor',s2:'',matchDate:'2026-08-31'},
+      {p1:'D.Dzumhur',s1:'',p2:'H.Hurkacz',s2:'',matchDate:'2026-08-31'},
+      {p1:'M.Kecmanovic',s1:'',p2:'D.Shapovalov',s2:'',matchDate:'2026-08-30'},
+      {p1:'L.Van Assche',s1:'',p2:'C.Norrie',s2:'(29)',matchDate:'2026-08-30'},
+      {p1:'J.Lehecka',s1:'(18)',p2:'P.Carreno Busta',s2:'',matchDate:'2026-08-30'},
+      {p1:'T.Samuel',s1:'',p2:'T.Machac',s2:'',matchDate:'2026-08-30'},
+      {p1:'L.Harris',s1:'',p2:'J.Kennedy',s2:'',matchDate:'2026-08-30'},
+      {p1:'S.Tsitsipas',s1:'',p2:'A.Fils',s2:'(10)',matchDate:'2026-08-31'},
+      {p1:'A.Bublik',s1:'(15)',p2:'J.J.Wolf',s2:'',matchDate:'2026-08-30'},
+      {p1:'T.Tirante',s1:'',p2:'A.Mannarino',s2:'',matchDate:'2026-08-30'},
+      {p1:'D.Prizmic',s1:'',p2:'A.Shevchenko',s2:'',matchDate:'2026-08-30'},
+      {p1:'C.Wong',s1:'',p2:'T.Paul',s2:'(20)',matchDate:'2026-08-30'},
+      {p1:'M.Arnaldi',s1:'(30)',p2:'J.Duckworth',s2:'',matchDate:'2026-08-31'},
+      {p1:'W.Yibing',s1:'',p2:'A.Walton',s2:'',matchDate:'2026-08-30'},
+      {p1:'J.Faria',s1:'',p2:'J.Brooksby',s2:'',matchDate:'2026-08-30'},
+      {p1:'R.Safiullin',s1:'',p2:'C.Alcaraz',s2:'(2)',matchDate:'2026-08-31'}
+      ],
+      wta:[
+      {p1:'A.Sabalenka',s1:'(1)',p2:'C.Osorio',s2:'',matchDate:'2026-08-31'},
+      {p1:'R.Zarazua',s1:'',p2:'P.Iatcenko',s2:'',matchDate:'2026-08-30'},
+      {p1:'A.Ito',s1:'',p2:'O.Selekhmeteva',s2:'',matchDate:'2026-08-31'},
+      {p1:'K.Rakhimova',s1:'',p2:'B.Krejcikova',s2:'(27)',matchDate:'2026-08-30'},
+      {p1:'M.Chwalinska',s1:'(20)',p2:'T.Townsend',s2:'',matchDate:'2026-08-31'},
+      {p1:'T.Preston',s1:'',p2:'A.Parks',s2:'',matchDate:'2026-08-30'},
+      {p1:'H.Vandewinkel',s1:'',p2:'K.Pliskova',s2:'',matchDate:'2026-08-30'},
+      {p1:'D.Snigur',s1:'',p2:'D.Shnaider',s2:'(15)',matchDate:'2026-08-31'},
+      {p1:'M.Kostyuk',s1:'(11)',p2:'S.Hunter',s2:'',matchDate:'2026-08-30'},
+      {p1:'S.Stephens',s1:'',p2:'C.Tauson',s2:'',matchDate:'2026-08-31'},
+      {p1:'K.Birrell',s1:'',p2:'P.Marcinko',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Kessler',s1:'',p2:'E.Alexandrova',s2:'(18)',matchDate:'2026-08-30'},
+      {p1:'A.Li',s1:'(29)',p2:'A.Ruzic',s2:'',matchDate:'2026-08-31'},
+      {p1:'T.Gibson',s1:'',p2:'D.Vekic',s2:'',matchDate:'2026-08-30'},
+      {p1:'E.Kalieva',s1:'',p2:'L.Tararudee',s2:'',matchDate:'2026-08-30'},
+      {p1:'K.Volynets',s1:'',p2:'L.Noskova',s2:'(6)',matchDate:'2026-08-31'},
+      {p1:'J.Pegula',s1:'(3)',p2:'E.Ruse',s2:'',matchDate:'2026-08-30'},
+      {p1:'V.Williams',s1:'',p2:'S.Kenin',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Sawangkaew',s1:'',p2:'P.Udvardy',s2:'',matchDate:'2026-08-31'},
+      {p1:'Z.Shuai',s1:'',p2:'L.Fernandez',s2:'(31)',matchDate:'2026-08-30'},
+      {p1:'J.Paolini',s1:'(19)',p2:'V.Erjavec',s2:'',matchDate:'2026-08-30'},
+      {p1:'L.Stefanini',s1:'',p2:'D.Yastremska',s2:'',matchDate:'2026-08-30'},
+      {p1:'V.Golubic',s1:'',p2:'D.Parry',s2:'',matchDate:'2026-08-31'},
+      {p1:'J.Grabher',s1:'',p2:'S.Cirstea',s2:'(16)',matchDate:'2026-08-31'},
+      {p1:'E.Svitolina',s1:'(9)',p2:'S.Sierra',s2:'',matchDate:'2026-08-30'},
+      {p1:'M.Joint',s1:'',p2:'L.Samsonova',s2:'',matchDate:'2026-08-31'},
+      {p1:'E.Arango',s1:'',p2:'W.Xinyu',s2:'',matchDate:'2026-08-30'},
+      {p1:'A.Blinkova',s1:'',p2:'A.Kalinskaya',s2:'(21)',matchDate:'2026-08-31'},
+      {p1:'E.Navarro',s1:'(26)',p2:'L.Boisson',s2:'',matchDate:'2026-08-30'},
+      {p1:'A.Koevermans',s1:'',p2:'C.McNally',s2:'',matchDate:'2026-08-31'},
+      {p1:'C.Lee',s1:'',p2:'K.Boulter',s2:'',matchDate:'2026-08-30'},
+      {p1:'S.Kraus',s1:'',p2:'K.Muchova',s2:'(7)',matchDate:'2026-08-31'},
+      {p1:'M.Andreeva',s1:'(5)',p2:'J.Tjen',s2:'',matchDate:'2026-09-01'},
+      {p1:'G.Knutson',s1:'',p2:'E.Lys',s2:'',matchDate:'2026-09-01'},
+      {p1:'N.Bartunkova',s1:'',p2:'M.Sherif',s2:'',matchDate:'2026-09-01'},
+      {p1:'T.Maria',s1:'',p2:'J.Ostapenko',s2:'(30)',matchDate:'2026-09-01'},
+      {p1:'A.Potapova',s1:'(24)',p2:'T.Valentova',s2:'',matchDate:'2026-09-01'},
+      {p1:'A.Rus',s1:'',p2:'L.Jeanjean',s2:'',matchDate:'2026-09-01'},
+      {p1:'L.Tagger',s1:'',p2:'T.Korpatsch',s2:'',matchDate:'2026-08-31'},
+      {p1:'A.Krueger',s1:'',p2:'A.Anisimova',s2:'(10)',matchDate:'2026-08-31'},
+      {p1:'I.Jovic',s1:'(14)',p2:'M.Frech',s2:'',matchDate:'2026-09-01'},
+      {p1:'M.Linette',s1:'',p2:'F.Jones',s2:'',matchDate:'2026-09-01'},
+      {p1:'O.Oliynykova',s1:'',p2:'R.Brantmeier',s2:'',matchDate:'2026-09-01'},
+      {p1:'M.Stoiana',s1:'',p2:'A.Eala',s2:'(17)',matchDate:'2026-09-01'},
+      {p1:'S.Bejlek',s1:'(28)',p2:'C.Bucsa',s2:'',matchDate:'2026-08-31'},
+      {p1:'A.Kalinina',s1:'',p2:'H.Sakatsume',s2:'',matchDate:'2026-08-31'},
+      {p1:'D.Kasatkina',s1:'',p2:'P.Badosa',s2:'',matchDate:'2026-09-01'},
+      {p1:'Z.Sonmez',s1:'',p2:'C.Gauff',s2:'(4)',matchDate:'2026-09-01'},
+      {p1:'I.Swiatek',s1:'(8)',p2:'W.Xiyu',s2:'',matchDate:'2026-08-31'},
+      {p1:'N.Podoroska',s1:'',p2:'S.Waltert',s2:'',matchDate:'2026-08-31'},
+      {p1:'H.Dart',s1:'',p2:'P.Stearns',s2:'',matchDate:'2026-08-31'},
+      {p1:'E.Jacquemot',s1:'',p2:'M.Bouzkova',s2:'(25)',matchDate:'2026-08-31'},
+      {p1:'M.Keys',s1:'(22)',p2:'A.Korneeva',s2:'',matchDate:'2026-09-01'},
+      {p1:'L.Havlickova',s1:'',p2:'A.Bondar',s2:'',matchDate:'2026-09-01'},
+      {p1:'Q.Zheng',s1:'',p2:'K.Liutova',s2:'',matchDate:'2026-08-31'},
+      {p1:'Y.Putintseva',s1:'',p2:'B.Bencic',s2:'(12)',matchDate:'2026-09-01'},
+      {p1:'N.Osaka',s1:'(13)',p2:'A.Zakharova',s2:'',matchDate:'2026-08-31'},
+      {p1:'E.Cocciaretto',s1:'',p2:'K.Siniakova',s2:'',matchDate:'2026-08-31'},
+      {p1:'T.Zidansek',s1:'',p2:'M.Timofeeva',s2:'',matchDate:'2026-08-31'},
+      {p1:'K.Quevedo',s1:'',p2:'E.Mertens',s2:'(23)',matchDate:'2026-09-01'},
+      {p1:'M.Sakkari',s1:'(32)',p2:'R.Montgomery',s2:'',matchDate:'2026-09-01'},
+      {p1:'Y.Starodubtseva',s1:'',p2:'E.Seidel',s2:'',matchDate:'2026-09-01'},
+      {p1:'D.Vidmanova',s1:'',p2:'J.Bouzas Maneiro',s2:'',matchDate:'2026-09-01'},
+      {p1:'T.Frodin',s1:'',p2:'E.Rybakina',s2:'(2)',matchDate:'2026-09-01'}
+      ]},
+    {id:'r2',name:'Round 2',dates:'Sep 2 – Sep 3',status:'upcoming',atp:[],wta:[]},
+    {id:'r3',name:'Round 3',dates:'Sep 4 – Sep 5',status:'upcoming',atp:[],wta:[]},
+    {id:'r4',name:'Round 4',dates:'Sep 6 – Sep 7',status:'upcoming',atp:[],wta:[]},
+    {id:'qf',name:'Quarterfinals',dates:'Sep 8 – Sep 9',status:'upcoming',atp:[],wta:[]},
+    {id:'sf',name:'Semifinals',dates:'Sep 10 (WTA) / Sep 11 (ATP)',status:'upcoming',atp:[],wta:[]},
+    {id:'f',name:'Final',dates:'Sep 12 (WTA) / Sep 13 (ATP)',status:'upcoming',atp:[],wta:[]},
   ]
 }];
 // Wimbledon 2026 — COMPLETE. Men's champion: J.Sinner def. A.Zverev in 4 sets.
@@ -18633,6 +18834,264 @@ function _renderWimBracket(tour,activeRound,genderFilter){
 ${contentHtml}`;
 }
 window._renderWimBracket=_renderWimBracket;
+
+// ── US Open 2026 — real draw, generalized R1-through-Final propagation ──
+// Same fetch-real-scores-and-advance pattern as Wimbledon's
+// _renderWimBracket, but generalized to start from Round 1 (Wimbledon's
+// only ever starts from R3, since that bracket was built once the
+// tournament was already underway) so every later round's real pairing
+// gets derived automatically as each prior round's winners are
+// determined -- no manual re-entry needed as the tournament advances.
+const USO_ROUND_IDS=['r1','r2','r3','r4','qf','sf','f'];
+function _uww(rnd,k){try{return JSON.parse(localStorage.getItem('uso_wins_'+rnd+'_'+k)||'{}')}catch(e){return{}}}
+function _usoValidWin(w,p1,p2){return(w&&(w===p1||w===p2))?w:null;}
+
+// Live score/winner lookup, matching Wimbledon's _wimLiveLookup pattern --
+// scoped to US Open only via the feed's `tournament` field.
+function _usoLiveLookup(p1,p2){
+  try{
+    const rawArr=window.__CV_LIVE?.tennis||[];
+    const arr=rawArr.filter(x=>/us open/i.test(x.tournament||x.tour||''));
+    const p1n=p1.split('.').pop()||p1,p2n=p2.split('.').pop()||p2;
+    const g=arr.find(x=>{const h=(x.home||x.p1||''),a=(x.away||x.p2||'');return(h.includes(p1n)||a.includes(p1n))&&(h.includes(p2n)||a.includes(p2n));});
+    if(!g)return null;
+    const state=g.state||g.status||'';
+    const hs=g.homeScore??g.hs??'',as=g.awayScore??g.as??'';
+    const h=(g.home||g.p1||'');
+    const p1IsHome=h.includes(p1n);
+    const sets=g.sets||g.note||'';
+    const score=(p1IsHome?hs+'-'+as:as+'-'+hs)+(sets?' '+sets:'');
+    let winner=null;
+    if(state==='post'){
+      if(Number(hs)>Number(as))winner=p1IsHome?p1:p2;
+      else if(Number(as)>Number(hs))winner=p1IsHome?p2:p1;
+    }
+    return{state,score,winner};
+  }catch(e){return null;}
+}
+
+// Derives one round's pairing from the previous round's resolved winners
+// (two at a time, matching standard bracket adjacency). If the target
+// round already has real hardcoded data for that exact pair (once ESPN's
+// real draw confirms it), that real result/date wins over the derived
+// placeholder.
+function _usoAdvanceRound(prevMatches,prevWinners,realNextRound){
+  const next=[];
+  for(let i=0;i<prevMatches.length;i+=2){
+    const p1=prevWinners[i]||null,p2=prevWinners[i+1]||null;
+    const m1=prevMatches[i]||{},m2=prevMatches[i+1]||{};
+    const s1=p1&&m1.p1?(p1===m1.p1?m1.s1:m1.s2)||'':'';
+    const s2=p2&&m2.p1?(p2===m2.p1?m2.s1:m2.s2)||'':'';
+    const real=(p1&&p2&&realNextRound)?realNextRound.find(rm=>(rm.p1===p1&&rm.p2===p2)||(rm.p1===p2&&rm.p2===p1)):null;
+    next.push({p1,s1,p2,s2,winner:real?.winner||null,score:real?.score||null,matchDate:real?.matchDate||null});
+  }
+  return next;
+}
+
+// Resolves each match's winner for one round: a real hardcoded winner
+// first, then a live-score lookup (auto-persisted into the round's own
+// win-tracking store so it's not re-fetched every render).
+function _usoResolveWinners(matches,ww){
+  matches.forEach((m,i)=>{
+    if(!m.winner&&!_usoValidWin(ww[i],m.p1,m.p2)&&m.p1&&m.p2){
+      const live=_usoLiveLookup(m.p1,m.p2);
+      if(live&&live.state){
+        if(live.winner){ww[i]=live.winner;m.score=live.score;}
+        else if(live.state==='in')m.score=live.score;
+      }
+    }
+  });
+  return matches.map((m,i)=>m.winner||_usoValidWin(ww[i],m.p1,m.p2)||null);
+}
+
+// Full round-by-round data for one gender ('atp'/'wta'), Round 1 through
+// Final, in one pass.
+function _buildUSOGenderData(k){
+  const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');
+  if(!t)return{};
+  const out={};
+  let curData=(t.rounds.find(r=>r.id==='r1')||{})[k]||[];
+  let curWinners=null;
+  USO_ROUND_IDS.forEach((rid,ri)=>{
+    if(ri>0){
+      const realNext=(t.rounds.find(r=>r.id===rid)||{})[k]||[];
+      curData=_usoAdvanceRound(curData,curWinners,realNext);
+    }
+    const ww=_uww(rid,k);
+    curWinners=_usoResolveWinners(curData,ww);
+    out[rid]={data:curData,winners:curWinners};
+  });
+  return out;
+}
+
+// One match card: real hard-court Elo/MC-sim win prob, ML both sides,
+// sets O/U, games O/U -- same market set and card layout as Wimbledon's
+// _matchCards, just 'hard' surface and US OPEN branding, and driven by
+// round data that starts at R1 instead of R3.
+function _usoMatchCards(roundId,k){
+  const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');
+  if(!t)return'<div class="empty">US Open draw not loaded</div>';
+  const bo5=k==='atp'?t.bo5Men:t.bo5Women;
+  const gd=_buildUSOGenderData(k);
+  const rd=gd[roundId];
+  if(!rd)return'<div class="empty">Round not found</div>';
+  const roundMeta=t.rounds.find(r=>r.id===roundId)||{};
+  const upcoming=[];
+  rd.data.forEach((m,i)=>{
+    if(!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD')upcoming.push(m);
+  });
+  if(!upcoming.length)return`<div style="font-family:var(--mono);font-size:14px;color:rgba(220,190,255,.35);padding:16px;text-align:center;border:1px dashed rgba(255,255,255,.08);border-radius:4px;margin-bottom:8px">No matchups set yet for ${roundMeta.dates||''}</div>`;
+  const DB=k==='atp'?ATP_DB:WTA_DB;
+  const tour2=k==='atp'?'ATP':'WTA';
+  const sCol=k==='atp'?'var(--nc)':'var(--mc)';
+  return upcoming.map(m=>{
+    const p1L=(m.p1).split('.').pop();const p2L=(m.p2).split('.').pop();
+    const p1d=DB[m.p1],p2d=DB[m.p2];
+    let wpH='',gradeH='',evH='',setsHtml='',gamesHtml='';
+    if(p1d&&p2d){
+      const wp=tennisMatchWinProbFull(p1d,p2d,'hard',bo5);
+      const _toML=p=>{p=Math.max(0.03,Math.min(0.97,p));return p>=0.5?-Math.round(100*p/(1-p)):Math.round(100*(1-p)/p);};
+      if(m.p1ml==null)m.p1ml=_toML(wp);
+      if(m.p2ml==null)m.p2ml=_toML(1-wp);
+      const favP=wp>=0.5?wp:1-wp;
+      const favML=wp>=0.5?m.p1ml:m.p2ml;
+      const grade=favP>=0.67?'PREMIUM':favP>=0.62?'OPTIMAL':favP>=0.55?'LEAN':'EVEN';
+      const grCol=favP>=0.67?'var(--gc)':favP>=0.62?'var(--pc)':favP>=0.55?'var(--nc)':'var(--t3)';
+      wpH=`<span style="color:${grCol};font-weight:700">${(favP*100).toFixed(1)}%</span>`;
+      gradeH=`<span style="color:${grCol}">${grade}</span>`;
+      const ev=favML?(favML>0?(favML/100):(100/Math.abs(favML)))*favP-1:0;
+      evH=`<span style="color:${ev>0?'var(--nc)':'var(--t3)'}">EV ${ev>0?'+':''}${(ev*100).toFixed(1)}%</span>`;
+      const gSim=tennisSimGames(p1d,p2d,'hard',bo5,25000);
+      const gLine=tennisGamesLine(gSim,bo5);
+      const gCol=gLine.grade==='OPTIMAL'?'var(--nc)':gLine.grade==='LEAN'?'var(--ic)':'var(--t3)';
+      gamesHtml=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:4px">GAMES O/U <strong>${gLine.line}</strong> → <strong style="color:${gCol}">${gLine.dir}</strong> <span style="color:var(--t3)">${gLine.conf}% (exp ${gLine.expected})</span></div>`;
+      const gender=k==='atp'?'M':'W';
+      const sOUs=_tennisSetOU(wp,gender);
+      const sMain=bo5?sOUs.find(s=>s.line===3.5)||sOUs[0]:sOUs[0];
+      if(sMain){const sDir=sMain.overP>0.5?'OVER':'UNDER';const sP=(sMain.overP>0.5?sMain.overP:1-sMain.overP)*100|0;const sCol2=sDir==='OVER'?'var(--nc)':'var(--mc)';
+        setsHtml=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">SETS O/U <strong>${sMain.line}</strong> → <strong style="color:${sCol2}">${sDir}</strong> <span style="color:var(--t3)">${sP}%</span></div>`;}
+    }
+    const ml1str=m.p1ml?(m.p1ml>0?'+':'')+m.p1ml:'—';
+    const ml2str=m.p2ml?(m.p2ml>0?'+':'')+m.p2ml:'—';
+    const dateStr=m.matchDate?` · ${m.matchDate}`:'';
+    return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${sCol}">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+    <div style="font-family:var(--orb);font-size:13px;color:${sCol};letter-spacing:2px">US OPEN ${(roundMeta.name||roundId).toUpperCase()} · ${tour2}${dateStr}</div>
+    <div style="display:flex;gap:6px;align-items:center">${wpH} ${gradeH} ${evH}</div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+    <div style="flex:1">
+      <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:rgba(220,190,255,.9)">${m.p1}${m.s1?` <span style="font-size:14px;color:var(--nc)">${m.s1}</span>`:''}</div>
+      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">ML: <strong style="color:var(--t2)">${ml1str}</strong></div>
+    </div>
+    <div style="font-family:var(--orb);font-size:15px;color:var(--t3);flex-shrink:0;padding-top:4px">VS</div>
+    <div style="flex:1;text-align:right">
+      <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:rgba(220,190,255,.9)">${m.p2}${m.s2?` <span style="font-size:14px;color:var(--nc)">${m.s2}</span>`:''}</div>
+      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">ML: <strong style="color:var(--t2)">${ml2str}</strong></div>
+    </div>
+  </div>
+  ${setsHtml}${gamesHtml}
+  <div style="display:flex;gap:4px;margin-top:8px">
+    <button onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','ML','p1',${m.p1ml||0},${m.p1ml||0},${m.p1ml?Math.abs(m.p1ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.28);color:var(--nc);border-radius:3px;cursor:pointer">LOCK ${p1L}</button>
+    <button onclick="lockPick('${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','ML','p1',${m.p2ml||0},${m.p2ml||0},${m.p2ml?Math.abs(m.p2ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.28);color:var(--gc);border-radius:3px;cursor:pointer">LOCK ${p2L}</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+// Entry point: renders whichever round is currently active for a tour
+// ('men'/'women') into #uso-draw-content. Auto-selects the tournament's
+// own currentRound so "next wave of matches" appears automatically once
+// a round completes and TEN_TOURNAMENTS.uso2026.currentRound advances --
+// no separate per-round wiring needed.
+function renderUSODraw(tour,round){
+  const el=document.getElementById('uso-draw-content');if(!el)return;
+  const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');if(!t)return;
+  const k=tour==='men'?'atp':'wta';
+  const rid=round||t.currentRound||'r1';
+  const tour2=k==='atp'?'ATP MENS':'WTA WOMENS';
+  const sCol=k==='atp'?'var(--nc)':'var(--mc)';
+  let html=`<div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">`;
+  html+=USO_ROUND_IDS.map(r=>{
+    const rm=t.rounds.find(x=>x.id===r)||{};
+    const active=r===rid;
+    return`<button class="btn ${active?'btn-n act':'btn-o'} btn-sm" onclick="renderUSODraw('${tour}','${r}')">${(rm.name||r).toUpperCase()}</button>`;
+  }).join('');
+  html+=`</div>`;
+  html+=`<div style="font-family:var(--mono);font-size:13px;color:${sCol};letter-spacing:2px;margin-bottom:6px">// ${tour2}</div>`;
+  html+=_usoMatchCards(rid,k);
+  el.innerHTML=html;
+}
+// Feeds the CURRENT round's real US Open matches (both tours) into the
+// same _autoLockCapture hook every other sport's real game-card render
+// function uses -- called from auto_lock_settle.py's gather_legs() tennis
+// warmup. This is the automated-pipeline path (real picks that actually
+// get locked/emailed/settled), separate from _usoMatchCards' manual
+// bracket-page display, but computes win prob/sets/games the same way:
+// the real tennisMatchWinProbFull ensemble on 'hard' surface, not the
+// cruder Roland-Garros-era logistic-Elo-only model renderTennisScheduleOdds
+// uses (that function's own data source, fetch_tennis_odds(), is
+// hardcoded to Roland Garros' now-defunct odds market and produces zero
+// real matches for any other tournament -- confirmed directly).
+function _captureUSOLegs(){
+  try{
+    const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');
+    if(!t)return;
+    ['atp','wta'].forEach(k=>{
+      const bo5=k==='atp'?t.bo5Men:t.bo5Women;
+      const DB=k==='atp'?ATP_DB:WTA_DB;
+      const sportTag=k==='atp'?'ATP':'WTA';
+      const gd=_buildUSOGenderData(k);
+      const rid=t.currentRound||'r1';
+      const rd=gd[rid];
+      if(!rd)return;
+      rd.data.forEach((m,i)=>{
+        if(rd.winners[i]||!m.p1||m.p1==='TBD'||!m.p2||m.p2==='TBD')return;
+        const p1d=DB[m.p1],p2d=DB[m.p2];
+        if(!p1d||!p2d)return;
+        const wp=tennisMatchWinProbFull(p1d,p2d,'hard',bo5);
+        const dec1=wp>0.03?1/wp:30,dec2=(1-wp)>0.03?1/(1-wp):30;
+        const gSim=tennisSimGames(p1d,p2d,'hard',bo5,25000);
+        const gLine=tennisGamesLine(gSim,bo5);
+        const gender=k==='atp'?'M':'W';
+        const sOUs=_tennisSetOU(wp,gender);
+        const sMain=bo5?sOUs.find(s=>s.line===3.5)||sOUs[0]:sOUs[0];
+        const mkts=[
+          {label:m.p1+' ML',prob:wp,dec:dec1,evVal:ev(wp,dec1),side:'mlP1'},
+          {label:m.p2+' ML',prob:1-wp,dec:dec2,evVal:ev(1-wp,dec2),side:'mlP2'},
+        ];
+        if(sMain){
+          mkts.push({label:'OVER '+sMain.line+' sets',prob:sMain.overP,dec:1.87,evVal:ev(sMain.overP,1.87),side:'setsOver'});
+          mkts.push({label:'UNDER '+sMain.line+' sets',prob:1-sMain.overP,dec:1.91,evVal:ev(1-sMain.overP,1.91),side:'setsUnder'});
+        }
+        if(gLine){
+          const gOverP=/over/i.test(gLine.dir)?gLine.conf/100:1-gLine.conf/100;
+          mkts.push({label:'OVER '+gLine.line+' games',prob:gOverP,dec:1.87,evVal:ev(gOverP,1.87),side:'over'});
+          mkts.push({label:'UNDER '+gLine.line+' games',prob:1-gOverP,dec:1.91,evVal:ev(1-gOverP,1.91),side:'under'});
+        }
+        const nm=_evalMkts(mkts);
+        _autoLockCapture(sportTag,m.p1,m.p2,nm,null);
+      });
+    });
+  }catch(e){console.warn('_captureUSOLegs:',e);}
+}
+
+function _renderUSOFutures(tour){
+  const el=document.getElementById('uso-draw-content');if(!el)return;
+  const isMen=tour==='men';
+  let html=`<div style="font-family:var(--mono);font-size:17px;letter-spacing:2px;color:var(--nc);margin-bottom:10px">// US OPEN 2026 — ${isMen?'ATP':'WTA'} FUTURES</div>`;
+  const list=(typeof USO_FUTURES!=='undefined'?USO_FUTURES:[]).filter(f=>f.tour===(isMen?'ATP':'WTA'));
+  if(!list.length){html+='<div class="empty">Futures not yet available</div>';el.innerHTML=html;return;}
+  html+=list.map(f=>`<div class="card" style="margin-bottom:8px;border-left:3px solid var(--nc)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:var(--orb);font-size:20px;font-weight:700">${f.seed} ${f.player} <span style="font-size:14px;color:var(--t3)">${f.country}</span></div>
+      <div style="font-family:var(--mono);font-size:17px;color:var(--nc)">${f.ml} <span style="color:var(--t3)">(${f.winPct})</span></div>
+    </div>
+    <div style="font-family:var(--mono);font-size:16px;color:var(--t3);line-height:1.5">${f.note}</div>
+  </div>`).join('');
+  el.innerHTML=html;
+}
+
 // ── Legacy renderWimDraw sections (kept for reference, now all routed through bracket) ──
 function _renderWimDrawLegacy(tour,round){
   const el=document.getElementById('wim-draw-content');if(!el)return;
@@ -19073,9 +19532,59 @@ function renderSlam(code){
     html+=wtaSeeds.map(s=>`<div class="card" style="padding:6px 10px;border-left:2px solid var(--nc)"><span style="font-family:var(--mono);font-size:15px;color:var(--nc)">(${s.seed}) </span><span style="font-family:var(--orb);font-size:18px;font-weight:700">${s.name}</span><span style="font-family:var(--mono);font-size:15px;color:var(--t3)"> ${s.cty}</span></div>`).join('');
     html+=`</div>`;
   }
+  // US Open 2026 -- real draw (see TEN_TOURNAMENTS uso2026 entry). Mirrors
+  // the Wimbledon branch above exactly, just wired to renderUSODraw and
+  // the uso-draw-content container, and using real Round 1 seeds fetched
+  // live from ESPN's official bracket.
+  if(code==='uso'){
+    html+=`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--ic)">
+      <div style="font-family:var(--mono);font-size:17px;color:var(--ic);letter-spacing:2px;margin-bottom:6px">// US OPEN 2026 — SCHEDULE · USTA BILLIE JEAN KING NATIONAL TENNIS CENTER</div>
+      ${USO_SCHEDULE.rounds.map(r=>`<div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:17px;color:${r.type==='final'?'var(--gc)':'var(--t2)'};margin-bottom:3px"><span>${r.round}</span><span>${r.dates}</span></div>`).join('')}
+      <div style="font-family:var(--mono);font-size:16px;color:var(--t3);margin-top:6px">${USO_SCHEDULE.note}</div>
+    </div>`;
+    html+=`<div class="sh" style="color:var(--ic)">US OPEN 2026 — DRAW & PICKS</div>`;
+    html+=`<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-n btn-sm act" onclick="renderUSODraw('men','r1')">MENS</button>
+      <button class="btn btn-p btn-sm" onclick="renderUSODraw('women','r1')">WOMENS</button>
+      <button class="btn btn-o btn-sm" onclick="renderUSODraw('men','futures')">ATP FUTURES</button>
+      <button class="btn btn-o btn-sm" onclick="renderUSODraw('women','futures')">WTA FUTURES</button>
+    </div>`;
+    html+=`<div id="uso-draw-content"></div>`;
+    // ATP Seeds — real 2026 US Open seeding (top 16 of 32), fetched live
+    html+=`<div class="sh" style="margin-top:14px;color:var(--ic)">ATP SEEDS — US OPEN 2026</div>`;
+    const usoAtpSeeds=[
+      {seed:'1',name:'A.Zverev',cty:'GER'},{seed:'2',name:'C.Alcaraz',cty:'ESP'},
+      {seed:'3',name:'F.Auger-Aliassime',cty:'CAN'},{seed:'4',name:'N.Djokovic',cty:'SRB'},
+      {seed:'5',name:'F.Cobolli',cty:'ITA'},{seed:'6',name:'A.de Minaur',cty:'AUS'},
+      {seed:'7',name:'D.Medvedev',cty:'RUS'},{seed:'8',name:'B.Shelton',cty:'USA'},
+      {seed:'9',name:'T.Fritz',cty:'USA'},{seed:'10',name:'A.Fils',cty:'FRA'},
+      {seed:'11',name:'F.Tiafoe',cty:'USA'},{seed:'12',name:'R.Jodar',cty:'ESP'},
+      {seed:'13',name:'L.Musetti',cty:'ITA'},{seed:'14',name:'L.Tien',cty:'USA'},
+      {seed:'15',name:'A.Bublik',cty:'KAZ'},{seed:'16',name:'B.Nakashima',cty:'USA'},
+    ];
+    html+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:14px">`;
+    html+=usoAtpSeeds.map(s=>`<div class="card" style="padding:6px 10px;border-left:2px solid var(--ic)"><span style="font-family:var(--mono);font-size:15px;color:var(--ic)">(${s.seed}) </span><span style="font-family:var(--orb);font-size:18px;font-weight:700">${s.name}</span><span style="font-family:var(--mono);font-size:15px;color:var(--t3)"> ${s.cty}</span></div>`).join('');
+    html+=`</div>`;
+    // WTA Seeds — real 2026 US Open seeding (top 16 of 32), fetched live
+    html+=`<div class="sh" style="color:var(--ic)">WTA SEEDS — US OPEN 2026</div>`;
+    const usoWtaSeeds=[
+      {seed:'1',name:'A.Sabalenka',cty:'BLR'},{seed:'2',name:'E.Rybakina',cty:'KAZ'},
+      {seed:'3',name:'J.Pegula',cty:'USA'},{seed:'4',name:'C.Gauff',cty:'USA'},
+      {seed:'5',name:'M.Andreeva',cty:'RUS'},{seed:'6',name:'L.Noskova',cty:'CZE'},
+      {seed:'7',name:'K.Muchova',cty:'CZE'},{seed:'8',name:'I.Swiatek',cty:'POL'},
+      {seed:'9',name:'E.Svitolina',cty:'UKR'},{seed:'10',name:'A.Anisimova',cty:'USA'},
+      {seed:'11',name:'M.Kostyuk',cty:'UKR'},{seed:'12',name:'B.Bencic',cty:'SUI'},
+      {seed:'13',name:'N.Osaka',cty:'JPN'},{seed:'14',name:'I.Jovic',cty:'AUS'},
+      {seed:'15',name:'D.Shnaider',cty:'RUS'},{seed:'16',name:'S.Cirstea',cty:'ROU'},
+    ];
+    html+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:14px">`;
+    html+=usoWtaSeeds.map(s=>`<div class="card" style="padding:6px 10px;border-left:2px solid var(--ic)"><span style="font-family:var(--mono);font-size:15px;color:var(--ic)">(${s.seed}) </span><span style="font-family:var(--orb);font-size:18px;font-weight:700">${s.name}</span><span style="font-family:var(--mono);font-size:15px;color:var(--t3)"> ${s.cty}</span></div>`).join('');
+    html+=`</div>`;
+  }
   el.innerHTML=html;
   if(code==='fo')setTimeout(()=>renderRGDraw('men','final'),0);
   if(code==='wim')setTimeout(()=>renderWimDraw('men','r3'),0);
+  if(code==='uso')setTimeout(()=>renderUSODraw('men','r1'),0);
 }
 // ── H2H ──────────────────────────────────────────────────────
 function populateH2HPickers(){

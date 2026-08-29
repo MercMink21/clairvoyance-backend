@@ -685,6 +685,17 @@ def gather_legs(page) -> dict:
           }
           await Promise.allSettled(warmups);
           if (typeof renderTennisScheduleOdds === 'function') { try { renderTennisScheduleOdds(); } catch (e) {} }
+          // Real gap, found and fixed: renderTennisScheduleOdds' own data
+          // source (fetch_tennis_odds()) is hardcoded to Roland Garros'
+          // now-defunct odds market -- it produces zero real matches for
+          // any other tournament, so tennis never actually reached this
+          // pipeline once RG ended. _captureUSOLegs feeds the real,
+          // hand-built US Open draw (TEN_TOURNAMENTS uso2026, fetched
+          // live from ESPN) through the same _autoLockCapture hook,
+          // using the full tennisMatchWinProbFull ensemble on the
+          // correct 'hard' surface instead of RG's cruder clay-Elo-only
+          // model.
+          if (typeof _captureUSOLegs === 'function') { try { _captureUSOLegs(); } catch (e) {} }
           // Card renders above are synchronous once their data warmup
           // resolves, but give any trailing async chip/radar work a moment
           // before reading back what _autoLockCapture collected.
