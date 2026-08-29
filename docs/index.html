@@ -19406,8 +19406,25 @@ function renderSlam(code){
     return;
   }
   // Contender analysis for this slam
-  const atpConts=Object.entries(ATP_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
-  const wtaConts=Object.entries(WTA_DB).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
+  // Real bug, found and fixed: this used to rank the WHOLE ATP_DB/WTA_DB
+  // by Elo with no participation check at all, so a top player who
+  // withdrew or skipped the tournament (confirmed live: Sinner withdrew
+  // from the 2026 US Open, but kept appearing in the ATP CONTENDERS
+  // table as if he were playing) still showed up as a top "contender".
+  // For any slam with a real draw on file (wim/uso -- the two with a
+  // TEN_TOURNAMENTS entry), filter to players who actually appear in
+  // that draw's Round 1. AO/FO have no real draw data to filter
+  // against, so they keep the unfiltered top-Elo ranking as before.
+  const _slamDrawId={wim:'wim2026',uso:'uso2026'}[code];
+  const _slamDrawT=_slamDrawId?TEN_TOURNAMENTS.find(x=>x.id===_slamDrawId):null;
+  const _slamR1=_slamDrawT?(_slamDrawT.rounds.find(r=>r.id==='r1')||{}):null;
+  const _inDraw=(name,k)=>{
+    if(!_slamR1)return true;
+    const arr=_slamR1[k]||[];
+    return arr.some(m=>m.p1===name||m.p2===name);
+  };
+  const atpConts=Object.entries(ATP_DB).filter(([n])=>_inDraw(n,'atp')).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
+  const wtaConts=Object.entries(WTA_DB).filter(([n])=>_inDraw(n,'wta')).sort((a,b)=>getPlayerElo(b[1],surf)-getPlayerElo(a[1],surf)).slice(0,12);
   // Roland Garros 2026 — real draw data
   if(code==='fo'){
     // RG schedule card
