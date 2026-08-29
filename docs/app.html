@@ -5489,7 +5489,10 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
     const res=await api('POST','/picks/',body);
     if(res){
       const preds=getP();const localId=`api_${res.id}`;
-      if(!preds.find(x=>x.id===localId))preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now(),source:_lockSource});
+      if(!preds.find(x=>x.id===localId)){
+        _removeWipedIds([localId]); // see _removeWipedIds' own comment
+        preds.push({id:localId,_backendId:res.id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag||sportTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:100,outcome:'pending',lockedAt:Date.now(),source:_lockSource});
+      }
       saveP(preds);
       const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
       if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
@@ -5514,6 +5517,7 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
   // tell whether they now had 1 pending bet or several. Bail out early
   // with an explicit "already locked" toast instead.
   if(_dup){toast(`// ALREADY LOCKED: ${betOn} ${ml} (${_dup.outcome==='pending'?'still pending':_dup.outcome.toUpperCase()})`);return;}
+  _removeWipedIds([id]); // see _removeWipedIds' own comment -- a deliberate new lock must never be silently swallowed by an old wipe of this same id
   preds.push({id,date:dateKey,hA,awA,sport:sportTag,league:leagueTag,betType:_betTypeNorm,betOn,winProb:p,ml,decOdds:d,wager:0,outcome:'pending',lockedAt:Date.now(),hScore:null,aScore:null,source:_lockSource});saveP(preds);try{_initCLVEntry(id,ml,betOn,sportTag,Date.now(),hA,awA);}catch(e){}
   const log=getDailyLog();if(!log[dateKey])log[dateKey]={recs:[],locked:[],assessed:false};
   if(!log[dateKey].locked.includes(betOn))log[dateKey].locked.push(betOn);
@@ -5524,6 +5528,22 @@ async function lockPick(hA,awA,type,betOn,p,ml,d,date,source){
 // ── Wipe blocklist — IDs permanently deleted, never restored by any sync ──
 function _getWipedIds(){try{return new Set(JSON.parse(localStorage.getItem('cv_wiped_ids')||'[]'));}catch(e){return new Set();}}
 function _addWipedIds(ids){const s=_getWipedIds();ids.forEach(id=>s.add(id));localStorage.setItem('cv_wiped_ids',JSON.stringify([...s]));}
+// Real bug, found and fixed: lockPick's id is a deterministic hash of
+// date+teams+type+betOn, not a random one -- so once a bet was ever
+// wiped (a genuine removal, or _dedupeStalePendingPicks cleaning up a
+// stale duplicate), locking that EXACT same real-world bet again later
+// was permanently, silently impossible: saveP's own _filterWiped strips
+// it right back out after every push, with no error and no honest
+// "already locked" toast either (that check only fires for an existing
+// LOCAL dup, and this one never survives long enough to become one) --
+// confirmed live: RB Leipzig/Borussia Mönchengladbach OVER 3.5 today,
+// a bet with zero existing local record, silently no-opped on every
+// lock attempt purely because that id was in the wipe blocklist from
+// some earlier point. A deliberate new lockPick() call is the user
+// explicitly choosing to lock this bet right now, not a stale sync pull
+// trying to resurrect an old one (the actual thing this blocklist exists
+// to stop) -- so lockPick un-wipes its own id before pushing.
+function _removeWipedIds(ids){const s=_getWipedIds();ids.forEach(id=>s.delete(id));localStorage.setItem('cv_wiped_ids',JSON.stringify([...s]));}
 function _filterWiped(arr){const w=_getWipedIds();return arr.filter(p=>!w.has(p.id));}
 
 function removePicksByDate(dateStr){
