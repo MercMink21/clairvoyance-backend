@@ -45,6 +45,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        # Real bug, found via audit: this workflow never had an install
+        # step at all -- worked only as long as send_expiry_reminders.py's
+        # imports stayed dependency-free. Once it started importing
+        # PRODUCT_LABEL from auto_lock_settle.py (which imports `requests`
+        # at module level), every run failed with ModuleNotFoundError --
+        # confirmed via 2 straight failed runs (2026-08-27, 2026-08-28)
+        # before this fix, meaning real subscribers went 2+ days without
+        # their access-expiry warning.
+        run: pip install -q requests
+
       - name: Send reminders
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
