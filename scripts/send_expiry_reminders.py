@@ -23,6 +23,12 @@ from _subscribers import subscribers_needing_reminder, mark_reminder_sent, EMAIL
 from auto_lock_settle import PRODUCT_LABEL  # noqa: E402
 from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE  # noqa: E402
 
+# Explicitly routed to the owner's own inbox, not the real subscriber --
+# this still computes/tracks reminders per real subscriber (so
+# reminder_sent state stays correct and nobody gets double-reminded once
+# this does go to subscribers directly), it just doesn't email them yet.
+OWNER_NOTIFY_EMAIL = "clairvoyanceengine@gmail.com"
+
 
 def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
     """Returns (subject, html_body). products_and_days is a list of
@@ -87,16 +93,20 @@ def main() -> None:
 
     for email, products_and_days in by_email.items():
         subject, body = _build_email(products_and_days)
+        # Sent to OWNER_NOTIFY_EMAIL, not the subscriber's own address --
+        # tag the subject with who it's actually for so the owner can see
+        # (and manually forward/action) it.
+        owner_subject = f"[{email}] {subject}"
         if args.dry_run:
-            print(f"[DRY RUN] would email {email}: {subject}")
+            print(f"[DRY RUN] would notify owner re: {email}: {subject}")
             continue
-        ok, msg = send_email(subject, email, body)
+        ok, msg = send_email(owner_subject, OWNER_NOTIFY_EMAIL, body)
         if ok:
             for product, _days in products_and_days:
                 mark_reminder_sent(product, email)
-            print(f"Reminder sent to {email} for {[p for p, _ in products_and_days]}")
+            print(f"Owner notified re: {email} for {[p for p, _ in products_and_days]}")
         else:
-            print(f"FAILED to send reminder to {email}: {msg}")
+            print(f"FAILED to notify owner re: {email}: {msg}")
 
 
 if __name__ == "__main__":
