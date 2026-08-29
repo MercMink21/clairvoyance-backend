@@ -29220,7 +29220,12 @@ function renderTennisCompare(p1name,p2name){
   if(!p1name||!p2name){el.innerHTML='<div class="empty">SELECT TWO PLAYERS TO COMPARE</div>';return;}
   const p1=db[p1name]||{};const p2=db[p2name]||{};
   if(!p1.elo&&!p2.elo){el.innerHTML='<div class="empty">PLAYERS NOT FOUND IN DATABASE</div>';return;}
-  const eloKey={clay:'eloClay',hard:'eloHard',grass:'eloGrass',all:'elo'};
+  // Real bug, found and fixed: these keys were reversed from the real
+  // ATP_DB/WTA_DB field names (hardElo/clayElo/grassElo, confirmed
+  // directly against the actual data) -- p[eloKey[s]] always missed,
+  // silently falling back to overall elo every time, so surface-specific
+  // comparison never actually reflected the selected surface.
+  const eloKey={clay:'clayElo',hard:'hardElo',grass:'grassElo',all:'elo'};
   const getElo=(p,s)=>p[eloKey[s]]||p.elo||1500;
   const surfElo1=getElo(p1,surface);const surfElo2=getElo(p2,surface);
   const prob1=1/(1+Math.pow(10,(surfElo2-surfElo1)/400));
