@@ -17753,8 +17753,16 @@ const WIM_2026_CHAMPIONS={atp:{name:'J.Sinner',note:'def. A.Zverev 6-4, 3-6, 6-4
 // A.Zverev def. F.Cobolli. Women's champion: M.Andreeva def. M.Chwalinska.
 const RG_2026_CHAMPIONS={atp:{name:'A.Zverev',note:'def. F.Cobolli — first Roland Garros title, first Grand Slam'},wta:{name:'M.Andreeva',note:'def. M.Chwalinska 6-3, 6-2 — first slam title at 19'}};
 // ── Legacy today arrays (used by picks engine) ─────────────────
-const TEN_TODAY_ATP=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.atp.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Men,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
-const TEN_TODAY_WTA=(()=>{const t=TEN_TOURNAMENTS[0];const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.wta.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Women,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
+// Real bug, found and fixed: these used to hardcode TEN_TOURNAMENTS[0]
+// (Wimbledon, array position, not tournament state) -- once US Open was
+// appended as a second entry, the "Matches" tab kept showing Wimbledon's
+// now-completed/archived matches forever, never picking up US Open.
+// Picks whichever tournament actually has an active/upcoming round;
+// falls back to the newest (last-appended) entry if none do, rather
+// than silently defaulting back to position 0.
+const _tenActiveTournament=()=>TEN_TOURNAMENTS.find(t=>t.rounds.some(r=>r.status==='active'||r.status==='upcoming'))||TEN_TOURNAMENTS[TEN_TOURNAMENTS.length-1];
+const TEN_TODAY_ATP=(()=>{const t=_tenActiveTournament();const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.atp.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Men,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
+const TEN_TODAY_WTA=(()=>{const t=_tenActiveTournament();const r=t.rounds.find(r=>r.status==='active')||t.rounds[0];return r.wta.filter(m=>m.p2!=='TBD').map(m=>({p1:m.p1,p2:m.p2,surface:t.surface,tournament:`${t.abbr} ${r.name}`,bo5:t.bo5Women,p1ml:m.p1ml,p2ml:m.p2ml,date:m.matchDate||today()}));})();
 function renderTennisPicks(){
   const el=document.getElementById('ten-picks-list');if(!el)return;
   const all=[...TEN_TODAY_ATP,...TEN_TODAY_WTA];
