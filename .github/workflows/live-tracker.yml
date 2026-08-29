@@ -1,9 +1,21 @@
 name: Live Score Tracker
 
 # Migrates live_tracker.py from a local launchd daemon (45s continuous
-# polling, requires the Mac to be on) to GitHub Actions -- per explicit
-# request, one poll every ~5 min instead. Real trade-off accepted: live
-# scores / in-game win-probability go from 45s-fresh to up to 5min-stale.
+# polling, requires the Mac to be on) to GitHub Actions.
+#
+# Real finding, not yet fully root-caused: the original */5 schedule was
+# confirmed to fire far less often than every 5 minutes in practice --
+# only ~2-3 real runs across a full 14-hour active window, instead of
+# the ~168 a true 5-min cadence would produce. This isn't simple delay
+# (GitHub's own documented behavior for high-load periods); it looks
+# like GitHub Actions deprioritizing/dropping a high-frequency schedule
+# outright, possibly compounded by this repo's overall scheduled-trigger
+# volume across ~15 other workflow files. Widened to every 15 min as a
+# best-effort mitigation (less contention should mean more of what's
+# requested actually lands), NOT a proven fix -- if real run history
+# still shows large gaps after this change, the interval alone isn't
+# the answer and this needs a different approach (e.g. a self-healing
+# staleness check piggybacked on a more reliably-firing workflow).
 #
 # Also replaces run_update.sh's own --mode live cron entry (retired from
 # the local crontab) rather than running both: that entry's
@@ -11,17 +23,17 @@ name: Live Score Tracker
 # data to the SAME docs/live_data.json file via a completely separate,
 # redundant 120s-interval local process -- two writers racing on one
 # file for no real benefit. live_tracker.py is the more complete of the
-# two (also writes frontend/live_data.json, tighter interval), so it's
-# the one that survives.
+# two (also writes frontend/live_data.json), so it's the one that
+# survives.
 
 on:
   schedule:
-    # Every 5 min, 9am-11pm MT -- matches live_tracker.py's own default
+    # Every 15 min, 9am-11pm MT -- matches live_tracker.py's own default
     # game-window gate (11am-1am ET). 9am MT = 15:00 UTC, 11pm MT = 05:00
     # UTC next day (MDT), hence the split hour range below. Like every
     # other fixed-UTC cron in this repo, drifts ~1hr earlier MT once MST
     # returns in November.
-    - cron: '*/5 15-23,0-5 * * *'
+    - cron: '*/15 15-23,0-5 * * *'
   workflow_dispatch:
 
 permissions:
