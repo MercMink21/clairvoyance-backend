@@ -14983,7 +14983,16 @@ function renderHomePage(){
     if(_hte){try{const _m=getMSTNow();_hte.textContent=_m.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'}).toUpperCase()+' · '+_m.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});}catch(e){}}
   }catch(e){}
 
-  window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
+  // Real bug, found via audit: unlike the Supabase pull timer right below,
+  // this had no "already running" guard -- renderHomePage() is called from
+  // dozens of places (every lock, every settle, every filter toggle), and
+  // every single call armed a BRAND NEW 60s interval without clearing the
+  // last one. Each fired timer calls renderHomePage() again, which arms
+  // yet another -- an unbounded, ever-growing pile of concurrent timers
+  // for any session where renderHomePage() runs more than once, worst on
+  // exactly the kind of long-lived open tab a landing-page visitor leaves
+  // running for hours.
+  if(!window._homeRefTimer)window._homeRefTimer=setInterval(()=>{try{renderHomePage();}catch(e){}},60000);
   // Cross-device sync: pull picks locked/settled on another device (phone
   // vs laptop, say) every 90s while this tab is open, so both stay current
   // without needing a manual SYNC click or full page reload.
