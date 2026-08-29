@@ -4119,6 +4119,27 @@ function autoSettleFromESPN(games,targetDate){
   // -- caught via a real ~2-month-old backlog of stuck pending bets.
   targetDate=targetDate||today();
   const preds=getP();let changed=false;
+  // Doubleheader guard: team-pairing alone can't tell two games between the
+  // same two teams on the same calendar date apart -- no per-pick game ID
+  // is stored locally (lockPick only sends espn_game_id to the backend,
+  // never keeps it on the local pred). Confirmed live 2026-08-29: BOS@NYY
+  // and ARI@SF both play twice today. Without this guard, settling by
+  // team-pairing while the EARLY game of a pair is final and the LATE
+  // game (whose own pick is still legitimately pending, unplayed) hasn't
+  // started yet would grade the late game's pick with the early game's
+  // score -- exactly the "settled before the game started" failure mode
+  // this was written to close. A same-date pair is only eligible to
+  // settle once every game ESPN lists for that pair on targetDate is
+  // final; until then every pending bet for that pair stays pending.
+  const pairKey=(a,b)=>[a,b].sort().join('|');
+  const _dateGames=games.filter(g=>g.hA&&g.awA&&(!g.date||g.date===targetDate));
+  const pairCount={},pairAllFinal={};
+  for(const g of _dateGames){
+    const k=pairKey(g.hA,g.awA);
+    pairCount[k]=(pairCount[k]||0)+1;
+    if(pairAllFinal[k]===undefined)pairAllFinal[k]=true;
+    if(g.status!=='post')pairAllFinal[k]=false;
+  }
   for(const g of games){
     if(g.status!=='post'||g.hScore===null)continue;
     // Defense in depth: only grade with a game that's actually FROM
@@ -4128,6 +4149,7 @@ function autoSettleFromESPN(games,targetDate){
     // bet against the wrong real-world game. See loadGames' own fix for
     // the specific failure mode this was caught from.
     if(g.date&&g.date!==targetDate)continue;
+    if(pairCount[pairKey(g.hA,g.awA)]>1&&!pairAllFinal[pairKey(g.hA,g.awA)])continue;
     // Find matching pending bets
     for(const p of preds){
       if(p.outcome!=='pending')continue;
@@ -28327,8 +28349,17 @@ async function _fetchLeagueScoreboard(leagueKey){
     // real source of multi-second main-thread blocking ("page
     // unresponsive"). Same convention as MLS's schedule fetch: only the
     // current day's matches load.
-    var _fmtESPN=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard?dates='+_fmtESPN(new Date())+'&limit=50',{signal:ctrl.signal});
+    // Real bug, found and fixed: this used to build the dates= param from
+    // raw new Date().getFullYear()/getMonth()/getDate() -- the browser's
+    // own local calendar date, NOT explicitly Denver-local. Every other
+    // date-scoped fetch in the app (MLS/MLB/CFB schedules, lockPick's own
+    // date stamp) goes through today()/todayESPN(), which are pinned to
+    // America/Denver regardless of what timezone the process running the
+    // browser is actually in -- confirmed live: MLS's schedule fetch uses
+    // exactly this pattern and locks correctly every day, while this
+    // function (the other 5 leagues: CL/PL/La Liga/Bundesliga/Serie A)
+    // didn't, and was the one auto-lock consistently missed picks for.
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/scoreboard?dates='+todayESPN()+'&limit=50',{signal:ctrl.signal});
     var d=await r.json();
     var games=[];
     (d.events||[]).forEach(function(ev){
