@@ -3371,9 +3371,14 @@ function _genericGameCard(espnEv,sportTag){
 }
 var _genericWeekCache={},_genericWeekCacheTs={};
 async function _fetchGenericWeekGames(espnPath){
-  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  // Real bug, found via audit: this used to build dates= from raw
+  // new Date().getFullYear()/getMonth()/getDate() -- the browser process's
+  // own local calendar date, not explicitly Denver-local, same class of
+  // bug already found and fixed in _fetchLeagueScoreboard (soccer). Uses
+  // todayESPN() (today() + Denver timezone) instead, same as every other
+  // date-scoped fetch in the app.
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+espnPath+'/scoreboard?dates='+fmt(new Date())+'&limit=300',{mode:'cors',cache:'no-cache'});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+espnPath+'/scoreboard?dates='+todayESPN()+'&limit=300',{mode:'cors',cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
     return d.events||[];
@@ -3938,9 +3943,10 @@ async function loadGames(dateStr){
 // convention as the club soccer leagues' _fetchLeagueScoreboard.
 var _mlbWeekCache=null,_mlbWeekCacheTs=0;
 async function _fetchMLBWeekGames(){
-  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  // See _fetchGenericWeekGames' comment -- same browser-local-date bug,
+  // same fix (todayESPN() instead of a raw new Date() format).
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates='+fmt(new Date())+'&limit=300',{mode:'cors',cache:'no-cache'});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates='+todayESPN()+'&limit=300',{mode:'cors',cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
     return (d.events||[]).map(parseESPNGame).filter(Boolean);
@@ -8309,9 +8315,10 @@ async function fetchESPNNHL(dateStr){
 // note above; NHL is also in its real 2026 offseason, reactivates October) ═
 var _nhlWeekCache=null,_nhlWeekCacheTs=0;
 async function _fetchNHLWeekGames(){
-  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  // See _fetchGenericWeekGames' comment -- same browser-local-date bug,
+  // same fix (todayESPN() instead of a raw new Date() format).
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates='+fmt(new Date())+'&limit=300',{mode:'cors',cache:'no-cache'});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates='+todayESPN()+'&limit=300',{mode:'cors',cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
     return d.events||[];
@@ -10413,9 +10420,10 @@ function _nbaGameCard(espnEv){
 // same fetch/render technique already proven live against MLB.
 var _nbaWeekCache=null,_nbaWeekCacheTs=0;
 async function _fetchNBAWeekGames(){
-  var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
+  // See _fetchGenericWeekGames' comment -- same browser-local-date bug,
+  // same fix (todayESPN() instead of a raw new Date() format).
   try{
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+fmt(new Date())+'&limit=300',{mode:'cors',cache:'no-cache'});
+    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates='+todayESPN()+'&limit=300',{mode:'cors',cache:'no-cache'});
     if(!r.ok)throw new Error(r.status);
     var d=await r.json();
     return d.events||[];
@@ -28482,8 +28490,13 @@ function loadSoccerScheduleSnapshot(){
     .then(function(r){return r.ok?r.json():null;})
     .then(function(d){
       if(!d||!d.leagues)return d;
-      var fmt=function(dt){return dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');};
-      if(d.date!==fmt(new Date())){console.warn('[CV] Soccer schedule snapshot stale, skipping seed:',d.date);return d;}
+      // See _fetchGenericWeekGames' comment -- same browser-local-date bug.
+      // d.date is written as todayESPN()-format (YYYYMMDD, Denver-local) by
+      // the Python generator, so compare against the same helper here
+      // instead of a raw new Date() format -- otherwise a fresh snapshot
+      // could get wrongly treated as stale (or a stale one wrongly seeded)
+      // whenever the browser process's local date differs from Denver's.
+      if(d.date!==todayESPN()){console.warn('[CV] Soccer schedule snapshot stale, skipping seed:',d.date);return d;}
       var now=Date.now();
       Object.keys(d.leagues).forEach(function(lk){
         if(_leagueScoreCache[lk])return;
