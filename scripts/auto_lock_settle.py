@@ -1112,14 +1112,17 @@ def verify_todays_locks(page) -> int:
 
 
 def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "",
-              to: list[str] | None = None, send_email: bool = True) -> None:
+              to: list[str] | None = None, send_email: bool = True) -> int:
     """Single-product lock pass -- used by the early soccer/CFB workflows,
     which each run their own gather_legs() call at their own scheduled
     time (not part of the main run's per-product loop). send_email=False
     for a redundant same-morning retry that already had its one email
     sent by an earlier attempt today -- still locks (idempotent -- see
     _lock_qualifying_legs/lockPick's own dedup) and still verifies, just
-    doesn't duplicate the subscriber email."""
+    doesn't duplicate the subscriber email. Returns how many legs were
+    locked this pass (0 if none/dry-run), so the caller can cross-check
+    against verify_todays_locks and catch a silent Supabase-write failure
+    instead of trusting "the function didn't throw"."""
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL){' — ' + label if label else ''} ===")
     result = gather_legs(page)
     qualifying = build_qualifying(result, only_sports=only_sports)
@@ -1140,14 +1143,14 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
         log(f"[DRY RUN] Would lock {len(qualifying)} legs above (pass --live to write)")
         if send_email:
             send_locks_email(qualifying, live=False, label=label, to=to)
-        return
+        return 0
 
     if not qualifying:
         if send_email:
             send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to)
         else:
             log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
-        return
+        return 0
 
     locked = _lock_qualifying_legs(page, qualifying)
     log(f"Locked {locked}/{len(qualifying)} legs")
@@ -1158,6 +1161,7 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
         send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
     else:
         log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
+    return locked
 
 
 def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
@@ -1290,6 +1294,17 @@ def main() -> None:
         browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 1400, "height": 1000})
         page = context.new_page()
+        # Real gap, found via audit: this script had zero visibility into
+        # browser-console output -- a real silent-failure case (CFB manual
+        # trigger 2026-08-29: "Locked 17/19 legs" + "Flushed locks to
+        # Supabase" logged, but a fresh Supabase re-pull showed 0 of them
+        # actually persisted) would have logged its real cause as a
+        # console.warn (syncBetsToSupabase's own '[CV] Supabase sync ...
+        # failed' path) that never reached this script at all. Only
+        # forwards warnings/errors -- console.log is too noisy (the app
+        # logs routine state on nearly every render).
+        page.on("console", lambda msg: log(f"[browser {msg.type}] {msg.text}")
+                if msg.type in ("warning", "error") else None)
         install_espn_relay(page)
         # Real bug, found and fixed: the app has ~20 setInterval-based
         # background timers (live score tickers, per-sport settle polling,
@@ -1386,13 +1401,29 @@ def main() -> None:
                 # "wait for the final check" pattern -- always emails
                 # immediately, same as before.
                 try:
-                    run_lock(page, args.live, only_sports=only_sports, label=label, to=early_to,
-                             send_email=True)
+                    locked_this_pass = run_lock(page, args.live, only_sports=only_sports, label=label,
+                                                 to=early_to, send_email=True)
                     verified_count = verify_todays_locks(page) if args.live else None
                     if args.live:
+                        # Real bug, found live 2026-08-29: a CFB run logged
+                        # "Locked 17/19 legs" + "Flushed locks to Supabase"
+                        # and still reported lastLock ok=True, but a fresh
+                        # Supabase re-pull showed 0 of those 17 actually
+                        # persisted (root cause still under investigation --
+                        # see the new browser console-forwarding above).
+                        # verify_todays_locks existed specifically to catch
+                        # this class of silent write failure, but its count
+                        # was only ever logged as text, never acted on.
+                        # locked_this_pass > 0 with verified_count still 0
+                        # means every leg this pass locked failed to
+                        # persist -- surface that as ok=False instead of a
+                        # false "completed" status.
+                        write_failed = locked_this_pass > 0 and not verified_count
                         write_automation_status(
-                            "lastLock", True,
-                            f"{label} lock pass completed, {verified_count} pick(s) verified for {today_mt}")
+                            "lastLock", not write_failed,
+                            f"{label} lock pass completed, {locked_this_pass} locked this pass, "
+                            f"{verified_count} pick(s) verified for {today_mt}"
+                            + (" -- WRITE MAY HAVE SILENTLY FAILED" if write_failed else ""))
                 except Exception as exc:
                     log(f"{label} lock step failed: {exc}")
                     if args.live:
