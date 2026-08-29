@@ -28,16 +28,20 @@ name: Live Score Tracker
 
 on:
   schedule:
-    # Every 15 min, 9am-11pm MT -- matches live_tracker.py's own default
-    # game-window gate (11am-1am ET). 9am MT = 15:00 UTC, 11pm MT = 05:00
-    # UTC next day (MDT), hence the split hour range below. Like every
-    # other fixed-UTC cron in this repo, drifts ~1hr earlier MT once MST
-    # returns in November.
-    - cron: '*/15 15-23,0-5 * * *'
+    # Every 15 min, 6am-11pm MT -- widened from 9am-11pm (matching
+    # live_tracker.py's own default game-window gate, 11am-1am ET) to
+    # also cover CFB/soccer's early-lock windows for the watchdog step
+    # below. Live-score polling itself still no-ops harmlessly for the
+    # 6-9am slots if live_tracker.py's own gate says nothing's live yet.
+    # 6am MT = 12:00 UTC, 11pm MT = 05:00 UTC next day (MDT), hence the
+    # split hour range. Like every other fixed-UTC cron in this repo,
+    # drifts ~1hr earlier MT once MST returns in November.
+    - cron: '*/15 12-23,0-5 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   live-tracker:
@@ -55,6 +59,46 @@ jobs:
 
       - name: Install dependencies
         run: pip install -q requests
+
+      # Watchdog: CFB/soccer's own dedicated early-lock workflows each
+      # have their own catch-up cron slots, but confirmed live 2026-08-29
+      # that GitHub Actions can drop EVERY one of a workflow's own
+      # scheduled triggers for a given day, not just delay them (CFB's
+      # 4 slots that morning: zero fired). This runs on live-tracker's
+      # own, independent 15-min schedule instead -- a different cron
+      # expression is a genuinely separate chance for GitHub to actually
+      # fire it, not just another slot on the same workflow that could
+      # get dropped the same way. Only actually dispatches when the
+      # marker file shows today's real lock hasn't succeeded yet, so a
+      # normal day where the dedicated workflow fires on its own triggers
+      # this to do nothing on every tick.
+      - name: Watchdog -- dispatch CFB/soccer lock if overdue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TZ: America/Denver
+        run: |
+          HOUR_MT=$(date +%H)
+          TODAY_MT=$(date +%Y-%m-%d)
+          # Soccer window: 6:00-7:45am MT, ahead of the earliest 7:00am
+          # EPL kickoffs (matches soccer-lock-early.yml's own 6:00-6:45
+          # catch-up range, plus one extra tick of headroom).
+          if [ "$HOUR_MT" = "06" ] || [ "$HOUR_MT" = "07" ]; then
+            LAST_SOCCER=$(cat data/last_soccer_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_SOCCER" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: soccer lock not recorded for $TODAY_MT yet at ${HOUR_MT}:xx MT -- dispatching Soccer Auto Lock (Early)."
+              gh workflow run "Soccer Auto Lock (Early)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
+          # CFB window: 9:00-10:45am MT, ahead of the earliest confirmed
+          # 10:00am kickoffs (matches cfb-lock-early.yml's own 9:00-10:00
+          # catch-up range, plus one extra tick of headroom).
+          if [ "$HOUR_MT" = "09" ] || [ "$HOUR_MT" = "10" ]; then
+            LAST_CFB=$(cat data/last_cfb_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_CFB" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: CFB lock not recorded for $TODAY_MT yet at ${HOUR_MT}:xx MT -- dispatching CFB Auto Lock (Early)."
+              gh workflow run "CFB Auto Lock (Early)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
 
       - name: Poll live scores
         env:
