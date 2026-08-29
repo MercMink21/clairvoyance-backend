@@ -16,14 +16,14 @@ on:
     # 9:00 AM MT = 15:00 UTC (MDT) / 16:00 UTC (MST) -- an hour ahead of
     # the earliest confirmed CFB kickoffs.
     - cron: '0 15 * * *'
-    # Catch-up: 9:45 AM MT = 15:45 UTC. Real GitHub Actions scheduling
+    # Catch-up: 9:20 AM MT = 15:20 UTC. Real GitHub Actions scheduling
     # unreliability (same class already found and fixed for the main
     # lock workflow -- confirmed live: recent CFB early-lock runs landed
     # at 5:43pm/6:06pm MT instead of 9:00am, hours after real kickoffs)
     # means the 9:00 slot above can silently arrive very late or not at
     # all. This fires ONLY if today's real lock hasn't already
-    # succeeded, still 15 min ahead of the earliest 10:00am kickoffs.
-    - cron: '45 15 * * *'
+    # succeeded, still 40 min ahead of the earliest 10:00am kickoffs.
+    - cron: '20 15 * * *'
   workflow_dispatch:
     inputs:
       live:
@@ -67,14 +67,14 @@ jobs:
             echo "should_run=1" >> "$GITHUB_OUTPUT"
           else
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
-            if [ "${{ github.event.schedule }}" = "45 15 * * *" ]; then
+            if [ "${{ github.event.schedule }}" = "20 15 * * *" ]; then
               TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
               LAST_CFB_LOCK=$(cat data/last_cfb_lock_date.txt 2>/dev/null || echo "")
               if [ "$LAST_CFB_LOCK" = "$TODAY_MT" ]; then
                 echo "should_run=0" >> "$GITHUB_OUTPUT"
               else
                 echo "should_run=1" >> "$GITHUB_OUTPUT"
-                echo "::notice::9:00am MT CFB lock slot never fired (or hasn't recorded success) -- running the 9:45am catch-up."
+                echo "::notice::9:00am MT CFB lock slot never fired (or hasn't recorded success) -- running the 9:20am catch-up."
               fi
             else
               echo "should_run=1" >> "$GITHUB_OUTPUT"
@@ -93,7 +93,7 @@ jobs:
 
       - name: Record successful CFB lock date
         # Only after a run that actually included a LIVE lock pass -- a
-        # dry-run must never mark today as locked, or the 9:45 catch-up
+        # dry-run must never mark today as locked, or the 9:20 catch-up
         # would wrongly skip itself.
         if: ${{ steps.flags.outputs.should_run == '1' && steps.flags.outputs.live_flag == '--live' }}
         run: |
