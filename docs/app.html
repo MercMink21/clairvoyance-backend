@@ -2554,43 +2554,66 @@ async function _deleteBetsFromSupabase(ids){
     if(!r.ok)console.warn('[CV] Supabase soft-delete failed:',r.status,await r.text().catch(()=>''));
   }catch(e){console.warn('[CV] Supabase soft-delete failed (offline?):',e.message);}
 }
+// Does the real pull-then-upload work. Split out of syncBetsToSupabase()
+// so a caller that needs to know the upload has ACTUALLY finished (not
+// just been scheduled) can call+await this directly, bypassing the
+// debounce entirely -- see _syncBetsToSupabaseNow's own comment.
+async function _doSupabaseSync(){
+  try{
+    // Pull latest FIRST. Without this, a device with stale local state
+    // (e.g. a bet it hasn't learned was settled elsewhere yet) would
+    // re-upload its own outdated 'pending' snapshot on the very next
+    // saveP() and clobber the already-correct settled row on Supabase —
+    // last-write-wins with no protection, since this upsert overwrites
+    // every column including outcome. syncPicksFromSupabase() only ever
+    // pulls a settlement IN (never regresses a local settled record), so
+    // reconciling first guarantees this device only ever pushes its own
+    // genuinely-known state, not a stale echo of an old one.
+    try{if(typeof syncPicksFromSupabase==='function')await syncPicksFromSupabase();}catch(e){}
+    const bets=(typeof getP==='function'?getP():[]).filter(p=>p&&p.id);
+    if(!bets.length)return;
+    const rows=bets.map(_supabaseBetRow);
+    // PostgREST request bodies aren't unlimited — chunk into batches.
+    for(let i=0;i<rows.length;i+=200){
+      const chunk=rows.slice(i,i+200);
+      const r=await fetch(SUPABASE_URL+'/rest/v1/bets',{
+        method:'POST',
+        headers:{
+          'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,
+          'Content-Type':'application/json',
+          'Prefer':'resolution=merge-duplicates,return=minimal', // upsert on id (primary key)
+        },
+        body:JSON.stringify(chunk),
+      });
+      if(!r.ok){console.warn('[CV] Supabase sync chunk failed:',r.status,await r.text().catch(()=>''));}
+    }
+    console.log('[CV] Supabase sync: '+rows.length+' bets mirrored');
+  }catch(e){console.warn('[CV] Supabase sync failed (offline?):',e.message);}
+}
 function syncBetsToSupabase(){
   // Debounced — saveP() can fire many times in a row (bulk imports,
   // migrations, settle sweeps); coalesce into one upload 2.5s after the
   // last change instead of one request per call.
   clearTimeout(_supabaseSyncTimer);
-  _supabaseSyncTimer=setTimeout(async()=>{
-    try{
-      // Pull latest FIRST. Without this, a device with stale local state
-      // (e.g. a bet it hasn't learned was settled elsewhere yet) would
-      // re-upload its own outdated 'pending' snapshot on the very next
-      // saveP() and clobber the already-correct settled row on Supabase —
-      // last-write-wins with no protection, since this upsert overwrites
-      // every column including outcome. syncPicksFromSupabase() only ever
-      // pulls a settlement IN (never regresses a local settled record), so
-      // reconciling first guarantees this device only ever pushes its own
-      // genuinely-known state, not a stale echo of an old one.
-      try{if(typeof syncPicksFromSupabase==='function')await syncPicksFromSupabase();}catch(e){}
-      const bets=(typeof getP==='function'?getP():[]).filter(p=>p&&p.id);
-      if(!bets.length)return;
-      const rows=bets.map(_supabaseBetRow);
-      // PostgREST request bodies aren't unlimited — chunk into batches.
-      for(let i=0;i<rows.length;i+=200){
-        const chunk=rows.slice(i,i+200);
-        const r=await fetch(SUPABASE_URL+'/rest/v1/bets',{
-          method:'POST',
-          headers:{
-            'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,
-            'Content-Type':'application/json',
-            'Prefer':'resolution=merge-duplicates,return=minimal', // upsert on id (primary key)
-          },
-          body:JSON.stringify(chunk),
-        });
-        if(!r.ok){console.warn('[CV] Supabase sync chunk failed:',r.status,await r.text().catch(()=>''));}
-      }
-      console.log('[CV] Supabase sync: '+rows.length+' bets mirrored');
-    }catch(e){console.warn('[CV] Supabase sync failed (offline?):',e.message);}
-  },2500);
+  _supabaseSyncTimer=setTimeout(_doSupabaseSync,2500);
+}
+// Real bug, found and fixed: auto_lock_settle.py's flush_to_supabase()
+// called the DEBOUNCED syncBetsToSupabase() (fire-and-forget — it just
+// arms a setTimeout and returns immediately) then blind-waited a fixed
+// 4000ms on the Python side before verifying. syncPicksFromSupabase()'s
+// own "pull latest first" step is a paginated read of the WHOLE bets
+// table (2500+ rows = 3 round trips) before the actual upload even
+// starts -- confirmed live 2026-08-29: a CFB lock run logged "Locked
+// 16/18 legs" + "Flushed locks to Supabase" and STILL showed 0 of them
+// in an immediate fresh Supabase re-pull, with no console error at all,
+// because the 2.5s debounce + multi-page pull routinely took longer
+// than the 4s the Python side was willing to wait -- a real race, not a
+// write failure. This bypasses the debounce entirely and returns the
+// actual completion, so an awaited Python caller gets a true "the
+// upload is done" signal instead of a guessed timeout.
+async function _syncBetsToSupabaseNow(){
+  clearTimeout(_supabaseSyncTimer);
+  await _doSupabaseSync();
 }
 
 // API helper — returns null on failure so callers can fallback gracefully

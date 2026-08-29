@@ -341,11 +341,19 @@ def load_bet_ledger(page) -> int:
 
 
 def flush_to_supabase(page) -> None:
-    """syncBetsToSupabase() (the app's own real sync path) is debounced
-    2.5s after the last saveP() call — force a save via a no-op saveP()
-    call and wait out the debounce instead of reimplementing the upload."""
-    page.evaluate("() => { syncBetsToSupabase(); }")
-    page.wait_for_timeout(4000)
+    """Awaits _syncBetsToSupabaseNow() -- the same pull-then-upload logic
+    the app's own debounced syncBetsToSupabase() uses, but bypassing the
+    debounce and actually awaited here instead of guessed at with a fixed
+    timeout. Real bug, found and fixed: this used to fire the DEBOUNCED
+    syncBetsToSupabase() (arms a 2.5s setTimeout and returns immediately)
+    then blind-wait 4000ms -- but the sync's own "pull latest first" step
+    is a paginated read of the whole bets table (2500+ rows = 3 round
+    trips) before the upload even starts, which routinely took longer
+    than 4s total. Confirmed live 2026-08-29: a CFB lock run logged
+    "Locked 16/18 legs" + "Flushed locks to Supabase" and still showed 0
+    of them in an immediate verify pull -- a race, not a write failure.
+    Awaiting the real completion here closes that gap."""
+    page.evaluate("async () => { await _syncBetsToSupabaseNow(); }")
 
 
 # ─────────────────────────────────────────────────────────────────────────
