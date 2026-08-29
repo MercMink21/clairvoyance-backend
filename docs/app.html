@@ -18978,59 +18978,67 @@ function _usoMatchCards(roundId,k){
   return upcoming.map(({m,i})=>{
     const p1L=(m.p1).split('.').pop();const p2L=(m.p2).split('.').pop();
     const p1d=DB[m.p1],p2d=DB[m.p2];
-    let wpH='',gradeH='',evH='',setsHtml='',gamesHtml='';
+    // Same chip/pill visual system mlbCard() uses -- but graded on raw model
+    // win probability, not chipC()'s market-EV tiering. Unlike MLB (real
+    // ESPN moneylines), most US Open R1 matches have no external market
+    // price -- m.p1ml is self-generated FROM the same win-prob model
+    // (_toML(wp) below), so its "EV" vs that model is ~0 by construction
+    // and chipC(p,ev(...)) would grade nearly every match SKIP. Probability
+    // thresholds (same cutoffs the old design used) give a real confidence
+    // signal instead of a fake always-zero market edge.
+    const _favGrade=p=>p>=0.67?{c:'chip-g',pl:'pg',lb:'PREMIUM'}:p>=0.62?{c:'chip-p',pl:'pp',lb:'OPTIMAL'}:p>=0.55?{c:'chip-n',pl:'pn',lb:'LEAN'}:{c:'chip-h',pl:'ph',lb:'—'};
+    let p1CS={c:'chip-h',pl:'ph',lb:'—'},p2CS={c:'chip-h',pl:'ph',lb:'—'};
+    let sMain=null,gLine=null,p1Prob=0.5,p2Prob=0.5,p1Dec=1,p2Dec=1;
     if(p1d&&p2d){
       const wp=tennisMatchWinProbFull(p1d,p2d,'hard',bo5);
       const _toML=p=>{p=Math.max(0.03,Math.min(0.97,p));return p>=0.5?-Math.round(100*p/(1-p)):Math.round(100*(1-p)/p);};
       if(m.p1ml==null)m.p1ml=_toML(wp);
       if(m.p2ml==null)m.p2ml=_toML(1-wp);
-      const favP=wp>=0.5?wp:1-wp;
-      const favML=wp>=0.5?m.p1ml:m.p2ml;
-      const grade=favP>=0.67?'PREMIUM':favP>=0.62?'OPTIMAL':favP>=0.55?'LEAN':'EVEN';
-      const grCol=favP>=0.67?'var(--gc)':favP>=0.62?'var(--pc)':favP>=0.55?'var(--nc)':'var(--t3)';
-      wpH=`<span style="color:${grCol};font-weight:700">${(favP*100).toFixed(1)}%</span>`;
-      gradeH=`<span style="color:${grCol}">${grade}</span>`;
-      const ev=favML?(favML>0?(favML/100):(100/Math.abs(favML)))*favP-1:0;
-      evH=`<span style="color:${ev>0?'var(--nc)':'var(--t3)'}">EV ${ev>0?'+':''}${(ev*100).toFixed(1)}%</span>`;
+      p1Prob=wp;p2Prob=1-wp;
+      p1Dec=ml2d(m.p1ml);p2Dec=ml2d(m.p2ml);
+      p1CS=_favGrade(p1Prob);
+      p2CS=_favGrade(p2Prob);
       const gSim=tennisSimGames(p1d,p2d,'hard',bo5,25000);
-      const gLine=tennisGamesLine(gSim,bo5);
-      const gCol=gLine.grade==='OPTIMAL'?'var(--nc)':gLine.grade==='LEAN'?'var(--ic)':'var(--t3)';
-      gamesHtml=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:4px">GAMES O/U <strong>${gLine.line}</strong> → <strong style="color:${gCol}">${gLine.dir}</strong> <span style="color:var(--t3)">${gLine.conf}% (exp ${gLine.expected})</span></div>`;
+      gLine=tennisGamesLine(gSim,bo5);
       const gender=k==='atp'?'M':'W';
       const sOUs=_tennisSetOU(wp,gender);
-      const sMain=bo5?sOUs.find(s=>s.line===3.5)||sOUs[0]:sOUs[0];
-      if(sMain){const sDir=sMain.overP>0.5?'OVER':'UNDER';const sP=(sMain.overP>0.5?sMain.overP:1-sMain.overP)*100|0;const sCol2=sDir==='OVER'?'var(--nc)':'var(--mc)';
-        setsHtml=`<div style="font-family:var(--mono);font-size:14px;color:var(--t3);margin-top:2px">SETS O/U <strong>${sMain.line}</strong> → <strong style="color:${sCol2}">${sDir}</strong> <span style="color:var(--t3)">${sP}%</span></div>`;}
+      sMain=bo5?sOUs.find(s=>s.line===3.5)||sOUs[0]:sOUs[0];
     }
     const ml1str=m.p1ml?(m.p1ml>0?'+':'')+m.p1ml:'—';
     const ml2str=m.p2ml?(m.p2ml>0?'+':'')+m.p2ml:'—';
-    const dateStr=m.matchDate?` · ${m.matchDate}`:'';
-    return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${sCol}">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-    <div style="font-family:var(--orb);font-size:13px;color:${sCol};letter-spacing:2px">US OPEN ${(roundMeta.name||roundId).toUpperCase()} · ${tour2}${dateStr}</div>
-    <div style="display:flex;gap:6px;align-items:center">${wpH} ${gradeH} ${evH}</div>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-    <div style="flex:1">
-      <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:rgba(220,190,255,.9)">${m.p1}${m.s1?` <span style="font-size:14px;color:var(--nc)">${m.s1}</span>`:''}</div>
-      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">ML: <strong style="color:var(--t2)">${ml1str}</strong></div>
+    const live=_usoLiveLookup(m.p1,m.p2);
+    const isLive=live?.state==='in',isFinal=live?.state==='post';
+    const statusDot=isLive?'<span class="status-live"></span>':isFinal?'<span class="status-final"></span>':'<span class="status-pre"></span>';
+    const statusTxt=isFinal?`FINAL${live.score?': '+live.score:''}`:isLive?`LIVE${live.score?' · '+live.score:''}`:(m.matchDate||'');
+    const gCol=gLine?(gLine.grade==='OPTIMAL'?'var(--nc)':gLine.grade==='LEAN'?'var(--ic)':'var(--t3)'):'var(--t3)';
+    const sCol2=sMain?(sMain.overP>0.5?'var(--nc)':'var(--mc)'):'var(--t3)';
+    const sDir=sMain?(sMain.overP>0.5?'OVER':'UNDER'):'—';
+    const sP=sMain?((sMain.overP>0.5?sMain.overP:1-sMain.overP)*100|0):0;
+    return`<div class="gc" style="border-left:2px solid ${sCol}">
+    <div class="gch">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="gtm" style="font-size:20px;color:${p1CS.c==='chip-h'?'var(--t2)':'var(--pc)'}">${m.p1}${m.s1?` <span style="font-size:13px;color:var(--nc)">${m.s1}</span>`:''}</span>
+          <span style="color:var(--t3);font-size:14px;font-family:var(--mono)">vs</span>
+          <span class="gtm" style="font-size:20px;color:${p2CS.c==='chip-h'?'var(--t2)':'var(--pc)'}">${m.p2}${m.s2?` <span style="font-size:13px;color:var(--nc)">${m.s2}</span>`:''}</span>
+        </div>
+        <div class="gsp">US OPEN ${(roundMeta.name||roundId).toUpperCase()} · ${tour2} · HARD COURT</div>
+      </div>
+      <div style="text-align:right"><div class="np mono" style="font-size:15px">${statusDot}${statusTxt}</div></div>
     </div>
-    <div style="font-family:var(--orb);font-size:15px;color:var(--t3);flex-shrink:0;padding-top:4px">VS</div>
-    <div style="flex:1;text-align:right">
-      <div style="font-family:var(--orb);font-size:18px;font-weight:700;color:rgba(220,190,255,.9)">${m.p2}${m.s2?` <span style="font-size:14px;color:var(--nc)">${m.s2}</span>`:''}</div>
-      <div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">ML: <strong style="color:var(--t2)">${ml2str}</strong></div>
+    <div class="brow">
+      <div class="${p1CS.c} chip" style="flex:1" onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','TEN','${m.p1.replace(/'/g,"\\'")}',${p1Prob.toFixed(3)},'${m.p1ml||0}',${p1Dec.toFixed(3)},'${m.matchDate||''}')"><div class="cht">ML ${p1L}</div><div class="cho">${ml1str}</div>${p1CS.lb!=='—'?`<div style="margin-top:2px"><span class="pill ${p1CS.pl}">${p1CS.lb}</span></div>`:''}</div>
+      <div class="${p2CS.c} chip" style="flex:1" onclick="lockPick('${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','TEN','${m.p2.replace(/'/g,"\\'")}',${p2Prob.toFixed(3)},'${m.p2ml||0}',${p2Dec.toFixed(3)},'${m.matchDate||''}')"><div class="cht">ML ${p2L}</div><div class="cho">${ml2str}</div>${p2CS.lb!=='—'?`<div style="margin-top:2px"><span class="pill ${p2CS.pl}">${p2CS.lb}</span></div>`:''}</div>
     </div>
-  </div>
-  ${setsHtml}${gamesHtml}
-  <div style="display:flex;gap:4px;margin-top:8px">
-    <button onclick="lockPick('${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}','ML','p1',${m.p1ml||0},${m.p1ml||0},${m.p1ml?Math.abs(m.p1ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(0,240,255,.07);border:1px solid rgba(0,240,255,.28);color:var(--nc);border-radius:3px;cursor:pointer">LOCK ${p1L}</button>
-    <button onclick="lockPick('${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','ML','p1',${m.p2ml||0},${m.p2ml||0},${m.p2ml?Math.abs(m.p2ml)/100+1:1},'${m.matchDate||''}')" style="flex:1;font-family:var(--mono);font-size:14px;padding:5px;background:rgba(255,200,0,.07);border:1px solid rgba(255,200,0,.28);color:var(--gc);border-radius:3px;cursor:pointer">LOCK ${p2L}</button>
-  </div>
-  <div style="display:flex;gap:4px;margin-top:4px">
-    <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p1.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p1L}</button>
-    <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p2L}</button>
-  </div>
-</div>`;
+    ${sMain||gLine?`<div style="display:flex;gap:6px;margin-top:6px">
+      ${sMain?`<div style="flex:1;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;text-align:center"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px">SETS O/U ${sMain.line}</div><div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${sCol2}">${sDir}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${sP}%</div></div>`:''}
+      ${gLine?`<div style="flex:1;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:5px 6px;text-align:center"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px">GAMES O/U ${gLine.line}</div><div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${gCol}">${gLine.dir}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${gLine.conf}% (exp ${gLine.expected})</div></div>`:''}
+    </div>`:''}
+    <div style="display:flex;gap:4px;margin-top:8px">
+      <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p1.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p1L}</button>
+      <button onclick="_usoSetWinnerManual('${roundId}','${k}',${i},'${m.p2.replace(/'/g,"\\'")}','${m.p1.replace(/'/g,"\\'")}','${m.p2.replace(/'/g,"\\'")}')" style="flex:1;font-family:var(--mono);font-size:11px;padding:4px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.15);color:var(--t3);border-radius:3px;cursor:pointer">SET WINNER: ${p2L}</button>
+    </div>
+  </div>`;
   }).join('');
 }
 
