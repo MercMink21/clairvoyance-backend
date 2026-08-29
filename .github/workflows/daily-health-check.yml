@@ -7,9 +7,19 @@ name: Daily Health Check
 # wrong (silent on a healthy day, matching hands-off preference).
 on:
   schedule:
-    # ~14:30 MT (20:30 UTC) -- after every job it checks has had its
-    # chance to run for the day, in the same open 17:00-21:00 UTC gap
-    # other lightweight non-Playwright jobs in this repo use.
+    # ~11:15 MT (17:15 UTC) -- an early pass whose only real job is
+    # check_lock_markers() (see daily_health_check.py): by this time
+    # soccer's 8am cutoff and CFB's 11am cutoff have both passed, so a
+    # genuine miss that morning gets flagged same-day instead of waiting
+    # for the 14:30 pass below. GITHUB_TOKEN-based workflow-run checks
+    # still run too (harmless this early -- MONITORED's 26h window means
+    # they won't have anything meaningful to say yet, so this is really
+    # just the marker check arriving early).
+    - cron: '15 17 * * *'
+    # ~14:30 MT (20:30 UTC) -- the full daily pass, after every job it
+    # checks has had its chance to run for the day, in the same open
+    # 17:00-21:00 UTC gap other lightweight non-Playwright jobs in this
+    # repo use.
     - cron: '30 20 * * *'
   workflow_dispatch: {}
 

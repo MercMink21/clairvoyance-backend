@@ -26,18 +26,32 @@ import urllib.request
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _gmail_email import send_email  # noqa: E402
 
 REPO = "MercMink21/clairvoyance-backend"
+ROOT = Path(__file__).resolve().parent.parent
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 ALERT_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "") or os.environ.get("LOCKS_EMAIL_TO", "")
 
 # (workflow filename, human label, how many hours old a run can be before
 # it's considered "missing" -- a bit more than 24h to absorb normal
 # schedule jitter, per this repo's own documented pattern of GH delaying
-# scheduled runs 30-90+ minutes past nominal cron time).
+# scheduled runs 30-90+ minutes past nominal cron time). Real gap, found
+# and fixed: this 26h window is fine for once-a-day, not-time-critical
+# jobs, but for CFB/soccer's early locks it meant a genuinely late run
+# (or a fully-dropped schedule, confirmed to happen live 2026-08-29)
+# wouldn't get flagged until up to 26h after the fact -- long past
+# useful for a same-day catch. Those two are checked by
+# check_lock_markers() below instead (the real ground-truth marker
+# files cfb-lock-early.yml/soccer-lock-early.yml's own catch-up logic
+# uses, not a guess from run recency), on a tighter, earlier schedule.
+# Kept in MONITORED (at 26h) too as a backup signal for genuinely
+# missing runs, since the marker check alone can't tell "workflow never
+# ran" apart from "ran, found 0 qualifying legs, correctly wrote today's
+# date anyway" -- both look the same to the marker file.
 MONITORED = [
     ("auto-lock-settle.yml", "Main Auto-Lock (all 8 products)", 26),
     ("soccer-lock-early.yml", "Soccer Early Lock", 26),
@@ -46,6 +60,38 @@ MONITORED = [
     ("social-cards-daily.yml", "Social Cards Daily", 26),
     ("pick-of-day-social-daily.yml", "Pick-of-Day Social", 26),
 ]
+
+# (marker file, human label, cutoff hour in MT past which today's date
+# should already be recorded). Matches each workflow's own catch-up
+# window with headroom: soccer's last catch-up is 6:45am MT (earliest
+# kickoff 7:00am), CFB's is 10:00am MT (earliest kickoff 10:00am) -- both
+# cutoffs here sit right after those, so a real miss is caught the same
+# morning, not up to a day later.
+LOCK_MARKERS = [
+    (ROOT / "data" / "last_soccer_lock_date.txt", "Soccer Early Lock", 8),
+    (ROOT / "data" / "last_cfb_lock_date.txt", "CFB Early Lock", 11),
+]
+
+
+def check_lock_markers() -> list[str]:
+    now_mt = datetime.now(ZoneInfo("America/Denver"))
+    today_mt = now_mt.strftime("%Y-%m-%d")
+    problems = []
+    for path, label, cutoff_hour in LOCK_MARKERS:
+        if now_mt.hour < cutoff_hour:
+            continue  # too early in the day to expect this yet
+        try:
+            recorded = path.read_text().strip()
+        except Exception:
+            recorded = ""
+        if recorded != today_mt:
+            problems.append(
+                f"{label}: no successful live lock recorded for {today_mt} as of "
+                f"{now_mt.strftime('%H:%M')} MT (marker shows {recorded or 'nothing'}) -- "
+                f"the dedicated workflow's own catch-up slots and the live-tracker "
+                f"watchdog may all have missed today"
+            )
+    return problems
 
 
 def _api_get(path: str) -> dict:
@@ -86,11 +132,12 @@ def check_workflow(filename: str, label: str, max_age_hours: int) -> str | None:
 
 
 def main() -> None:
-    if not GITHUB_TOKEN:
-        print("GITHUB_TOKEN not set -- can't check Actions API, skipping.")
-        return
+    problems = check_lock_markers()
 
-    problems = [p for p in (check_workflow(f, l, h) for f, l, h in MONITORED) if p]
+    if not GITHUB_TOKEN:
+        print("GITHUB_TOKEN not set -- can't check Actions API, skipping workflow-run checks.")
+    else:
+        problems += [p for p in (check_workflow(f, l, h) for f, l, h in MONITORED) if p]
 
     if not problems:
         print("All monitored workflows healthy -- no alert sent.")
