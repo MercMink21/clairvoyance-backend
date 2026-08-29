@@ -277,8 +277,15 @@ def fetch_week_games(year: int, week: int, seasontype: int = 2) -> list[dict]:
     once -- far cheaper than querying per-conference (which would also
     return each cross-conference game twice). Conference tagging happens
     locally afterward via the roster's team->conference map."""
+    # groups=80 (FBS) is required here -- confirmed live: the same query
+    # without it silently returns only 25 games for a real 99-game week
+    # (2026 Week 1), dropping real matchups like UNC@TCU entirely while
+    # keeping others (SJSU@USC) seemingly at random. This module's own
+    # docstring notes `groups=` is ignored on the TEAM-LIST endpoint --
+    # that's true there, but does NOT generalize to this scoreboard
+    # endpoint, which behaves completely differently without it.
     r = requests.get(f"{ESPN_BASE}/scoreboard",
-                     params={"limit": 300, "week": week, "seasontype": seasontype, "year": year},
+                     params={"limit": 300, "week": week, "seasontype": seasontype, "year": year, "groups": 80},
                      headers=HEADERS, timeout=15)
     r.raise_for_status()
     d = r.json()
