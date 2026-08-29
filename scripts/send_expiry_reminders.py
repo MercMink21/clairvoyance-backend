@@ -30,9 +30,12 @@ from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE  # noqa: 
 OWNER_NOTIFY_EMAIL = "clairvoyanceengine@gmail.com"
 
 
-def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
+def _build_email(products_and_days: list[tuple[str, int]], subscriber_email: str) -> tuple[str, str]:
     """Returns (subject, html_body). products_and_days is a list of
-    (product, days_left) for this one subscriber."""
+    (product, days_left) for this one subscriber. subscriber_email is
+    surfaced in the body (not the subject) since this now goes to the
+    owner's own inbox, not the subscriber -- the owner needs to know who
+    it's actually for."""
     names = [PRODUCT_LABEL[p] for p, _ in products_and_days]
     soonest = min(d for _, d in products_and_days)
 
@@ -62,6 +65,8 @@ def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
     body = (
         banner_html +
         EMAIL_WRAP_OPEN +
+        f'<div style="font-size:13px;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">'
+        f'Subscriber: {subscriber_email}</div>'
         f'<div style="font-size:16px;color:#1a1a2e;margin-bottom:14px">'
         f'Your access to {", ".join(names)} {urgency}.</div>'
         f'<div style="background:#14001f;border-radius:6px;padding:4px 14px;margin-bottom:16px">{rows}</div>'
@@ -92,15 +97,14 @@ def main() -> None:
         by_email.setdefault(row["email"], []).append((row["product"], row["days_left"]))
 
     for email, products_and_days in by_email.items():
-        subject, body = _build_email(products_and_days)
+        subject, body = _build_email(products_and_days, email)
         # Sent to OWNER_NOTIFY_EMAIL, not the subscriber's own address --
-        # tag the subject with who it's actually for so the owner can see
-        # (and manually forward/action) it.
-        owner_subject = f"[{email}] {subject}"
+        # the subscriber's email is in the body (see _build_email) so the
+        # owner can see who it's actually for.
         if args.dry_run:
             print(f"[DRY RUN] would notify owner re: {email}: {subject}")
             continue
-        ok, msg = send_email(owner_subject, OWNER_NOTIFY_EMAIL, body)
+        ok, msg = send_email(subject, OWNER_NOTIFY_EMAIL, body)
         if ok:
             for product, _days in products_and_days:
                 mark_reminder_sent(product, email)
