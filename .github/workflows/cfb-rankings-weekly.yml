@@ -6,6 +6,14 @@ name: CFB Rankings + FPI Refresh
 # morning). Runs both days to not miss whichever one ESPN actually posts
 # on in a given week. FPI itself is described by ESPN as updating daily,
 # but rankings are the real weekly-cadence piece here.
+#
+# Needs Playwright (not just requests) as of the FPI fix below --
+# www.espn.com sits behind an AWS WAF JS challenge a plain requests.get
+# can never solve, which had been silently writing 0 FPI/resume/
+# efficiencies rows every run (masked because the CFB model falls back
+# to market odds when FPI is missing -- surfaced when a match with no
+# market line either, e.g. a neutral-site opener, showed no projection
+# at all). See fetch_cfb.py's _fetch_fpi_view for the real fix.
 
 on:
   schedule:
@@ -32,7 +40,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install -q requests
+        run: |
+          pip install -q requests playwright
+          playwright install --with-deps chromium
       - name: Refresh rankings + FPI and push
         env:
           TZ: America/Denver

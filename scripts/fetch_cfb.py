@@ -12,7 +12,6 @@ real conference.
 from __future__ import annotations
 
 import json
-import re
 import time
 from pathlib import Path
 
@@ -29,9 +28,13 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-foot
 # custom header at all -- passes through fine). Empty dict, not removed
 # entirely, so call sites don't need to change.
 HEADERS: dict = {}
-# www.espn.com (the actual website, used only by _fetch_fpi_view below) is
-# the OPPOSITE of site.api.espn.com: it 403s a request with no custom
-# User-Agent and needs a real browser one. Verified directly.
+# www.espn.com (the actual website, used only by _fetch_fpi_view/
+# fetch_power_ratings below) is the OPPOSITE of site.api.espn.com: it
+# 403s a request with no custom User-Agent and needs a real browser one.
+# It also sits behind an AWS WAF JS challenge a plain requests.get can
+# never solve regardless of headers (confirmed live -- see
+# _fetch_fpi_view's own comment), which is why that fetch goes through a
+# real Playwright browser using this same UA string, not requests.
 WWW_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
@@ -375,25 +378,7 @@ def fetch_rankings() -> list[dict]:
     return out
 
 
-_ESPNFITT_RE = re.compile(r"window\['__espnfitt__'\]\s*=\s*(\{.*?\});", re.DOTALL)
-
-
-def _fetch_fpi_view(view: str | None = None) -> dict:
-    """FPI / Resume / Efficiencies all share one page template — ESPN
-    server-renders the table into a `window['__espnfitt__']` JSON blob
-    (same pattern as their other stat pages), so this reads that directly
-    instead of parsing rendered HTML, which is far more stable and avoids
-    another Playwright dependency for something that's already
-    server-side JSON. Genuinely useful even now, in preseason — FPI/Resume/
-    Efficiencies projections already exist ahead of Week 1."""
-    url = "https://www.espn.com/college-football/fpi" + (f"/_/view/{view}" if view else "")
-    r = requests.get(url, headers=WWW_HEADERS, timeout=20)
-    r.raise_for_status()
-    m = _ESPNFITT_RE.search(r.text)
-    if not m:
-        _log(f"  FPI view={view or 'fpi'}: embedded data blob not found")
-        return {}
-    data = json.loads(m.group(1))
+def _parse_fpi_blob(data: dict, view: str | None) -> dict:
     table = data.get("page", {}).get("content", {}).get("table", {})
     rows = []
     for entry in table.get("stats", []):
@@ -405,11 +390,50 @@ def _fetch_fpi_view(view: str | None = None) -> dict:
     return {"headers": table.get("headers", {}), "rows": rows}
 
 
+def _fetch_fpi_view(page, view: str | None = None) -> dict:
+    """FPI / Resume / Efficiencies all share one page template — ESPN
+    server-renders the table into a `window['__espnfitt__']` JSON blob
+    (same pattern as their other stat pages).
+
+    Real bug, found and fixed: www.espn.com (unlike the plain-JSON
+    site.api.espn.com used everywhere else in this file) now sits behind
+    an AWS WAF JavaScript challenge -- confirmed live: a plain requests.get
+    here got an HTTP 202 with either an empty body or the raw challenge
+    page (window.gokuProps / awswaf.com/challenge.js), never the real
+    page, so this had been silently writing 0 FPI/resume/efficiencies
+    rows for every team since whenever that WAF went up -- masked because
+    the CFB model already falls back to real market spread/moneyline odds
+    when FPI is missing, EXCEPT for a match with no market line posted
+    yet either (confirmed live: UNC@TCU, a neutral-site Dublin opener),
+    which then had no signal at all and showed "no model projection".
+    A real headless browser (already a dependency elsewhere in this repo
+    for the lock/settle automation) can solve the challenge -- it just
+    needs a few real seconds after navigation for the challenge's own
+    token fetch + auto-reload to finish before window['__espnfitt__']
+    exists, `networkidle` alone isn't enough of a signal for that.
+    Takes an already-open Playwright `page` (one browser session, reused
+    across all 3 views) rather than opening its own, so the 3 calls in
+    fetch_power_ratings() don't each pay full browser-launch overhead."""
+    url = "https://www.espn.com/college-football/fpi" + (f"/_/view/{view}" if view else "")
+    page.goto(url, timeout=30000)
+    page.wait_for_timeout(8000)
+    data = page.evaluate("() => window['__espnfitt__'] || null")
+    if not data:
+        _log(f"  FPI view={view or 'fpi'}: embedded data blob not found (still on WAF challenge?)")
+        return {}
+    return _parse_fpi_blob(data, view)
+
+
 def fetch_power_ratings() -> dict:
+    from playwright.sync_api import sync_playwright
     out = {}
-    for view, key in [(None, "fpi"), ("resume", "resume"), ("efficiencies", "efficiencies")]:
-        out[key] = _fetch_fpi_view(view)
-        time.sleep(1)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(user_agent=WWW_HEADERS["User-Agent"])
+        for view, key in [(None, "fpi"), ("resume", "resume"), ("efficiencies", "efficiencies")]:
+            out[key] = _fetch_fpi_view(page, view)
+            time.sleep(1)
+        browser.close()
     return out
 
 
