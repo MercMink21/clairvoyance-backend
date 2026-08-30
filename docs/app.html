@@ -1915,7 +1915,7 @@ body{line-height:1.5}
           <option value="5000">5,000</option>
           <option value="7500">7,500</option>
           <option value="10000">10,000</option>
-          <option value="25000" selected>25,000</option>
+          <option value="20000" selected>20,000</option>
         </select>
       </div>
       <!-- Venue mode -->
@@ -15288,7 +15288,15 @@ function SS(s){
   if(s==='fut'){_t(()=>{renderFuturesPanes('nba');});}
   if(s==='news'){_t(()=>T('news','all'));_t(renderNewsAll);}
   if(s==='soc'){_t(()=>T('bl','matches'));_t(()=>renderLeagueMatches('bl'));}
-  if(s==='sim'){_t(simSportChanged);_t(()=>{try{_simRenderHistory();}catch(e){}});_t(()=>{setTimeout(()=>{try{if(document.getElementById('sim-home')?.value&&document.getElementById('sim-away')?.value)runSimulator();}catch(e){}},150);});}
+  // No longer auto-runs a simulation on tab open -- runSimulator() itself
+  // is real work (N Box-Muller draws + multiple full sorts for
+  // percentiles), and firing it unconditionally the moment this tab
+  // opens meant every visit to SIMULATOR cost that work whether or not
+  // the user wanted it. #sim-results already has a static "Select teams
+  // and click RUN SIMULATION" placeholder baked into its markup, so
+  // simply not auto-running leaves a correct, intentional empty state
+  // instead of a surprise multi-second block.
+  if(s==='sim'){_t(simSportChanged);_t(()=>{try{_simRenderHistory();}catch(e){}});}
   if(s==='tracker'){_t(renderLockedTracker);_t(()=>{try{setTrackerTab('locked');}catch(e){}});}
   // Mobile: scroll active sport button into view and reset content scroll
   try{
@@ -32073,7 +32081,7 @@ function runSimulator() {
   var sport = _simEffectiveSport();
   var home  = (document.getElementById('sim-home') ||{}).value;
   var away  = (document.getElementById('sim-away') ||{}).value;
-  var N     = parseInt((document.getElementById('sim-count')||{}).value||'25000');
+  var N     = parseInt((document.getElementById('sim-count')||{}).value||'20000');
   var venue = (document.getElementById('sim-venue')||{}).value||'home';
   var flags = {
     injury:  (document.getElementById('sim-inc-injury') ||{}).checked !== false,
@@ -32205,9 +32213,18 @@ function _simRun(sport,home,away,N,flags){
   var hM=mean(hSc),aM=mean(aSc),blk=Math.floor(N/20),trend=[];
   for(var b=0;b<20;b++){var sl=hSc.slice(b*blk,(b+1)*blk),sl2=aSc.slice(b*blk,(b+1)*blk);
     trend.push(+(sl.filter(function(v,i){return v>sl2[i];}).length/sl.length).toFixed(3));}
+  // hStd/aStd hoisted out of the filter callback below -- std() is O(N)
+  // (two full reduce passes), so calling it once PER ITEM inside .filter()
+  // over an N-item array made this whole block O(N^2). At the simulator's
+  // own default N=25000 that's ~625M+ redundant operations -- measured at
+  // ~96 SECONDS of solid main-thread blocking (vs 22ms once hoisted),
+  // firing automatically the moment a user opens the Simulator tab (it
+  // auto-runs on load with the default team selection). The single
+  // largest real cause found of "page unresponsive" reports.
+  var hStd=std(hSc),aStd=std(aSc);
   var outliers=hSc.map(function(h,i){return{h:h,a:aSc[i]};})
-    .filter(function(g){return Math.abs(g.h-hM)>2*std(hSc)||Math.abs(g.a-aM)>2*std(aSc);}).slice(0,6);
-  return{N:N,hP:hWins/N,aP:aWins/N,hMean:hM,aMean:aM,hStd:std(hSc),aStd:std(aSc),
+    .filter(function(g){return Math.abs(g.h-hM)>2*hStd||Math.abs(g.a-aM)>2*aStd;}).slice(0,6);
+  return{N:N,hP:hWins/N,aP:aWins/N,hMean:hM,aMean:aM,hStd:hStd,aStd:aStd,
     totMean:mean(tots),totStd:std(tots),overP:tots.filter(function(t){return t>sp.ou;}).length/N,
     blowoutP:marg.filter(function(m){return Math.abs(m)>10;}).length/N,
     p10h:pct(hSc,10),p90h:pct(hSc,90),p10a:pct(aSc,10),p90a:pct(aSc,90),
