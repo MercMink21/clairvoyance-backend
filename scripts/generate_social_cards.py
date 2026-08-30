@@ -519,7 +519,13 @@ def get_sport_performance(page) -> dict | None:
     )
 
 
-def run(out_dir: Path, force: set[str] | None = None) -> dict:
+def run(out_dir: Path, force: set[str] | None = None, json_only: bool = False) -> dict:
+    """json_only=True stops right after writing engine_performance.json/
+    sport_performance.json (skips card/video generation and email
+    entirely) -- lets refresh_landing_performance.py reuse this same
+    browser-launch + Supabase-load + snapshot logic for a lightweight,
+    frequent-cadence refresh, without duplicating any of it or paying
+    for card/video work nothing needs on that cadence."""
     from playwright.sync_api import sync_playwright
 
     force = force or set()
@@ -626,6 +632,10 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
                 log(f"Wrote {sport_perf_path}")
         except Exception as e:
             log(f"WARNING: sport performance snapshot failed: {e}")
+
+        if json_only:
+            browser.close()
+            return result
 
         # Daily (always)
         cards, stats = generate_cards(page, out_dir, "YESTERDAY")
@@ -903,12 +913,21 @@ def main() -> None:
     parser.add_argument("--force", default="", help="comma-separated periods to force past today's date "
                          "gate for review (weekly,monthly,yearly,alltime) — does not affect the real "
                          "cadence for anything not explicitly listed")
+    parser.add_argument("--json-only", action="store_true",
+                         help="refresh docs/engine_performance.json + docs/sport_performance.json only -- "
+                              "skips card/video generation and email entirely. For a lightweight, frequent "
+                              "intraday refresh separate from the once-daily full run (see "
+                              "landing-performance-refresh.yml).")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
     now_mt = _mt_now()
     yesterday_mt = now_mt - timedelta(days=1)
     force = {p.strip() for p in args.force.split(",") if p.strip()}
+
+    if args.json_only:
+        run(out_dir, force=force, json_only=True)
+        return
 
     result = run(out_dir, force=force)
 

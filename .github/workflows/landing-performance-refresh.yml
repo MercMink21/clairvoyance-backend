@@ -1,0 +1,76 @@
+name: Landing Page Performance Refresh
+
+# docs/engine_performance.json and docs/sport_performance.json (the ONLY
+# data source clairvoyanceengine.info's Live Track Record / Sport
+# Performance sections read -- a separate repo, clairvoyance-landing,
+# fetches these two files directly from this repo's GitHub Pages) used to
+# refresh only once a day, as a side effect of social-cards-daily.yml's
+# full run (cards + video + email) at ~9:52am MT. That's fine for
+# YESTERDAY/THIS MONTH/LAST MONTH/ALL TIME (they don't change intraday
+# anyway), but TODAY's figures would sit frozen at whatever they were
+# around 10am MT for the rest of the day, growing more stale and
+# misleading as more games actually settle -- directly against the
+# explicit "update every few hours" ask this exists to satisfy.
+#
+# Runs generate_social_cards.py --json-only (added alongside this
+# workflow): reuses the exact same browser-launch + Supabase-load +
+# snapshot logic the full daily run already uses, but stops right after
+# writing the two JSON files -- no card/video generation, no email, no
+# --force date-gate concerns. A fast, cheap, non-Playwright-heavy-in-the-
+# sense-that-matters job (~15s of real work) safe to run several times a
+# day without the queue-starvation risk documented on the heavier daily
+# jobs in this repo.
+
+on:
+  schedule:
+    # Every 3 hours, 9am-9pm MT -- covers the active part of a betting
+    # day without running all night when nothing's changing. 9am MT =
+    # 15:00 UTC (MDT), hence the UTC hours below; drifts ~1hr earlier MT
+    # once MST returns in November, same as every other fixed-UTC cron
+    # in this repo.
+    - cron: '0 15,18,21 * * *'
+    - cron: '0 0,3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-landing-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
+
+      - name: Refresh performance JSON snapshots
+        run: python3 scripts/generate_social_cards.py --json-only
+
+      - name: Commit and push
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+          git add docs/engine_performance.json docs/sport_performance.json
+          if git diff --cached --quiet; then
+            echo "No change"
+          else
+            git commit -m "landing-perf: refresh $(TZ=America/Denver date +%H:%M) MT"
+            if ! git push origin main; then
+              git fetch origin main
+              git rebase origin/main
+              git push origin main
+            fi
+          fi
