@@ -24504,17 +24504,34 @@ function renderTennisToday(filterTour){
     // matchups, for every round including r1/r2, without needing to know
     // in advance which round ids count as "current."
     const roundsInWindow=tourney.rounds;
-    let atpMs=[],wtaMs=[];
+    // A single round can span several real calendar days (US Open R1:
+    // "Aug 30 – Sep 1", 128 matches spread across all 3) -- showing every
+    // one of them at once the moment the round-ID filter above was
+    // removed just traded "wrong day hidden" for "overcrowded with
+    // matches 1-2 days out". Each match carries its own real matchDate
+    // (set per-match, not just a round-level date range), so scope to
+    // today's real slate the same way every other sport's card list
+    // already does. Matches with no matchDate set at all (smaller
+    // tournaments that only ever had round-level dates) still show
+    // rather than being hidden by a filter the underlying data can't
+    // support.
+    const todayIso=today();
+    const isToday=m=>!m.matchDate||m.matchDate===todayIso;
+    let atpMs=[],wtaMs=[],atpMsAnyDay=0,wtaMsAnyDay=0;
     roundsInWindow.forEach(r=>{
-      if(AF!=='WTA')atpMs.push(...r.atp.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD').map(m=>({...m,_tour:'ATP',_roundName:r.name,_roundDates:r.dates})));
-      if(AF!=='ATP')wtaMs.push(...r.wta.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD').map(m=>({...m,_tour:'WTA',_roundName:r.name,_roundDates:r.dates})));
+      const realAtp=r.atp.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
+      const realWta=r.wta.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
+      atpMsAnyDay+=realAtp.length;wtaMsAnyDay+=realWta.length;
+      if(AF!=='WTA')atpMs.push(...realAtp.filter(isToday).map(m=>({...m,_tour:'ATP',_roundName:r.name,_roundDates:r.dates})));
+      if(AF!=='ATP')wtaMs.push(...realWta.filter(isToday).map(m=>({...m,_tour:'WTA',_roundName:r.name,_roundDates:r.dates})));
     });
     const allMs=[...atpMs,...wtaMs];
 
     if(!allMs.length){
+      const hasUpcoming=(atpMsAnyDay+wtaMsAnyDay)>0;
       html+=`<div class="empty" style="border:1px dashed rgba(0,240,255,.2);border-radius:3px;padding:24px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--nc);margin-bottom:6px">NO MATCHUPS SET YET</div>
-        <div style="font-family:var(--mono);font-size:15px;color:var(--t3)">Matches will appear here once scheduled.</div>
+        <div style="font-family:var(--mono);font-size:17px;color:var(--nc);margin-bottom:6px">${hasUpcoming?'NO MATCHES TODAY':'NO MATCHUPS SET YET'}</div>
+        <div style="font-family:var(--mono);font-size:15px;color:var(--t3)">${hasUpcoming?'This tournament\'s next matches are scheduled for an upcoming day — check TOURNAMENTS for the full draw.':'Matches will appear here once scheduled.'}</div>
       </div>`;
     } else {
       // Section headers for ATP / WTA when showing ALL
