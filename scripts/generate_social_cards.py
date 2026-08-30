@@ -399,9 +399,9 @@ def get_year_stats(page, year: int) -> dict:
 
 
 def get_engine_performance(page) -> dict | None:
-    """Yesterday/Rolling 7D/This Month/Last Month/All Time win-loss-units,
-    computed with the exact same hCalc() logic as the home page's Engine
-    Performance boxes (docs/app.html renderHomePage). Written to
+    """Today/Yesterday/Rolling 7D/This Month/Last Month/All Time win-loss-
+    units, computed with the exact same hCalc() logic as the home page's
+    Engine Performance boxes (docs/app.html renderHomePage). Written to
     docs/engine_performance.json so the landing page (a separate static
     site with no Supabase access of its own) can mirror these numbers
     without duplicating the whole ledger/auth setup — it just fetches this
@@ -431,7 +431,10 @@ def get_engine_performance(page) -> dict | None:
             return { w, l, n: s.length, pct: s.length ? w / s.length : null, units: u };
           };
 
+          const todayStr = today();
           const periods = [
+            { key: 'TODAY', label: 'TODAY', sub: '',
+              perf: hCalc(allBets.filter(p => p.date === todayStr)) },
             { key: 'YESTERDAY', label: 'YESTERDAY', sub: '',
               perf: hCalc(allBets.filter(p => p.date === yd)) },
             { key: 'ROLLING_7D', label: 'ROLLING 7D', sub: '',
@@ -450,12 +453,14 @@ def get_engine_performance(page) -> dict | None:
 
 
 def get_sport_performance(page) -> dict | None:
-    """This Month / All Time win-loss-units, broken down by league, computed
-    with the exact same leagueMap categorization and calc logic as the home
-    page's own "// PERIOD PERFORMANCE — LEAGUE" table (docs/app.html
+    """Today / This Month / All Time win-loss-units, broken down by league,
+    computed with the exact same leagueMap categorization and calc logic as
+    the home page's own "// PERIOD PERFORMANCE — LEAGUE" table (docs/app.html
     renderHomePage) -- THIS MONTH matches that table's own default toggle
     (window._homeLgPerfPeriod defaults to 'month', i.e. current month-to-
-    date, not the prior completed month). Written to docs/sport_
+    date, not the prior completed month), and TODAY matches that table's
+    'today' toggle (p.date === todayStr, the real-world game date, same as
+    the home page's own TODAY summary card). Written to docs/sport_
     performance.json for the same reason engine_performance.json exists --
     so the landing page can mirror these numbers without its own Supabase
     access."""
@@ -499,8 +504,13 @@ def get_sport_performance(page) -> dict | None:
 
           const settled = allBets.filter(p => p.outcome !== 'pending');
           const thisMonthBets = settled.filter(p => p.lockedAt && p.lockedAt >= firstOfMonth.getTime());
+          // Matches p.date, not lockedAt -- same real-world game date the
+          // home page's own 'today' toggle and TODAY summary card use, not
+          // a "locked in the last 24h" count.
+          const todayBets = settled.filter(p => p.date === today());
 
           return {
+            today: { label: 'TODAY', leagues: byLeague(todayBets) },
             thisMonth: { label: thisMonthLbl, leagues: byLeague(thisMonthBets) },
             allTime: { label: 'ALL TIME', leagues: byLeague(settled) },
           };
@@ -602,7 +612,7 @@ def run(out_dir: Path, force: set[str] | None = None) -> dict:
         except Exception as e:
             log(f"WARNING: engine performance snapshot failed: {e}")
 
-        # Sport performance snapshot (Last Month / All Time, by league) --
+        # Sport performance snapshot (Today / This Month / All Time, by league) --
         # feeds the landing page's own Sport Performance section, same
         # rationale as engine_performance.json above.
         try:
