@@ -86,6 +86,19 @@ SPORT_DISPLAY_NAME = {
     "ATP": "ATP", "WTA": "WTA",
 }
 
+# Display names keyed by the LEDGER's own `league` field (lockPick()'s
+# _leagueMap in docs/app.html -- BUND/LIGA/PL/SERIEA/CL/MLS, no "SOC_"
+# prefix) -- a DIFFERENT tag scheme from SPORT_DISPLAY_NAME above, which
+# is keyed by _autoLockCapture's sport tag instead. The top-picks digest
+# groups by the stored `league` field (what's actually on a locked bet
+# row), so it needs this mapping, not SPORT_DISPLAY_NAME.
+LEDGER_LEAGUE_DISPLAY_NAME = {
+    "MLB": "MLB", "NBA": "NBA", "WNBA": "WNBA", "NHL": "NHL", "NFL": "NFL", "CFB": "CFB",
+    "KHL": "KHL", "SHL": "SHL", "LIIGA": "Liiga", "CBB": "CBB", "NCAAH": "College Hockey",
+    "CL": "Champions League", "PL": "Premier League", "LIGA": "La Liga", "BUND": "Bundesliga",
+    "MLS": "MLS", "SERIEA": "Serie A", "WORLD_CUP": "World Cup", "ATP": "ATP", "WTA": "WTA",
+}
+
 # Maps the sport tag docs/app.html's _autoLockCapture() attaches to each
 # game leg (e.g. 'SOC_PL' for Premier League, to keep 'PL' unambiguous --
 # lockPick's own type='PL' means NHL puck line) to the exact `type` string
@@ -1177,6 +1190,185 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
     log(f"Locks email ({label or 'ALL'}) sent to {len(recipients)} recipient(s)" if ok else f"Locks email ({label or 'ALL'}) send failed: {msg}")
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# TOP PICKS DIGEST -- owner-only, parlay-focused daily summary
+# ─────────────────────────────────────────────────────────────────────────
+# Explicit request: a separate email, ONLY to clairvoyanceengine@gmail.com
+# (never the subscriber lists send_locks_email uses), ranking that day's
+# ALREADY-LOCKED picks by model win probability -- top 4 per league, top 7
+# overall -- with the reasoning laid out for parlay consideration. Reads
+# directly from today's real locked ledger rather than re-running
+# gather_legs() a second time: by the time this runs (right after the
+# final morning lock check), every qualifying leg for the day is already
+# in Supabase, so this is a fresh re-pull + re-rank, not a second
+# expensive browser/data warmup pass.
+TOP_PICKS_EMAIL_TO = "clairvoyanceengine@gmail.com"
+
+
+def gather_todays_locked_bets(page, date_iso: str | None = None) -> list[dict]:
+    """Fresh Supabase pull filtered to the target date's real locked
+    picks, any outcome (not just pending) -- an early kickoff may have
+    already settled by 7:35am MT, and it was still one of today's best
+    picks. Calls load_bet_ledger itself so this is guaranteed fresh
+    regardless of what already happened earlier in the same page
+    session."""
+    target = date_iso or datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+    load_bet_ledger(page)
+    return page.evaluate("(d) => getP().filter(p => p.date === d)", target)
+
+
+def _dec_to_american(dec: float) -> str:
+    if dec is None or dec <= 1:
+        return "?"
+    if dec >= 2.0:
+        return f"+{round((dec - 1) * 100)}"
+    return f"{round(-100 / (dec - 1))}"
+
+
+def _pick_edge_pp(bet: dict) -> float:
+    """Model win probability minus the price's own implied probability,
+    in percentage points -- the same real-edge framing _leg_html already
+    uses elsewhere, computed here from decOdds since that's what's
+    actually stored on a locked pick (no separate evVal field survives
+    onto the ledger row)."""
+    prob = bet.get("winProb") or 0
+    dec = bet.get("decOdds") or 1.91
+    implied = 1 / dec if dec else 0.5238
+    return (prob - implied) * 100
+
+
+def build_top_picks_digest(bets: list[dict]) -> dict:
+    """Ranks purely by model win probability (not tier/EV) -- explicit
+    request, since a parlay's real hit rate is bounded by its weakest
+    leg's own probability, not by average edge. top7 is computed
+    independently across ALL of today's locked bets, not just assembled
+    from the per-league top-4 pools, so one unusually strong league can
+    correctly contribute more than one leg to the overall top 7."""
+    ranked = sorted(bets, key=lambda b: b.get("winProb") or 0, reverse=True)
+    top7 = ranked[:7]
+    by_league: dict[str, list[dict]] = {}
+    for b in bets:
+        lg = b.get("league") or b.get("sport") or "OTHER"
+        by_league.setdefault(lg, []).append(b)
+    top4_by_league = {
+        lg: sorted(legs, key=lambda b: b.get("winProb") or 0, reverse=True)[:4]
+        for lg, legs in by_league.items()
+    }
+    return {"top7": top7, "top4ByLeague": top4_by_league}
+
+
+def _parlay_math(bets: list[dict]) -> dict:
+    """Combined hit probability (product of each leg's own model win
+    probability) and combined payout (product of each leg's decimal
+    odds) for treating this set as one parlay. Shown deliberately
+    alongside the individual numbers, never in place of them --
+    stacking legs compounds risk fast (even at a strong 70% average per
+    leg, 7 legs multiplies down to under 10% combined), and hiding that
+    math would misrepresent what a 7-leg parlay actually is."""
+    combined_p = 1.0
+    combined_dec = 1.0
+    for b in bets:
+        combined_p *= (b.get("winProb") or 0.5)
+        combined_dec *= (b.get("decOdds") or 1.91)
+    return {"combinedProb": combined_p, "combinedDec": combined_dec, "combinedAmerican": _dec_to_american(combined_dec)}
+
+
+def _digest_pick_row_html(bet: dict) -> str:
+    prob = (bet.get("winProb") or 0) * 100
+    edge = _pick_edge_pp(bet)
+    matchup = f"{bet.get('awA') or '?'} @ {bet.get('hA') or '?'}"
+    dec = bet.get("decOdds") or 1.91
+    implied = (1 / dec * 100) if dec else 52.4
+    edge_col = "#00c853" if edge > 0 else "#ff5252"
+    outcome = bet.get("outcome")
+    outcome_badge = ""
+    if outcome == "win":
+        outcome_badge = ' <span style="color:#00c853;font-weight:700">✓ WON</span>'
+    elif outcome == "loss":
+        outcome_badge = ' <span style="color:#ff5252;font-weight:700">✗ LOST</span>'
+    return (
+        '<div style="background:#14001f;border-radius:6px;padding:12px 14px;margin-bottom:8px">'
+        f'<div style="font-weight:700;font-size:15px;color:#fff;margin-bottom:2px">{_esc(matchup)}{outcome_badge}</div>'
+        f'<div style="font-size:14px;color:#e0c9ff;margin-bottom:6px">{_esc(bet.get("betOn") or "")} '
+        f'<span style="color:#888">· {_esc(str(bet.get("ml") or ""))}</span></div>'
+        f'<div style="font-size:13px;color:#bbb;line-height:1.5">'
+        f'<strong style="color:#f20cff">{prob:.1f}%</strong> model probability vs '
+        f'<strong>{implied:.1f}%</strong> implied by the price — '
+        f'<strong style="color:{edge_col}">{"+" if edge >= 0 else ""}{edge:.1f}pp edge</strong>'
+        f'</div>'
+        '</div>'
+    )
+
+
+def build_top_picks_digest_html(digest: dict, date_str: str) -> str:
+    top7 = digest["top7"]
+    top4_by_league = digest["top4ByLeague"]
+    banner_html = (
+        f'<div style="max-width:640px;margin:0 auto"><img src="{EMAIL_BANNER_URL}" '
+        f'alt="Clairvoyance Engine" width="640" '
+        f'style="display:block;width:100%;max-width:640px;height:auto;border:0;'
+        f'font-family:-apple-system,sans-serif;color:#999" /></div>'
+    )
+    parts = [banner_html, _EMAIL_WRAP_OPEN,
+             f'<div style="font-size:12px;letter-spacing:1px;color:#555;text-transform:uppercase">TOP PICKS DIGEST — {_esc(date_str)}</div>']
+
+    if not top7:
+        parts.append('<div style="padding:20px 0;color:#555;font-size:14px">No picks locked today.</div>')
+        parts.append(_LOCKS_EMAIL_CLOSE)
+        return "".join(parts)
+
+    pm = _parlay_math(top7)
+    parts.append(
+        # Note: this header/paragraph pair sits directly on _EMAIL_WRAP_OPEN's
+        # white background (unlike the per-pick rows below, each of which
+        # has its own dark #14001f card) -- colors here must be legible on
+        # WHITE, matching the same convention build_locks_email_html's own
+        # status_line/section headers already use (#f20cff / #555), not the
+        # white/light-gray palette used inside the dark pick cards.
+        '<div style="font-size:20px;font-weight:700;color:#f20cff;margin:18px 0 4px">'
+        f'TOP 7 OVERALL — {len(top7)} PICKS</div>'
+        '<div style="font-size:13px;color:#555;line-height:1.6;margin-bottom:12px">'
+        "Ranked purely by model win probability across every sport locked today — the metric that matters "
+        "most for parlaying, since a parlay's real hit rate is bounded by its weakest leg, not its average "
+        "edge. These are the 7 individual plays the model is most confident in today, regardless of "
+        "sport or market type."
+        '</div>'
+        '<div style="background:#1a0028;border:1px solid rgba(242,12,255,.3);border-radius:6px;'
+        'padding:12px 16px;margin-bottom:14px">'
+        f'<div style="font-size:13px;color:#ccc;line-height:1.7">'
+        f'<strong style="color:#fff">If parlayed together:</strong> an estimated '
+        f'<strong style="color:#f20cff">{pm["combinedProb"]*100:.1f}%</strong> chance all 7 hit, '
+        f'paying roughly <strong style="color:#f20cff">{_esc(pm["combinedAmerican"])}</strong> '
+        f'({pm["combinedDec"]:.1f}x) if they do.<br>'
+        f'<span style="color:#999">Stacking legs compounds fast — even strong individual picks multiply down '
+        f'to a real long-shot combined. This is the honest math, not a recommendation to parlay all 7 at '
+        f'full size.</span></div></div>'
+    )
+    parts.append("".join(_digest_pick_row_html(b) for b in top7))
+
+    for lg in sorted(top4_by_league, key=lambda k: LEDGER_LEAGUE_DISPLAY_NAME.get(k, k)):
+        legs = top4_by_league[lg]
+        parts.append(
+            f'<div style="font-size:13px;letter-spacing:2px;color:#f20cff;text-transform:uppercase;'
+            f'text-shadow:0 0 8px rgba(242,12,255,.6);margin:24px 0 10px;'
+            f'border-bottom:1px solid rgba(242,12,255,.3);padding-bottom:4px">'
+            f'{_esc(LEDGER_LEAGUE_DISPLAY_NAME.get(lg, lg))} — TOP {len(legs)}</div>'
+        )
+        parts.append("".join(_digest_pick_row_html(b) for b in legs))
+
+    parts.append(_LOCKS_EMAIL_CLOSE)
+    return "".join(parts)
+
+
+def send_top_picks_digest_email(bets: list[dict], date_str: str | None = None) -> None:
+    date_str = date_str or datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+    digest = build_top_picks_digest(bets)
+    subject = f"Clairvoyance — Top Picks Digest — {date_str} ({len(digest['top7'])} overall)"
+    body_html = build_top_picks_digest_html(digest, date_str)
+    ok, msg = _send_gmail(subject, [TOP_PICKS_EMAIL_TO], body_html)
+    log(f"Top picks digest sent to {TOP_PICKS_EMAIL_TO}" if ok else f"Top picks digest send failed: {msg}")
+
+
 def _lock_qualifying_legs(page, qualifying: list[dict], date_override: str | None = None) -> int:
     """Actually calls the real lockPick()/lockProp()/etc. for each leg.
     Shared by run_lock() (single-product early passes) and
@@ -1443,6 +1635,13 @@ def main() -> None:
                           "docs/soccer_schedule_tomorrow.json (scraped separately) and stamps "
                           "every locked pick with the game's real (tomorrow's) date. See "
                           "run_soccer_evening_lock's own docstring / soccer-lock-evening.yml.")
+    ap.add_argument("--top-picks-digest", action="store_true",
+                     help="Sends the owner-only Top Picks Digest (top 4 per league + top 7 overall "
+                          "for the day, ranked by model win probability, with parlay math) to "
+                          "clairvoyanceengine@gmail.com only -- never the subscriber lists. Reads "
+                          "today's already-locked picks fresh from Supabase; run this AFTER the "
+                          "day's real lock pass, not standalone. Does not touch the browser's other "
+                          "lock/settle logic -- combine with --lock or run as its own invocation.")
     ap.add_argument("--app-url", default=APP_URL, help="Override the app URL (e.g. a local server for testing).")
     args = ap.parse_args()
 
@@ -1464,7 +1663,7 @@ def main() -> None:
         return
 
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
-    if args.daily_digest or args.adaptive_recalibration:
+    if args.daily_digest or args.adaptive_recalibration or args.top_picks_digest:
         do_lock = do_settle = False
     if sum([args.only_soccer, args.only_cfb, args.only_soccer_tomorrow]) > 1:
         raise SystemExit("--only-soccer, --only-cfb, and --only-soccer-tomorrow are mutually exclusive")
@@ -1650,6 +1849,21 @@ def main() -> None:
                 run_adaptive_recalibration(page, args.live)
             except Exception as exc:
                 log(f"adaptive recalibration failed: {exc}")
+                raise
+        if args.top_picks_digest:
+            try:
+                today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+                bets = gather_todays_locked_bets(page, today_mt)
+                log(f"Top picks digest: {len(bets)} locked pick(s) found for {today_mt}")
+                if args.live:
+                    send_top_picks_digest_email(bets, today_mt)
+                else:
+                    digest = build_top_picks_digest(bets)
+                    log(f"[DRY RUN] Would send top picks digest: {len(digest['top7'])} overall, "
+                        f"{sum(len(v) for v in digest['top4ByLeague'].values())} across "
+                        f"{len(digest['top4ByLeague'])} league(s) (pass --live to actually send)")
+            except Exception as exc:
+                log(f"top picks digest failed: {exc}")
                 raise
 
         browser.close()
