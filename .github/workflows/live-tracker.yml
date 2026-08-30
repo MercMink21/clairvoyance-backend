@@ -138,6 +138,24 @@ jobs:
               gh workflow run "CFB Auto Lock (Evening — Tomorrow's Slate)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
             fi
           fi
+          # Landing page performance refresh: no marker file of its own --
+          # checks docs/engine_performance.json's own generated_at date
+          # instead, since that IS the thing that needs to be fresh.
+          # Confirmed live 2026-08-30: this workflow had 0 real scheduled
+          # firings ever (checked via `gh run list`) despite 3+ real
+          # opportunities since it was created the prior afternoon -- the
+          # same "brand-new workflow's scheduled trigger doesn't reliably
+          # fire" pattern already seen with the evening locks, but here it
+          # never self-healed since nothing was watching it. Checked once
+          # at 1pm MT, giving the real 9am and 12pm slots time to have
+          # already succeeded normally.
+          if [ "$HOUR_MT" = "13" ]; then
+            GEN_DATE=$(python3 -c "import json; print(json.load(open('docs/engine_performance.json')).get('generated_at','')[:10])" 2>/dev/null || echo "")
+            if [ "$GEN_DATE" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: landing performance JSON not refreshed today (shows $GEN_DATE) by 1pm MT -- dispatching Landing Page Performance Refresh."
+              gh workflow run "Landing Page Performance Refresh" || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
 
       - name: Poll live scores
         env:
