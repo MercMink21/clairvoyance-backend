@@ -135,6 +135,9 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+_GIT_IDENTITY = ["-c", "user.name=clairvoyance-bot", "-c", "user.email=bot@clairvoyance.local"]
+
+
 def _commit_and_push(paths: list[str], message: str) -> None:
     """Shared by every marker file this module writes (automation_status.json,
     last_lock_date.txt, last_lock_email_date.txt, ...) -- add + commit +
@@ -142,16 +145,34 @@ def _commit_and_push(paths: list[str], message: str) -> None:
     already proven in clairvoyance_update.py's git_push()/run_live_window
     for the same reason: this repo gets pushed to from multiple places
     concurrently, so a plain push failing once is a normal race, not a
-    real error, and deserves one retry before giving up."""
+    real error, and deserves one retry before giving up.
+
+    Real bug, found via audit: neither the commit nor the rebase below
+    carried a git identity, and the workflow that calls this
+    (auto-lock-settle.yml) never sets one globally either -- so the
+    commit itself failed ("empty ident name... not allowed") on every
+    single real CI invocation, silently (the returncode was never
+    checked). write_automation_status()'s docs/automation_status.json
+    updates only ever reached production when some OTHER, correctly-
+    identified step happened to run a commit later in the same job and
+    coincidentally swept up this function's still-staged-but-uncommitted
+    change along with its own. Confirmed live: exactly one real commit to
+    that file in this repo's entire history actually came from this
+    function running standalone; every other one rode along on a
+    different step's commit. _GIT_IDENTITY here matches the identity
+    every workflow's own inline marker-file commits already use."""
     subprocess.run(["git", "-C", str(ROOT), "add", *paths], capture_output=True)
     diff = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--quiet"], capture_output=True)
     if diff.returncode == 0:
         return
-    subprocess.run(["git", "-C", str(ROOT), "commit", "-m", message], capture_output=True)
+    commit_res = subprocess.run(["git", "-C", str(ROOT), *_GIT_IDENTITY, "commit", "-m", message], capture_output=True, text=True)
+    if commit_res.returncode != 0:
+        log(f"_commit_and_push: commit failed: {commit_res.stderr.strip()[:300]}")
+        return
     push_res = subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True, text=True)
     if push_res.returncode != 0:
         subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", "main"], capture_output=True)
-        if subprocess.run(["git", "-C", str(ROOT), "rebase", "origin/main"], capture_output=True).returncode == 0:
+        if subprocess.run(["git", "-C", str(ROOT), *_GIT_IDENTITY, "rebase", "origin/main"], capture_output=True).returncode == 0:
             subprocess.run(["git", "-C", str(ROOT), "push", "origin", "main"], capture_output=True)
         else:
             subprocess.run(["git", "-C", str(ROOT), "rebase", "--abort"], capture_output=True)
