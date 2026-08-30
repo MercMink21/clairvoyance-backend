@@ -127,6 +127,17 @@ jobs:
               gh workflow run "Soccer Auto Lock (Evening — Tomorrow's Slate)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
             fi
           fi
+          # CFB evening-lock window: 10:30-11:45pm MT, matching
+          # cfb-lock-evening.yml's own 10:30-11:30pm catch-up range plus
+          # headroom. Same marker-date convention as soccer's evening
+          # lock above (tonight's run date, not tomorrow's game date).
+          if [ "$HOUR_MT" = "22" ] || [ "$HOUR_MT" = "23" ]; then
+            LAST_CFB_EVE=$(cat data/last_cfb_evening_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_CFB_EVE" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: CFB evening lock not recorded for $TODAY_MT yet at ${HOUR_MT}:xx MT -- dispatching CFB Auto Lock (Evening — Tomorrow's Slate)."
+              gh workflow run "CFB Auto Lock (Evening — Tomorrow's Slate)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
 
       - name: Poll live scores
         env:

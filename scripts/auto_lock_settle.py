@@ -842,6 +842,54 @@ def gather_soccer_legs_for_date(page, target_date_iso: str) -> dict:
     )
 
 
+def gather_cfb_legs_for_date(page, target_date_iso: str) -> dict:
+    """Evening-prior-lock version for CFB, same rationale as
+    gather_soccer_legs_for_date above -- but simpler, since CFB needs no
+    new data-feed workflow at all: docs/cfb_schedule.json already covers
+    the FULL SEASON in one file (confirmed live: dates spanning Aug 2026
+    through Jan 2027), refreshed twice daily by the existing
+    cfb-schedule-daily.yml, so this just targets tomorrow's date against
+    data that's already there.
+
+    _cfbGameCard(g) has no "today" dependency of its own -- confirmed by
+    reading it directly: it computes its model purely from the game
+    object's own g.spread/g.overUnder market fields (real market data,
+    confirmed live 6+ days out for every game), deriving its own display
+    moneyline from the model's win probability rather than needing a
+    posted one (which ESPN's site API doesn't carry for CFB regardless,
+    at any lead time -- confirmed live, 0 of 68 games 6 days out had one,
+    same as every closer date checked). Fires the same _autoLockCapture()
+    hook every sport's card renderer uses, so this reuses the exact same
+    grading logic as the live site with zero duplicated code.
+
+    Filters out g.state === 'post' defensively (shouldn't ever match for
+    a genuinely future date, but costs nothing to guard)."""
+    return page.evaluate(
+        """
+        async (targetDateIso) => {
+          window._autoLockLegs = [];
+          try {
+            const r = await fetch('cfb_schedule.json', { cache: 'no-store' });
+            if (r.ok) {
+              const sched = await r.json();
+              Object.values(sched.weeks || {}).forEach(week => (week || []).forEach(g => {
+                const d = new Date(g.date);
+                const localIso = isNaN(d) ? (g.date || '').slice(0, 10) : d.toLocaleDateString('sv-SE', { timeZone: 'America/Denver' });
+                if (localIso !== targetDateIso || g.state === 'post') return;
+                try { _cfbGameCard(g); } catch (e) {}
+              }));
+            } else {
+              console.warn('[CV evening-lock CFB] cfb_schedule.json fetch failed:', r.status);
+            }
+          } catch (e) { console.warn('[CV evening-lock CFB] error:', e.message); }
+          await new Promise(r => setTimeout(r, 300));
+          return { gameLegs: window._autoLockLegs || [], propLegs: [] };
+        }
+        """,
+        target_date_iso,
+    )
+
+
 def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) -> list[dict]:
     """only_sports: if given, restricts to exactly these sport tags (e.g.
     PRODUCT_SPORTS["soccer"] for the soccer early pass, {"CFB"} for the
@@ -1537,6 +1585,63 @@ def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[
     return locked
 
 
+def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str] | None = None) -> int:
+    """Evening-prior lock for CFB -- runs the NIGHT BEFORE gameday, not
+    that morning. See cfb-lock-evening.yml's own docstring for the full
+    rationale; short version: real Saturday kickoffs cluster heavily at
+    exactly 10:00 AM MT -- the SAME instant as cfb-lock-early.yml's own
+    LAST catch-up slot -- and that workflow has genuinely failed all 4
+    of its own scheduled slots before (confirmed live, 2026-08-28). In
+    that exact scenario a subscriber could receive a "locked pick" email
+    for a game already underway. Locking the evening before trades a
+    near-zero worst-case margin for 12+ hours, using the same real
+    market data (g.spread/g.overUnder, confirmed posted 6+ days out)
+    the same-day pass already relies on -- no signal lost.
+
+    Every leg locked here is stamped with the GAME's real date
+    (tomorrow), not today() -- see lock_game_leg's docstring on why
+    that's required for this to dedupe correctly against
+    cfb-lock-early.yml's own same-day pass the next morning, which is
+    left completely unchanged and still runs as tomorrow's safety net.
+    Data comes from docs/cfb_schedule.json, already refreshed twice
+    daily by the existing cfb-schedule-daily.yml -- no new data-feed
+    workflow needed, see gather_cfb_legs_for_date's own docstring."""
+    tomorrow_iso = (datetime.now(ZoneInfo("America/Denver")) + timedelta(days=1)).strftime("%Y-%m-%d")
+    log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL) — CFB, EVENING-PRIOR FOR {tomorrow_iso} ===")
+    result = gather_cfb_legs_for_date(page, tomorrow_iso)
+    qualifying = build_qualifying(result, only_sports=frozenset({"CFB"}))
+    log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets for {tomorrow_iso}")
+    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found (CFB evening-prior only)")
+
+    for q in qualifying:
+        log(f"  [{q['sport']}] {q['label']} ({TIER_LABEL.get(q['tierN'], '?')})")
+
+    label = "CFB — TOMORROW'S SLATE"
+    if not live:
+        log(f"[DRY RUN] Would lock {len(qualifying)} legs above for {tomorrow_iso} (pass --live to write)")
+        if send_email:
+            send_locks_email(qualifying, live=False, label=label, to=to, date_str=tomorrow_iso)
+        return 0
+
+    if not qualifying:
+        if send_email:
+            send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to, date_str=tomorrow_iso)
+        else:
+            log("Locks email (CFB evening-prior) skipped -- already sent tonight")
+        return 0
+
+    locked = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
+    log(f"Locked {locked}/{len(qualifying)} legs for {tomorrow_iso}")
+    if locked > 0:
+        flush_to_supabase(page)
+        log("Flushed locks to Supabase")
+    if send_email:
+        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
+    else:
+        log("Locks email (CFB evening-prior) skipped -- already sent tonight")
+    return locked
+
+
 def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
     part: real browser + live data warmups), then split into a separate
@@ -1635,6 +1740,12 @@ def main() -> None:
                           "docs/soccer_schedule_tomorrow.json (scraped separately) and stamps "
                           "every locked pick with the game's real (tomorrow's) date. See "
                           "run_soccer_evening_lock's own docstring / soccer-lock-evening.yml.")
+    ap.add_argument("--only-cfb-tomorrow", action="store_true",
+                     help="Lock step only: evening-prior lock for CFB, run the NIGHT BEFORE "
+                          "gameday instead of that morning. Reads docs/cfb_schedule.json "
+                          "(already refreshed twice daily, no separate scrape needed) and stamps "
+                          "every locked pick with the game's real (tomorrow's) date. See "
+                          "run_cfb_evening_lock's own docstring / cfb-lock-evening.yml.")
     ap.add_argument("--top-picks-digest", action="store_true",
                      help="Sends the owner-only Top Picks Digest (top 4 per league + top 7 overall "
                           "for the day, ranked by model win probability, with parlay math) to "
@@ -1665,8 +1776,8 @@ def main() -> None:
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
     if args.daily_digest or args.adaptive_recalibration or args.top_picks_digest:
         do_lock = do_settle = False
-    if sum([args.only_soccer, args.only_cfb, args.only_soccer_tomorrow]) > 1:
-        raise SystemExit("--only-soccer, --only-cfb, and --only-soccer-tomorrow are mutually exclusive")
+    if sum([args.only_soccer, args.only_cfb, args.only_soccer_tomorrow, args.only_cfb_tomorrow]) > 1:
+        raise SystemExit("--only-soccer, --only-cfb, --only-soccer-tomorrow, and --only-cfb-tomorrow are mutually exclusive")
     only_sports = PRODUCT_SPORTS["soccer"] if args.only_soccer else frozenset({"CFB"}) if args.only_cfb else None
     label = "SOCCER" if args.only_soccer else "CFB" if args.only_cfb else ""
     # Early passes route to that product's real (owner + paying
@@ -1758,6 +1869,29 @@ def main() -> None:
                     log(f"soccer evening-prior lock step failed: {exc}")
                     if args.live:
                         write_automation_status("lastSoccerEveningLock", False, f"error: {exc}")
+                    raise
+            elif args.only_cfb_tomorrow:
+                # Evening-prior pass for CFB -- same shape as the soccer
+                # branch above. Runs every day regardless of day-of-week
+                # (Thursday/Friday CFB games get evening-prior locked
+                # too, not just Saturday's -- gather_cfb_legs_for_date
+                # just targets "tomorrow", whatever day that is); weekday
+                # games already had comfortable same-day margin (evening
+                # kickoffs), Saturday's 10am MT cluster was the one real
+                # risk this exists to fix.
+                tomorrow_mt = (datetime.now(ZoneInfo("America/Denver")) + timedelta(days=1)).strftime("%Y-%m-%d")
+                try:
+                    locked_this_pass = run_cfb_evening_lock(page, args.live, send_email=True,
+                                                              to=recipients_for("cfb"))
+                    verified_count = verify_locks_for_date(page, tomorrow_mt) if args.live else None
+                    if args.live:
+                        ok = not (locked_this_pass > 0 and (verified_count or 0) == 0)
+                        detail = f"evening-prior lock pass completed, {verified_count} pick(s) verified for {tomorrow_mt}"
+                        write_automation_status("lastCfbEveningLock", ok, detail)
+                except Exception as exc:
+                    log(f"CFB evening-prior lock step failed: {exc}")
+                    if args.live:
+                        write_automation_status("lastCfbEveningLock", False, f"error: {exc}")
                     raise
             elif only_sports is None:
                 # Main (all-sports) lock: per explicit request, 3 scheduled

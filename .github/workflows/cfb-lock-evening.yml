@@ -1,0 +1,141 @@
+name: CFB Auto Lock (Evening — Tomorrow's Slate)
+
+# Evening-prior lock for CFB. Runs the NIGHT BEFORE gameday and locks
+# TOMORROW's games, instead of waiting for cfb-lock-early.yml's
+# same-day 9:00-10:00 AM MT pass.
+#
+# Why this exists: real audit found that on a full CFB Saturday, kickoffs
+# cluster heavily at exactly 10:00 AM MT -- the SAME instant as
+# cfb-lock-early.yml's own LAST catch-up slot (confirmed live: 68 games
+# checked for a real upcoming Saturday, many at 10:00 AM MT exactly).
+# That workflow has genuinely failed ALL 4 of its own scheduled slots
+# before (confirmed live, 2026-08-28) -- in that exact scenario a
+# subscriber could receive a "locked pick" email for a game already
+# underway. Locking the evening before trades a near-zero worst-case
+# margin for 12+ hours, so even a badly-delayed run still lands hours
+# ahead of kickoff.
+#
+# Runs every day regardless of day-of-week -- Thursday/Friday CFB games
+# get evening-prior locked too, not just Saturday's. Those already had
+# comfortable same-day margin (evening kickoffs, confirmed live: 4-5 PM
+# MT), so this is extra buffer for them, not a fix they needed; Saturday's
+# 10 AM MT cluster was the one real risk.
+#
+# Costs no real signal: uses the same real market data
+# (g.spread/g.overUnder) the same-day pass already relies on, confirmed
+# posted 6+ days out for every game. No new data-feed workflow needed
+# either -- docs/cfb_schedule.json already covers the full season and is
+# refreshed twice daily by the existing cfb-schedule-daily.yml.
+#
+# cfb-lock-early.yml's own 9:00-10:00 AM MT same-day pass is left
+# completely unchanged and keeps running as gameday's safety net --
+# every leg locked here is stamped with the GAME's real date (tomorrow),
+# so anything this pass locks tonight dedupes cleanly against that
+# same-day pass the next morning (identical lockPick() id -- see
+# run_cfb_evening_lock's own docstring in auto_lock_settle.py).
+#
+# Scheduled 30 min after soccer-lock-evening.yml's own first slot to
+# avoid two Playwright-heavy jobs landing on the exact same cron minute
+# (the runner-queue-starvation pattern documented elsewhere in this
+# repo's workflows).
+#
+# Same safety convention as every other lock workflow: dry-run by
+# default, reads the same LIVE_MODE repo variable. Since this is
+# brand-new, never-run-in-production code, consider reviewing a few
+# nights of dry-run output before trusting LIVE_MODE=true here the same
+# as the proven same-day pass.
+
+on:
+  schedule:
+    # 10:30 PM MT = 04:30 UTC (MDT). Like every other MT time in this
+    # repo, this is a fixed UTC cron -- GitHub Actions doesn't shift for
+    # DST, so the real landing time drifts ~1hr earlier MT once MST
+    # returns in November.
+    - cron: '30 4 * * *'
+    # 3 catch-up slots, 20 min apart -- same self-healing pattern proven
+    # on every other early/evening lock workflow in this repo. All 4
+    # slots land well before the earliest ~10:00 AM MT kickoff the NEXT
+    # day (11+ hours of margin even on the last slot).
+    - cron: '50 4 * * *'
+    - cron: '10 5 * * *'
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Actually write to Supabase (unchecked = dry-run, logs only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  cfb-lock-evening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
+
+      - name: Determine live flag from trigger
+        id: flags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            echo "should_run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            # The first slot (10:30 PM) always runs unconditionally; every
+            # other cron entry above is a catch-up that only runs if
+            # tonight's evening lock hasn't already succeeded -- same
+            # pattern as soccer-lock-evening.yml. Marker is dated by
+            # TONIGHT's date (the run date), not tomorrow's game date.
+            if [ "${{ github.event.schedule }}" != "30 4 * * *" ]; then
+              TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+              LAST_RUN=$(cat data/last_cfb_evening_lock_date.txt 2>/dev/null || echo "")
+              if [ "$LAST_RUN" = "$TODAY_MT" ]; then
+                echo "should_run=0" >> "$GITHUB_OUTPUT"
+              else
+                echo "should_run=1" >> "$GITHUB_OUTPUT"
+                echo "::notice::CFB evening lock hasn't recorded success yet tonight -- running this catch-up slot (schedule=${{ github.event.schedule }})."
+              fi
+            else
+              echo "should_run=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Run CFB evening-prior auto-lock
+        if: ${{ steps.flags.outputs.should_run == '1' }}
+        env:
+          TZ: America/Denver
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          LOCKS_EMAIL_TO: ${{ secrets.LOCKS_EMAIL_TO }}
+          SOCIAL_CARD_EMAIL_TO: ${{ secrets.SOCIAL_CARD_EMAIL_TO }}
+        run: |
+          python3 scripts/auto_lock_settle.py --lock --only-cfb-tomorrow ${{ steps.flags.outputs.live_flag }}
+
+      - name: Record successful evening lock date
+        # Only after a run that actually included a LIVE lock pass -- a
+        # dry-run must never mark tonight as done, or the catch-up slots
+        # would wrongly skip themselves.
+        if: ${{ steps.flags.outputs.should_run == '1' && steps.flags.outputs.live_flag == '--live' }}
+        run: |
+          TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+          echo "$TODAY_MT" > data/last_cfb_evening_lock_date.txt
+          git add data/last_cfb_evening_lock_date.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record CFB evening lock for $TODAY_MT"
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" pull --rebase origin main
+            git push origin main
+          fi
