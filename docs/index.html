@@ -24489,8 +24489,21 @@ function renderTennisToday(filterTour){
     // disappear on their own as winners get recorded. FINAL is included
     // once it has real matchups set (p1/p2 populated), same window logic
     // as every other round.
-    const inWindow=r=>['r3','r4','qf','sf','f'].includes(r.id);
-    const roundsInWindow=tourney.rounds.filter(inWindow);
+    //
+    // Real bug, found and fixed: the round-ID allowlist here used to be
+    // ['r3','r4','qf','sf','f'] -- a snapshot of which rounds happened to
+    // be active for THAT specific tournament (Wimbledon, Jul 3-12) when
+    // this was written, not a dynamic "whichever rounds are live right
+    // now" check. It never got revisited for later tournaments -- for
+    // the current US Open (early rounds), r1/r2 were hardcoded out of
+    // this tab entirely while still showing correctly under TOURNAMENTS,
+    // which reads the same TEN_TOURNAMENTS data through a different path
+    // with no such filter. No round-ID allowlist needed at all: the
+    // per-match filter below (!m.winner, p1/p2 not 'TBD') already does
+    // the real work of excluding completed matches and not-yet-set
+    // matchups, for every round including r1/r2, without needing to know
+    // in advance which round ids count as "current."
+    const roundsInWindow=tourney.rounds;
     let atpMs=[],wtaMs=[];
     roundsInWindow.forEach(r=>{
       if(AF!=='WTA')atpMs.push(...r.atp.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD').map(m=>({...m,_tour:'ATP',_roundName:r.name,_roundDates:r.dates})));
