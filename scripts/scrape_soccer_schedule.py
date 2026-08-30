@@ -31,16 +31,28 @@ fresher in-game data the moment a user actually opens a matches tab
 Usage:
   python3 scripts/scrape_soccer_schedule.py            # scrape + write, no push
   python3 scripts/scrape_soccer_schedule.py --push     # scrape + write + commit + push
+  python3 scripts/scrape_soccer_schedule.py --tomorrow --push
+      # Evening-prior lock support: scrapes TOMORROW's date instead of
+      # today's, restricted to the 5 European leagues (CL/PL/La Liga/
+      # Bundesliga/Serie A -- MLS excluded, it kicks off at normal US
+      # evening times and doesn't have the early-kickoff problem this
+      # exists for). Writes a SEPARATE file, docs/soccer_schedule_tomorrow.json,
+      # so it never collides with or overwrites the live site's own
+      # today-only docs/soccer_schedule.json. Consumed by
+      # auto_lock_settle.py's --only-soccer-tomorrow lock pass (see
+      # soccer-lock-evening.yml).
 """
 from __future__ import annotations
 import argparse, json, subprocess, sys, time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
 
 ROOT = Path(__file__).parent.parent
 OUT = ROOT / "docs" / "soccer_schedule.json"
+OUT_TOMORROW = ROOT / "docs" / "soccer_schedule_tomorrow.json"
+EURO_LEAGUE_KEYS = ("cl", "pl", "liga", "bl", "ita")
 
 # Deliberate standalone copy of scrape_soccer_standings.py's
 # ESPN_SOCCER_LEAGUES (no import dependency between the two scripts, same
@@ -140,16 +152,23 @@ def fetch_scoreboard(espn_league: str, date_str: str) -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--push", action="store_true")
+    ap.add_argument("--tomorrow", action="store_true",
+                     help="Scrape TOMORROW's date instead of today's, restricted to the 5 "
+                          "European leagues (no MLS). Writes docs/soccer_schedule_tomorrow.json "
+                          "instead of docs/soccer_schedule.json.")
     args = ap.parse_args()
 
     # UTC date param, same convention _fetchLeagueScoreboard's own
     # _fmtESPN(new Date()) produces for the browser's local (Denver) date --
     # this script always runs under TZ=America/Denver in its workflow, so
     # datetime.now() without tz info reads the same wall-clock date.
-    date_str = datetime.now().strftime("%Y%m%d")
+    target_day = datetime.now() + timedelta(days=1) if args.tomorrow else datetime.now()
+    date_str = target_day.strftime("%Y%m%d")
+    leagues = {k: v for k, v in ESPN_SOCCER_LEAGUES.items() if (not args.tomorrow or k in EURO_LEAGUE_KEYS)}
+    out_path = OUT_TOMORROW if args.tomorrow else OUT
 
     result: dict[str, list[dict]] = {}
-    for key, cfg in ESPN_SOCCER_LEAGUES.items():
+    for key, cfg in leagues.items():
         try:
             games = fetch_scoreboard(cfg["espn"], date_str)
             result[key] = games
@@ -162,17 +181,19 @@ def main() -> None:
     if not any(result.values()):
         log("no games for any league -- writing anyway (a real 0-fixture day is possible, e.g. no Monday matches)")
 
-    OUT.write_text(json.dumps({
+    out_path.write_text(json.dumps({
         "generated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
         "date": date_str,
         "leagues": result,
     }, indent=2))
-    log(f"wrote {OUT}")
+    log(f"wrote {out_path}")
 
     if args.push:
-        subprocess.run(["git", "add", "docs/soccer_schedule.json"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", str(out_path.relative_to(ROOT))], cwd=ROOT, check=True)
+        commit_msg = ("chore: refresh soccer schedule/odds snapshot (tomorrow)" if args.tomorrow
+                      else "chore: refresh soccer schedule/odds snapshot")
         commit = subprocess.run(
-            ["git", "commit", "-m", "chore: refresh soccer schedule/odds snapshot"],
+            ["git", "commit", "-m", commit_msg],
             cwd=ROOT, capture_output=True, text=True,
         )
         if commit.returncode != 0:

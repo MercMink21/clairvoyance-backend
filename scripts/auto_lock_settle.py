@@ -747,6 +747,67 @@ def gather_legs(page) -> dict:
     )
 
 
+# Evening-prior-lock leagues: the 5 European leagues named for this
+# feature (CL/PL/La Liga/Bundesliga/Serie A) -- MLS deliberately excluded,
+# it kicks off at normal US evening times and never had the early-kickoff
+# problem this exists for. Local key -> _autoLockCapture's sport tag
+# (SOC_<KEY>, matching docs/app.html's leagueKey.toUpperCase() convention).
+EURO_LEAGUE_KEY_TO_SPORT = {"cl": "SOC_CL", "pl": "SOC_PL", "liga": "SOC_LIGA", "bl": "SOC_BL", "ita": "SOC_ITA"}
+
+
+def gather_soccer_legs_for_date(page, target_date_iso: str) -> dict:
+    """Evening-prior-lock version of gather_legs(), narrowed to just the 5
+    European soccer leagues and a single target date instead of "today".
+
+    Unlike the main gather_legs() (which drives the live page's own render
+    functions -- renderMLBGames(), renderLeagueMatches(), etc. -- all of
+    which are hardcoded to "today" by design, see _fetchLeagueScoreboard's
+    own comment on why), this calls docs/app.html's _renderSocMatchCard(g,
+    leagueKey) directly, one game object at a time, sourced from
+    docs/soccer_schedule_tomorrow.json (written by scrape_soccer_schedule.py
+    --tomorrow) instead of any live/today-scoped fetch. _renderSocMatchCard
+    itself has no "today" dependency -- it computes xG/Monte-Carlo/EV
+    purely from the game object it's given and fires the same
+    _autoLockCapture() hook every other sport's card renderer uses, so
+    this reuses the exact same evaluation logic as the live site with zero
+    duplicated grading code, just fed tomorrow's games instead of today's.
+
+    The snapshot's own `date` field is checked against target_date_iso
+    (converted to ESPN's YYYYMMDD form) before use -- same "reject a stale
+    snapshot rather than silently grading the wrong day's games" guard
+    loadSoccerScheduleSnapshot() already applies to the live site's
+    same-day seed."""
+    target_date_espn = target_date_iso.replace("-", "")
+    return page.evaluate(
+        """
+        async ({ targetDateEspn, leagueKeys }) => {
+          window._autoLockLegs = [];
+          try {
+            const r = await fetch('soccer_schedule_tomorrow.json', { cache: 'no-store' });
+            if (r.ok) {
+              const d = await r.json();
+              if (d && d.date === targetDateEspn && d.leagues) {
+                leagueKeys.forEach(key => {
+                  (d.leagues[key] || []).forEach(g => {
+                    if (!g.home || !g.away) return;
+                    try { _renderSocMatchCard(g, key); } catch (e) {}
+                  });
+                });
+              } else if (d) {
+                console.warn('[CV evening-lock] soccer_schedule_tomorrow.json date mismatch, skipping:', d.date, 'expected', targetDateEspn);
+              }
+            } else {
+              console.warn('[CV evening-lock] soccer_schedule_tomorrow.json fetch failed:', r.status);
+            }
+          } catch (e) { console.warn('[CV evening-lock] snapshot load error:', e.message); }
+          await new Promise(r => setTimeout(r, 300));
+          return { gameLegs: window._autoLockLegs || [], propLegs: [] };
+        }
+        """,
+        {"targetDateEspn": target_date_espn, "leagueKeys": list(EURO_LEAGUE_KEY_TO_SPORT.keys())},
+    )
+
+
 def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) -> list[dict]:
     """only_sports: if given, restricts to exactly these sport tags (e.g.
     PRODUCT_SPORTS["soccer"] for the soccer early pass, {"CFB"} for the
@@ -814,10 +875,20 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
     return qualifying
 
 
-def lock_game_leg(page, q: dict) -> str:
+def lock_game_leg(page, q: dict, date_override: str | None = None) -> str:
     """Calls the real lockPick() directly with the explicit, correct sport
     tag (see module docstring on the type/betType tradeoff this mirrors
-    from the app's own real lock buttons)."""
+    from the app's own real lock buttons).
+
+    date_override: stamps the pick with a specific game date instead of
+    today() -- used by the evening-prior soccer lock, which runs the
+    NIGHT BEFORE the games it's locking. lockPick's own deterministic id
+    is `${date}_${hA}_${awA}_${type}_${betOn}` (see docs/app.html), so
+    this must be the game's real calendar date, not the date this script
+    happens to run on -- otherwise tonight's lock and tomorrow morning's
+    normal same-day lock pass would compute two DIFFERENT ids for the
+    same market (today() vs. tomorrow's date) and double-lock it instead
+    of the existing dedup naturally catching the overlap."""
     lock_type = SPORT_TO_LOCKPICK_TYPE.get(q["sport"])
     if not lock_type:
         return f"skip: no lockPick type mapping for sport {q['sport']}"
@@ -825,14 +896,14 @@ def lock_game_leg(page, q: dict) -> str:
     dec = q.get("dec")
     return page.evaluate(
         """
-        async ({ hA, awA, type, betOn, prob, ml, dec }) => {
+        async ({ hA, awA, type, betOn, prob, ml, dec, dateOverride }) => {
           const before = getP().length;
-          await lockPick(hA, awA, type, betOn, prob, ml != null ? ml : '-110', dec || 1.91, today(), 'manual');
+          await lockPick(hA, awA, type, betOn, prob, ml != null ? ml : '-110', dec || 1.91, dateOverride || today(), 'manual');
           const after = getP().length;
           return after > before ? 'locked' : 'dup-or-failed';
         }
         """,
-        {"hA": q["hA"], "awA": q["awA"], "type": lock_type, "betOn": q["label"], "prob": q["prob"], "ml": ml, "dec": dec},
+        {"hA": q["hA"], "awA": q["awA"], "type": lock_type, "betOn": q["label"], "prob": q["prob"], "ml": ml, "dec": dec, "dateOverride": date_override},
     )
 
 
@@ -1068,12 +1139,16 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
 
 
 def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | None = None,
-                      label: str = "", to: list[str] | None = None) -> None:
+                      label: str = "", to: list[str] | None = None, date_str: str | None = None) -> None:
     recipients = to if to is not None else ([LOCKS_EMAIL_TO] if LOCKS_EMAIL_TO else [])
     if not recipients:
         log("No recipients (LOCKS_EMAIL_TO unset and none passed) — skipping locked-picks email")
         return
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # date_str override: the evening-prior soccer lock passes the actual
+    # game date (tomorrow) here -- otherwise this'd default to UTC "now",
+    # which reads as tonight's date on a subject line about tomorrow's
+    # games.
+    date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     tag = f"{label} " if label else ""
     subject = f"Clairvoyance — {'Locked' if live else '[DRY RUN] Would lock'} {tag}picks for {date_str} ({len(qualifying)})"
     body_html = build_locks_email_html(qualifying, live, locked_count)
@@ -1081,15 +1156,21 @@ def send_locks_email(qualifying: list[dict], live: bool, locked_count: int | Non
     log(f"Locks email ({label or 'ALL'}) sent to {len(recipients)} recipient(s)" if ok else f"Locks email ({label or 'ALL'}) send failed: {msg}")
 
 
-def _lock_qualifying_legs(page, qualifying: list[dict]) -> int:
+def _lock_qualifying_legs(page, qualifying: list[dict], date_override: str | None = None) -> int:
     """Actually calls the real lockPick()/lockProp()/etc. for each leg.
     Shared by run_lock() (single-product early passes) and
     run_lock_segmented() (the main run's per-product loop) so there's one
-    place this logic lives, not two copies that could drift."""
+    place this logic lives, not two copies that could drift.
+
+    date_override: see lock_game_leg's own docstring -- only ever passed
+    by the evening-prior soccer lock, which locks GAME legs for a date
+    that isn't today() yet. Props never use this (there are none in the
+    evening-prior pass's qualifying list -- only NBA/WNBA/NHL/NFL have
+    prop legs, none of which run on this path)."""
     locked = 0
     for q in qualifying:
         try:
-            outcome = lock_game_leg(page, q) if q["kind"] == "GAME" else lock_prop_leg(page, q["sport"], q["leg"])
+            outcome = lock_game_leg(page, q, date_override) if q["kind"] == "GAME" else lock_prop_leg(page, q["sport"], q["leg"])
             if outcome == "locked":
                 locked += 1
             else:
@@ -1099,24 +1180,35 @@ def _lock_qualifying_legs(page, qualifying: list[dict]) -> int:
     return locked
 
 
-def verify_todays_locks(page) -> int:
+def verify_locks_for_date(page, date_iso: str | None = None) -> int:
     """The actual TEST behind "make sure picks locked correctly": a fresh,
     independent re-pull straight from Supabase (not just trusting the
-    in-page state _lock_qualifying_legs already mutated) confirming
-    today's locked picks are really persisted and readable. Catches the
-    class of bug where lockPick() succeeds locally but flush_to_supabase's
-    own write silently fails (network hiccup, etc) -- "the function didn't
-    throw" is not the same guarantee as "the data is actually there."
-    Safe/cheap to call after every lock attempt, including redundant ones
-    in the same morning."""
-    today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+    in-page state _lock_qualifying_legs already mutated) confirming the
+    target date's locked picks are really persisted and readable. Catches
+    the class of bug where lockPick() succeeds locally but
+    flush_to_supabase's own write silently fails (network hiccup, etc) --
+    "the function didn't throw" is not the same guarantee as "the data is
+    actually there." Safe/cheap to call after every lock attempt,
+    including redundant ones in the same morning.
+
+    date_iso: defaults to today (America/Denver) -- pass the game date
+    explicitly for the evening-prior soccer lock, which verifies
+    TOMORROW's date, not today's."""
+    target = date_iso or datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
     n = load_bet_ledger(page)
     count = page.evaluate(
-        "(today) => getP().filter(p => p.date === today && p.outcome === 'pending').length",
-        today_mt,
+        "(d) => getP().filter(p => p.date === d && p.outcome === 'pending').length",
+        target,
     )
-    log(f"VERIFY: fresh Supabase pull ({n} total bets) shows {count} pick(s) locked for {today_mt}")
+    log(f"VERIFY: fresh Supabase pull ({n} total bets) shows {count} pick(s) locked for {target}")
     return count
+
+
+# Back-compat alias -- every existing call site in this file passes no
+# args and means "today"; kept as a thin wrapper rather than touching
+# every call site for a rename that adds no behavior change there.
+def verify_todays_locks(page) -> int:
+    return verify_locks_for_date(page)
 
 
 def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label: str = "",
@@ -1169,6 +1261,66 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
         send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
     else:
         log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
+    return locked
+
+
+def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[str] | None = None) -> int:
+    """Evening-prior lock for the 5 European soccer leagues (CL/PL/La
+    Liga/Bundesliga/Serie A) -- runs the NIGHT BEFORE those leagues'
+    matchday, not that morning. See soccer-lock-evening.yml's own
+    docstring for the full rationale; short version: real kickoffs as
+    early as 7:00 AM MT (EPL) leave soccer-lock-early.yml's 6:00 AM MT
+    same-day pass as little as ~1 hour of buffer, and that pass has
+    genuinely run late enough before to miss kickoff entirely. Locking
+    the evening before (odds are already posted 1-2+ days out for these
+    leagues, confirmed live) trades that ~1 hour buffer for ~9+ hours,
+    without losing real signal -- the model grades off team-aggregate
+    stats (xG/Opta), never starting lineups, so it was never going to see
+    same-day lineup news regardless of lock time.
+
+    Every leg locked here is stamped with the GAME's real date (tomorrow),
+    not today() -- see lock_game_leg's docstring on why that's required
+    for this to dedupe correctly against soccer-lock-early.yml's own
+    same-day pass the next morning, which is left completely unchanged
+    and still runs as today's safety net (idempotent: anything already
+    locked tonight is a no-op there, it only picks up whatever this pass
+    missed -- a late odds posting, a fixture added after tonight's run,
+    etc). Data comes from docs/soccer_schedule_tomorrow.json (scraped by
+    a dedicated earlier step in soccer-lock-evening.yml), not any live
+    fetch -- see gather_soccer_legs_for_date's own docstring."""
+    tomorrow_iso = (datetime.now(ZoneInfo("America/Denver")) + timedelta(days=1)).strftime("%Y-%m-%d")
+    log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL) — SOCCER, EVENING-PRIOR FOR {tomorrow_iso} ===")
+    result = gather_soccer_legs_for_date(page, tomorrow_iso)
+    qualifying = build_qualifying(result, only_sports=EURO_SOCCER_SPORTS)
+    log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets for {tomorrow_iso}")
+    log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found (soccer evening-prior only)")
+
+    for q in qualifying:
+        log(f"  [{q['sport']}] {q['label']} ({TIER_LABEL.get(q['tierN'], '?')})")
+
+    label = "SOCCER — TOMORROW'S SLATE"
+    if not live:
+        log(f"[DRY RUN] Would lock {len(qualifying)} legs above for {tomorrow_iso} (pass --live to write)")
+        if send_email:
+            send_locks_email(qualifying, live=False, label=label, to=to, date_str=tomorrow_iso)
+        return 0
+
+    if not qualifying:
+        if send_email:
+            send_locks_email(qualifying, live=True, locked_count=0, label=label, to=to, date_str=tomorrow_iso)
+        else:
+            log("Locks email (SOCCER evening-prior) skipped -- already sent tonight")
+        return 0
+
+    locked = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
+    log(f"Locked {locked}/{len(qualifying)} legs for {tomorrow_iso}")
+    if locked > 0:
+        flush_to_supabase(page)
+        log("Flushed locks to Supabase")
+    if send_email:
+        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
+    else:
+        log("Locks email (SOCCER evening-prior) skipped -- already sent tonight")
     return locked
 
 
@@ -1263,6 +1415,13 @@ def main() -> None:
     ap.add_argument("--only-cfb", action="store_true",
                      help="Lock step only: restrict to CFB. For the early-morning pass timed "
                           "ahead of the earliest college football kickoffs (10 AM MT+).")
+    ap.add_argument("--only-soccer-tomorrow", action="store_true",
+                     help="Lock step only: evening-prior lock for the 5 European soccer leagues "
+                          "(CL/PL/La Liga/Bundesliga/Serie A -- no MLS), run the NIGHT BEFORE "
+                          "their matchday instead of that morning. Reads "
+                          "docs/soccer_schedule_tomorrow.json (scraped separately) and stamps "
+                          "every locked pick with the game's real (tomorrow's) date. See "
+                          "run_soccer_evening_lock's own docstring / soccer-lock-evening.yml.")
     ap.add_argument("--app-url", default=APP_URL, help="Override the app URL (e.g. a local server for testing).")
     args = ap.parse_args()
 
@@ -1286,8 +1445,8 @@ def main() -> None:
     do_lock, do_settle = (args.lock, args.settle) if (args.lock or args.settle) else (True, True)
     if args.daily_digest or args.adaptive_recalibration:
         do_lock = do_settle = False
-    if args.only_soccer and args.only_cfb:
-        raise SystemExit("--only-soccer and --only-cfb are mutually exclusive")
+    if sum([args.only_soccer, args.only_cfb, args.only_soccer_tomorrow]) > 1:
+        raise SystemExit("--only-soccer, --only-cfb, and --only-soccer-tomorrow are mutually exclusive")
     only_sports = PRODUCT_SPORTS["soccer"] if args.only_soccer else frozenset({"CFB"}) if args.only_cfb else None
     label = "SOCCER" if args.only_soccer else "CFB" if args.only_cfb else ""
     # Early passes route to that product's real (owner + paying
@@ -1358,7 +1517,29 @@ def main() -> None:
                 raise
         if do_lock:
             today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
-            if only_sports is None:
+            if args.only_soccer_tomorrow:
+                # Evening-prior pass -- entirely separate from the
+                # today()-based flow below (different gather function,
+                # different verify target date: tomorrow, not today).
+                # Catch-up dedup lives in soccer-lock-evening.yml's own
+                # marker-file check (same pattern as soccer-lock-
+                # early.yml), not here, so this always locks+verifies+
+                # emails when invoked.
+                tomorrow_mt = (datetime.now(ZoneInfo("America/Denver")) + timedelta(days=1)).strftime("%Y-%m-%d")
+                try:
+                    locked_this_pass = run_soccer_evening_lock(page, args.live, send_email=True,
+                                                                 to=recipients_for("soccer"))
+                    verified_count = verify_locks_for_date(page, tomorrow_mt) if args.live else None
+                    if args.live:
+                        ok = not (locked_this_pass > 0 and (verified_count or 0) == 0)
+                        detail = f"evening-prior lock pass completed, {verified_count} pick(s) verified for {tomorrow_mt}"
+                        write_automation_status("lastSoccerEveningLock", ok, detail)
+                except Exception as exc:
+                    log(f"soccer evening-prior lock step failed: {exc}")
+                    if args.live:
+                        write_automation_status("lastSoccerEveningLock", False, f"error: {exc}")
+                    raise
+            elif only_sports is None:
                 # Main (all-sports) lock: per explicit request, 3 scheduled
                 # attempts each morning, each a real test that picks locked
                 # correctly (not just "did the function throw") -- but the
