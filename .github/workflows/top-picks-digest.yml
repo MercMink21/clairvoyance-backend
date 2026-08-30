@@ -1,0 +1,115 @@
+name: Top Picks Digest
+
+# Owner-only email (clairvoyanceengine@gmail.com ONLY, never the
+# subscriber lists auto-lock-settle.yml's own locks emails use) ranking
+# that day's already-locked picks by model win probability -- top 4 per
+# league, top 7 overall, with parlay math. See scripts/auto_lock_settle.py's
+# build_top_picks_digest()/send_top_picks_digest_email() for the content.
+#
+# Deliberately a SEPARATE workflow from auto-lock-settle.yml, not another
+# step tacked onto it -- this is a lower-stakes convenience feature, and
+# it must never be able to add risk or complexity to the actual lock/
+# settle pipeline real subscribers depend on.
+#
+# Timing, found via real audit: this used to fire right after the main
+# lock's 7:35am MT final check, but CFB doesn't lock until 9:00-10:00am
+# MT (cfb-lock-early.yml) -- meaning every digest would have gone out
+# BEFORE CFB was locked, silently omitting CFB entirely (in real data,
+# CFB was the single largest contributor: 19 of 33 picks on a sampled
+# day, 5 of that day's top 7 overall). Fixed by moving this to 10:30am+
+# MT and EXPLICITLY verifying both data/last_lock_date.txt and
+# data/last_cfb_lock_date.txt already show today's date before sending
+# -- not just assuming enough time has passed. If either hasn't
+# recorded yet, this attempt skips (not sends incomplete) and the next
+# catch-up slot tries again.
+
+on:
+  schedule:
+    # 10:30 AM MT = 16:30 UTC (MDT) -- comfortably after CFB's own last
+    # catch-up slot (10:00 AM MT) and after live-tracker.yml's CFB
+    # watchdog window (9:00-10:45 AM MT) has had a chance to compensate
+    # for a dropped CFB trigger too. 3 catch-up slots, 30 min apart, in
+    # case the real lock passes ran unusually late that day. Like every
+    # other MT time in this repo, these are fixed UTC crons -- GitHub
+    # Actions doesn't shift for DST, so real landing times drift ~1hr
+    # earlier MT once MST returns in November.
+    - cron: '30 16 * * *'
+    - cron: '0 17 * * *'
+    - cron: '30 17 * * *'
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Actually send the email (unchecked = dry-run, logs only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  top-picks-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
+
+      - name: Determine live flag and readiness
+        id: flags
+        env:
+          TZ: America/Denver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            echo "should_run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
+            TODAY_MT=$(date +%Y-%m-%d)
+            LAST_DIGEST=$(cat data/last_top_picks_digest_date.txt 2>/dev/null || echo "")
+            LAST_LOCK=$(cat data/last_lock_date.txt 2>/dev/null || echo "")
+            LAST_CFB=$(cat data/last_cfb_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_DIGEST" = "$TODAY_MT" ]; then
+              echo "::notice::Top picks digest already sent for $TODAY_MT -- skipping."
+              echo "should_run=0" >> "$GITHUB_OUTPUT"
+            elif [ "$LAST_LOCK" != "$TODAY_MT" ] || [ "$LAST_CFB" != "$TODAY_MT" ]; then
+              echo "::notice::Top picks digest: today's main lock ($LAST_LOCK) or CFB lock ($LAST_CFB) not yet recorded for $TODAY_MT -- skipping this attempt so the digest isn't sent incomplete, next catch-up slot will retry."
+              echo "should_run=0" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_run=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Send top picks digest
+        if: ${{ steps.flags.outputs.should_run == '1' }}
+        env:
+          TZ: America/Denver
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          python3 scripts/auto_lock_settle.py --top-picks-digest ${{ steps.flags.outputs.live_flag }}
+
+      - name: Record successful digest send
+        # Only after a run that actually included a LIVE send -- a
+        # dry-run must never mark today as done, or a later real
+        # catch-up would wrongly skip itself.
+        if: ${{ steps.flags.outputs.should_run == '1' && steps.flags.outputs.live_flag == '--live' }}
+        run: |
+          TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
+          echo "$TODAY_MT" > data/last_top_picks_digest_date.txt
+          git add data/last_top_picks_digest_date.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record top picks digest sent for $TODAY_MT"
+            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" pull --rebase origin main
+            git push origin main
+          fi

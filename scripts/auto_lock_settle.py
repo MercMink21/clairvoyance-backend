@@ -1326,7 +1326,7 @@ def build_top_picks_digest_html(digest: dict, date_str: str) -> str:
         # status_line/section headers already use (#f20cff / #555), not the
         # white/light-gray palette used inside the dark pick cards.
         '<div style="font-size:20px;font-weight:700;color:#f20cff;margin:18px 0 4px">'
-        f'TOP 7 OVERALL — {len(top7)} PICKS</div>'
+        f'TOP 7 OVERALL — {_esc(date_str)} — {len(top7)} PICKS</div>'
         '<div style="font-size:13px;color:#555;line-height:1.6;margin-bottom:12px">'
         "Ranked purely by model win probability across every sport locked today — the metric that matters "
         "most for parlaying, since a parlay's real hit rate is bounded by its weakest leg, not its average "
@@ -1352,7 +1352,7 @@ def build_top_picks_digest_html(digest: dict, date_str: str) -> str:
             f'<div style="font-size:13px;letter-spacing:2px;color:#f20cff;text-transform:uppercase;'
             f'text-shadow:0 0 8px rgba(242,12,255,.6);margin:24px 0 10px;'
             f'border-bottom:1px solid rgba(242,12,255,.3);padding-bottom:4px">'
-            f'{_esc(LEDGER_LEAGUE_DISPLAY_NAME.get(lg, lg))} — TOP {len(legs)}</div>'
+            f'{_esc(LEDGER_LEAGUE_DISPLAY_NAME.get(lg, lg))} — {_esc(date_str)} — TOP {len(legs)}</div>'
         )
         parts.append("".join(_digest_pick_row_html(b) for b in legs))
 

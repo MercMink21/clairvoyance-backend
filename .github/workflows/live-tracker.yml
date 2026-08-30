@@ -99,6 +99,34 @@ jobs:
               gh workflow run "CFB Auto Lock (Early)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
             fi
           fi
+          # Soccer evening-lock's DATA FEED: soccer-schedule-tomorrow.yml
+          # has no catch-up slots of its own (single cron trigger), unlike
+          # every lock workflow it feeds -- confirmed live 2026-08-29/30
+          # that a brand-new workflow's very first scheduled trigger can
+          # simply not fire at all (soccer-lock-evening.yml's own 4 slots
+          # that night: zero fired either, same root cause). Checks the
+          # snapshot's own `date` field rather than a separate marker
+          # file, since the snapshot IS the thing that needs to be fresh.
+          if [ "$HOUR_MT" = "22" ]; then
+            TOMORROW_ESPN=$(date -d tomorrow +%Y%m%d)
+            SNAPSHOT_DATE=$(python3 -c "import json; print(json.load(open('docs/soccer_schedule_tomorrow.json')).get('date',''))" 2>/dev/null || echo "")
+            if [ "$SNAPSHOT_DATE" != "$TOMORROW_ESPN" ]; then
+              echo "::notice::Watchdog: soccer_schedule_tomorrow.json not refreshed for $TOMORROW_ESPN yet at ${HOUR_MT}:xx MT (has '$SNAPSHOT_DATE') -- dispatching Soccer Schedule Refresh (Tomorrow)."
+              gh workflow run "Soccer Schedule Refresh (Tomorrow)" || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
+          # Soccer evening-lock window: 10:00-11:45pm MT, matching
+          # soccer-lock-evening.yml's own 10:00-11:00pm catch-up range
+          # plus headroom. Marker is dated by the RUN date (tonight), not
+          # the game date (tomorrow) -- see soccer-lock-evening.yml's own
+          # comment on why those are deliberately different fields.
+          if [ "$HOUR_MT" = "22" ] || [ "$HOUR_MT" = "23" ]; then
+            LAST_SOCCER_EVE=$(cat data/last_soccer_evening_lock_date.txt 2>/dev/null || echo "")
+            if [ "$LAST_SOCCER_EVE" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: soccer evening lock not recorded for $TODAY_MT yet at ${HOUR_MT}:xx MT -- dispatching Soccer Auto Lock (Evening — Tomorrow's Slate)."
+              gh workflow run "Soccer Auto Lock (Evening — Tomorrow's Slate)" -f live=true || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
 
       - name: Poll live scores
         env:
