@@ -32,6 +32,24 @@ on:
   # their commits until some unrelated human/PAT-authored push happened to
   # land on main. `workflow_run` is exempt from that restriction, so this
   # fires a redeploy explicitly once each one finishes.
+  #
+  # Real, confirmed incident (2026-08-30): this list is an explicit
+  # allowlist by name, and it had silently drifted out of date -- 11 real
+  # docs/-writing workflows were missing (found via a full audit: every
+  # workflow's own `git add`/python `--push` target, cross-referenced
+  # against this list), several built or touched the same day this was
+  # caught. The practical effect: docs/engine_performance.json,
+  # docs/sport_performance.json, docs/live_data.json,
+  # docs/automation_status.json (the LAST LOCK/LAST SETTLE header
+  # indicator), docs/player_stats.json, and all 3 soccer schedule/
+  # standings snapshots were being committed correctly but never actually
+  # reaching the live site -- confirmed live: engine_performance.json's
+  # generated_at sat 12+ hours stale despite 3 real successful refreshes
+  # in that window. This allowlist approach is fragile by construction --
+  # every NEW docs/-writing workflow has to remember to add itself here,
+  # and evidently that's been missed repeatedly. The scheduled fallback
+  # below exists specifically so a future miss degrades to "up to 2 hours
+  # late" instead of "silently never," without needing anyone to catch it.
   workflow_run:
     workflows:
       - "CFB Rankings + FPI Refresh"
@@ -51,7 +69,26 @@ on:
       - "Daily Social Cards Email"
       - "StatMuse Insights Refresh"
       - "Daily WNBA Player Props Refresh"
+      - "Auto Lock + Settle"
+      - "CFB Auto Lock (Early)"
+      - "CFB Auto Lock (Evening — Tomorrow's Slate)"
+      - "Soccer Auto Lock (Early)"
+      - "Soccer Auto Lock (Evening — Tomorrow's Slate)"
+      - "Landing Page Performance Refresh"
+      - "Live Score Tracker"
+      - "Daily Player Stats Refresh"
+      - "Daily Soccer Schedule Refresh"
+      - "Soccer Schedule Refresh (Tomorrow)"
+      - "Daily Soccer Standings Refresh"
     types: [completed]
+  schedule:
+    # Fallback safety net, not the primary path -- unconditionally
+    # redeploys every 2 hours regardless of whether workflow_run actually
+    # fired for whatever changed docs/ most recently. A deploy of
+    # unchanged content is a harmless no-op (~20s, confirmed from real
+    # run durations), so this costs nothing on a normal day and only
+    # matters on the day something's missing from the list above again.
+    - cron: '23 */2 * * *'
 
 permissions:
   contents: read
