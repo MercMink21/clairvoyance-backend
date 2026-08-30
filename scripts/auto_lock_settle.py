@@ -1518,7 +1518,23 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    if send_email:
+    # Real bug, found via audit: this always emailed based on freshly
+    # re-evaluated `qualifying` regardless of whether any of it was
+    # actually NEW this pass -- fine when this was truly the day's only
+    # lock attempt for this product, but soccer/CFB now also have an
+    # evening-prior pass (a separate workflow with no visibility into
+    # this one's own send-dedup) that may have already locked and
+    # emailed the exact same picks hours earlier. Without this guard, a
+    # subscriber would get a second email the next morning showing "0 of
+    # N actually locked" while still listing all N picks in full, as if
+    # reporting something new. Only skip when there's truly nothing new
+    # (locked==0) AND something qualified (qualifying non-empty) --
+    # genuinely new locks (locked>0) and the "nothing qualified today"
+    # case (handled above) still email as before.
+    if send_email and locked == 0 and qualifying:
+        log(f"Locks email ({label or 'ALL'}) skipped -- all {len(qualifying)} qualifying leg(s) "
+            f"were already locked by an earlier pass today, nothing new to report")
+    elif send_email:
         send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
     else:
         log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
@@ -1578,7 +1594,15 @@ def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    if send_email:
+    # Same guard as run_lock/run_lock_segmented -- mainly defends against
+    # a manual workflow_dispatch re-run after tonight's real slot already
+    # succeeded (the YAML's own marker check normally prevents this
+    # function being invoked twice in one night, but doesn't cover a
+    # manual re-trigger).
+    if send_email and locked == 0 and qualifying:
+        log(f"Locks email (SOCCER evening-prior) skipped -- all {len(qualifying)} qualifying "
+            f"leg(s) were already locked earlier tonight, nothing new to report")
+    elif send_email:
         send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
     else:
         log("Locks email (SOCCER evening-prior) skipped -- already sent tonight")
@@ -1635,7 +1659,10 @@ def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str
     if locked > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    if send_email:
+    if send_email and locked == 0 and qualifying:
+        log(f"Locks email (CFB evening-prior) skipped -- all {len(qualifying)} qualifying "
+            f"leg(s) were already locked earlier tonight, nothing new to report")
+    elif send_email:
         send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
     else:
         log("Locks email (CFB evening-prior) skipped -- already sent tonight")
@@ -1673,7 +1700,28 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
             continue
         locked = _lock_qualifying_legs(page, qualifying) if qualifying else 0
         total_locked += locked
-        if send_email:
+        # Real bug, found via audit -- but NOT fixed the way run_lock's
+        # own version of this guard is: soccer and CFB both have their
+        # own dedicated early/evening pass with a BETTER-timed, more
+        # specific email (soccer-lock-early.yml, cfb-lock-early.yml, and
+        # now an evening-prior lock for both), so this run's own
+        # per-product email for those two is now always redundant with
+        # it -- not just on days a locked==0 coincidence would catch.
+        # This exclusion is unconditional, not "skip when nothing new",
+        # because a "locked==0 means skip" guard HERE would wrongly
+        # silence the once-daily cumulative email for every OTHER sport
+        # too: this loop runs on all 3 of the morning's checks, and only
+        # the LAST one passes send_email=True BY DESIGN -- if the first
+        # check already locked everything (the normal, healthy case),
+        # locked==0 at the final check is expected and that email must
+        # still go out, since it's the one and only report a non-soccer/
+        # CFB subscriber gets that day. Still locks as a safety net
+        # either way (matches soccer/CFB's own early-pass precedent of
+        # continuing to lock without emailing).
+        if send_email and product in ("soccer", "cfb"):
+            log(f"Locks email ({label}) skipped -- {product} has its own dedicated early/evening "
+                f"pass with a better-timed email; this run still locked as a safety net ({locked} new)")
+        elif send_email:
             send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
         else:
             log(f"Locks email ({label}) skipped -- already sent today ({locked} locked this pass)")
@@ -1687,6 +1735,14 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     else:
         locked = _lock_qualifying_legs(page, other_qualifying) if other_qualifying else 0
         total_locked += locked
+        # No early/evening-pass exclusion here (unlike soccer/cfb above)
+        # -- CBB/NCAAH etc. have no dedicated pass of their own, so this
+        # unscoped run's final check IS their only report, same as every
+        # other non-soccer/CFB product. Reverted an over-broad
+        # locked==0-means-skip guard here for the same reason explained
+        # on the per-product loop above: it would wrongly silence this
+        # on a normal day where an earlier check already locked
+        # everything.
         if send_email:
             send_locks_email(other_qualifying, live=True, locked_count=locked, label="OTHER", to=owner_to)
         else:
