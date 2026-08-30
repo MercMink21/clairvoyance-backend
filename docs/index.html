@@ -4889,7 +4889,19 @@ function _scheduleMobileFontCap(){
     window.addEventListener('resize',()=>_scheduleMobileFontCap());
   }catch(e){}
 })();
-function _isJunkPred(p){return/^test-\d+$/i.test(p.id||'')&&!p.betOn&&!p.hA&&!p.awA;}
+// Broadened from /^test-\d+$/ after a real audit found 4 leftover test
+// fixtures (test_bund_1/test_cl_1/test_seriea_1/test_prop_settle_2,
+// dated 2026-08-05) sitting undetected in the live ledger for 3+ weeks
+// -- with fabricated win/loss outcomes silently counted in the all-time
+// record. The old pattern only matched a hyphenated numeric suffix
+// (test-123) AND required every real-looking field to be empty, which
+// missed the underscore-separated IDs above and the one of them
+// (test_prop_settle_2) that DID have real-looking team names. No real
+// pick's id ever starts with "test" under any lock path in this file
+// (every real id is prefixed by a date, sport tag, or Date.now(), never
+// that literal string), so matching on the prefix alone -- regardless
+// of what other fields happen to be populated -- is safe.
+function _isJunkPred(p){return/^test[_-]/i.test(p.id||'');}
 function getP(){
   const raw=S.g('preds',[])||[];
   const w=_getWipedIds();
