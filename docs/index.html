@@ -7382,17 +7382,46 @@ function _footballSortKey(g,sportKey){
 }
 function _footballLiveStatus(g,sportKey){
   try{
-    const arr=window.__CV_LIVE?.[sportKey];if(!arr||!arr.length)return null;
-    const live=arr.find(x=>x.home===g.home&&x.away===g.away);
-    if(!live||live.state==='pre')return null;
-    const isLive=live.state==='in';
-    const scoreStr=`${g.away} ${live.awayScore} – ${g.home} ${live.homeScore}`;
-    return{
-      isLive,isFinal:!isLive,
-      html:isLive
-        ?`<span style="color:var(--hc)">● LIVE · Q${live.quarter} ${live.displayClock}</span><br>${scoreStr}`
-        :`<span style="color:var(--t3)">FINAL</span><br>${scoreStr}`,
-    };
+    // Real bug, reported live: games from days earlier in the current
+    // week still showed their plain kickoff time and sorted as if
+    // upcoming. Root cause -- this only ever checked
+    // window.__CV_LIVE[sportKey] (live_tracker.py's feed, which only
+    // polls ESPN for TODAY's scoreboard), so any game outside today's
+    // date never got a match here at all, no matter how long ago it
+    // actually ended. The schedule data itself (g.state/g.homeScore/
+    // g.awayScore, in _CFB_DATA/_NFL_DATA already) is populated by
+    // fetch_cfb.py/fetch_nfl.py's own twice-daily refresh and reliably
+    // carries "post" + final score for ANY past day, not just today --
+    // confirmed live against docs/cfb_schedule.json (e.g. Aug 29 games
+    // sitting there as state:"post" with real scores days later). Now
+    // checked FIRST as the reliable fallback for every day; the live
+    // feed is only consulted for its real-time clock/quarter detail
+    // during a game that's actually in progress today.
+    const arr=window.__CV_LIVE?.[sportKey];
+    const live=arr?.find(x=>x.home===g.home&&x.away===g.away);
+    if(live&&live.state&&live.state!=='pre'){
+      const isLive=live.state==='in';
+      const scoreStr=`${g.away} ${live.awayScore} – ${g.home} ${live.homeScore}`;
+      return{
+        isLive,isFinal:!isLive,
+        html:isLive
+          ?`<span style="color:var(--hc)">● LIVE · Q${live.quarter} ${live.displayClock}</span><br>${scoreStr}`
+          :`<span style="color:var(--t3)">FINAL</span><br>${scoreStr}`,
+      };
+    }
+    if(g.state==='post'&&g.homeScore!=null&&g.awayScore!=null){
+      const scoreStr=`${g.away} ${g.awayScore} – ${g.home} ${g.homeScore}`;
+      return{isLive:false,isFinal:true,html:`<span style="color:var(--t3)">FINAL</span><br>${scoreStr}`};
+    }
+    if(g.state==='in'&&g.homeScore!=null&&g.awayScore!=null){
+      // Schedule snapshot caught this game mid-play but we have no
+      // live_tracker.py clock/quarter for it (not today, or that poll
+      // hasn't landed yet this cycle) -- still show the score, just
+      // without the quarter/clock detail only the live feed carries.
+      const scoreStr=`${g.away} ${g.awayScore} – ${g.home} ${g.homeScore}`;
+      return{isLive:true,isFinal:false,html:`<span style="color:var(--hc)">● LIVE</span><br>${scoreStr}`};
+    }
+    return null;
   }catch(e){return null;}
 }
 function _cfbGameCard(g){
