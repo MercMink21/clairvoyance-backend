@@ -1,0 +1,94 @@
+name: Daily Schedules + Standings Refresh
+
+# Consolidates 4 separate single-purpose scheduled workflows that all
+# clustered within a 10-minute window each morning (11:55-12:05 UTC) --
+# soccer-schedule-daily, soccer-standings-daily, cfb-schedule-daily, and
+# nfl-schedule-daily -- into one job. Found via the 2026-09-01 health-check
+# audit: this repo runs 30+ scheduled workflows on a free-tier account
+# (20-concurrent-job ceiling), and real GH Actions run-history showed every
+# scheduled workflow firing 3-7+ hours late, consistently, across multiple
+# days. nfl-schedule-daily's own comment already documented a real, sharper
+# version of this same problem: it used to fire at the exact same instant
+# as cfb-schedule-daily and that reliably raced two runners pushing to main
+# simultaneously, failing one push even with retry logic -- a 5-minute
+# stagger was the fix at the time. Running all 4 scripts sequentially in
+# one job removes that class of race entirely (one runner, one checkout,
+# pushes happen one after another -- nothing to race) instead of relying on
+# stagger-by-a-few-minutes, which the health-check found isn't enough on
+# its own once the account-wide queue is under real pressure.
+#
+# CFB and NFL schedules refresh twice a day (pre-slate + same-night final
+# scores); soccer schedule/standings only need the once-daily morning pass.
+# The `if: github.event.schedule == ...` guards below replicate that
+# distinction inside one workflow instead of two separate cron schedules.
+#
+# Ordering preserved from the original standalone workflows: soccer
+# standings' own docstring requires it complete before soccer-lock-early.yml
+# 's ~6:20 AM MT run -- both scripts here are lightweight (pip install
+# requests only, no playwright), so combined runtime is a couple minutes,
+# leaving the same wide buffer the separate workflows had.
+
+on:
+  schedule:
+    # 5:55 AM MT = 11:55 UTC (MDT) / 12:55 UTC (MST) -- pre-slate refresh,
+    # ahead of soccer-lock-early.yml's ~6:20 AM MT run.
+    - cron: '55 11 * * *'
+    # 11:00 PM MT = 05:00 UTC (MDT) / 06:00 UTC (MST) -- same-night final
+    # scores for CFB/NFL Elo/HFA, run close to (but after) scheduled-
+    # refresh.yml's 05:00 UTC settlement pass. Soccer schedule/standings
+    # are skipped on this run (see step-level `if`s below).
+    - cron: '10 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-schedules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+
+      - name: Refresh soccer schedule (was soccer-schedule-daily.yml, morning only)
+        if: github.event.schedule == '55 11 * * *' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/scrape_soccer_schedule.py --push
+
+      - name: Refresh soccer standings (was soccer-standings-daily.yml, morning only)
+        if: github.event.schedule == '55 11 * * *' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/scrape_soccer_standings.py --push
+
+      - name: Refresh CFB schedule/lines (was cfb-schedule-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/fetch_cfb.py --mode schedule --push
+
+      - name: Refresh NFL schedule/lines (was nfl-schedule-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/fetch_nfl.py --mode schedule --push

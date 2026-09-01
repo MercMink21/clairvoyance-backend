@@ -5641,7 +5641,7 @@ def main() -> None:
         note("soccer_fbref.json written")
     # Soccer standings snapshot (docs/soccer_standings.json) is written by
     # its own dedicated daily script (scripts/scrape_soccer_standings.py /
-    # soccer-standings-daily.yml), not here -- standings move slowly enough
+    # daily-schedules-refresh.yml), not here -- standings move slowly enough
     # that bundling it into this 3x/day pipeline would just be redundant
     # API load for no real freshness gain.
     mls_bundle = {"fetchedAt": TODAY_ISO, "standings": mls_standings, "schedule": mls_schedule, "weather": soccer_weather, "rosters": mls_rosters}

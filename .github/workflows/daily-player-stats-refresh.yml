@@ -1,0 +1,100 @@
+name: Daily Player & Prop Stats Refresh
+
+# Consolidates 6 separate single-purpose scheduled workflows that all fired
+# within the same 15:45-16:45 UTC (9:45-10:45am MT) hour -- player-stats-
+# daily, wnba-props-daily, opta-soccer-stats-daily's second (16:00) run,
+# nba-props-daily, nhl-props-daily, and nfl-props-daily -- into one job with
+# 6 sequential steps. Found via the 2026-09-01 health-check audit: this
+# repo runs 30+ scheduled workflows on a free-tier account (20-concurrent-
+# job ceiling), and GH Actions run-history showed every scheduled workflow
+# firing 3-7+ hours late, consistently, across multiple days -- this hour
+# alone was one of the day's clearest pileup windows (16 separate dispatch
+# events in the 18:00-19:00 UTC range once cascading delays pushed things
+# downstream). Cutting 6 cron entries down to 1 directly reduces how many
+# jobs compete for that ceiling at once.
+#
+# Each script is completely independent of the others (separate scripts,
+# separate output files, no shared state) -- continue-on-error on every
+# step preserves the original per-workflow isolation: one script's failure
+# no longer stops the ones after it in this job, same as when each ran as
+# its own standalone workflow. Steps push sequentially in the same
+# checkout, so each subsequent script's --push sees the prior step's own
+# push already applied locally -- no rebase conflicts, since it's all
+# serial within one runner.
+#
+# Also cuts real redundant work, not just cron entries: nba/nfl/nhl/opta
+# each independently downloaded and installed the ~300MB playwright+
+# chromium toolchain before this merge. Now that happens once for the
+# whole job instead of 4 times.
+
+on:
+  schedule:
+    # 9:45am MT = 15:45 UTC (MDT) / 16:45 UTC (MST) -- matches the
+    # earliest of the 6 original cron times (player-stats-daily's).
+    - cron: '45 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-player-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q requests beautifulsoup4 lxml playwright
+          playwright install chromium --with-deps
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "Clairvoyance Bot"
+          git config user.email "bot@clairvoyance"
+
+      - name: Refresh player stats (was player-stats-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/scrape_player_stats.py --push
+
+      - name: Refresh WNBA props (was wnba-props-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/update_wnba_props.py --push
+
+      - name: Refresh Opta soccer stats (was opta-soccer-stats-daily.yml's 16:00 UTC run)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/scrape_opta_stats.py --push
+
+      - name: Refresh NBA props (was nba-props-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/clairvoyance_update.py --mode props --sport nba --push
+
+      - name: Refresh NHL props (was nhl-props-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/clairvoyance_update.py --mode props --sport nhl --push
+
+      - name: Refresh NFL props (was nfl-props-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: python3 scripts/clairvoyance_update.py --mode props --sport nfl --push

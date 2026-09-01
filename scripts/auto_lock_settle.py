@@ -848,7 +848,7 @@ def gather_cfb_legs_for_date(page, target_date_iso: str) -> dict:
     new data-feed workflow at all: docs/cfb_schedule.json already covers
     the FULL SEASON in one file (confirmed live: dates spanning Aug 2026
     through Jan 2027), refreshed twice daily by the existing
-    cfb-schedule-daily.yml, so this just targets tomorrow's date against
+    daily-schedules-refresh.yml, so this just targets tomorrow's date against
     data that's already there.
 
     _cfbGameCard(g) has no "today" dependency of its own -- confirmed by
@@ -1628,7 +1628,7 @@ def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str
     cfb-lock-early.yml's own same-day pass the next morning, which is
     left completely unchanged and still runs as tomorrow's safety net.
     Data comes from docs/cfb_schedule.json, already refreshed twice
-    daily by the existing cfb-schedule-daily.yml -- no new data-feed
+    daily by the existing daily-schedules-refresh.yml -- no new data-feed
     workflow needed, see gather_cfb_legs_for_date's own docstring."""
     tomorrow_iso = (datetime.now(ZoneInfo("America/Denver")) + timedelta(days=1)).strftime("%Y-%m-%d")
     log(f"=== AUTO-LOCK (PREMIUM/OPTIMAL) — CFB, EVENING-PRIOR FOR {tomorrow_iso} ===")
