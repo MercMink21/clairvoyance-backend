@@ -1,0 +1,24 @@
+{
+  "note": "Baseline for comparing GH Actions scheduling delay before/after the 2026-09-01 fixes. See commits 1e4ecabc (workflow consolidation) and 193e6d53 (pages-deploy skip-if-unchanged). Ask Claude to re-run the same measurement and diff against this file.",
+  "measured_at_utc": "2026-09-01T20:22:00Z",
+  "fixes_shipped_before_measurement": false,
+  "deploy_pages_runs_per_24h": 58,
+  "total_actions_runs_per_24h": 150,
+  "email_workflow_avg_delay_minutes": {
+    "auto-lock-settle.yml": 95,
+    "cfb-lock-early.yml": 184,
+    "cfb-lock-evening.yml": 263,
+    "soccer-lock-early.yml": 227,
+    "soccer-lock-evening.yml": 270,
+    "top-picks-digest.yml": 150,
+    "send-expiry-reminders.yml": 199,
+    "pick-of-day-social-daily.yml": 140
+  },
+  "measurement_method": "For schedule-triggered runs only, delay = minutes between the run's actual createdAt and the nearest preceding nominal cron slot for that workflow (tried day offsets -1/0/+1, took smallest non-negative delta).",
+  "how_to_recheck": [
+    "cd ~/clairvoyance-backend",
+    "gh run list --limit 150 --json databaseId,name,workflowName,conclusion,createdAt,event,status  # count Deploy Pages occurrences and total window coverage",
+    "gh run list --workflow=<wf> --json databaseId,conclusion,createdAt,event,status --limit 50  # per email workflow, recompute avg delay minutes",
+    "gh api /repos/MercMink21/clairvoyance-backend/actions/runs/<id>/jobs  # spot-check Deploy Pages runs for skipped conclusion on no-op steps"
+  ]
+}
