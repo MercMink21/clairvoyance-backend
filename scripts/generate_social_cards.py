@@ -453,24 +453,28 @@ def get_engine_performance(page) -> dict | None:
 
 
 def get_sport_performance(page) -> dict | None:
-    """Today / This Month / All Time win-loss-units, broken down by league,
-    computed with the exact same leagueMap categorization and calc logic as
-    the home page's own "// PERIOD PERFORMANCE — LEAGUE" table (docs/app.html
-    renderHomePage) -- THIS MONTH matches that table's own default toggle
-    (window._homeLgPerfPeriod defaults to 'month', i.e. current month-to-
-    date, not the prior completed month), and TODAY matches that table's
-    'today' toggle (p.date === todayStr, the real-world game date, same as
-    the home page's own TODAY summary card). Written to docs/sport_
-    performance.json for the same reason engine_performance.json exists --
-    so the landing page can mirror these numbers without its own Supabase
-    access."""
+    """Today / Last Month / This Month / All Time win-loss-units, broken
+    down by league, computed with the exact same leagueMap categorization
+    and calc logic as the home page's own "// PERIOD PERFORMANCE — LEAGUE"
+    table (docs/app.html renderHomePage) -- THIS MONTH matches that table's
+    own default toggle (window._homeLgPerfPeriod defaults to 'month', i.e.
+    current month-to-date, not the prior completed month), TODAY matches
+    that table's 'today' toggle (p.date === todayStr, the real-world game
+    date, same as the home page's own TODAY summary card), and LAST MONTH
+    matches the same firstOfLastMonth/firstOfMonth window
+    get_engine_performance() above already uses for its own LAST_MONTH
+    bucket. Written to docs/sport_performance.json for the same reason
+    engine_performance.json exists -- so the landing page can mirror these
+    numbers without its own Supabase access."""
     return page.evaluate(
         """
         async () => {
           const allBets = getP();
           const nowD = getMSTNow();
           const firstOfMonth = mstFirstOfMonth(nowD);
+          const firstOfLastMonth = mstFirstOfMonth(new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1));
           const thisMonthLbl = nowD.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+          const lastMonthLbl = firstOfLastMonth.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
 
           // Deliberate copy of renderHomePage's own leagueMap (docs/app.html)
           // -- no shared constant between the two, so if a league is ever
@@ -504,6 +508,7 @@ def get_sport_performance(page) -> dict | None:
 
           const settled = allBets.filter(p => p.outcome !== 'pending');
           const thisMonthBets = settled.filter(p => p.lockedAt && p.lockedAt >= firstOfMonth.getTime());
+          const lastMonthBets = settled.filter(p => p.lockedAt && p.lockedAt >= firstOfLastMonth.getTime() && p.lockedAt < firstOfMonth.getTime());
           // Matches p.date, not lockedAt -- same real-world game date the
           // home page's own 'today' toggle and TODAY summary card use, not
           // a "locked in the last 24h" count.
@@ -511,6 +516,7 @@ def get_sport_performance(page) -> dict | None:
 
           return {
             today: { label: 'TODAY', leagues: byLeague(todayBets) },
+            lastMonth: { label: lastMonthLbl, leagues: byLeague(lastMonthBets) },
             thisMonth: { label: thisMonthLbl, leagues: byLeague(thisMonthBets) },
             allTime: { label: 'ALL TIME', leagues: byLeague(settled) },
           };
