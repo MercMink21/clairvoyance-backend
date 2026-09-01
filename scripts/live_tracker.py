@@ -241,6 +241,56 @@ def fetch_nba_live() -> list[dict]:
         games.append(g)
     return games
 
+def _fetch_football_live(espn_path: str, sport_tag: str) -> list[dict]:
+    """Shared CFB/NFL live-score fetcher -- both are quarter-based ESPN
+    scoreboards with an identical response shape, just different paths.
+    No win-probability here (unlike MLB/NBA/NHL above): those 3 have a
+    real if simplistic score-diff/time-remaining model already tuned for
+    this app; football's isn't (down/distance/possession all matter a lot
+    more than in basketball, and no such model exists in this codebase
+    yet) -- rather than ship a fabricated number, this only reports what
+    ESPN's scoreboard actually says: score, quarter, clock, state. Same
+    home/away abbreviation convention as fetch_cfb.py/fetch_nfl.py's own
+    schedule scrapes (team.abbreviation), so frontend lookups by
+    home+away pair match cleanly against docs/cfb_schedule.json /
+    nfl_schedule.json without any extra normalization.
+    """
+    today = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y%m%d")
+    data = _get(f"{ESPN_BASE}/{espn_path}/scoreboard?dates={today}&limit=100")
+    if not data:
+        return []
+    games = []
+    for ev in data.get("events") or []:
+        comp = (ev.get("competitions") or [{}])[0]
+        comps = comp.get("competitors") or []
+        home = next((c for c in comps if c.get("homeAway") == "home"), {})
+        away = next((c for c in comps if c.get("homeAway") == "away"), {})
+        status = ev.get("status") or {}
+        state  = (status.get("type") or {}).get("state", "pre")
+        hs = int(home.get("score") or 0) if state != "pre" else 0
+        as_ = int(away.get("score") or 0) if state != "pre" else 0
+
+        games.append({
+            "id":       ev.get("id"),
+            "sport":    sport_tag,
+            "home":     (home.get("team") or {}).get("abbreviation", ""),
+            "away":     (away.get("team") or {}).get("abbreviation", ""),
+            "homeScore": hs,
+            "awayScore": as_,
+            "state":    state,
+            "quarter":  status.get("period") or 1,
+            "displayClock": status.get("displayClock", "0:00"),
+            "note":     (status.get("type") or {}).get("shortDetail", ""),
+            "network":  ((comp.get("broadcasts") or [{}])[0].get("names") or [""])[0],
+        })
+    return games
+
+def fetch_cfb_live() -> list[dict]:
+    return _fetch_football_live("football/college-football", "CFB")
+
+def fetch_nfl_live() -> list[dict]:
+    return _fetch_football_live("football/nfl", "NFL")
+
 def fetch_nhl_live() -> list[dict]:
     today = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%d")
     data = _get(f"{NHL_API}/score/{today}")
@@ -468,6 +518,8 @@ def poll_once() -> dict:
     nba  = fetch_nba_live()
     nhl  = fetch_nhl_live()
     ten  = fetch_tennis_live()
+    cfb  = fetch_cfb_live()
+    nfl  = fetch_nfl_live()
 
     # Load locked bets (written by frontend exportLockedProps())
     locked: list = []
@@ -486,6 +538,8 @@ def poll_once() -> dict:
     active_nba = [g for g in nba  if g.get("state") == "in"]
     active_nhl = [g for g in nhl  if g.get("state") in ("LIVE","CRIT")]
     active_ten = [m for m in ten  if m.get("state") == "in"]
+    active_cfb = [g for g in cfb  if g.get("state") == "in"]
+    active_nfl = [g for g in nfl  if g.get("state") == "in"]
 
     payload = {
         "ts":         ts.isoformat(),
@@ -494,14 +548,18 @@ def poll_once() -> dict:
         "nba":        nba,
         "nhl":        nhl,
         "tennis":     ten,
+        "cfb":        cfb,
+        "nfl":        nfl,
         "liveBets":   live_bets,
         "activeCounts": {
             "mlb": len(active_mlb),
             "nba": len(active_nba),
             "nhl": len(active_nhl),
             "ten": len(active_ten),
+            "cfb": len(active_cfb),
+            "nfl": len(active_nfl),
         },
-        "hasLiveGames": bool(active_mlb or active_nba or active_nhl or active_ten),
+        "hasLiveGames": bool(active_mlb or active_nba or active_nhl or active_ten or active_cfb or active_nfl),
     }
 
     FE_LIVE.write_text(json.dumps(payload))
@@ -512,6 +570,8 @@ def poll_once() -> dict:
         f"NBA:{len(active_nba)}" if active_nba else "",
         f"NHL:{len(active_nhl)}" if active_nhl else "",
         f"TEN:{len(active_ten)}" if active_ten else "",
+        f"CFB:{len(active_cfb)}" if active_cfb else "",
+        f"NFL:{len(active_nfl)}" if active_nfl else "",
     ])) or "no live games"
     log(f"Live poll: {live_str} | {len([b for b in live_bets if b.get('liveProb')])} bets tracked")
     return payload

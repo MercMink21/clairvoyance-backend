@@ -7359,6 +7359,42 @@ function _highHitBadgeHTML(p){
   if(p<_HIGH_HIT_P)return'';
   return`<div style="margin-top:2px"><span class="pill" style="background:rgba(255,221,0,.15);border:1px solid var(--gc);color:var(--gc)" title="High model win probability -- shown regardless of EV grade, since a heavy favorite's short odds can price out most of the value even when the pick itself is very likely to hit">HIGH HIT % ${(p*100).toFixed(0)}%</span></div>`;
 }
+// Live score/state lookup for CFB/NFL, shared by both sports' own game
+// cards (_cfbGameCard / _nflGameCard2). Reads window.__CV_LIVE.cfb /
+// .nfl -- populated by live_tracker.py's fetch_cfb_live()/fetch_nfl_live()
+// every ~15min during the game window, same __CV_LIVE bootstrap MLB/NBA/
+// NHL/tennis already use (see loadLiveData()). No win-probability here,
+// unlike those 3 sports -- football's isn't modeled anywhere in this app
+// yet (down/distance/possession matter far more than in basketball), so
+// this only ever reports what ESPN's own scoreboard says: score, quarter,
+// clock, state. Matches on home+away abbreviation pair, the same
+// team.abbreviation convention both live_tracker.py and fetch_cfb.py/
+// fetch_nfl.py's own schedule scrapes use, so no normalization needed.
+// Sort priority for a week's game list: LIVE first (most urgent), then
+// UPCOMING soonest-first, then FINAL games sink to the bottom (still
+// sorted amongst themselves by kickoff time so a Saturday's early games
+// stay above its late games). Ties within LIVE/FINAL fall back to
+// kickoff time too, same as the original date-only sort.
+function _footballSortKey(g,sportKey){
+  const ls=_footballLiveStatus(g,sportKey);
+  const rank=ls?(ls.isLive?0:2):1;
+  return[rank,new Date(g.date).getTime()];
+}
+function _footballLiveStatus(g,sportKey){
+  try{
+    const arr=window.__CV_LIVE?.[sportKey];if(!arr||!arr.length)return null;
+    const live=arr.find(x=>x.home===g.home&&x.away===g.away);
+    if(!live||live.state==='pre')return null;
+    const isLive=live.state==='in';
+    const scoreStr=`${g.away} ${live.awayScore} – ${g.home} ${live.homeScore}`;
+    return{
+      isLive,isFinal:!isLive,
+      html:isLive
+        ?`<span style="color:var(--hc)">● LIVE · Q${live.quarter} ${live.displayClock}</span><br>${scoreStr}`
+        :`<span style="color:var(--t3)">FINAL</span><br>${scoreStr}`,
+    };
+  }catch(e){return null;}
+}
 function _cfbGameCard(g){
   const D=_CFB_DATA;
   const ens=cfbEns(g.home,g.away,g.overUnder,g);
@@ -7368,6 +7404,8 @@ function _cfbGameCard(g){
   const hD=ml2d(hML),aD=ml2d(aML);
   const dt=g.date?new Date(g.date):null;
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
+  const liveStatus=_footballLiveStatus(g,'cfb');
+  const timeDisplay=liveStatus?liveStatus.html:timeStr;
   const hFpi=D.fpi[g.home]?.fpi,aFpi=D.fpi[g.away]?.fpi;
   if(!mc){
     // cfbMC() now falls back to real ESPN market data (spread, or
@@ -7383,7 +7421,7 @@ function _cfbGameCard(g){
       :`Insufficient FPI/stats data for this matchup yet.`;
     return`<div class="card" style="margin-bottom:12px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_cfbRankLabel(g.away)}${g.away} @ ${_cfbRankLabel(g.home)}${g.home}</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr} · ${g.venue||''}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeDisplay} · ${g.venue||''}</div>
       <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">${msg}</div>
     </div>`;
   }
@@ -7441,7 +7479,7 @@ function _cfbGameCard(g){
         ${g.spreadDetails?`<div class="gsp">Market: ${g.spreadDetails}${g.overUnder!=null?' · O/U '+g.overUnder:''}</div>`:''}
       </div>
       <div style="text-align:right">
-        <div class="np mono" style="font-size:19px">${timeStr}</div>
+        <div class="np mono" style="font-size:19px">${timeDisplay}</div>
         <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px;margin-top:3px" onclick="event.stopPropagation();_toggleMatchupRadar('cfb_${gidSafe}')">COMPARE</button>
       </div>
     </div>
@@ -7520,7 +7558,7 @@ function renderCFBGames(){
   if(conf!=='all')games=games.filter(g=>g.conferences?.includes(conf));
   if(top25Only)games=games.filter(g=>D.rankByAbbr[g.home]||D.rankByAbbr[g.away]);
   if(!games.length){el.innerHTML='<div class="empty">NO GAMES MATCH THESE FILTERS</div>';return;}
-  games.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  games.sort((a,b)=>{const ka=_footballSortKey(a,'cfb'),kb=_footballSortKey(b,'cfb');return ka[0]-kb[0]||ka[1]-kb[1];});
   el.innerHTML=games.map(_cfbGameCard).join('');
   // Render immediately with whatever weather is already cached, then
   // prefetch real forecasts for this filtered slate and re-render once
@@ -8008,12 +8046,14 @@ function _nflGameCard2(g){
   const hD=ml2d(hML),aD=ml2d(aML);
   const dt=g.date?new Date(g.date):null;
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
+  const liveStatus=_footballLiveStatus(g,'nfl');
+  const timeDisplay=liveStatus?liveStatus.html:timeStr;
   if(!mc){
     const hMissing=D.standings[g.home]==null,aMissing=D.standings[g.away]==null;
     const reason=(hMissing&&aMissing)?`Neither ${g.home} nor ${g.away} has a standings entry yet`:hMissing?`${g.home} has no standings entry yet`:aMissing?`${g.away} has no standings entry yet`:null;
     return`<div class="card" style="margin-bottom:12px">
       <div style="font-family:var(--orb);font-size:22px;font-weight:700;margin-bottom:6px">${_nflRankLabel(g.away)}${g.away} @ ${_nflRankLabel(g.home)}${g.home}</div>
-      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeStr} · ${g.venue||''}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--t3)">${timeDisplay} · ${g.venue||''}</div>
       <div style="font-family:var(--mono);font-size:14px;color:var(--hc);margin-top:6px">${reason?reason+' — and no market spread posted yet to fall back to.':'Insufficient data for this matchup yet.'} No model projection is generated without one.</div>
     </div>`;
   }
@@ -8061,7 +8101,7 @@ function _nflGameCard2(g){
         ${g.spreadDetails?`<div class="gsp">Market: ${g.spreadDetails}${g.overUnder!=null?' · O/U '+g.overUnder:''}</div>`:''}
       </div>
       <div style="text-align:right">
-        <div class="np mono" style="font-size:19px">${timeStr}</div>
+        <div class="np mono" style="font-size:19px">${timeDisplay}</div>
         <button class="btn btn-o btn-sm" style="font-size:12px;padding:2px 6px;margin-top:3px" onclick="event.stopPropagation();_toggleMatchupRadar('nfl2_${gidSafe}')">COMPARE</button>
       </div>
     </div>
@@ -8122,7 +8162,7 @@ function renderNFLGames2(){
   const week=document.getElementById('nfl2-filter-week')?.value;
   let games=(D.weeks[week]||[]).slice();
   if(!games.length){el.innerHTML='<div class="empty">NO GAMES MATCH THESE FILTERS</div>';return;}
-  games.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  games.sort((a,b)=>{const ka=_footballSortKey(a,'nfl'),kb=_footballSortKey(b,'nfl');return ka[0]-kb[0]||ka[1]-kb[1];});
   el.innerHTML=games.map(_nflGameCard2).join('');
   _cfbPrefetchWeather(games).then(()=>{ // shared weather prefetch — see module comment above
     const stillEl=document.getElementById('nfl2-games-list');
@@ -20846,6 +20886,13 @@ async function loadLiveData(){
     if(d.nhl?.length)patchLiveNHL(d.nhl);
     if(d.wnba?.length)try{patchLiveWNBA(d.wnba);}catch(e){}
     if(d.tennis?.length)window._liveTennisMatches=d.tennis;
+    // CFB/NFL have no per-card patcher like MLB/NBA/NHL above -- their own
+    // game cards read window.__CV_LIVE directly at render time (see
+    // _footballLiveStatus), so a full re-render is enough to pick up new
+    // scores. Cheap at this list size (~100 games max) and this only fires
+    // if the user is actually sitting on that tab already.
+    if(d.cfb&&window._cfbActiveTab==='games')try{renderCFBGames();}catch(e){}
+    if(d.nfl&&window._nflActiveTab==='games')try{renderNFLGames2();}catch(e){}
     if(d.liveBets?.length)renderLiveBetMeters(d.liveBets);
     // Auto-settle newly finished games
     const fMLB=(d.mlb||[]).filter(g=>g.state==='post');
