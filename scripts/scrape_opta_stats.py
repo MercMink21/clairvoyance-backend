@@ -61,6 +61,44 @@ POWER_API = f"{API_BASE}/seasonpowerrankings"
 # first-party pipeline already and isn't one of Opta's tracked Power
 # Rankings competitions the way the 4 European leagues are).
 LEAGUES: dict[str, dict] = {
+    "cl": {
+        # tmcl confirmed live 2026-09-01 by capturing the real network
+        # request theanalyst.com's own frontend makes on this page (the
+        # static-HTML grep this docstring describes for the other 5
+        # leagues found nothing for CL -- the block renders its config
+        # client-side here rather than embedding it server-rendered).
+        # meta_post_id likewise pulled from the page's own post-<id>
+        # marker and confirmed against the real API. Champions League has
+        # no /power-rankings page on theanalyst.com (404s), unlike the 4
+        # domestic leagues + MLS.
+        #
+        # IMPORTANT: as of 2026-09-01 this tmcl's data is still the
+        # *2025/26 season's final totals* (lastUpdated 2026-06-02, right
+        # after that season's final) -- the 2026/27 league phase hasn't
+        # kicked off yet (real UEFA calendar: mid-September). Once it
+        # does, re-verify this tmcl the same way the docstring above
+        # describes for the other leagues (or repeat the network-capture
+        # trick this comment used, if the static grep still finds
+        # nothing) -- it may roll to a new id, or this same one may just
+        # start reflecting the new season's live totals in place.
+        "tmcl": "2mr0u0l78k2gdsm79q56tb2fo",
+        "referer": "https://theanalyst.com/competition/uefa-champions-league/stats",
+        "power_referer": None,
+        "meta_post_id": "194412",
+        "file": "champions_league_team_stats_2026_27.json",
+        "power": False,
+        # Deliberately None, same reasoning as MLS below: CL teams are
+        # each already carrying a domestic-league _SOC_XG entry (their
+        # season-long base rate across 30-38 games). Writing CL-specific
+        # attacking/defending into those SAME shared keys would let an
+        # 8-game European sample distort a team's base xG used for every
+        # one of their matches in every competition, not just CL -- so
+        # this stays reference-only (docs/cl_opta_stats.json), blended in
+        # ONLY for CL matches specifically via _blendLeagueOpta/
+        # _optaBaseXG in app.html (added to _OPTA_LEAGUES), never merged
+        # into the static table.
+        "name_map": None,
+    },
     "pl": {
         "tmcl": "6pdwluctev9iebv00r4qqukno",
         "referer": "https://theanalyst.com/competition/premier-league/stats",

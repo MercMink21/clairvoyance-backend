@@ -1081,10 +1081,12 @@ body{line-height:1.5}
 <div id="soc-cl" class="subp">
   <nav class="inav" id="cl-in">
     <button class="nb act" onclick="T('cl','matches');renderLeagueMatches('cl')">MATCHES</button>
+    <button class="nb" onclick="T('cl','standings');renderLeagueStandings('cl')">TABLE</button>
     <button class="nb" onclick="T('cl','model');renderSoccerLeagueModel('cl')">MODEL</button>
     <button class="nb" onclick="T('cl','config');renderSoccerLeagueConfig('cl')">CONFIG</button>
   </nav>
   <div class="sa" id="cl-sa">
+    <div id="cl-tab-standings" class="tab"><div id="cl-standings-list" style="padding:4px 0"><div class="loading"><span class="spi"></span> LOADING STANDINGS…</div></div></div>
     <div id="cl-tab-matches" class="tab act"><div id="cl-matches-list" style="padding:4px 0">
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center">
         <div style="font-family:var(--orb);font-size:27px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--vc),var(--pc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px">CHAMPIONS LEAGUE SEASON COMPLETED</div>
@@ -28066,7 +28068,7 @@ function loadMLSOptaStats(){
 // resolves to null for CL rather than guessing.
 window.__CV_OPTA=window.__CV_OPTA||{};
 var _leagueOptaLoading={};
-var _OPTA_LEAGUES=['pl','liga','ita','bl','mls'];
+var _OPTA_LEAGUES=['pl','liga','ita','bl','mls','cl'];
 // The leagues Opta also publishes rolling Power Rankings for (a 0-100
 // team-strength rating, same signal their own Supercomputer predictor
 // uses to seed match probabilities before simulating a season — see
@@ -29082,7 +29084,22 @@ async function renderLeagueStandings(key){
   var rows=await _fetchLeagueStandings(key);
   if(!rows.length){el.innerHTML='<div style="font-family:var(--mono);color:var(--t3);text-align:center;padding:20px">STANDINGS UNAVAILABLE</div>';return;}
   var cfg=_LEAGUE_CFG[key]||{};
+  // Champions League's 36-team league phase has nothing to do with a
+  // domestic table's top-4/5th/bottom-3 zones (those numbers assume a
+  // ~18-20 team round-robin table) -- it's a single ranked table of every
+  // team in the competition, with fixed zones: 1st-8th advance straight
+  // to the Round of 16, 9th-24th go into a two-legged knockout playoff
+  // round to fill out the round of 16, and 25th-36th are eliminated.
+  // Applying the domestic thresholds here would highlight the wrong rows
+  // for the wrong reasons on a 36-row table.
+  var isCL=key==='cl';
+  var clLegend=isCL?'<div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">'
+    +'<span><span style="display:inline-block;width:9px;height:9px;background:rgba(187,255,0,.55);border-radius:1px;margin-right:5px"></span>1-8 ADVANCE TO ROUND OF 16</span>'
+    +'<span><span style="display:inline-block;width:9px;height:9px;background:rgba(100,149,237,.55);border-radius:1px;margin-right:5px"></span>9-24 KNOCKOUT PLAYOFF</span>'
+    +'<span><span style="display:inline-block;width:9px;height:9px;background:rgba(255,0,68,.55);border-radius:1px;margin-right:5px"></span>25-36 ELIMINATED</span>'
+    +'</div>':'';
   var html='<div style="font-family:var(--orb);font-size:18px;font-weight:700;letter-spacing:2px;color:var(--nc);margin-bottom:10px">'+cfg.name+' STANDINGS</div>'
+    +clLegend
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:15px">'
     +'<thead><tr style="border-bottom:1px solid rgba(255,255,255,.1)">'
     +'<th style="text-align:left;padding:4px 6px;color:var(--t3)">#</th>'
@@ -29094,9 +29111,19 @@ async function renderLeagueStandings(key){
     +'<th style="padding:4px 6px;color:var(--t3)">xG</th>'
     +'</tr></thead><tbody>'
     +rows.map(function(r,i){
-      var xgD=_socXG(r.name)||{};
+      // Real bug, found while adding CL's Opta blend: this never passed
+      // `key`, so _socXG's leagueKey-gated Opta blend (_OPTA_LEAGUES)
+      // never applied here for ANY of the 6 leagues -- this xG column
+      // always showed the unblended base number even for PL/La Liga/
+      // Bundesliga/Serie A/MLS, which already had real Opta data
+      // available elsewhere (match cards, props) via the correctly-
+      // leagueKey'd call sites. Passing key here is what actually
+      // surfaces CL's new Opta blend in this specific table too.
+      var xgD=_socXG(r.name,key)||{};
       var pos=i+1;
-      var rowBg=pos<=4?'rgba(187,255,0,.04)':pos===5?'rgba(100,149,237,.04)':pos>rows.length-3?'rgba(255,0,68,.04)':'';
+      var rowBg=isCL
+        ?(pos<=8?'rgba(187,255,0,.04)':pos<=24?'rgba(100,149,237,.04)':'rgba(255,0,68,.04)')
+        :(pos<=4?'rgba(187,255,0,.04)':pos===5?'rgba(100,149,237,.04)':pos>rows.length-3?'rgba(255,0,68,.04)':'');
       return'<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:'+rowBg+'">'
         +'<td style="padding:5px 6px;color:var(--t3);font-weight:700">'+pos+'</td>'
         +'<td style="padding:5px 6px;color:var(--t);font-weight:700">'+r.name+'</td>'
@@ -29123,7 +29150,9 @@ async function renderLeagueProps(key){
   if(!games.length){el.innerHTML='<div class="empty">NO MATCH DATA — OPEN MATCHES TAB FIRST</div>';return;}
   var props=[];
   games.forEach(function(g){
-    var hXG=_socXG(g.home),aXG=_socXG(g.away);
+    // Same missing-leagueKey bug as renderLeagueStandings above -- props
+    // generated here never got each of the 6 leagues' own Opta blend.
+    var hXG=_socXG(g.home,key),aXG=_socXG(g.away,key);
     if(!hXG&&!aXG)return;
     var matchLabel=g.hAbbr+' vs '+g.aAbbr;
     [{team:g.home,abbr:g.hAbbr,xg:hXG?(hXG.hxg||hXG.xg):1.4,opp:g.away},
