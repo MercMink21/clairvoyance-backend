@@ -93,6 +93,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: "pages"
@@ -110,15 +111,52 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
+
+      - name: Skip if docs/ unchanged since last real deploy
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # "Live Score Tracker" alone dispatches this workflow up to ~72
+          # times/day (every 15min, 12hr-5am MT) via the workflow_run
+          # trigger below -- necessary because live scores genuinely need
+          # fast redeploys, but most of those 72 completions don't actually
+          # touch docs/ (no live games, or no score change that tick). Found
+          # via the 2026-09-01 delay audit: this workflow alone accounted
+          # for 58 of ~150 total Actions runs in a 24h sample -- by far the
+          # single largest contributor to the account-wide scheduling
+          # congestion behind this whole investigation. Rather than drop
+          # Live Score Tracker from the allowlist (which would bring back
+          # up to 2 hours of live-score staleness, unacceptable for what's
+          # explicitly time-critical data), skip the expensive
+          # upload+deploy steps whenever nothing in docs/ actually changed
+          # since the last successful deploy -- preserves same-run
+          # freshness the moment something real happens, while making every
+          # no-op tick cheap instead of a full checkout+build+deploy.
+          LAST_SHA=$(gh run list --workflow=pages-deploy.yml --status=success --limit=1 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
+          if [ -z "$LAST_SHA" ]; then
+            echo "No prior successful deploy found -- proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$LAST_SHA" HEAD -- docs/ 2>/dev/null; then
+            echo "docs/ unchanged since last deploy ($LAST_SHA) -- skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs/ changed since last deploy ($LAST_SHA) -- proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Pages
+        if: steps.check.outputs.skip != 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        if: steps.check.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment
+        if: steps.check.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
