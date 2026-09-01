@@ -28626,7 +28626,17 @@ async function _fetchLeagueStandings(leagueKey){
   var cfg=_LEAGUE_CFG[leagueKey];if(!cfg)return[];
   try{
     var ctrl=new AbortController();setTimeout(function(){ctrl.abort();},10000);
-    var r=await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/'+cfg.espn+'/standings',{signal:ctrl.signal});
+    // Real bug, found while wiring CL's new standings tab up for the
+    // first time (this function had never actually been reachable from
+    // any UI before): the /apis/site/v2/ path here always returns an
+    // empty {} for every league's standings resource -- confirmed live,
+    // not CL-specific -- silently caching an empty array and leaving
+    // "STANDINGS UNAVAILABLE" for whichever league finally tried this.
+    // The two Python copies this comment above already says to keep in
+    // sync with (scrape_soccer_standings.py, clairvoyance_update.py's
+    // fetch_espn_soccer_league) use /apis/v2/ (no "site" segment) and
+    // work correctly -- this just never matched them.
+    var r=await fetch('https://site.api.espn.com/apis/v2/sports/soccer/'+cfg.espn+'/standings',{signal:ctrl.signal});
     var d=await r.json();
     var rows=[];
     (d.children||d.standings&&[d.standings]||[]).forEach(function(group){
