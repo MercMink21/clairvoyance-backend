@@ -2606,14 +2606,50 @@ let NBA_ENS={mc:.50,bay:.20,elo:.30};
 // nudges based on measured tennis accuracy.
 let TEN_ENS={elo:.22,mc:.50,form:.15,serve:.08,fat:.05};
 // ── Sport calibration constants (Platt-scaling, logit-space bias) ──────────
-// Derived from 155-bet sample: MLB 44 bets 70.5% actual vs 59.5% model avg;
-// NHL 46 bets 82.6% vs 58.4%; NBA 45 bets 86.7% vs 62.0%; TEN 20 bets 100% vs 74.0%
-// Correction applied at 40% of logit gap (conservative anti-overfitting).
+// Original derivation, 155-bet sample: MLB 44 bets 70.5% actual vs 59.5%
+// model avg; NHL 46 bets 82.6% vs 58.4%; NBA 45 bets 86.7% vs 62.0%; TEN
+// 20 bets 100% vs 74.0%. Correction applied at 40% of logit gap
+// (conservative anti-overfitting).
+//
+// MLB recomputed 2026-09-02 (live MLB-accuracy audit) against the real,
+// current, full settled ledger -- 1348 bets, not 44. The old B=0.19 was
+// a FLAT confidence BOOST applied to every single MLB prediction,
+// appropriate back when the tiny 44-bet sample looked underconfident
+// (actual 70.5% > model avg 59.5%). The current full sample tells a
+// very different story: MLB is now close to correctly calibrated in
+// aggregate (actual 67.4% vs model avg 65.6%, an 8.4pp logit gap vs the
+// original derivation's much larger one) -- meaning B=0.19 had become a
+// ~5.7x overcorrection, uniformly over-boosting confidence on every
+// MLB pick regardless of which probability band it actually fell in.
+// Recomputed with the exact same 40%-of-logit-gap methodology this
+// file already documents: B=0.033.
+//
+// This does NOT fully fix MLB's real remaining problem -- the
+// aggregate numbers hide a severe BAND-level miscalibration this same
+// audit found (50-60% band: actual exceeds predicted by 11-14pp,
+// genuinely underconfident; 75%+ band: predicted 86.5% but actual only
+// 68.2%, badly overconfident) that a single flat constant structurally
+// can't correct in both directions at once -- that's a real, separate,
+// larger architecture question (the app's other calibration layer,
+// window._calAdjProb, already does per-BAND correction but blends all
+// sports into one shared band pool, so MLB's own severe 75%+-band
+// overconfidence gets diluted by whichever other sports' picks land in
+// that same band) left for a future, explicitly-scoped fix rather than
+// bundled into this one. This change only removes the actively-wrong,
+// stale-sample uniform boost -- a clear, low-risk correction on its
+// own regardless of that larger question.
+//
+// NHL/NBA/TEN's own constants were checked against their current real
+// samples too and are also measurably stale (recomputed: NHL 0.41 vs
+// current 0.49, NBA 0.29 vs current 0.55, TEN 0.42 vs current 0.76) --
+// left untouched since none of the three were reported as
+// underperforming and this audit was scoped to MLB specifically;
+// flagged for a separate decision rather than changed here.
 const SPORT_CAL={
-  MLB:{B:0.19},  // avg model 59.5% → calibrated ~64%  (actual 70.5%)
-  NHL:{B:0.49},  // avg model 58.4% → calibrated ~70%  (actual 82.6%)
-  NBA:{B:0.55},  // avg model 62.0% → calibrated ~74%  (actual 86.7%)
-  TEN:{B:0.76},  // avg model 74.0% → calibrated ~86%  (actual 100%)
+  MLB:{B:0.033}, // avg model 65.6% → calibrated ~66.4% (actual 67.4%, current 1348-bet sample)
+  NHL:{B:0.49},  // avg model 58.4% → calibrated ~70%  (actual 82.6%) -- stale (44-bet sample), not touched this pass
+  NBA:{B:0.55},  // avg model 62.0% → calibrated ~74%  (actual 86.7%) -- stale (44-bet sample), not touched this pass
+  TEN:{B:0.76},  // avg model 74.0% → calibrated ~86%  (actual 100%) -- stale (44-bet sample), not touched this pass
 };
 function sportCalibrate(p,sport){
   const cal=SPORT_CAL[sport];
