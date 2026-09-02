@@ -17975,10 +17975,10 @@ const TEN_TOURNAMENTS=[{
       {p1:'D.Svrcina',s1:'',p2:'V.Royer',s2:'',matchDate:'2026-08-31'},
       {p1:'D.Sweeny',s1:'',p2:'C.Moutet',s2:'',matchDate:'2026-09-01'},
       {p1:'A.Fery',s1:'',p2:'L.Musetti',s2:'(13)',matchDate:'2026-09-01'},
-      {p1:'R.Jodar',s1:'(12)',p2:'T.Kokkinakis',s2:'',matchDate:'2026-09-01'},
+      {p1:'R.Jodar',s1:'(12)',p2:'Y.Bu',s2:'',matchDate:'2026-09-01'},
       {p1:'F.Marozsan',s1:'',p2:'M.Zheng',s2:'',matchDate:'2026-09-01'},
       {p1:'Z.Svajda',s1:'',p2:'D.Altmaier',s2:'',matchDate:'2026-09-01'},
-      {p1:'J.Cerundolo',s1:'',p2:'C.Ruud',s2:'(19)',matchDate:'2026-09-01'},
+      {p1:'J.Cerundolo',s1:'',p2:'A.Gea',s2:'',matchDate:'2026-09-01',winner:'A.Gea',score:'6-3, 2-6, 3-6, 6-3, 6-1'},
       {p1:'Z.Bergs',s1:'(31)',p2:'C.Taberner',s2:'',matchDate:'2026-09-01'},
       {p1:'J.de Jong',s1:'',p2:'F.Passaro',s2:'',matchDate:'2026-09-01'},
       {p1:'J.Choinski',s1:'',p2:'B.Van De Zandschulp',s2:'',matchDate:'2026-09-01'},
@@ -18010,7 +18010,7 @@ const TEN_TOURNAMENTS=[{
       {p1:'B.Nakashima',s1:'(16)',p2:'S.Baez',s2:'',matchDate:'2026-08-31'},
       {p1:'A.Michelsen',s1:'',p2:'F.Cina',s2:'',matchDate:'2026-08-30'},
       {p1:'D.Merida',s1:'',p2:'M.Fucsovics',s2:'',matchDate:'2026-08-30'},
-      {p1:'M.Cilic',s1:'',p2:'A.Rublev',s2:'(23)',matchDate:'2026-08-31'},
+      {p1:'O.Virtanen',s1:'',p2:'A.Rublev',s2:'(23)',matchDate:'2026-08-31',winner:'A.Rublev',score:'6-7(5), 6-7, 6-0, 6-2, 7-6(10)'},
       {p1:'T.Etcheverry',s1:'(27)',p2:'V.Kopriva',s2:'',matchDate:'2026-08-30'},
       {p1:'M.Landaluce',s1:'',p2:'J.Fearnley',s2:'',matchDate:'2026-08-30'},
       {p1:'M.Berrettini',s1:'',p2:'S.Wawrinka',s2:'',matchDate:'2026-08-31'},
@@ -18069,7 +18069,7 @@ const TEN_TOURNAMENTS=[{
       {p1:'G.Knutson',s1:'',p2:'E.Lys',s2:'',matchDate:'2026-09-01'},
       {p1:'N.Bartunkova',s1:'',p2:'M.Sherif',s2:'',matchDate:'2026-09-01'},
       {p1:'T.Maria',s1:'',p2:'J.Ostapenko',s2:'(30)',matchDate:'2026-09-01'},
-      {p1:'A.Potapova',s1:'(24)',p2:'T.Valentova',s2:'',matchDate:'2026-09-01'},
+      {p1:'A.Potapova',s1:'(24)',p2:'D.Semenistaja',s2:'',matchDate:'2026-09-01',winner:'A.Potapova',score:'6-2, 6-2'},
       {p1:'A.Rus',s1:'',p2:'L.Jeanjean',s2:'',matchDate:'2026-09-01'},
       {p1:'L.Tagger',s1:'',p2:'T.Korpatsch',s2:'',matchDate:'2026-08-31'},
       {p1:'A.Krueger',s1:'',p2:'A.Anisimova',s2:'(10)',matchDate:'2026-08-31'},
@@ -19315,6 +19315,33 @@ function _buildUSOGenderData(k){
   return out;
 }
 
+// Computes which round is actually "current" for one gender directly from
+// real winner-resolution data (hardcoded winners + _usoLiveLookup), instead
+// of relying on TEN_TOURNAMENTS.uso2026.currentRound -- a single field that
+// only ever moves when a human calls setTourneyRound() by hand. That manual
+// field is how this tournament originally shipped stuck on R1 while the
+// real draw moved on: nothing was watching for R1 to finish, so nothing
+// ever flipped it, and the automated lock pipeline kept feeding R1 legs
+// long after R1 was over. Recomputing this on every render/capture from
+// _buildUSOGenderData's already-correct round-by-round resolution needs no
+// daily check or cron -- it's live-correct every single time it's called,
+// for as long as the tournament runs. Walks R1->F; the "current" round is
+// the first one that has real playable pairings (both players known, not
+// 'TBD') that aren't ALL resolved yet. ATP and WTA are computed
+// independently since the two draws don't always advance in lockstep.
+function _usoCurrentRound(k){
+  const gd=_buildUSOGenderData(k);
+  for(const rid of USO_ROUND_IDS){
+    const rd=gd[rid];
+    if(!rd||!rd.data.length)return rid;
+    const playable=rd.data.filter((m,i)=>m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
+    if(!playable.length)return rid;
+    const allDone=rd.data.every((m,i)=>!(m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD')||rd.winners[i]);
+    if(!allDone)return rid;
+  }
+  return USO_ROUND_IDS[USO_ROUND_IDS.length-1];
+}
+
 // One match card: real hard-court Elo/MC-sim win prob, ML both sides,
 // sets O/U, games O/U -- same market set and card layout as Wimbledon's
 // _matchCards, just 'hard' surface and US OPEN branding, and driven by
@@ -19403,15 +19430,16 @@ function _usoMatchCards(roundId,k){
 }
 
 // Entry point: renders whichever round is currently active for a tour
-// ('men'/'women') into #uso-draw-content. Auto-selects the tournament's
-// own currentRound so "next wave of matches" appears automatically once
-// a round completes and TEN_TOURNAMENTS.uso2026.currentRound advances --
-// no separate per-round wiring needed.
+// ('men'/'women') into #uso-draw-content. Defaults to _usoCurrentRound(k),
+// computed live from real winner-resolution data, so "next wave of
+// matches" appears automatically as each round completes -- no manual
+// round-advancement or daily check needed. An explicit `round` still lets
+// someone browse an earlier/later round without changing what's "current".
 function renderUSODraw(tour,round){
   const el=document.getElementById('uso-draw-content');if(!el)return;
   const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');if(!t)return;
   const k=tour==='men'?'atp':'wta';
-  const rid=round||t.currentRound||'r1';
+  const rid=round||_usoCurrentRound(k);
   const tour2=k==='atp'?'ATP MENS':'WTA WOMENS';
   const sCol=k==='atp'?'var(--nc)':'var(--mc)';
   let html=`<div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">`;
@@ -19445,7 +19473,7 @@ function _captureUSOLegs(){
       const DB=k==='atp'?ATP_DB:WTA_DB;
       const sportTag=k==='atp'?'ATP':'WTA';
       const gd=_buildUSOGenderData(k);
-      const rid=t.currentRound||'r1';
+      const rid=_usoCurrentRound(k);
       const rd=gd[rid];
       if(!rd)return;
       rd.data.forEach((m,i)=>{
