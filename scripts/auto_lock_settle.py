@@ -764,37 +764,67 @@ def gather_legs(page) -> dict:
 
           const gameLegs = window._autoLockLegs || [];
 
+          // Real gap, found via audit: every one of these 4 catches was a
+          // bare `catch (e) {}` -- if a prop generator ever threw (a live
+          // ESPN fetch blocked/erroring in this headless context, a shape
+          // mismatch in the stats payload, anything), it failed completely
+          // silently. Confirmed via the real ledger: 0 settled PROP-type
+          // bets in 21+ days despite WNBA game legs actively locking on the
+          // same days from the same gather_legs() pass, which is exactly
+          // the shape a silent props-path failure would produce and
+          // exactly what these bare catches made impossible to diagnose
+          // from the CI logs alone. propDiag doesn't fix whatever's wrong
+          // (a manual browser check found the underlying stats fetch/
+          // fallback itself working, games=0 today just because there are
+          // no real WNBA games -- so this may already be healthy and
+          // simply waiting on a real game day) -- it makes the next real
+          // failure visible instead of indistinguishable from "nothing
+          // qualified today."
           const propLegs = [];
+          const propDiag = {};
           try {
             if (typeof _generateNBAProps === 'function' && typeof _fetchNBAPlayerStats === 'function') {
               const stats = await _fetchNBAPlayerStats();
               const games = window._nbaTodayGames || (typeof NBA_TONIGHT !== 'undefined' ? NBA_TONIGHT : []) || [];
-              if (stats) _generateNBAProps(games, stats).forEach(p => propLegs.push({ ...p, sportTag: 'NBA' }));
-            }
-          } catch (e) {}
+              // Single call, not two -- _generateNBAProps runs a Monte Carlo
+              // sim internally (same as its WNBA/NHL siblings), so calling
+              // it twice (once for a count, once to push) would double the
+              // compute AND risk the count silently disagreeing with what
+              // actually got pushed on two independent random draws.
+              const generated = stats ? _generateNBAProps(games, stats) : [];
+              generated.forEach(p => propLegs.push({ ...p, sportTag: 'NBA' }));
+              propDiag.nba = { games: games.length, stats: stats ? Object.keys(stats).length : 0, generated: generated.length };
+            } else propDiag.nba = { skipped: 'fn missing' };
+          } catch (e) { propDiag.nba = { error: e.message }; }
           try {
             if (typeof _generateWNBAPropsLive === 'function' && typeof _fetchWNBAPlayerStats === 'function') {
               const stats = await _fetchWNBAPlayerStats();
               const games = window._wnbaGameData || [];
-              if (stats) _generateWNBAPropsLive(games, stats).forEach(p => propLegs.push({ ...p, sportTag: 'WNBA' }));
-            }
-          } catch (e) {}
+              const generated = stats ? _generateWNBAPropsLive(games, stats) : [];
+              generated.forEach(p => propLegs.push({ ...p, sportTag: 'WNBA' }));
+              propDiag.wnba = { games: games.length, stats: stats ? Object.keys(stats).length : 0, generated: generated.length };
+            } else propDiag.wnba = { skipped: 'fn missing' };
+          } catch (e) { propDiag.wnba = { error: e.message }; }
           try {
             if (typeof _generateNHLPropsLive === 'function' && typeof _fetchNHLPlayerStats === 'function') {
               const stats = await _fetchNHLPlayerStats();
               const games = window._nhlTodayGames || [];
-              if (stats) _generateNHLPropsLive(games, stats).forEach(p => propLegs.push({ ...p, sportTag: 'NHL' }));
-            }
-          } catch (e) {}
+              const generated = stats ? _generateNHLPropsLive(games, stats) : [];
+              generated.forEach(p => propLegs.push({ ...p, sportTag: 'NHL' }));
+              propDiag.nhl = { games: games.length, stats: stats ? Object.keys(stats).length : 0, generated: generated.length };
+            } else propDiag.nhl = { skipped: 'fn missing' };
+          } catch (e) { propDiag.nhl = { error: e.message }; }
           try {
             if (typeof _nflModelPropsForGame === 'function' && window._NFL_DATA) {
               const games = [];
               Object.values(window._NFL_DATA.weeks || {}).forEach(list => (list || []).forEach(g => games.push(g)));
-              games.forEach(g => { try { _nflModelPropsForGame(g).forEach(p => propLegs.push({ ...p, sportTag: 'NFL', _nflGame: g })); } catch (e) {} });
-            }
-          } catch (e) {}
+              let generated = 0;
+              games.forEach(g => { try { const p = _nflModelPropsForGame(g); p.forEach(pp => propLegs.push({ ...pp, sportTag: 'NFL', _nflGame: g })); generated += p.length; } catch (e) {} });
+              propDiag.nfl = { games: games.length, generated };
+            } else propDiag.nfl = { skipped: 'fn missing' };
+          } catch (e) { propDiag.nfl = { error: e.message }; }
 
-          return { gameLegs, propLegs };
+          return { gameLegs, propLegs, propDiag };
         }
         """
     )
@@ -1565,6 +1595,9 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
     qualifying = build_qualifying(result, only_sports=only_sports)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
         f"{len(result.get('propLegs') or [])} prop legs total")
+    prop_diag = result.get("propDiag") or {}
+    if prop_diag:
+        log("  prop generation: " + ", ".join(f"{sp}={detail}" for sp, detail in prop_diag.items()))
     log(f"{len(qualifying)} qualifying PREMIUM/OPTIMAL legs found" + (f" ({label.lower()} only)" if label else ""))
 
     for q in qualifying:
@@ -1761,6 +1794,9 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     result = gather_legs(page)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
         f"{len(result.get('propLegs') or [])} prop legs total")
+    prop_diag = result.get("propDiag") or {}
+    if prop_diag:
+        log("  prop generation: " + ", ".join(f"{sp}={detail}" for sp, detail in prop_diag.items()))
     all_qualifying = build_qualifying(result)
     covered_sports: set[str] = set().union(*PRODUCT_SPORTS.values())
     total_locked = 0
