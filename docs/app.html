@@ -11973,9 +11973,17 @@ function renderOverall(){
     return out;
   };
   for(const _sp of ['MLB','NHL','NBA','TEN']){
+    // _spUC precomputed once per pick near the top of this function (see
+    // that comment for why mutating these fresh getP() objects is safe)
+    // -- reused here instead of recomputing .toUpperCase() per item per
+    // sport, same fix as bySport/byLeague above and for the identical
+    // reason: measured this block alone adding several real seconds to
+    // renderOverall() before this change (8.25s vs the 0.9-3.7s range
+    // already established), confirming this run into the same redundant-
+    // recompute pattern already fixed elsewhere in this function.
     const _spBets=_sp==='TEN'
-      ?settled.filter(p=>{const u=(p.sport||'').toUpperCase();return u==='ATP'||u==='WTA';})
-      :settled.filter(p=>(p.sport||'').toUpperCase()===_sp);
+      ?settled.filter(p=>p._spUC==='ATP'||p._spUC==='WTA')
+      :settled.filter(p=>p._spUC===_sp);
     _newAdjBySport[_sp]=_calcBandAdjFor(_spBets,_prevAdjBySport[_sp]||{});
   }
   S.s(_calAdjBySportKey,JSON.stringify(_newAdjBySport));
