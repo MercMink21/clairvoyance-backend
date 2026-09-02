@@ -29704,11 +29704,11 @@ function renderTennisScheduleOdds(filterTour='all'){
   // Update source badge
   const srcTxt=D.tennis?.oddsSource||'none';
   if(src)src.textContent=srcTxt==='none'?'NO ODDS API KEY — SET ODDS_API_KEY IN .env'
-    :`SOURCE: ${srcTxt} · ${matches.length} MATCHES · CLAY ELO MODEL`;
+    :`SOURCE: ${srcTxt} · ${matches.length} MATCHES · SURFACE-AWARE ELO MODEL`;
 
   const filtered=filterTour==='all'?matches:matches.filter(m=>m.tour===filterTour);
   if(!filtered.length){
-    el.innerHTML='<div class="empty">NO ODDS AVAILABLE<br><span style="font-size:13px;opacity:.6">Odds API returns matches during active tournament windows (Roland Garros: late May–early June)</span></div>';
+    el.innerHTML='<div class="empty">NO ODDS AVAILABLE<br><span style="font-size:13px;opacity:.6">The Odds API only returns matches for tournaments currently active on tour -- check back once a real ATP/WTA event is underway</span></div>';
     return;
   }
 
@@ -29732,14 +29732,24 @@ function renderTennisScheduleOdds(filterTour='all'){
   function _eloWinProb(elo1,elo2){return 1/(1+Math.pow(10,(elo2-elo1)/400));}
 
   const surfCol={clay:'var(--mc)',hard:'var(--ic)',grass:'var(--nc)'};
-  const sc=surfCol.clay;
 
   el.innerHTML=filtered.map(m=>{
     const db=m.tour==='ATP'?atpElo:wtaElo;
     const e1=_eloLookup(m.p1,db);
     const e2=_eloLookup(m.p2,db);
-    const elo1=m.tour==='ATP'?(e1?.eloClay||e1?.elo||1500):(e1?.eloClay||e1?.elo||1500);
-    const elo2=m.tour==='ATP'?(e2?.eloClay||e2?.elo||1500):(e2?.eloClay||e2?.elo||1500);
+    // Real gap, found via audit: this used to hardcode eloClay regardless
+    // of the actual match surface -- harmless while every match really
+    // was Roland Garros (clay), but the fetch side no longer only returns
+    // clay matches, so a hard-court or grass match would have been priced
+    // off a straight-up wrong surface rating. TennisAbstract's own ELO
+    // data (D.tennis.atpElo/wtaElo) already carries all 3 surface ratings
+    // (eloHard/eloClay/eloGrass) -- the majors' bracket system elsewhere
+    // in this app already reads the matching one per-surface, this just
+    // needed to do the same instead of a fixed key.
+    const _eloKey='elo'+(m.surface||'hard').replace(/^./,c=>c.toUpperCase());
+    const elo1=e1?.[_eloKey]||e1?.elo||1500;
+    const elo2=e2?.[_eloKey]||e2?.elo||1500;
+    const sCol=surfCol[m.surface]||surfCol.hard;
     const modelP1=_eloWinProb(elo1,elo2);
     const modelP2=1-modelP1;
     const bookP1=_ml2prob(m.p1ml);
@@ -29756,7 +29766,14 @@ function renderTennisScheduleOdds(filterTour='all'){
     const commenceTime=m.commence?new Date(m.commence).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+'ET':'TBD';
     // ── Sets O/U ──────────────────────────────────────────────
     const _tenGender=m.tour==='WTA'?'W':'M';
-    const _tenBO5=m.tour==='ATP'; // ATP uses best-of-5 at Slams; default to bo5 for ATP
+    // Real gap, found via audit: this used to assume every ATP match was
+    // best-of-5, which was only ever true because every match really was
+    // a Roland Garros (major) match -- true for the other ~35 non-major
+    // ATP events on tour, which are all best-of-3. bo5 is now computed
+    // server-side (only the 4 ATP majors are BO5; WTA is BO3 everywhere,
+    // majors included) and passed straight through instead of re-derived
+    // here with an assumption that no longer holds.
+    const _tenBO5=!!m.bo5;
     const _tenSOUs=_tennisSetOU(modelP1,_tenGender);
     const _tenMainLine=_tenBO5?(_tenSOUs.find(s=>s.line===3.5)||_tenSOUs[0]):_tenSOUs[0];
     const _tenSetLine=_tenMainLine.line;
@@ -29793,7 +29810,7 @@ function renderTennisScheduleOdds(filterTour='all'){
         +`Sets O/U ${_tenSetLine}: OVER ${(_tenSetOverP*100).toFixed(0)}% / UNDER ${(_tenSetUnderP*100).toFixed(0)}% `
         +(_tenBO5?`(2.5: ${(_tenSOUs[0]?.overP*100||60).toFixed(0)}% · 3.5: ${(_tenSOUs[1]?.overP*100||40).toFixed(0)}% · 4.5: ${(_tenSOUs[2]?.overP*100||25).toFixed(0)}%).`:'.')
         +` Kelly ${_tenKelly}%. ${_tenMkts.size}-unit play${_tenMkts.secStr}.`;
-    return`<div class="gc" style="border-left:2px solid rgba(204,0,255,.4)">
+    return`<div class="gc" style="border-left:2px solid ${sCol}">
       <div class="gch">
         <div>
           <div style="display:flex;align-items:center;gap:6px">
@@ -29801,7 +29818,7 @@ function renderTennisScheduleOdds(filterTour='all'){
             <span style="color:var(--t3);font-size:15px;font-family:var(--mono)">vs</span>
             <span class="gtm" style="color:var(--t2)">${m.p1}</span>
           </div>
-          <div class="gsp">${m.tour} · ${m.tournament||'TOURNAMENT'} · ${m.surface?.toUpperCase()||'CLAY'}</div>
+          <div class="gsp">${m.tour} · ${m.tournament||'TOURNAMENT'} · ${(m.surface||'hard').toUpperCase()}</div>
           <div class="gsp">ELO: ${m.p1} ${elo1} · ${m.p2} ${elo2} · ${commenceTime}</div>
         </div>
         <div style="text-align:right"><div class="np mono" style="font-size:17px"><span class="status-pre"></span>${commenceTime}</div></div>

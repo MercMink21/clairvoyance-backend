@@ -1810,20 +1810,92 @@ def fetch_tennis_ratio(player1: str = "", player2: str = "") -> dict:
         log(f"TennisRatio fetch error: {e}", "WARN")
     return result
 
+# Tournament-name keyword -> surface, checked against The Odds API's own
+# sport `title` field (e.g. "ATP Wimbledon", "WTA Cincinnati Open"). The
+# API has no surface field of its own, and there's no single authoritative
+# list of every one of its ~40 tennis sport_keys to hardcode against
+# instead -- keyword matching against the human-readable title is the
+# only signal available without maintaining that list by hand. Grass and
+# clay swings are a short, well-known set of tournaments; everything else
+# on tour (hard-court Masters/500s/250s, the US/Asian hard swings, indoor
+# season) defaults to hard, which is also genuinely the majority surface
+# across a real ATP/WTA season -- an unmatched title is far more likely
+# hard than clay or grass.
+_TENNIS_GRASS_KW = ("wimbledon", "halle", "queen's", "queens", "eastbourne",
+                     "mallorca", "newport", "birmingham", "nottingham", "bad homburg")
+_TENNIS_CLAY_KW = ("french open", "roland garros", "monte carlo", "madrid",
+                    "rome", "italian open", "barcelona", "munich", "geneva",
+                    "hamburg", "bastad", "gstaad", "kitzbuhel", "umag",
+                    "estoril", "houston", "marrakech", "rio de janeiro",
+                    "santiago", "bogota", "buenos aires", "cordoba")
+# Only these 4 are best-of-5 for ATP -- every other tour event (Masters
+# 1000s included) is best-of-3. WTA is best-of-3 everywhere, majors
+# included, so this list is ATP-only by construction.
+_TENNIS_ATP_MAJORS_KW = ("australian open", "french open", "roland garros",
+                          "wimbledon", "us open")
+
+
+def _tennis_surface_for_title(title: str) -> str:
+    t = title.lower()
+    if any(kw in t for kw in _TENNIS_GRASS_KW):
+        return "grass"
+    if any(kw in t for kw in _TENNIS_CLAY_KW):
+        return "clay"
+    return "hard"
+
+
 def fetch_tennis_odds() -> dict:
     """
-    Fetch ATP/WTA French Open (Roland Garros) match odds from The Odds API.
-    Returns {matches: [{p1, p2, p1ml, p2ml, tour, commence, book}], source, remaining}.
+    Fetch real ATP/WTA match odds from The Odds API for whichever
+    tournament(s) are actually active right now, instead of one hardcoded
+    tournament.
+
+    Real gap, found via audit: this used to hardcode
+    tennis_atp_french_open/tennis_wta_french_open specifically -- Roland
+    Garros, which ends in early June. Once that tournament's odds market
+    closed for the year, every match here silently went to zero,
+    permanently, for the other ~10 months of the season (confirmed via a
+    live ledger check: zero tennis coverage outside the 2 majors this app
+    has hand-built brackets for). The Odds API has no single umbrella key
+    for "the ATP/WTA tour" as a whole -- confirmed against their own docs --
+    it's ~40+ individual per-tournament keys spanning the real calendar, so
+    the fix is to ask /v4/sports/ which of those are marked active right
+    now and pull odds for all of them, rather than pin one in code.
+
+    Returns {matches: [{p1, p2, p1ml, p2ml, tour, commence, book, surface,
+    tournament, bo5}], source, remaining}.
     """
     api_key = os.environ.get("ODDS_API_KEY", "")
     result: dict = {"matches": [], "source": "none", "remaining": None}
     if not api_key:
         return result
+
+    try:
+        sports_resp = fetch_json("https://api.the-odds-api.com/v4/sports/", params={"apiKey": api_key})
+    except Exception as exc:
+        log(f"Tennis Odds API sports list: {exc}", "WARN")
+        return result
+    if not isinstance(sports_resp, list):
+        return result
+
+    active_tennis = [
+        s for s in sports_resp
+        if isinstance(s, dict) and s.get("active")
+        and isinstance(s.get("key"), str)
+        and (s["key"].startswith("tennis_atp_") or s["key"].startswith("tennis_wta_"))
+    ]
+    if not active_tennis:
+        log("Tennis Odds API: no active ATP/WTA tournaments right now")
+        return result
+
     all_matches: list[dict] = []
-    for sport_key, tour_label in [
-        ("tennis_atp_french_open", "ATP"),
-        ("tennis_wta_french_open", "WTA"),
-    ]:
+    for sport in active_tennis:
+        sport_key = sport["key"]
+        tour_label = "ATP" if sport_key.startswith("tennis_atp_") else "WTA"
+        title = sport.get("title") or sport_key
+        surface = _tennis_surface_for_title(title)
+        is_major = any(kw in title.lower() for kw in _TENNIS_ATP_MAJORS_KW)
+        bo5 = tour_label == "ATP" and is_major
         try:
             url  = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
             resp = fetch_json(url, params={
@@ -1832,6 +1904,7 @@ def fetch_tennis_odds() -> dict:
             })
             if not isinstance(resp, list):
                 continue
+            matched_here = 0
             for ev in resp:
                 p1_name = ev.get("home_team", "")
                 p2_name = ev.get("away_team", "")
@@ -1850,6 +1923,7 @@ def fetch_tennis_odds() -> dict:
                             elif nm == p2_name and (best_p2_ml is None or int(p) > best_p2_ml):
                                 best_p2_ml = int(p)
                 if best_p1_ml is not None or best_p2_ml is not None:
+                    matched_here += 1
                     all_matches.append({
                         "tour":    tour_label,
                         "p1":      p1_name,
@@ -1858,10 +1932,11 @@ def fetch_tennis_odds() -> dict:
                         "p2ml":    best_p2_ml,
                         "book":    best_book,
                         "commence": commence,
-                        "surface": "clay",
-                        "tournament": f"Roland Garros 2026 {tour_label}",
+                        "surface": surface,
+                        "tournament": title,
+                        "bo5":     bo5,
                     })
-            log(f"Tennis Odds API {tour_label}: {len([m for m in all_matches if m['tour']==tour_label])} matches")
+            log(f"Tennis Odds API {title} ({tour_label}, {surface}): {matched_here} matches")
         except Exception as exc:
             log(f"Tennis Odds API {sport_key}: {exc}", "WARN")
     result["matches"] = all_matches
