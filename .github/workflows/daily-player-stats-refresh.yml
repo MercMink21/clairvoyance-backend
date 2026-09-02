@@ -1,17 +1,20 @@
 name: Daily Player & Prop Stats Refresh
 
-# Consolidates 6 separate single-purpose scheduled workflows that all fired
+# Consolidates 7 separate single-purpose scheduled workflows that all fired
 # within the same 15:45-16:45 UTC (9:45-10:45am MT) hour -- player-stats-
 # daily, wnba-props-daily, opta-soccer-stats-daily's second (16:00) run,
-# nba-props-daily, nhl-props-daily, and nfl-props-daily -- into one job with
-# 6 sequential steps. Found via the 2026-09-01 health-check audit: this
-# repo runs 30+ scheduled workflows on a free-tier account (20-concurrent-
-# job ceiling), and GH Actions run-history showed every scheduled workflow
-# firing 3-7+ hours late, consistently, across multiple days -- this hour
-# alone was one of the day's clearest pileup windows (16 separate dispatch
-# events in the 18:00-19:00 UTC range once cascading delays pushed things
-# downstream). Cutting 6 cron entries down to 1 directly reduces how many
-# jobs compete for that ceiling at once.
+# nba-props-daily, nhl-props-daily, nfl-props-daily, and (added 2026-09-02,
+# after the main lock's own 3 dedicated slots silently dropped the same day
+# -- the 11:00-16:00 UTC window this hour sits inside is the single busiest
+# stretch across every workflow in this repo) nfl-injuries-daily -- into one
+# job with 7 sequential steps. Found via the 2026-09-01 health-check audit:
+# this repo runs 30+ scheduled workflows on a free-tier account (20-
+# concurrent-job ceiling), and GH Actions run-history showed every scheduled
+# workflow firing 3-7+ hours late, consistently, across multiple days --
+# this hour alone was one of the day's clearest pileup windows (16 separate
+# dispatch events in the 18:00-19:00 UTC range once cascading delays pushed
+# things downstream). Cutting cron entries down to 1 directly reduces how
+# many jobs compete for that ceiling at once.
 #
 # Each script is completely independent of the others (separate scripts,
 # separate output files, no shared state) -- continue-on-error on every
@@ -98,3 +101,11 @@ jobs:
         env:
           TZ: America/Denver
         run: python3 scripts/clairvoyance_update.py --mode props --sport nfl --push
+
+      - name: Refresh NFL injuries + transactions (was nfl-injuries-daily.yml)
+        continue-on-error: true
+        env:
+          TZ: America/Denver
+        run: |
+          python3 scripts/fetch_nfl.py --mode injuries --push
+          python3 scripts/fetch_nfl.py --mode transactions --push
