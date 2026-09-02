@@ -1458,6 +1458,7 @@ def fetch_nhl_playoff_bracket() -> dict:
     if not data: return {}
     return {"raw": data, "fetchedAt": TODAY_ISO}
 
+
 def _nhl_api_stats(endpoint: str, cayenne: str, limit: int = 50) -> list[dict]:
     url = (f"{NHL_STATS}/{endpoint}?isAggregate=false&isGame=false"
            f"&sort=%5B%7B%22property%22:%22points%22,%22direction%22:%22DESC%22%7D%5D"
