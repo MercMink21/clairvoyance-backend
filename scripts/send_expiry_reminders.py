@@ -10,6 +10,12 @@ gets its own fresh reminder too, not silently skipped forever.
 Grouped by email: someone with multiple products expiring around the
 same time gets ONE email listing all of them, not one per product.
 
+Sent directly to the subscriber (matches _subscribers.send_receipt_email()
+'s precedent -- no owner CC there either). Originally routed to the
+owner's own inbox instead as MVP scaffolding while zero real paying
+subscribers existed; wired to the real recipient once that stopped being
+true, per explicit request (2026-09-02 engine audit).
+
 Usage:
   python3 scripts/send_expiry_reminders.py [--days-before 3]
 """
@@ -21,21 +27,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _subscribers import subscribers_needing_reminder, mark_reminder_sent, EMAIL_BANNER_URL  # noqa: E402
 from auto_lock_settle import PRODUCT_LABEL  # noqa: E402
-from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE  # noqa: E402
-
-# Explicitly routed to the owner's own inbox, not the real subscriber --
-# this still computes/tracks reminders per real subscriber (so
-# reminder_sent state stays correct and nobody gets double-reminded once
-# this does go to subscribers directly), it just doesn't email them yet.
-OWNER_NOTIFY_EMAIL = "clairvoyanceengine@gmail.com"
+from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE_DISCLOSED  # noqa: E402
 
 
-def _build_email(products_and_days: list[tuple[str, int]], subscriber_email: str) -> tuple[str, str]:
+def _build_email(products_and_days: list[tuple[str, int]]) -> tuple[str, str]:
     """Returns (subject, html_body). products_and_days is a list of
-    (product, days_left) for this one subscriber. subscriber_email is
-    surfaced in the body (not the subject) since this now goes to the
-    owner's own inbox, not the subscriber -- the owner needs to know who
-    it's actually for."""
+    (product, days_left) for this one subscriber. Closes through
+    EMAIL_WRAP_CLOSE_DISCLOSED (not plain EMAIL_WRAP_CLOSE) -- per
+    _gmail_email.py's own standing rule, every email reaching a paying
+    subscriber carries the disclaimer, and this one now does."""
     names = [PRODUCT_LABEL[p] for p, _ in products_and_days]
     soonest = min(d for _, d in products_and_days)
 
@@ -65,8 +65,6 @@ def _build_email(products_and_days: list[tuple[str, int]], subscriber_email: str
     body = (
         banner_html +
         EMAIL_WRAP_OPEN +
-        f'<div style="font-size:13px;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">'
-        f'Subscriber: {subscriber_email}</div>'
         f'<div style="font-size:16px;color:#1a1a2e;margin-bottom:14px">'
         f'Your access to {", ".join(names)} {urgency}.</div>'
         f'<div style="background:#14001f;border-radius:6px;padding:4px 14px;margin-bottom:16px">{rows}</div>'
@@ -74,7 +72,7 @@ def _build_email(products_and_days: list[tuple[str, int]], subscriber_email: str
         f'To keep it going with no gap in your daily picks, reply to this email or Venmo the usual '
         f'amount — we\'ll renew you for another 30 days from whenever it\'s received. '
         f'No action needed if you\'re fine letting it lapse.</div>' +
-        EMAIL_WRAP_CLOSE
+        EMAIL_WRAP_CLOSE_DISCLOSED
     )
     return subject, body
 
@@ -97,20 +95,17 @@ def main() -> None:
         by_email.setdefault(row["email"], []).append((row["product"], row["days_left"]))
 
     for email, products_and_days in by_email.items():
-        subject, body = _build_email(products_and_days, email)
-        # Sent to OWNER_NOTIFY_EMAIL, not the subscriber's own address --
-        # the subscriber's email is in the body (see _build_email) so the
-        # owner can see who it's actually for.
+        subject, body = _build_email(products_and_days)
         if args.dry_run:
-            print(f"[DRY RUN] would notify owner re: {email}: {subject}")
+            print(f"[DRY RUN] would email {email}: {subject}")
             continue
-        ok, msg = send_email(subject, OWNER_NOTIFY_EMAIL, body)
+        ok, msg = send_email(subject, email, body)
         if ok:
             for product, _days in products_and_days:
                 mark_reminder_sent(product, email)
-            print(f"Owner notified re: {email} for {[p for p, _ in products_and_days]}")
+            print(f"Reminder sent to {email} for {[p for p, _ in products_and_days]}")
         else:
-            print(f"FAILED to notify owner re: {email}: {msg}")
+            print(f"FAILED to email {email}: {msg}")
 
 
 if __name__ == "__main__":
