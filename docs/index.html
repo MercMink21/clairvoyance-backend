@@ -15848,10 +15848,37 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
 }
 
 // ═══ VISIBILITY GUARD ════════════════════════════════════════
+// Real perf bug, found via a live desktop-lag audit (2026-09-02):
+// this ran unconditionally every 3s, forever, on every page, and wrote
+// `style.display=''` to every inactive .spane/.subp (dozens of
+// elements even when nothing was wrong) right before reading
+// offsetHeight on the active ones -- a classic layout-thrashing
+// pattern (write a batch of style changes, then immediately read a
+// layout-dependent property, forcing the browser to synchronously
+// flush and recompute layout for those writes before it can answer).
+// Measured live on the real deployed page (~48k DOM nodes): 4-137ms
+// per call depending on how dirty layout already was, comparable at
+// both desktop and mobile viewport widths -- so the per-call cost
+// wasn't the platform difference. The likely reason desktop felt it
+// and mobile didn't: mobile browsers throttle/suspend background
+// timers far more aggressively when a tab isn't actively foregrounded,
+// so the same 24 setInterval loops in this file (this one included)
+// keep firing completely unthrottled for as long as a desktop tab
+// stays open and focused, while a typical mobile session either runs
+// shorter or gets backgrounded, masking the same underlying cost.
+// Two independent fixes, both safe (same end state, just cheaper to
+// reach it): (1) dirty-check every write -- `el.style.display` is a
+// plain CSSOM read, not layout-forcing, so checking "would this
+// actually change anything" first is free, and after the first tick
+// corrects whatever was wrong, every later tick until the next real
+// state change becomes a set of string comparisons with zero writes
+// and nothing new to force a layout flush over; (2) widened the
+// interval 3s -> 10s, since this is a rare-glitch safety net, not
+// something that needs sub-5s reaction time.
 function cvGuard(){
   // Clear any forced styles from INACTIVE elements first (prevents bleed-over)
-  document.querySelectorAll('.spane:not(.act)').forEach(el=>{el.style.display='';});
-  document.querySelectorAll('.subp:not(.act)').forEach(el=>{el.style.display='';});
+  document.querySelectorAll('.spane:not(.act)').forEach(el=>{if(el.style.display!=='')el.style.display='';});
+  document.querySelectorAll('.subp:not(.act)').forEach(el=>{if(el.style.display!=='')el.style.display='';});
   // Fix active spanes: strip inline display:none, force-show only if truly invisible
   document.querySelectorAll('.spane.act').forEach(el=>{
     if(el.style.display==='none')el.style.display='';
@@ -15875,8 +15902,8 @@ function cvGuard(){
   const _oSS=window.SS;window.SS=function(s){_oSS(s);try{cvGuard();}catch(e){}};
   const _oSub=window.setSub;window.setSub=function(a,b){_oSub(a,b);try{cvGuard();}catch(e){}};
 })();
-// Heartbeat: re-run guard every 3s in case async renders affect layout
-setInterval(()=>{try{cvGuard();}catch(e){}},3000);
+// Heartbeat: re-run guard every 10s in case async renders affect layout
+setInterval(()=>{try{cvGuard();}catch(e){}},10000);
 
 // ═══ SPLASH ═══════════════════════════════════════════════════
 let splashDone=false;
