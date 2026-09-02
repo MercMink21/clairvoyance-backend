@@ -1465,66 +1465,157 @@ def _nhl_api_stats(endpoint: str, cayenne: str, limit: int = 50) -> list[dict]:
     data = fetch_json(url)
     return (data or {}).get("data") or []
 
+# teamId -> this app's own NHL team abbreviations. Real gap, found via a
+# pre-season hockey audit: team/percentages (unlike goalie/skater
+# endpoints) carries no team-abbreviation field at all -- only
+# teamFullName/teamId -- confirmed live against the real API. teamId is
+# used, not teamFullName, because NHL's own name strings don't reliably
+# match this app's: confirmed live, the real API returns "Montréal
+# Canadiens" (accented), this app's own static data uses "Montreal
+# Canadiens" for the few teams that even have a real name filled in (see
+# the _syntheticEntry finding below) -- a name-string match would
+# silently miss exactly that team every time.
+_NHL_TEAM_ID_MAP = {
+    24: "ANA", 6: "BOS", 7: "BUF", 20: "CGY", 12: "CAR", 16: "CHI", 21: "COL",
+    29: "CBJ", 25: "DAL", 17: "DET", 22: "EDM", 13: "FLA", 26: "LAK", 30: "MIN",
+    8: "MTL", 18: "NSH", 1: "NJD", 2: "NYI", 3: "NYR", 9: "OTT", 4: "PHI",
+    5: "PIT", 28: "SJS", 55: "SEA", 19: "STL", 14: "TBL", 10: "TOR", 68: "UTA",
+    23: "VAN", 54: "VGK", 15: "WSH", 52: "WPG",
+}
+
+
+def _nhl_current_season_id() -> str:
+    """NHL seasons run ~Oct-Jun/Jul, named startYear+startYear+1 (e.g.
+    "20252026"). New season year-cycle begins ~August (draft/preseason
+    ramp-up), matching the same boundary docs/app.html's own
+    _nhlCurrentSeasonId() uses."""
+    now = datetime.now(timezone.utc)
+    start_year = now.year if now.month >= 8 else now.year - 1
+    return f"{start_year}{start_year + 1}"
+
+
+def _nhl_resolve_season() -> str:
+    """Real gap, found in the same audit: SEASON was hardcoded to
+    "20252026" here (and, separately, hardcoded with gameTypeId=3 --
+    PLAYOFFS, not the regular season -- in docs/app.html's own client-
+    side NHL Edge fetch, a completely different but equally wrong
+    mistake found and fixed there). Both would have gone stale the
+    moment the 2026-27 season actually starts, and gameTypeId=3 only
+    ever covers the 16 of 32 teams who make the playoffs, several with
+    tiny 4-7 game samples -- a genuinely bad signal to build a team-
+    quality read on even when it does return real data.
+
+    Tries the real current season's real regular season first; confirmed
+    live this returns zero rows every day until the season has actually
+    started (real 2026-27 test: 0 rows in September). Falls back to the
+    prior season's full real regular-season data as the honest baseline
+    until the new season has enough real games -- same principle other
+    sports in this app already use for their own early-season sparse-
+    data windows."""
+    current = _nhl_current_season_id()
+    try:
+        r = requests.get(
+            f"{NHL_STATS}/team/summary",
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 1,
+                    "cayenneExp": f"seasonId={current} and gameTypeId=2"},
+            headers=HEADERS, timeout=15,
+        )
+        if r.ok and (r.json() or {}).get("data"):
+            return current
+    except Exception:
+        pass
+    prior_start = int(current[:4]) - 1
+    return f"{prior_start}{prior_start + 1}"
+
+
 def fetch_nhl_edge() -> dict:
-    """NHL Edge — team zone-time, shot locations, save %, skaters, goalies — all strengths."""
-    log("NHL Edge stats…")
-    out: dict = {"teams": {}, "teams5v5": {}, "teams5v4": {}, "teams4v5": {},
-                 "goalies": [], "skaters": [], "shotLoc": {}}
+    """Real per-team goalie quality (save%, GAA) and 5v5 zone-start rate
+    -- the two secondary signals nhlMC (docs/app.html) actually reads
+    (h.edge?.zone_off, and NHL[abbr].sv/gaa via the goalie match in
+    docs/app.html's own processNHLGoalieEdge). Every OTHER field this
+    function used to also fetch (xG%, Corsi%, high-danger chances,
+    skating speed) was confirmed dead via a full consumer grep across
+    docs/app.html -- zero real read sites for any of it, and several of
+    those sub-fetches were independently broken anyway (an invalid sort
+    property causing an outright 400 on team/realtime; the skater/skating
+    endpoint 500s from the real API regardless of parameters, apparently
+    retired). This app's real xG/Corsi signal already comes from the
+    separate, working MoneyPuck integration (NHL[abbr].mp) -- not
+    duplicated here.
 
-    cayenne_base = f"gameTypeId=3 and seasonId>={SEASON} and seasonId<={SEASON}"
+    Real architecture bug, found and fixed separately: this data used to
+    ALSO be fetched a second time, directly from the browser
+    (docs/app.html's fetchNHLEdge()) straight to api.nhle.com. Confirmed
+    live: that API sends no Access-Control-Allow-Origin header at all,
+    so every one of those browser-side calls was blocked by the
+    browser's own same-origin policy on arrival -- not fixable by
+    correcting field names or seasons, since CORS is enforced before the
+    response body is ever readable. This is now the only real fetch:
+    server-side (not a browser, not subject to CORS), written into
+    docs/data.json, read same-origin by the browser -- the same pattern
+    every other sport's team/schedule data in this app already uses.
+    docs/app.html's own fetchNHLEdge() now reads this instead of
+    re-fetching live.
+    """
+    log("NHL Edge stats (goalies + zone starts)…")
+    season = _nhl_resolve_season()
+    out: dict = {"season": season, "goalies": {}, "zoneStart": {}}
 
-    # Team summary — all situations
-    for situation, key in [("all","teams"), ("5on5","teams5v5"), ("5on4","teams5v4"), ("4on5","teams4v5")]:
-        cay = f"{cayenne_base} and situationCode={situation}" if situation != "all" else cayenne_base
-        rows = _nhl_api_stats("team/summary", cay, limit=50)
+    try:
+        r = requests.get(
+            f"{NHL_STATS}/goalie/summary",
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 100,
+                    "sort": "gamesPlayed",
+                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
+            headers=HEADERS, timeout=15,
+        )
+        rows = (r.json() or {}).get("data") or [] if r.ok else []
+        # One goalie per team: the one with the most games played this
+        # season (the real de facto starter) -- self-updating from real
+        # usage instead of a hand-typed name that goes stale the moment a
+        # team's real starter changes, and works uniformly for all 32
+        # teams instead of only the handful this app has a hardcoded
+        # starting-goalie name for.
+        best_by_team: dict[str, dict] = {}
+        for g in rows:
+            abbr = g.get("teamAbbrevs", "")
+            # A goalie traded mid-season gets a combined "EDM,PIT"-style
+            # row here (confirmed live) alongside his real per-team stint
+            # rows -- skip the combined one so it doesn't sit in the
+            # output as a dead key matching no real team (harmless either
+            # way -- NHL[abbr] lookups downstream already only ever match
+            # a real 3-letter abbreviation -- but not worth carrying).
+            if not abbr or "," in abbr:
+                continue
+            gp = g.get("gamesPlayed", 0) or 0
+            if abbr not in best_by_team or gp > best_by_team[abbr].get("gp", 0):
+                best_by_team[abbr] = {
+                    "name": g.get("goalieFullName", ""),
+                    "sv": g.get("savePct", 0),
+                    "gaa": g.get("goalsAgainstAverage", 0),
+                    "gp": gp,
+                }
+        out["goalies"] = best_by_team
+    except Exception as exc:
+        log(f"NHL Edge goalies: {exc}", "WARN")
+
+    try:
+        r = requests.get(
+            f"{NHL_STATS}/team/percentages",
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 50,
+                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
+            headers=HEADERS, timeout=15,
+        )
+        rows = (r.json() or {}).get("data") or [] if r.ok else []
         for t in rows:
-            abbr = t.get("teamAbbrevs","")
-            out[key][abbr] = {
-                "gf60":   t.get("goalsForPer60",0),
-                "ga60":   t.get("goalsAgainstPer60",0),
-                "sf60":   t.get("shotsForPer60",0),
-                "sa60":   t.get("shotsAgainstPer60",0),
-                "ppPct":  t.get("powerPlayPct",0),
-                "pkPct":  t.get("penaltyKillPct",0),
-                "foPct":  t.get("faceoffWinPct",0),
-                "w":      t.get("wins",0),
-                "l":      t.get("losses",0),
-                "xgf":    t.get("xGoalsFor",0),
-                "xga":    t.get("xGoalsAgainst",0),
-            }
+            abbr = _NHL_TEAM_ID_MAP.get(t.get("teamId"))
+            zs = t.get("zoneStartPct5v5")
+            if abbr and zs is not None:
+                out["zoneStart"][abbr] = round(zs * 100, 1)
+    except Exception as exc:
+        log(f"NHL Edge zone starts: {exc}", "WARN")
 
-    # Goalie stats — all situations
-    goalie_rows = _nhl_api_stats("goalie/summary", cayenne_base, limit=40)
-    for g in goalie_rows:
-        out["goalies"].append({
-            "name":     g.get("goalieFullName",""),
-            "team":     g.get("teamAbbrevs",""),
-            "gp":       g.get("gamesPlayed",0),
-            "w":        g.get("wins",0),
-            "l":        g.get("losses",0),
-            "savePct":  g.get("savePct",0),
-            "gaa":      g.get("goalsAgainstAverage",0),
-            "so":       g.get("shutouts",0),
-            "shots":    g.get("shotsAgainst",0),
-            "gsaa":     g.get("goalsAboveAverage", g.get("goalsAgainstAverage",0)),
-        })
-
-    # Skater stats
-    skater_rows = _nhl_api_stats("skater/summary", cayenne_base, limit=50)
-    for s in skater_rows:
-        out["skaters"].append({
-            "name":  s.get("skaterFullName",""),
-            "team":  s.get("teamAbbrevs",""),
-            "pos":   s.get("positionCode",""),
-            "gp":    s.get("gamesPlayed",0),
-            "g":     s.get("goals",0),
-            "a":     s.get("assists",0),
-            "pts":   s.get("points",0),
-            "toi":   s.get("timeOnIcePerGame",""),
-            "pm":    s.get("plusMinus",0),
-        })
-
-    vlog(f"  NHL Edge: {len(out['teams'])} teams, {len(out['goalies'])} goalies, {len(out['skaters'])} skaters")
+    vlog(f"  NHL Edge ({season}): {len(out['goalies'])} team goalies, {len(out['zoneStart'])} team zone-starts")
     return out
 
 def fetch_nhl_edge_enhanced() -> dict:

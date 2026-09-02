@@ -5869,78 +5869,52 @@ function renderHistory(){
     </div>`;
   }).join('');
 }
-// ═══ NHL EDGE STATS FETCH + RENDER ════════════════════════════
-async function fetchNHLEdge(){
-  const SEASON='20252026',GT='3'; // GT=3 playoffs
-  const BASE='https://api.nhle.com/stats/rest/en';
+// ═══ NHL EDGE STATS (goalies + zone starts) ═══════════════════
+// Real architecture bug, found via a pre-season hockey audit and fixed
+// by moving this fetch server-side instead of patching it in place:
+// this used to be a direct browser fetch to api.nhle.com (hardcoded to
+// a stale season and, separately, to gameTypeId=3/playoffs -- wrong on
+// both counts, and several of its own sub-fetches were independently
+// broken too: an invalid sort property causing an outright 400, a
+// dead/retired endpoint always 500ing, and 4 different assumed team-
+// abbreviation field names none of which matched what the real
+// endpoints actually return). Fixing all of that would still never have
+// worked: confirmed live, api.nhle.com sends no
+// Access-Control-Allow-Origin header at all, so the browser's own
+// same-origin policy blocks every one of these calls on arrival,
+// regardless of how correct the request itself is. This data now comes
+// from scripts/clairvoyance_update.py's fetch_nhl_edge() (server-side,
+// not a browser, not subject to CORS) via docs/data.json, same pattern
+// every other sport's team/schedule data in this app already uses.
+// applyNHLEdgeData() below just reads what's already loaded.
+function applyNHLEdgeData(edge){
+  if(!edge)return;
+  for(const[abbr,g]of Object.entries(edge.goalies||{})){
+    if(!NHL[abbr])continue;
+    if(g.sv)NHL[abbr].sv=g.sv;
+    if(g.gaa)NHL[abbr].gaa=g.gaa;
+    // Only fills g1 when this team has no hand-set starting-goalie name
+    // already (the 4 teams with real hand-curated scouting data) --
+    // real, current-usage-driven starters for every OTHER team instead
+    // of leaving them with none at all, without overwriting a
+    // deliberately-curated value.
+    if(!NHL[abbr].g1&&g.name)NHL[abbr].g1=g.name;
+  }
+  for(const[abbr,zs]of Object.entries(edge.zoneStart||{})){
+    if(!NHL[abbr])continue;
+    NHL[abbr].edge={...NHL[abbr].edge,zone_off:zs};
+  }
+}
+// Kept as a callable (was a live-fetch trigger, now just re-applies +
+// re-renders) since the manual Sync flow and NHL Edge display tab both
+// still call this by name.
+function fetchNHLEdge(){
   try{
-    // Team stats (all strengths, zone time, shot location)
-    const[teamR,skR,glR]=await Promise.all([
-      fetch(`${BASE}/team/realtime?limit=50&start=0&sort=xGoalsPercentage&cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=${GT}`,{mode:'cors'}),
-      fetch(`${BASE}/skater/shottype?limit=50&start=0&sort=shootingPct&cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=${GT}`,{mode:'cors'}),
-      fetch(`${BASE}/goalie/savesByStrength?limit=50&start=0&sort=savePct&cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=${GT}`,{mode:'cors'})
-    ]);
-    if(teamR.ok){const d=await teamR.json();processNHLTeamEdge(d.data||[]);}
-    if(skR.ok){const d=await skR.json();processNHLSkaterEdge(d.data||[]);}
-    if(glR.ok){const d=await glR.json();processNHLGoalieEdge(d.data||[]);}
-    // Zone time stats
-    const ztR=await fetch(`${BASE}/team/percentages?limit=50&start=0&sort=offensiveZoneStartPct&cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=${GT}`,{mode:'cors'});
-    if(ztR.ok){const d=await ztR.json();processNHLZoneTime(d.data||[]);}
-    // Speed/skating
-    const spdR=await fetch(`${BASE}/skater/skating?limit=50&start=0&sort=avgSpeed&cayenneExp=seasonId=${SEASON}%20and%20gameTypeId=${GT}`,{mode:'cors'});
-    if(spdR.ok){const d=await spdR.json();processNHLSkatingSpeeds(d.data||[]);}
-    S.s('nhl_edge_date',today());
+    applyNHLEdgeData(window.__CV_DATA?.nhl?.edge);
     renderNHLEdge('team');renderNHLEdge('goalie');
     toast('// NHL EDGE DATA REFRESHED');
-  }catch(e){console.warn('NHL Edge fetch:',e);}
-}
-function processNHLTeamEdge(data){
-  for(const d of data){
-    const abbr=d.teamAbbrev||d.teamCode;if(!NHL[abbr])continue;
-    NHL[abbr].edge={...NHL[abbr].edge,
-      xgf_pct:d.xGoalsPercentage,cf_pct:d.corsiForPercentage,
-      hdcf:d.highDangerShotAttemptsFor,hdca:d.highDangerShotAttemptsAgainst,
-      sh_pct:d.shootingPct,sv_pct:d.savePct,
-      pp_gf:d.ppGoalsFor,pk_ga:d.pkGoalsAgainst,
-      sog:d.shotsOnGoalFor,sog_against:d.shotsOnGoalAgainst,
-      rebound_goals:d.reboundGoalsFor};
-    if(MP_DATA[abbr])NHL[abbr].mp=MP_DATA[abbr];
-  }
-}
-function processNHLSkaterEdge(data){
-  const byTeam={};
-  for(const d of data){
-    const ta=d.teamAbbrev;if(!ta)continue;
-    if(!byTeam[ta])byTeam[ta]={slot_shots:0,high_shots:0,low_shots:0,sh_pct_slot:0,count:0};
-    byTeam[ta].slot_shots+=d.slotShotAttempts||d.slotShots||0;
-    byTeam[ta].high_shots+=d.highSlotShots||0;
-    byTeam[ta].low_shots+=d.lowSlotShots||0;
-    byTeam[ta].sh_pct_slot+=d.shootingPct||0;
-    byTeam[ta].count++;
-  }
-  NHL_EDGE.skaters=data;
-  for(const[abbr,s]of Object.entries(byTeam)){if(NHL[abbr]&&s.count){NHL[abbr].edge={...NHL[abbr].edge,slot_shot_pct:s.sh_pct_slot/s.count};}}
-}
-function processNHLGoalieEdge(data){
-  NHL_EDGE.goalies=data;
-  // Update goalie stats in NHL teams
-  for(const d of data){
-    const ta=d.teamAbbrev;if(!ta)continue;
-    if(NHL[ta]&&d.lastName){
-      if(d.lastName===NHL[ta].g1.split(' ').pop()||d.firstName+' '+d.lastName===NHL[ta].g1){
-        NHL[ta].sv=d.savePct||NHL[ta].sv;NHL[ta].gaa=d.goalsAgainstAvg||NHL[ta].gaa;
-        NHL[ta].hdsv=d.highDangerSavePct||NHL[ta].hdsv;NHL[ta].gsax=d.goalsAboveExpected||NHL[ta].gsax;
-      }
-    }
-  }
-}
-function processNHLZoneTime(data){
-  for(const d of data){const abbr=d.teamAbbrev;if(!NHL[abbr])continue;NHL[abbr].edge={...NHL[abbr].edge,zone_off:d.offensiveZoneStartPct,zone_def:d.defensiveZoneStartPct,zone_neutral:d.neutralZoneStartPct};}
-}
-function processNHLSkatingSpeeds(data){
-  const byTeam={};
-  for(const d of data){const ta=d.teamAbbrev;if(!ta)continue;if(!byTeam[ta])byTeam[ta]={spd:0,cnt:0};byTeam[ta].spd+=d.avgSpeed||0;byTeam[ta].cnt++;}
-  for(const[abbr,s]of Object.entries(byTeam)){if(NHL[abbr]&&s.cnt)NHL[abbr].edge={...NHL[abbr].edge,avg_spd:+(s.spd/s.cnt).toFixed(1)};}
+  }catch(e){console.warn('NHL Edge apply:',e);}
+  return Promise.resolve();
 }
 async function fetchMoneyPuck(){
   await renderMoneyPuck();
@@ -20788,6 +20762,7 @@ async function loadRemoteData(force=false){
     // PIT (today's live probable starters, from ESPN) already does, rather
     // than needing that whole static blob rebuilt.
     if(d.mlb?.bullpen)        window.BULLPEN=d.mlb.bullpen;
+    if(d.nhl?.edge)           {try{applyNHLEdgeData(d.nhl.edge);}catch(e){}}
     if(d.nhl?.today?.length)  patchNHLTonight(d.nhl.today);
     if(d.nhl?.standings)      patchNHLStandings(d.nhl.standings);
     if(d.nhl?.trends?.length) window._remoteNHLTrends=d.nhl.trends;
