@@ -28148,7 +28148,7 @@ var _OPTA_LEAGUES=['pl','liga','ita','bl','mls','cl'];
 // scrape_opta_stats.py). MLS confirmed live at theanalyst.com/competition/
 // mls/power-rankings (same tmcl/meta_post_id as its stats page) — not
 // excluded after all, just hadn't been checked yet.
-var _POWER_RANK_LEAGUES=['pl','liga','ita','bl','mls'];
+var _POWER_RANK_LEAGUES=['pl','liga','ita','bl','mls','cl'];
 function loadLeagueOptaStats(key){
   if(_OPTA_LEAGUES.indexOf(key)<0)return Promise.resolve(null);
   if(window.__CV_OPTA[key])return Promise.resolve(window.__CV_OPTA[key]);
@@ -28307,44 +28307,25 @@ function _optaPowerRankFactors(homeName,awayName,leagueKey){
   var adj=Math.max(-0.15,Math.min(0.15,(h.rating-a.rating)/100));
   return{home:1+adj,away:1-adj};
 }
-// Champions League has no CL-specific Power Rankings on theanalyst.com
-// (confirmed 404 -- see the tmcl comment on scripts/scrape_opta_stats.py's
-// "cl" league config) -- CL opponents also aren't usually in the same
-// domestic league (unlike _optaPowerRankFactors above, which compares two
-// teams' ratings from ONE shared league list), so this looks each side up
-// in ITS OWN domestic league's rankings independently via
-// _clDomesticContext, rather than blending anything -- there's no CL-side
-// rating to blend against, just a substitute source when the intended
-// one doesn't exist. Opta's rating is a whole-squad-strength number
-// scored on each league's own ~85-100 internal scale, so a raw
-// cross-league comparison (a Bundesliga 95 vs a Serie A 95) silently
-// assumes the 4 leagues are equally strong top to bottom, which isn't a
-// fair assumption -- Premier League is the strongest of the 4 by
-// reputation, La Liga second, Bundesliga and Serie A roughly level with
-// each other below those two. _CL_LEAGUE_STRENGTH_OFFSET applies a
-// modest downward shift to the non-PL leagues before comparing (kept
-// small deliberately -- a full ~15pt shift would max out the clamp on
-// its own regardless of the actual two teams involved, drowning out
-// real team-specific signal instead of just nudging it).
-var _CL_LEAGUE_STRENGTH_OFFSET={pl:0,liga:-2,bl:-4,ita:-4};
-function _clOptaPowerRating(name){
-  var ctx=_clDomesticContext(name);
-  if(!ctx)return null;
-  var d=window.__CV_OPTA&&window.__CV_OPTA[ctx.domKey];
-  var pr=d&&d.powerRankings;
-  if(!pr||!pr.length)return null;
-  var k=(name||'').toLowerCase().trim();
-  var t=pr.find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});
-  if(!t||t.rating==null)return null;
-  return t.rating+(_CL_LEAGUE_STRENGTH_OFFSET[ctx.domKey]||0);
-}
-function _optaPowerRankFactorsCL(homeName,awayName){
-  if(!homeName||!awayName)return{home:1,away:1};
-  var hR=_clOptaPowerRating(homeName),aR=_clOptaPowerRating(awayName);
-  if(hR==null||aR==null)return{home:1,away:1};
-  var adj=Math.max(-0.15,Math.min(0.15,(hR-aR)/100));
-  return{home:1+adj,away:1-adj};
-}
+// Champions League DOES have real Power Rankings on theanalyst.com --
+// confirmed by capturing the CL power-rankings page's own real network
+// request: it doesn't call the wp-json/sdapi/v1/soccerdata/
+// seasonpowerrankings API the domestic leagues use (that genuinely 404s
+// for CL's tmcl), it calls a plain static JSON file on a different
+// subdomain instead (dataviz.theanalyst.com/project-data/soccer/{tmcl}/
+// power-rankings.json -- see scripts/scrape_opta_stats.py's
+// fetch_dataviz_power_rankings()). An earlier version of this comment
+// wrongly assumed CL had no Power Rankings at all (tested only the wrong
+// API) and built a same-side domestic-league substitute with a manual
+// per-league strength offset to compensate for assumed cross-league
+// scale differences -- also wrong: Real Madrid's rating from the CL file
+// exactly matched their rating from the domestic La Liga fetch, proving
+// Opta's Power Ranking is one single global rating system already, not
+// computed separately per competition. Both of those workarounds are
+// gone now that 'cl' is in _POWER_RANK_LEAGUES above and rides the same
+// _optaPowerRankFactors() path every other Opta-covered league uses,
+// reading real CL-scoped data (82 teams, not just the ~half the field
+// with a tracked domestic league) from window.__CV_OPTA.cl.powerRankings.
 
 // ── Second-tier signals (2026-08-23) ──────────────────────────────────────
 // Everything below stacks on top of _optaStyleFactor/_optaPowerRankFactors,
@@ -28553,13 +28534,12 @@ function _socH2HFactor(homeName,awayName,leagueKey){
 // rate, so a strong defense actually pulls the total down and a leaky one
 // pulls it up, instead of defense never entering the calculation at all.
 // leagueKey/homeName/awayName are optional — when leagueKey is one of the
-// Opta-covered leagues (pl/liga/ita/bl/mls) and names are given, applies
+// Opta-covered leagues (pl/liga/ita/bl/mls/cl) and names are given, applies
 // _optaStyleFactor() + _optaAdvancedFactor() on top of the xG blend so
 // picks aren't driven by xG/xGA alone, and for the leagues Opta also
-// publishes Power Rankings for, additionally applies _optaPowerRankFactors().
-// CL has no Power Rankings of its own (theanalyst.com 404s that page for
-// it) -- _optaPowerRankFactorsCL() substitutes each side's own domestic-
-// league rating instead, via _clDomesticContext.
+// publishes Power Rankings for (which now includes CL -- see the
+// comment above _optaPowerRankFactors for how that was confirmed),
+// additionally applies _optaPowerRankFactors().
 // Then, for every league (this part doesn't need Opta -- it comes from the
 // same soccer_fbref.json / standings-cache data every league already has),
 // applies _fbrefFieldsFactor, _socFormFactor, _socStandingsFactor, and
@@ -28580,10 +28560,6 @@ function _socExpectedGoals(homeXG,awayXG,leagueKey,homeName,awayName){
   }
   if(_POWER_RANK_LEAGUES.indexOf(leagueKey)>=0&&homeName&&awayName){
     var _pf=_optaPowerRankFactors(homeName,awayName,leagueKey);
-    hxg*=_pf.home;
-    axg*=_pf.away;
-  }else if(leagueKey==='cl'&&homeName&&awayName){
-    var _pf=_optaPowerRankFactorsCL(homeName,awayName);
     hxg*=_pf.home;
     axg*=_pf.away;
   }

@@ -42,6 +42,7 @@ Usage:
 from __future__ import annotations
 import argparse, json, re, subprocess, sys
 from pathlib import Path
+import requests
 
 ROOT = Path(__file__).parent.parent
 APP = ROOT / "docs" / "app.html"
@@ -68,15 +69,38 @@ LEAGUES: dict[str, dict] = {
         # leagues found nothing for CL -- the block renders its config
         # client-side here rather than embedding it server-rendered).
         # meta_post_id likewise pulled from the page's own post-<id>
-        # marker and confirmed against the real API. Champions League has
-        # no /power-rankings page on theanalyst.com (404s), unlike the 4
-        # domestic leagues + MLS.
+        # marker and confirmed against the real API.
+        #
+        # CL DOES have real Power Rankings (theanalyst.com/competition/
+        # uefa-champions-league/power-rankings is real, not a 404 -- an
+        # earlier version of this comment wrongly said otherwise, from
+        # testing the wrong API. The wp-json/sdapi/v1/soccerdata/
+        # seasonpowerrankings endpoint the domestic leagues use genuinely
+        # 404s for CL's tmcl, but the real page doesn't call that one --
+        # it calls a plain static JSON file on a different subdomain,
+        # dataviz.theanalyst.com/project-data/soccer/{tmcl}/
+        # power-rankings.json (found the same way as tmcl/meta_post_id
+        # above: capturing the page's own real network request). No
+        # session/cookie trick needed for this one -- confirmed a plain
+        # requests.get() with no special headers returns 200. See
+        # fetch_dataviz_power_rankings() below.
+        #
+        # Also confirmed while investigating this: Real Madrid's rating
+        # from that CL-scoped file (94.75) exactly matches their rating
+        # from the DOMESTIC La Liga-scoped fetch -- Opta's Power Ranking
+        # is one single global rating system, not computed separately
+        # per competition. The per-league "seasonpowerrankings" fetches
+        # below are just filtered views into that same global table.
+        # (This matters: an earlier attempt to compare ratings across
+        # leagues for CL applied a manual per-league strength offset,
+        # assuming each league's ratings were on its own separate scale
+        # -- wrong assumption, reverted once this was confirmed.)
         #
         # IMPORTANT: as of 2026-09-01 this tmcl's data is still the
         # *2025/26 season's final totals* (lastUpdated 2026-06-02, right
         # after that season's final) -- the 2026/27 league phase hasn't
-        # kicked off yet (real UEFA calendar: mid-September). Once it
-        # does, re-verify this tmcl the same way the docstring above
+        # kicked off yet (real UEFA calendar: starts Sept 8 2026). Once
+        # it does, re-verify this tmcl the same way the docstring above
         # describes for the other leagues (or repeat the network-capture
         # trick this comment used, if the static grep still finds
         # nothing) -- it may roll to a new id, or this same one may just
@@ -86,7 +110,8 @@ LEAGUES: dict[str, dict] = {
         "power_referer": None,
         "meta_post_id": "194412",
         "file": "champions_league_team_stats_2026_27.json",
-        "power": False,
+        "power": True,
+        "power_source": "dataviz",
         # Deliberately None, same reasoning as MLS below: CL teams are
         # each already carrying a domestic-league _SOC_XG entry (their
         # season-long base rate across 30-38 games). Writing CL-specific
@@ -249,6 +274,44 @@ def slim_power_rankings(raw: dict) -> list[dict]:
     ]
 
 
+DATAVIZ_POWER_API = "https://dataviz.theanalyst.com/project-data/soccer"
+
+def fetch_dataviz_power_rankings(tmcl: str) -> dict | None:
+    """CL-specific alternative to fetch_power_rankings() above -- the real
+    CL Power Rankings page doesn't call the wp-json/sdapi/v1/soccerdata/
+    seasonpowerrankings API the domestic leagues use (that 404s for CL's
+    tmcl); it calls this plain static JSON file on a different subdomain
+    instead, found by capturing the real page's own network request the
+    same way tmcl/meta_post_id were found. No browser session/cookie
+    trick needed here -- a plain unauthenticated GET returns 200."""
+    url = f"{DATAVIZ_POWER_API}/{tmcl}/power-rankings.json"
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception as exc:
+        print(f"[WARN] dataviz power-rankings fetch failed for tmcl={tmcl}: {exc}", file=sys.stderr)
+        return None
+
+
+def slim_dataviz_power_rankings(raw: dict) -> list[dict]:
+    """Same output shape as slim_power_rankings() above (team/rating/rank/
+    globalRank) so the frontend's _optaPowerRankFactors() doesn't need a
+    separate code path for CL -- just a flatter input shape to unpack
+    (top-level "ranking" list, not nested under a "division" block, and
+    "lastWeekGlobalRank" instead of "currentGlobalRank")."""
+    ranking = raw.get("ranking") or []
+    return [
+        {
+            "team": r.get("contestantShortName") or r.get("contestantClubName"),
+            "rating": r.get("currentRating"),
+            "rank": int(r["rank"]) if r.get("rank") is not None else None,
+            "globalRank": int(r["lastWeekGlobalRank"]) if r.get("lastWeekGlobalRank") is not None else None,
+        }
+        for r in ranking
+    ]
+
+
 def slim_categories(team_block: dict) -> dict:
     """Extract the 5 requested categories (attacking/passing/pressing/
     sequences/defending) per team from the raw tournamentstats payload."""
@@ -399,7 +462,16 @@ def main() -> None:
             slim["lastUpdated"] = raw["team"].get("lastUpdated")
             slim["source"] = "theanalyst.com (Opta) tournament stats API"
 
-            if cfg.get("power"):
+            if cfg.get("power") and cfg.get("power_source") == "dataviz":
+                print(f"[INFO] {lg_key}: fetching power rankings (dataviz)…")
+                power_raw = fetch_dataviz_power_rankings(cfg["tmcl"])
+                if power_raw and power_raw.get("ranking"):
+                    slim["powerRankings"] = slim_dataviz_power_rankings(power_raw)
+                    slim["powerRankingsUpdated"] = power_raw.get("lastUpdated")
+                    print(f"[INFO]   {len(slim['powerRankings'])} teams ranked")
+                else:
+                    print(f"[WARN] {lg_key}: no power-rankings data returned", file=sys.stderr)
+            elif cfg.get("power"):
                 print(f"[INFO] {lg_key}: fetching power rankings…")
                 power_raw = fetch_power_rankings(page, cfg["tmcl"], cfg["power_referer"], cfg["meta_post_id"])
                 if power_raw and power_raw.get("division"):
