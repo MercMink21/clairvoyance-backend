@@ -14392,14 +14392,37 @@ async function autoSettleTennis(targetDate){
             for(let si=0;si<totalSets;si++)totalGames+=(c1LS[si]?.value||0)+(c2LS[si]?.value||0);
             for(const p of preds){
               if(p.outcome!=='pending'||_normSport(p)!=='TEN'||p.date!==targetDate)continue;
-              const sameMatch=(p.hA===n1&&p.awA===n2)||(p.hA===n2&&p.awA===n1);
-              if(!sameMatch)continue;
+              // Real bug, found via audit: p.hA/p.awA are stored in this
+              // app's own abbreviated "initial + surname" convention
+              // (e.g. Prizmic locks as "D" then a period then "Prizmic" --
+              // every tennis lockPick call site uses it, see
+              // _usoMatchCards/_tenMatchCard), but n1/n2 here are ESPN's
+              // real full "first last" displayName ("Dino Prizmic") --
+              // confirmed directly against the live API. p.hA===n1 can
+              // never be true for any real tennis pick this app ever
+              // locks; this loop was silently unreachable for its entire
+              // life (created 2026-08-23).
+              // Fixed with the same fuzzy last-name match _usoLiveLookup
+              // already uses successfully for the identical abbreviated-
+              // vs-full-name gap elsewhere in the tennis code.
+              const _tenLastName=s=>{const t=(s||'').split('.').pop()||s||'';return t.length>=3?t.toLowerCase():'';};
+              const hLast=_tenLastName(p.hA),aLast=_tenLastName(p.awA);
+              if(!hLast||!aLast)continue;
+              const n1L=(n1||'').toLowerCase(),n2L=(n2||'').toLowerCase();
+              const hIsC1=n1L.includes(hLast)&&n2L.includes(aLast);
+              const hIsC2=n2L.includes(hLast)&&n1L.includes(aLast);
+              if(!hIsC1&&!hIsC2)continue;
+              const[pHomeC,pAwayC]=hIsC1?[c1,c2]:[c2,c1];
               const betOn=p.betOn||'';
               let outcome=null;
               const setsMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)\s*sets?$/i.exec(betOn);
               const gamesMatch=/^(OVER|UNDER)\s+(\d+\.?\d*)\s*games?$/i.exec(betOn);
-              if(betOn===n1)outcome=c1.winner?'win':'loss';
-              else if(betOn===n2)outcome=c2.winner?'win':'loss';
+              // betOn is in the SAME abbreviated convention as p.hA/p.awA
+              // (both come from this app's own lockPick calls), so it's
+              // compared directly against those instead of ESPN's n1/n2 --
+              // the other half of the same original bug.
+              if(betOn===p.hA||betOn.startsWith(p.hA+' '))outcome=pHomeC.winner?'win':'loss';
+              else if(betOn===p.awA||betOn.startsWith(p.awA+' '))outcome=pAwayC.winner?'win':'loss';
               else if(setsMatch){
                 const line=parseFloat(setsMatch[2]);const over=setsMatch[1].toUpperCase()==='OVER';
                 outcome=totalSets===line?'push':(over?totalSets>line:totalSets<line)?'win':'loss';
