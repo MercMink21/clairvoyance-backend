@@ -14881,6 +14881,14 @@ function _scanCrossSportPicks(){
 }
 function renderHomePage(){
   const allBets=getP();
+  // Same fix as renderOverall() (2026-09-02 desktop-lag audit): this
+  // function auto-runs every 60s in the background (see the
+  // _homeRefTimer setInterval) on top of being the home page itself,
+  // so its own redundant p.sport.toUpperCase() recomputation inside
+  // the BY LEAGUE breakdown below (up to 19 rows, against the full
+  // ledger when the ALL TIME period is selected) is worth the same
+  // one-line precompute fix.
+  allBets.forEach(p=>{p._spUC=(p.sport||'').toUpperCase();});
   const settled=allBets.filter(p=>p.outcome==='win'||p.outcome==='loss');
   const pending=allBets.filter(p=>p.outcome==='pending');
   const now=Date.now();
@@ -14950,7 +14958,7 @@ function renderHomePage(){
       :lgPerfPeriod==='lastMonth'?allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime())
       :allBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime())).filter(p=>p.outcome!=='pending');
     const byLeagueHome=leagueMap.map(lm=>{
-      const lb=lgPerfBets.filter(p=>lm.codes.some(c=>p.sport&&p.sport.toUpperCase()===c.toUpperCase()));
+      const lb=lgPerfBets.filter(p=>lm.codes.some(c=>p._spUC===c));
       if(!lb.length)return null;
       const w=lb.filter(p=>p.outcome==='win').length,l=lb.filter(p=>p.outcome==='loss').length;
       const u=lb.reduce((a,p)=>{if(p.outcome==='win')return a+(parseFloat(p.decOdds)||2)-1;if(p.outcome==='loss')return a-1;return a;},0);
