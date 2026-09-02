@@ -147,7 +147,8 @@ required_ids = [
     ('sp-fb',                'Football pane'),
     ('sp-ovr',               'Overall pane'),
     ('sp-analytics',         'Analytics pane'),
-    ('sp-social',            'Social pane'),
+    # ('sp-social',          'Social pane — REMOVED 2026-09-02, Intel Briefs
+    #  retired and Track Record moved to the Overall tab (T('ovr','trackrecord'))'),
     ('sp-news',              'News pane'),
     ('hdr',                  'Header'),
     ('sbar',                 'Sport nav bar'),
@@ -164,7 +165,7 @@ required_ids = [
     ('navd-ten',             'Tennis nav dropdown'),
     # ('navd-f1',            'F1 nav dropdown — REMOVED'),
     ('navd-fb',              'Football nav dropdown'),
-    ('navd-social',          'Social nav dropdown'),
+    # ('navd-social',        'Social nav dropdown — REMOVED 2026-09-02, same as sp-social above'),
     ('splash',               'Splash screen'),
     ('app',                  'App container'),
     ('mn',                   'Mobile nav'),
