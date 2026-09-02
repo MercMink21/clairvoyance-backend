@@ -77,8 +77,15 @@ jobs:
           git add data/last_pick_of_day_date.txt
           if ! git diff --cached --quiet; then
             git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record pick-of-day send for $TODAY_MT"
-            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" pull --rebase origin main
-            git push origin main
+            if ! git push origin main; then
+              git fetch origin main
+              if git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" rebase origin/main; then
+                git push origin main || echo "::warning::record lock: push still failed after rebase, will retry next run"
+              else
+                git rebase --abort
+                echo "::warning::record lock: rebase conflict, skipped this marker write, will retry next run"
+              fi
+            fi
           fi
 
       # Same rationale as social-cards-daily.yml's own failure alert --

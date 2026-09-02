@@ -227,13 +227,37 @@ jobs:
         # would wrongly skip itself.
         if: ${{ steps.flags.outputs.live_flag == '--live' && steps.flags.outputs.step_flags != '--settle' && steps.flags.outputs.step_flags != '--daily-digest' && steps.flags.outputs.step_flags != '--adaptive-recalibration' }}
         run: |
+          # Real failure, found via audit: this used to be a plain
+          # `commit && pull --rebase && push` with no fallback -- three
+          # real CI runs (2026-08-29, back-to-back within ~17 minutes,
+          # each a legitimate lock pass firing close to another) hard-
+          # failed the whole job here when the rebase hit a real conflict
+          # in docs/automation_status.json (a concurrent run's own marker
+          # commit landing on origin/main in between this step's commit
+          # and its push). GH Actions runs bash with -e by default, so
+          # `git pull --rebase` failing on a real conflict took the whole
+          # step down with it, mid-rebase, instead of just skipping this
+          # one non-critical marker write. Mirrors the fetch+rebase-then-
+          # abort-on-failure pattern _commit_and_push() in
+          # auto_lock_settle.py already uses for the exact same reason
+          # (this repo gets pushed to from multiple concurrent jobs) --
+          # only difference is this step logs and continues on conflict
+          # instead of erroring, since a missed "recorded lock" marker
+          # costs nothing: the next run's own write catches it up.
           TODAY_MT=$(TZ=America/Denver date +%Y-%m-%d)
           echo "$TODAY_MT" > data/last_lock_date.txt
           git add data/last_lock_date.txt
           if ! git diff --cached --quiet; then
             git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" commit -m "chore: record lock for $TODAY_MT"
-            git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" pull --rebase origin main
-            git push origin main
+            if ! git push origin main; then
+              git fetch origin main
+              if git -c user.name="clairvoyance-bot" -c user.email="bot@clairvoyance.local" rebase origin/main; then
+                git push origin main || echo "::warning::record lock: push still failed after rebase, will retry next run"
+              else
+                git rebase --abort
+                echo "::warning::record lock: rebase conflict, skipped this marker write, will retry next run"
+              fi
+            fi
           fi
 
       - name: Send lock-missed alert

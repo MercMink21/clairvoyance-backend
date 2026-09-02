@@ -72,7 +72,11 @@ jobs:
             git commit -m "landing-perf: refresh $(TZ=America/Denver date +%H:%M) MT"
             if ! git push origin main; then
               git fetch origin main
-              git rebase origin/main
-              git push origin main
+              if git rebase origin/main; then
+                git push origin main || echo "::warning::landing-perf: push still failed after rebase, will retry next run"
+              else
+                git rebase --abort
+                echo "::warning::landing-perf: rebase conflict, skipped this update, will retry next run"
+              fi
             fi
           fi

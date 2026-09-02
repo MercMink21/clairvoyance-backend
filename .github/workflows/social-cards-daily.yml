@@ -65,8 +65,15 @@ jobs:
             echo "No state change"
           else
             git commit -m "social-cards: pick-of-day state update"
-            git pull --rebase origin main
-            git push
+            if ! git push; then
+              git fetch origin main
+              if git rebase origin/main; then
+                git push || echo "::warning::social-cards: push still failed after rebase, will retry next run"
+              else
+                git rebase --abort
+                echo "::warning::social-cards: rebase conflict, skipped this state write, will retry next run"
+              fi
+            fi
           fi
 
       # GitHub's scheduled-workflow queue routinely delays this run by

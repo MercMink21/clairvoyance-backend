@@ -79,6 +79,13 @@ jobs:
             echo "No state change"
           else
             git commit -m "expiry-reminders: mark reminder_sent"
-            git pull --rebase origin main
-            git push
+            if ! git push; then
+              git fetch origin main
+              if git rebase origin/main; then
+                git push || echo "::warning::expiry-reminders: push still failed after rebase, will retry next run"
+              else
+                git rebase --abort
+                echo "::warning::expiry-reminders: rebase conflict, skipped this state write, will retry next run"
+              fi
+            fi
           fi

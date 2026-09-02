@@ -63,8 +63,19 @@ jobs:
             if git push; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
             else
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-              echo "push_failed=true" >> "$GITHUB_OUTPUT"
+              # One fetch+rebase retry before alerting -- same pattern
+              # every other marker/state-commit step in this repo now
+              # uses, since this repo gets pushed to from many concurrent
+              # scheduled workflows and a plain push failing once is
+              # usually just that, not a real problem worth paging on.
+              git fetch origin main
+              if git rebase origin/main && git push; then
+                echo "changed=true" >> "$GITHUB_OUTPUT"
+              else
+                git rebase --abort 2>/dev/null || true
+                echo "changed=false" >> "$GITHUB_OUTPUT"
+                echo "push_failed=true" >> "$GITHUB_OUTPUT"
+              fi
             fi
           fi
 
