@@ -241,6 +241,16 @@ def run_adaptive_recalibration(page, live: bool) -> None:
         () => {
           if (typeof adaptiveTick !== 'function') return null;
           const state = adaptiveTick();
+          // renderOverall() is what actually computes+sets
+          // window.__CV_CAL_ADJ_BY_SPORT (the per-sport probability-band
+          // calibration -- see docs/app.html's own comment on this, added
+          // 2026-09-02) -- this headless session never visits the Overall
+          // tab under normal operation (everything here drives specific
+          // functions directly, not real UI navigation), so nothing would
+          // ever compute it otherwise. Safe to call directly: it only
+          // needs #ovr-dashboard to exist in the DOM, which it always
+          // does regardless of which tab is visually active.
+          try{ if(typeof renderOverall==='function') renderOverall(); }catch(e){}
           return {
             state,
             // Raw ensemble objects, not state.weights' flattened sub-objects --
@@ -248,6 +258,7 @@ def run_adaptive_recalibration(page, live: bool) -> None:
             // capture, and overwriting NHL_ENS with an incomplete object at
             // boot would silently drop it.
             raw: {ens: ENS, nhl_ens: NHL_ENS, nba_ens: NBA_ENS, wnba_ens: WNBA_ENS, ten_ens: TEN_ENS},
+            calAdjBySport: window.__CV_CAL_ADJ_BY_SPORT || null,
           };
         }
         """
@@ -257,6 +268,7 @@ def run_adaptive_recalibration(page, live: bool) -> None:
         return
     state = result.get("state") or {}
     raw = result.get("raw") or {}
+    cal_adj_by_sport = result.get("calAdjBySport")
     if state.get("status") == "INSUFFICIENT_DATA":
         log(f"Skipping: {state.get('msg')}")
         return
@@ -267,6 +279,11 @@ def run_adaptive_recalibration(page, live: bool) -> None:
         log(f"  {sport}: {perf.get('acc', 0)*100:.1f}% ({perf.get('wins')}W-{perf.get('losses')}L)")
     for rec in state.get("recommendations") or []:
         log(f"  [{rec.get('priority')}] {rec.get('action')}: {rec.get('detail')}")
+    if cal_adj_by_sport:
+        for sport, bands in sorted(cal_adj_by_sport.items()):
+            if bands:
+                log(f"  {sport} per-band calibration: " +
+                    ", ".join(f"{float(k)*100:.0f}%+={v*100:+.1f}pp" for k, v in bands.items()))
 
     if not live:
         log("[DRY RUN] Would write docs/adaptive_weights.json (pass --live to write)")
@@ -278,6 +295,7 @@ def run_adaptive_recalibration(page, live: bool) -> None:
         "nba_ens": raw.get("nba_ens"),
         "wnba_ens": raw.get("wnba_ens"),
         "ten_ens": raw.get("ten_ens"),
+        "cal_adj_by_sport": cal_adj_by_sport,
         "evt": state.get("evThreshold"),
         "betsAnalyzed": state.get("betsAnalyzed"),
         "overallAcc": state.get("overallAcc"),

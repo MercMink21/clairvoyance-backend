@@ -2639,17 +2639,29 @@ let TEN_ENS={elo:.22,mc:.50,form:.15,serve:.08,fat:.05};
 // stale-sample uniform boost -- a clear, low-risk correction on its
 // own regardless of that larger question.
 //
-// NHL/NBA/TEN's own constants were checked against their current real
-// samples too and are also measurably stale (recomputed: NHL 0.41 vs
-// current 0.49, NBA 0.29 vs current 0.55, TEN 0.42 vs current 0.76) --
-// left untouched since none of the three were reported as
-// underperforming and this audit was scoped to MLB specifically;
-// flagged for a separate decision rather than changed here.
+// NHL and TEN recomputed 2026-09-02 too (explicit follow-up request to
+// go deeper on MLB/tennis/NHL), same live-ledger methodology as MLB
+// above. NHL: 121 settled bets, actual 79.3% vs model avg 57.8% (was
+// 46-bet-derived, actual 82.6% vs 58.4%) -- still a real underconfidence
+// gap, just a smaller one than the original tiny sample suggested, so
+// B drops from 0.49 to 0.41, a modest reduction not a reversal. TEN
+// (ATP+WTA combined): 260 settled bets, actual 86.5% vs model avg 69.4%
+// (was 20-bet-derived, actual 100% vs 74.0% -- a 20-bet 100% actual is
+// itself a sign the original sample was too small to trust at all). B
+// drops from 0.76 to 0.42, a larger correction since the original
+// 100%-actual data point was the least statistically reliable of the
+// four sports' original derivations.
+//
+// NBA's constant (0.55) was ALSO checked and is similarly stale
+// (recomputes to 0.29 against 154 current bets) but NBA wasn't part of
+// this round's explicit scope (MLB/tennis/NHL) -- left untouched,
+// flagged the same way MLB's own note above already flagged the other
+// three before this update.
 const SPORT_CAL={
-  MLB:{B:0.033}, // avg model 65.6% → calibrated ~66.4% (actual 67.4%, current 1348-bet sample)
-  NHL:{B:0.49},  // avg model 58.4% → calibrated ~70%  (actual 82.6%) -- stale (44-bet sample), not touched this pass
+  MLB:{B:0.033}, // avg model 65.6% → calibrated ~66.4% (actual 67.4%, 1348-bet sample)
+  NHL:{B:0.41},  // avg model 57.8% → calibrated ~66.8% (actual 79.3%, 121-bet sample)
   NBA:{B:0.55},  // avg model 62.0% → calibrated ~74%  (actual 86.7%) -- stale (44-bet sample), not touched this pass
-  TEN:{B:0.76},  // avg model 74.0% → calibrated ~86%  (actual 100%) -- stale (44-bet sample), not touched this pass
+  TEN:{B:0.42},  // avg model 69.4% → calibrated ~78.2% (actual 86.5%, 260-bet sample, ATP+WTA combined)
 };
 function sportCalibrate(p,sport){
   const cal=SPORT_CAL[sport];
@@ -2668,7 +2680,7 @@ function sportCalibrate(p,sport){
   // back into future predictions automatically instead of sitting in
   // a report someone has to notice and act on by hand.
   if(typeof window._calAdjProb==='function'){
-    const adjP=window._calAdjProb(out);
+    const adjP=window._calAdjProb(out,sport);
     if(adjP>0&&adjP<1)out=Math.min(0.94,Math.max(0.06,adjP));
   }
   return out;
@@ -11912,6 +11924,81 @@ function renderOverall(){
       return p + (adjP - p) * 0.30;
     }
     return window._calAdjProb(p);
+  };
+  // ── Per-sport calibration (additive -- doesn't remove the global,
+  // all-sports block above, which stays the fallback) ────────────────
+  // Real gap found (2026-09-02 MLB-accuracy audit, explicit per-band-
+  // system follow-up): the block above pools EVERY sport's settled bets
+  // into one shared set of probability bands -- a sport with a real,
+  // distinct miscalibration (MLB badly overconfident at 75%+, while
+  // other sports in that same band are underconfident) gets averaged
+  // together with whichever other sports land in the same band,
+  // diluting/masking each sport's true, separate correction. Computed
+  // only for the 4 sports sportCalibrate()/SPORT_CAL already special-
+  // case (MLB/NHL/NBA/TEN) -- every other sport (soccer, CFB, NFL,
+  // WNBA, CBB, props, etc.) keeps using the global/blended adjustment
+  // above exactly as before, unchanged. Deliberately NOT threaded
+  // through tier()'s own separate _calAdjProbByType call (~30 call
+  // sites across every sport's pick-generation code, several of them
+  // dense one-line template literals) -- sportCalibrate() is the
+  // single point every sport's probability already passes through
+  // before MC display/EV/tier() ever see it, so fixing it there reaches
+  // every downstream consumer without that much larger, higher-risk
+  // surface. An omitted/unknown sport here (tier()'s own pass, or any
+  // sport without its own slot) falls back to exactly the global
+  // adjustment below, so nothing calling the old 1-arg shape changes.
+  const _calAdjBySportKey='cv_cal_adj_by_sport_v1';
+  const _prevAdjBySport=JSON.parse(S.g(_calAdjBySportKey,'{}')||'{}');
+  const _newAdjBySport={};
+  const _calcBandAdjFor=(bets,prevForSport)=>{
+    const out={...prevForSport};
+    for(const b of calBands){
+      const bp=bets.filter(p=>p.winProb>=b.min&&p.winProb<b.max);
+      const n=bp.length;
+      if(n<5)continue;
+      const bw=bp.filter(p=>p.outcome==='win').length;
+      const act=bw/n;
+      const exp=(b.min+Math.min(b.max,.98))/2;
+      const off=Math.abs(act-exp);
+      const lrate=n>=10?0.40:0.20;
+      if(off>=0.04){
+        const rawShift=(act-exp)*lrate;
+        out[b.min]=Math.max(-0.12,Math.min(0.12,rawShift));
+      }else if(prevForSport[b.min]&&Math.abs(prevForSport[b.min])>0.005){
+        out[b.min]=prevForSport[b.min]*0.90;
+      }else{
+        delete out[b.min];
+      }
+    }
+    return out;
+  };
+  for(const _sp of ['MLB','NHL','NBA','TEN']){
+    const _spBets=_sp==='TEN'
+      ?settled.filter(p=>{const u=(p.sport||'').toUpperCase();return u==='ATP'||u==='WTA';})
+      :settled.filter(p=>(p.sport||'').toUpperCase()===_sp);
+    _newAdjBySport[_sp]=_calcBandAdjFor(_spBets,_prevAdjBySport[_sp]||{});
+  }
+  S.s(_calAdjBySportKey,JSON.stringify(_newAdjBySport));
+  window.__CV_CAL_ADJ_BY_SPORT=_newAdjBySport;
+  window._calAdjProb=(p,sport)=>{
+    const bySport=sport&&_newAdjBySport[sport];
+    for(const b of calBands){
+      if(p>=b.min&&p<b.max){
+        const hasOwn=bySport&&bySport[b.min]!==undefined;
+        const adj=hasOwn?bySport[b.min]:(_newAdj[b.min]||0);
+        return Math.max(0.35,Math.min(0.97,p+adj));
+      }
+    }
+    return p;
+  };
+  window._calAdjProbByType=function(p,mktType,sport){
+    if(!window._calAdjProb||p<=0||p>=1)return p;
+    if(!mktType||mktType==='ML')return window._calAdjProb(p,sport);
+    const adjP=window._calAdjProb(p,sport);
+    if(mktType==='OU')return p+(adjP-p)*0.60;
+    if(mktType==='SPREAD')return p+(adjP-p)*0.75;
+    if(mktType==='PROP')return p+(adjP-p)*0.30;
+    return adjP;
   };
   const _calAdjApplied=Object.keys(_newAdj).length>0;
   const _calLastRun=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
@@ -23826,25 +23913,49 @@ document.addEventListener('DOMContentLoaded',()=>{(async()=>{
   }
 
   startSplash();
-  // ── Load calibration adjustments from localStorage so tier() works on first render ──
+  // ── Load calibration adjustments so tier()/sportCalibrate() work on
+  // first render -- for BOTH a real interactive session (localStorage)
+  // and a fresh headless one with no localStorage at all (the automated
+  // lock pipeline). Per-sport data (cv_cal_adj_by_sport_v1) prefers
+  // this device's own localStorage when present, else falls back to
+  // adaptive_weights.json's server-committed snapshot -- same
+  // durable-default-then-local-layering pattern already used for
+  // ENS/NHL_ENS/etc below, extended to calibration so a headless
+  // automated run (which starts with zero localStorage every time,
+  // same as any other GH Actions job) gets a real per-sport correction
+  // too, not just whatever ships hardcoded in SPORT_CAL.
   try{
     const _storedAdj=JSON.parse(S.g('cv_cal_adj_v2','{}')||'{}');
     const _calBandsInit=[{min:.50,max:.55},{min:.55,max:.60},{min:.60,max:.65},{min:.65,max:.70},{min:.70,max:.75},{min:.75,max:1.0}];
-    if(Object.keys(_storedAdj).length>0){
+    let _storedAdjBySport=JSON.parse(S.g('cv_cal_adj_by_sport_v1','{}')||'{}');
+    if(!Object.keys(_storedAdjBySport).length){
+      try{
+        const _awCal=await fetch('adaptive_weights.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null);
+        if(_awCal&&_awCal.cal_adj_by_sport)_storedAdjBySport=_awCal.cal_adj_by_sport;
+      }catch(e){}
+    }
+    if(Object.keys(_storedAdj).length>0||Object.keys(_storedAdjBySport).length>0){
       window.__CV_CAL_ADJ=_storedAdj;
-      window._calAdjProb=(p)=>{
+      window.__CV_CAL_ADJ_BY_SPORT=_storedAdjBySport;
+      window._calAdjProb=(p,sport)=>{
+        const bySport=sport&&_storedAdjBySport[sport];
         for(const b of _calBandsInit){
-          if(p>=b.min&&p<b.max){const adj=_storedAdj[b.min]||0;return Math.max(0.35,Math.min(0.97,p+adj));}
+          if(p>=b.min&&p<b.max){
+            const hasOwn=bySport&&bySport[b.min]!==undefined;
+            const adj=hasOwn?bySport[b.min]:(_storedAdj[b.min]||0);
+            return Math.max(0.35,Math.min(0.97,p+adj));
+          }
         }
         return p;
       };
-      window._calAdjProbByType = function(p, mktType) {
+      window._calAdjProbByType = function(p, mktType, sport) {
         if (!window._calAdjProb || p <= 0 || p >= 1) return p;
-        if (!mktType || mktType === 'ML') return window._calAdjProb(p);
-        if (mktType === 'OU') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.60; }
-        if (mktType === 'SPREAD') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.75; }
-        if (mktType === 'PROP') { const adjP = window._calAdjProb(p); return p + (adjP - p) * 0.30; }
-        return window._calAdjProb(p);
+        if (!mktType || mktType === 'ML') return window._calAdjProb(p,sport);
+        const adjP = window._calAdjProb(p,sport);
+        if (mktType === 'OU') return p + (adjP - p) * 0.60;
+        if (mktType === 'SPREAD') return p + (adjP - p) * 0.75;
+        if (mktType === 'PROP') return p + (adjP - p) * 0.30;
+        return adjP;
       };
     }
   }catch(e){}
