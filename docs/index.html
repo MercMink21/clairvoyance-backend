@@ -2662,6 +2662,14 @@ const SPORT_CAL={
   NHL:{B:0.41},  // avg model 57.8% → calibrated ~66.8% (actual 79.3%, 121-bet sample)
   NBA:{B:0.55},  // avg model 62.0% → calibrated ~74%  (actual 86.7%) -- stale (44-bet sample), not touched this pass
   TEN:{B:0.42},  // avg model 69.4% → calibrated ~78.2% (actual 86.5%, 260-bet sample, ATP+WTA combined)
+  // Adaptive-learning coverage audit found WNBA had a real proprietary
+  // ensemble (wnbaEns) that never ran through sportCalibrate() at all --
+  // zero correction applied to the actual probability, unlike every other
+  // single-win-prob sport. Real settled-bet check: 329-bet sample, avg
+  // model 57.8% vs actual 75.1% -- same underconfidence direction as every
+  // other sport calibrated this session, and the largest real sample of
+  // any sport calibrated so far (bigger than NHL's 121 or TEN's 260).
+  WNBA:{B:0.3148}, // avg model 57.8% → calibrated ~68.6% (actual 75.1%, 329-bet sample)
 };
 function sportCalibrate(p,sport){
   const cal=SPORT_CAL[sport];
@@ -11972,7 +11980,7 @@ function renderOverall(){
     }
     return out;
   };
-  for(const _sp of ['MLB','NHL','NBA','TEN']){
+  for(const _sp of ['MLB','NHL','NBA','TEN','WNBA']){
     // _spUC precomputed once per pick near the top of this function (see
     // that comment for why mutating these fresh getP() objects is safe)
     // -- reused here instead of recomputing .toUpperCase() per item per
@@ -25710,6 +25718,12 @@ function wnbaEns(hA,awA,espnOdds){
     var hImp=hml<0?Math.abs(hml)/(Math.abs(hml)+100):100/(hml+100);
     ens=ens*0.70+hImp*0.30;
   }
+  // WNBA had a real proprietary ensemble but never actually ran it through
+  // sportCalibrate()/_calAdjProb -- every other single-win-prob sport (MLB/
+  // NHL/NBA/TEN, and CFB/NFL via the global fallback) gets this applied
+  // directly to the probability itself, not just at tier()'s later grading
+  // step. See SPORT_CAL.WNBA for the real 329-bet sample this pass derived.
+  ens=typeof sportCalibrate==='function'?sportCalibrate(ens,'WNBA'):ens;
   var injH=computeInjuryImpact(hk,'wnba');
   var injA=computeInjuryImpact(ak,'wnba');
   ens=Math.min(.92,Math.max(.08,ens-injH.penalty+injA.penalty));
