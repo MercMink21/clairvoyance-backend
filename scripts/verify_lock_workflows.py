@@ -73,12 +73,27 @@ def _check_run(run: dict, label: str, expect_markers: list[str]) -> str | None:
     except Exception as exc:
         return f"{label}: couldn't fetch log for run {run['databaseId']} ({exc})"
 
-    cmd_lines = [l for l in log.splitlines() if "python3 scripts/auto_lock_settle.py" in l and "##[group]Run" in l]
+    # Real bug, found investigating a false-positive alert: this used to
+    # also require "##[group]Run" on the same line. That's genuinely how
+    # the invocation line looks for CFB/Soccer Early Lock's own dedicated
+    # workflows (a single-command step, so GH Actions gives it its own
+    # "##[group]Run python3 scripts/auto_lock_settle.py ..." header) --
+    # but the main Auto Lock + Settle workflow's invocation lives inside a
+    # multi-command bash `run: |` block with its own if/echo branching, so
+    # the actual resolved command (e.g. "python3 scripts/
+    # auto_lock_settle.py --lock --final-lock-check --live") only ever
+    # appears as its own ANSI-highlighted echoed line, never paired with
+    # "##[group]Run" on that same line -- confirmed live against run
+    # 33537433293's real log (2026-09-01's actual final lock-check pass,
+    # which genuinely ran --live and worked). The old regex could never
+    # match that pattern, so this always reported "no invocation found"
+    # for the main lock specifically, regardless of what really happened.
+    cmd_lines = [l for l in log.splitlines() if "python3 scripts/auto_lock_settle.py" in l]
     if not cmd_lines:
         return f"{label}: run {run['databaseId']} succeeded but no auto_lock_settle.py invocation found in log at all"
     invoked = cmd_lines[-1]
     if "--live" not in invoked:
-        return f"{label}: run {run['databaseId']} did NOT include --live (stayed dry-run) -- invoked: {invoked.split('Run ',1)[-1].strip()}"
+        return f"{label}: run {run['databaseId']} did NOT include --live (stayed dry-run) -- invoked: {invoked.split('auto_lock_settle.py',1)[-1].strip()}"
 
     missing = [m for m in expect_markers if m not in log]
     if missing:
@@ -87,30 +102,93 @@ def _check_run(run: dict, label: str, expect_markers: list[str]) -> str | None:
     return None
 
 
+def _find_invocation_run(todays: list[dict], label: str) -> tuple[dict | None, str | None]:
+    """CFB/Soccer Early Lock each have multiple catch-up cron slots beyond
+    the first -- confirmed live (2026-09-01 audit): once today's real lock
+    already succeeded, every later catch-up slot's "Run <sport>-only
+    auto-lock" step reports should_run=0 and is skipped entirely at the
+    workflow level, with ZERO auto_lock_settle.py invocation anywhere in
+    that run's log -- by design, not a failure. Real bug this fixes: the
+    original version of these two checks just grabbed todays[0] (gh run
+    list's default order is most-recent-first), which on any day with more
+    than one catch-up slot fired is very likely one of these legitimately-
+    empty skip runs, not the one real invocation -- producing a false "no
+    auto_lock_settle.py invocation found in log at all" alert for a lock
+    that actually happened fine earlier that day (confirmed: this exact
+    false positive fired for both CFB and Soccer Early Lock on 2026-09-01).
+
+    Searches ALL of today's runs for the one that actually contains a real
+    invocation, in whichever order gh returned them -- there should be
+    exactly one per day; a completed+success run with no invocation is an
+    expected no-op skip, not scanned further. A completed-but-NOT-success
+    run is a real problem and gets surfaced immediately rather than
+    silently passed over while searching for an invocation elsewhere.
+    Only returns (None, None) -- "nothing to verify content on, and
+    nothing wrong either" -- when every run found today is a legitimate
+    success-with-no-invocation skip."""
+    any_failed = None
+    for run in todays:
+        if run["status"] != "completed":
+            continue
+        if run["conclusion"] != "success":
+            any_failed = any_failed or run
+            continue
+        try:
+            log = _log_text(run["databaseId"])
+        except Exception:
+            continue
+        cmd_lines = [l for l in log.splitlines() if "python3 scripts/auto_lock_settle.py" in l and "##[group]Run" in l]
+        if cmd_lines:
+            return run, None
+    if any_failed:
+        return None, f"{label}: run {any_failed['databaseId']} concluded '{any_failed['conclusion']}', not success"
+    if not any(r["status"] == "completed" for r in todays):
+        return None, f"{label}: today's run(s) still in progress, none completed yet"
+    return None, None
+
+
 def check_cfb_early() -> str | None:
-    runs = _recent_runs("CFB Auto Lock (Early)")
+    runs = _recent_runs("CFB Auto Lock (Early)", limit=20)
     todays = [r for r in runs if r["event"] == "schedule" and r["createdAt"].startswith(_today_utc())]
     if not todays:
         return "CFB Early Lock: no schedule-triggered run found today"
-    return _check_run(todays[0], "CFB Early Lock",
+    run, problem = _find_invocation_run(todays, "CFB Early Lock")
+    if problem:
+        return problem
+    if not run:
+        return None  # every run today legitimately skipped (should_run=0) -- nothing to verify content on
+    return _check_run(run, "CFB Early Lock",
                        ["=== AUTO-LOCK (PREMIUM/OPTIMAL) — CFB ===", "Locks email (CFB)"])
 
 
 def check_soccer_early() -> str | None:
-    runs = _recent_runs("Soccer Auto Lock (Early)")
+    runs = _recent_runs("Soccer Auto Lock (Early)", limit=20)
     todays = [r for r in runs if r["event"] == "schedule" and r["createdAt"].startswith(_today_utc())]
     if not todays:
         return "Soccer Early Lock: no schedule-triggered run found today"
-    return _check_run(todays[0], "Soccer Early Lock",
+    run, problem = _find_invocation_run(todays, "Soccer Early Lock")
+    if problem:
+        return problem
+    if not run:
+        return None
+    return _check_run(run, "Soccer Early Lock",
                        ["=== AUTO-LOCK (PREMIUM/OPTIMAL) — SOCCER ===", "Locks email (SOCCER)"])
 
 
 def check_main_lock() -> str | None:
-    """The main workflow fires 5x/day on one shared schedule trigger (1
-    lock pass + 4 settle passes) -- have to find the specific LOCK run
-    among today's schedule runs by checking each candidate's own log,
-    since the GitHub API's run metadata alone doesn't distinguish them."""
-    runs = _recent_runs("Auto Lock + Settle", limit=8)
+    """This workflow has 12 nominal cron slots/day (3 lock checks, digest,
+    adaptive-recalibration, and 7 settle-only catch-ups), plus its own
+    catch-up retries on top of that when a slot's marker shows it hasn't
+    fired yet -- confirmed real days with well over 8 runs before this
+    check's own 17:30 UTC trigger time. Real bug this fixes: `limit=8`
+    only pulled the 8 MOST RECENT runs -- on a busy day (heavy catch-up
+    retries, or extra manual/workflow_dispatch runs like this repo saw
+    during 2026-09-01's testing) the actual lock-pass run can scroll
+    entirely out of an 8-run window well before this check ever runs,
+    producing a false "none was identifiable as the lock pass" alert for
+    a lock that genuinely happened earlier that same day. Bumped well
+    past any realistic single day's run count."""
+    runs = _recent_runs("Auto Lock + Settle", limit=40)
     todays = [r for r in runs if r["event"] == "schedule" and r["createdAt"].startswith(_today_utc())]
     if not todays:
         return "Main Lock: no schedule-triggered run found today at all"
@@ -122,7 +200,11 @@ def check_main_lock() -> str | None:
             log = _log_text(run["databaseId"])
         except Exception:
             continue
-        cmd_lines = [l for l in log.splitlines() if "python3 scripts/auto_lock_settle.py" in l and "##[group]Run" in l]
+        # Same "##[group]Run" fix as _check_run above -- this workflow's
+        # real invocation line never carries that marker (see the comment
+        # there for why), so this independent copy of the same match needed
+        # the identical fix.
+        cmd_lines = [l for l in log.splitlines() if "python3 scripts/auto_lock_settle.py" in l]
         if cmd_lines and "--lock" in cmd_lines[-1] and "--settle" not in cmd_lines[-1]:
             # Found today's lock pass -- run the full content check on it.
             problem = _check_run(run, "Main Lock", ["=== AUTO-LOCK (PREMIUM/OPTIMAL) — ALL PRODUCTS ==="])
