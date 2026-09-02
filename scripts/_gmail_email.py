@@ -27,10 +27,33 @@ Usage:
   from _gmail_email import send_email, EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE
   ok, msg = send_email("Subject", "recipient@example.com", EMAIL_WRAP_OPEN + "<p>html body</p>" + EMAIL_WRAP_CLOSE)
   ok, msg = send_email("Subject", ["a@x.com", "b@x.com"], EMAIL_WRAP_OPEN + "<p>html body</p>" + EMAIL_WRAP_CLOSE)  # BCC'd -- see note below
+
+Added ahead of real subscriber growth (2026-09-02 engine audit -- at
+zero real subscribers neither of these has ever fired, so this is
+prep, not a fix for an observed failure):
+  - Batches recipients into groups of MAX_RECIPIENTS_PER_SEND. A plain
+    (non-Workspace) Gmail account -- which clairvoyanceengine@gmail.com
+    reads as -- caps at ~500 recipients (To+Cc+Bcc combined) per single
+    message; every product's locks email BCCs its whole subscriber list
+    in one send_email() call, so a product's list crossing that number
+    would otherwise silently fail the entire send for every subscriber
+    on it, not just the ones past #500. Kept a safety margin under the
+    real 500 cap rather than the exact number.
+  - Retries each batch up to MAX_SEND_ATTEMPTS times with a short
+    backoff before giving up -- there was no retry at all before this;
+    a single transient SMTP hiccup (network blip, a momentary Gmail-
+    side throttle) used to just fail the whole send with nothing
+    automatically trying again.
+A multi-batch send can partially succeed (e.g. batch 1 of 2 delivers,
+batch 2 hits a transient error even after retries) -- the return
+message says exactly how many of the total recipients were actually
+reached rather than collapsing that down to a single ok/fail bit, so a
+caller logging the result can tell a full failure from a partial one.
 """
 from __future__ import annotations
 import os
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -39,6 +62,10 @@ from pathlib import Path
 
 GMAIL_USER = "clairvoyanceengine@gmail.com"
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+
+MAX_RECIPIENTS_PER_SEND = 450
+MAX_SEND_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = (2, 6)
 
 # Shared chrome every email renders inside -- plain white body, no
 # header art. Kept as OPEN/CLOSE (not a single wrap-everything helper)
@@ -74,23 +101,10 @@ DISCLAIMER_HTML = (
 EMAIL_WRAP_CLOSE_DISCLOSED = DISCLAIMER_HTML + EMAIL_WRAP_CLOSE
 
 
-def send_email(subject: str, to: str | list[str], html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
-    """Never raises -- returns (success, message) so callers can log the
-    result themselves the same way they logged Resend's HTTP response.
-
-    `to` as a list (multiple paying subscribers on the same sport) sends
-    to every address via BCC -- the To: header itself stays the sending
-    account, so subscribers never see each other's email addresses. A
-    single string still populates a real To: header as before."""
-    if not GMAIL_APP_PASSWORD:
-        return False, "GMAIL_APP_PASSWORD not set"
-    recipients = [to] if isinstance(to, str) else list(dict.fromkeys(r for r in to if r))
-    if not recipients:
-        return False, "no recipient"
-
+def _build_message(subject: str, batch: list[str], html_body: str, attachments: list[Path] | None) -> MIMEMultipart:
     msg = MIMEMultipart()
     msg["From"] = f"Clairvoyance Engine <{GMAIL_USER}>"
-    msg["To"] = recipients[0] if len(recipients) == 1 else GMAIL_USER
+    msg["To"] = batch[0] if len(batch) == 1 else GMAIL_USER
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
@@ -102,12 +116,63 @@ def send_email(subject: str, to: str | list[str], html_body: str, attachments: l
         encoders.encode_base64(part)
         part.add_header("Content-Disposition", f"attachment; filename={path.name}")
         msg.attach(part)
+    return msg
 
-    try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, recipients, msg.as_string())
-        return True, "sent"
-    except Exception as exc:
-        return False, str(exc)
+
+def _send_batch_with_retry(batch: list[str], msg: MIMEMultipart) -> tuple[bool, str]:
+    """One batch, retried up to MAX_SEND_ATTEMPTS times with a short
+    backoff -- a fresh SMTP connection + login per attempt rather than
+    reusing one across retries, since a flaky login/connection is
+    exactly the kind of thing a retry needs to actually get past, not
+    just resend the same request over a connection that's the problem."""
+    last_err = ""
+    for attempt in range(MAX_SEND_ATTEMPTS):
+        if attempt > 0:
+            time.sleep(RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)])
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+                server.starttls()
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, batch, msg.as_string())
+            return True, "sent"
+        except Exception as exc:
+            last_err = str(exc)
+    return False, last_err
+
+
+def send_email(subject: str, to: str | list[str], html_body: str, attachments: list[Path] | None = None) -> tuple[bool, str]:
+    """Never raises -- returns (success, message) so callers can log the
+    result themselves the same way they logged Resend's HTTP response.
+
+    `to` as a list (multiple paying subscribers on the same sport) sends
+    to every address via BCC -- the To: header itself stays the sending
+    account, so subscribers never see each other's email addresses. A
+    single string still populates a real To: header as before.
+
+    A large list is split into batches of MAX_RECIPIENTS_PER_SEND and
+    each batch retried independently (see module docstring) -- for the
+    common case (well under that count) this is exactly one batch, one
+    attempt, same behavior as before batching existed."""
+    if not GMAIL_APP_PASSWORD:
+        return False, "GMAIL_APP_PASSWORD not set"
+    recipients = [to] if isinstance(to, str) else list(dict.fromkeys(r for r in to if r))
+    if not recipients:
+        return False, "no recipient"
+
+    batches = [recipients[i:i + MAX_RECIPIENTS_PER_SEND] for i in range(0, len(recipients), MAX_RECIPIENTS_PER_SEND)]
+    sent_count = 0
+    batch_errors: list[str] = []
+    for batch in batches:
+        msg = _build_message(subject, batch, html_body, attachments)
+        ok, err = _send_batch_with_retry(batch, msg)
+        if ok:
+            sent_count += len(batch)
+        else:
+            batch_errors.append(f"{len(batch)} recipient(s): {err}")
+
+    if not batch_errors:
+        suffix = f" across {len(batches)} batches" if len(batches) > 1 else ""
+        return True, f"sent to {sent_count} recipient(s){suffix}"
+    if sent_count == 0:
+        return False, "; ".join(batch_errors)
+    return False, f"partial send -- {sent_count}/{len(recipients)} delivered; failures: {'; '.join(batch_errors)}"
