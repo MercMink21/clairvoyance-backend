@@ -28051,19 +28051,33 @@ function _socXG(name,leagueKey){
 // alone, same as before this existed.
 var _CL_DOMESTIC_LEAGUES=['pl','liga','bl','ita'];
 var _CL_WEIGHT_MAX=0.35,_CL_WEIGHT_RAMP_GAMES=3;
+// Shared resolver: which domestic league (if any) this CL team plays in,
+// and how much weight its CL-specific sample has earned so far this
+// season. Originally inlined into _socXGBlendCLDomestic below (the xG
+// blend); factored out so the OTHER per-match factors further down
+// (_fbrefFieldsFactor/_socFormFactor/_socStandingsFactor) can blend CL
+// with domestic the same way instead of running on CL-specific data
+// alone -- xG was never the only signal that needed this treatment, just
+// the first one built.
+function _clDomesticContext(name){
+  var domKey=null;
+  for(var i=0;i<_CL_DOMESTIC_LEAGUES.length;i++){
+    if(_socXGFromFBref(name,_CL_DOMESTIC_LEAGUES[i])){domKey=_CL_DOMESTIC_LEAGUES[i];break;}
+  }
+  if(!domKey)return null;
+  var clD=_socXGFromFBref(name,'cl');
+  var clGames=(clD&&clD.gamesPlayedThisSeason)||0;
+  var wCL=_CL_WEIGHT_MAX*Math.min(clGames,_CL_WEIGHT_RAMP_GAMES)/_CL_WEIGHT_RAMP_GAMES;
+  return{domKey:domKey,wCL:wCL,wDom:1-wCL};
+}
 function _socXGBlendCLDomestic(name){
   var clD=_socXGFromFBref(name,'cl');
-  var domD=null,domKey=null;
-  for(var i=0;i<_CL_DOMESTIC_LEAGUES.length;i++){
-    var d=_socXGFromFBref(name,_CL_DOMESTIC_LEAGUES[i]);
-    if(d){domD=d;domKey=_CL_DOMESTIC_LEAGUES[i];break;}
-  }
-  if(!clD&&!domD)return null;
-  if(!domD)return clD;
+  var ctx=_clDomesticContext(name);
+  if(!clD&&!ctx)return null;
+  if(!ctx)return clD;
+  var domD=_socXGFromFBref(name,ctx.domKey);
   if(!clD)return domD;
-  var clGames=clD.gamesPlayedThisSeason||0;
-  var wCL=_CL_WEIGHT_MAX*Math.min(clGames,_CL_WEIGHT_RAMP_GAMES)/_CL_WEIGHT_RAMP_GAMES;
-  var wDom=1-wCL;
+  var wCL=ctx.wCL,wDom=ctx.wDom,domKey=ctx.domKey;
   function blend(a,b){return(a==null||b==null)?(a==null?b:a):a*wCL+b*wDom;}
   return{
     xg:blend(clD.xg,domD.xg),xga:blend(clD.xga,domD.xga),
@@ -28364,17 +28378,37 @@ function _fbrefLeagueAverages(leagueKey){
 // -- tighter than _optaAdvancedFactor since these are cruder proxies
 // (goals-based xag/shots, not real shot-location xG) and this stacks on
 // top of that factor too for the leagues that have both.
-function _fbrefFieldsFactor(name,leagueKey){
-  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
-  var avgS=_fbrefLeagueAverages(leagueKey);if(!avgS)return 1;
+function _fbrefFieldsFactorRaw(name,leagueKey){
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return null;
+  var avgS=_fbrefLeagueAverages(leagueKey);if(!avgS)return null;
   var tk2=_socFuzzyFind(name,Object.keys(teams));
-  if(!tk2)return 1;
+  if(!tk2)return null;
   var t=teams[tk2];
   var possFactor=avgS.poss>0&&t.poss?(t.poss/avgS.poss):1;
   var xagFactor=(avgS.xagPg>0&&t.mp)?(((t.xag||0)/t.mp)/avgS.xagPg):1;
   var shotsFactor=avgS.shotsPg>0&&t.shots_pg?(t.shots_pg/avgS.shotsPg):1;
   var sotFactor=avgS.sotPg>0&&t.sot_pg?(t.sot_pg/avgS.sotPg):1;
-  var raw=possFactor*0.20+xagFactor*0.35+shotsFactor*0.20+sotFactor*0.25;
+  return possFactor*0.20+xagFactor*0.35+shotsFactor*0.20+sotFactor*0.25;
+}
+// CL-aware wrapper: this and the two factors below (_socFormFactor,
+// _socStandingsFactor) used to run on CL-specific data only for a CL
+// match, unlike the xG blend above -- same "CL-specific + domestic"
+// treatment as _socXGBlendCLDomestic, via the same _clDomesticContext
+// weight, applied here to possession/xAG/shots/SOT-on-target instead of
+// goals. Every other league unaffected (still goes straight to the Raw
+// helper, unblended, exactly as before this split).
+function _fbrefFieldsFactor(name,leagueKey){
+  var raw;
+  if(leagueKey==='cl'){
+    var ctx=_clDomesticContext(name);
+    var clRaw=_fbrefFieldsFactorRaw(name,'cl');
+    var domRaw=ctx?_fbrefFieldsFactorRaw(name,ctx.domKey):null;
+    if(clRaw==null&&domRaw==null)return 1;
+    raw=(clRaw!=null&&domRaw!=null)?(clRaw*ctx.wCL+domRaw*ctx.wDom):(domRaw!=null?domRaw:clRaw);
+  }else{
+    raw=_fbrefFieldsFactorRaw(name,leagueKey);
+    if(raw==null)return 1;
+  }
   return Math.max(0.94,Math.min(1.06,raw));
 }
 
@@ -28382,15 +28416,29 @@ function _fbrefFieldsFactor(name,leagueKey){
 // average (not league average -- the point is detecting a hot/cold streak
 // relative to their own baseline, not how they compare to the league).
 // Needs at least 3 of the last 5 completed to mean anything. +/-6% clamp.
-function _socFormFactor(name,leagueKey){
-  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return 1;
+function _socFormFactorRaw(name,leagueKey){
+  var fb=window.__CV_FBREF&&window.__CV_FBREF[leagueKey];var teams=fb&&fb.teams;if(!teams||!name)return null;
   var tk2=_socFuzzyFind(name,Object.keys(teams));
-  if(!tk2)return 1;
+  if(!tk2)return null;
   var t=teams[tk2];
-  var rf=t.recentForm;if(!rf||rf.games<3)return 1;
+  var rf=t.recentForm;if(!rf||rf.games<3)return null;
   var seasonGdPg=t.mp?(((t.gf||0)-(t.ga||0))/t.mp):0;
   var recentGdPg=rf.gf-rf.ga;
-  var delta=recentGdPg-seasonGdPg;
+  return recentGdPg-seasonGdPg;
+}
+// CL-aware wrapper -- see _fbrefFieldsFactor's comment just above for why.
+function _socFormFactor(name,leagueKey){
+  var delta;
+  if(leagueKey==='cl'){
+    var ctx=_clDomesticContext(name);
+    var clD=_socFormFactorRaw(name,'cl');
+    var domD=ctx?_socFormFactorRaw(name,ctx.domKey):null;
+    if(clD==null&&domD==null)return 1;
+    delta=(clD!=null&&domD!=null)?(clD*ctx.wCL+domD*ctx.wDom):(domD!=null?domD:clD);
+  }else{
+    delta=_socFormFactorRaw(name,leagueKey);
+    if(delta==null)return 1;
+  }
   return 1+Math.max(-0.06,Math.min(0.06,delta*0.05));
 }
 
@@ -28404,16 +28452,35 @@ function _socFormFactor(name,leagueKey){
 // firing its own fetch -- returns neutral if standings haven't loaded yet
 // rather than blocking on a new request from inside a sync render path.
 // +/-6% clamp.
-function _socStandingsFactor(name,leagueKey){
+function _socStandingsFactorRaw(name,leagueKey){
   var rows=(typeof _leagueStandCache!=='undefined')&&_leagueStandCache[leagueKey];
-  if(!rows||!rows.length||!name)return 1;
+  if(!rows||!rows.length||!name)return null;
   var k=name.toLowerCase().trim();
   var row=rows.find(function(r){var rn=(r.name||'').toLowerCase();return rn===k||rn.indexOf(k)>=0||k.indexOf(rn)>=0;});
-  if(!row||!row.mp)return 1;
+  if(!row||!row.mp)return null;
   var ppg=row.pts/row.mp;
   var avgPpg=rows.reduce(function(s,r){return s+(r.mp?r.pts/r.mp:0);},0)/rows.length;
-  if(!avgPpg)return 1;
-  return Math.max(0.94,Math.min(1.06,ppg/avgPpg));
+  if(!avgPpg)return null;
+  return ppg/avgPpg;
+}
+// CL-aware wrapper -- see _fbrefFieldsFactor's comment above for why. A
+// team's domestic-league standing is real, relevant signal for a CL
+// match too (how they're doing overall this season, not just in CL
+// specifically), same reasoning as blending domestic into the xG/form/
+// fbref-fields factors.
+function _socStandingsFactor(name,leagueKey){
+  var raw;
+  if(leagueKey==='cl'){
+    var ctx=_clDomesticContext(name);
+    var clRaw=_socStandingsFactorRaw(name,'cl');
+    var domRaw=ctx?_socStandingsFactorRaw(name,ctx.domKey):null;
+    if(clRaw==null&&domRaw==null)return 1;
+    raw=(clRaw!=null&&domRaw!=null)?(clRaw*ctx.wCL+domRaw*ctx.wDom):(domRaw!=null?domRaw:clRaw);
+  }else{
+    raw=_socStandingsFactorRaw(name,leagueKey);
+    if(raw==null)return 1;
+  }
+  return Math.max(0.94,Math.min(1.06,raw));
 }
 
 // Head-to-head: this specific matchup's history from the home team's own
