@@ -467,19 +467,124 @@ def fetch_baseball_reference() -> dict:
         ("pitching", "https://www.baseball-reference.com/leagues/majors/2026-standard-pitching.shtml",  "players_standard_pitching"),
     ]
     for key, url, tbl_id in pairs:
+        # Real gap, found via a live MLB-accuracy audit: the pitching table
+        # was capped at limit=50 (league-wide, sorted by IP) -- fine for a
+        # "top-50 leaders" display, nowhere near enough to see a real
+        # bullpen. Confirmed live: the real 2026 players_standard_pitching
+        # table has 1079 rows; a reliever with modest IP sits well past
+        # row 50, sorted behind every team's starters. Raised to 1500 --
+        # comfortably above the real current total with room for the rest
+        # of the season's roster churn, and this table naturally self-caps
+        # at "however many pitchers have actually appeared in a real MLB
+        # game this year," not an ever-growing number. batting keeps its
+        # original 50-row cap -- this fix is specifically about pitching/
+        # bullpen coverage, not batting leaders, which nothing here needs
+        # beyond the existing top-50 display use.
+        limit = 1500 if key == "pitching" else 50
         try:
             time.sleep(2)    # rate-limit SR
             soup = fetch_html(url, timeout=25, ref=True)
             if not soup: continue
-            rows = _table_to_rows(soup, tbl_id, limit=50)
+            rows = _table_to_rows(soup, tbl_id, limit=limit)
             if not rows:   # fallback: first big table
                 for tbl in soup.find_all("table"):
-                    r = _table_to_rows(soup, tbl.get("id",""), limit=50) if tbl.get("id") else []
+                    r = _table_to_rows(soup, tbl.get("id",""), limit=limit) if tbl.get("id") else []
                     if len(r) > 10: rows = r; break
-            result[key] = rows[:50]
+            result[key] = rows[:limit]
             vlog(f"  Baseball Ref {key}: {len(rows)} rows")
         except Exception as exc:
             log(f"Baseball Ref {key}: {exc}", "WARN")
+    return result
+
+
+# Baseball-Reference's team_name_abbr occasionally differs from this app's
+# own canonical MLB team keys (see the MLB const in docs/app.html) --
+# confirmed via a live scrape of players_standard_pitching (2026-09-02).
+_BREF_TEAM_ABBR_MAP = {
+    "ATH": "OAK", "CHW": "CWS", "KCR": "KC", "SDP": "SD", "SFG": "SF", "TBR": "TB",
+}
+
+
+def fetch_mlb_bullpen_stats(pitching_rows: list[dict]) -> dict:
+    """
+    Isolates real bullpen-only pitching quality per team from Baseball-
+    Reference's players_standard_pitching rows (see fetch_baseball_reference,
+    now fetched at a high enough limit to cover the whole league's real
+    usage, not just the top-50 overall leaders) -- the MLB win-probability
+    model (adjLam/mlbMC in docs/app.html) currently has real signal for a
+    team's OFFENSE (bat.RG) and today's probable STARTER (PIT[abbr], from
+    ESPN's live probable-pitcher feed) but nothing at all for the bullpen
+    that actually pitches innings 6-9 of a real game -- a team with a great
+    rotation and a terrible bullpen currently prices identically to one
+    with a great rotation AND a great bullpen.
+
+    A pitcher is classified as a reliever when GS/G < 0.5 (mostly relief
+    appearances, the standard sabermetric convention) -- everything else
+    (a real starter, or a spot-starter who's mostly started) is excluded.
+    Real per-team, per-stint rows only: Baseball-Reference's own combined
+    "2TM"/"3TM"/etc rows for a traded player are excluded (confirmed live:
+    a real traded pitcher's 2TM row's IP exactly equals the sum of his 2
+    separate real-team stint rows -- keeping both would double-count that
+    pitcher's innings onto both his own team AND the league-wide total).
+
+    Filters below a minimum-innings threshold so a one-batter emergency/
+    position-player appearance (real ERA of 27.00 off 2 batters faced,
+    common in real blowouts) can't skew a team's actual bullpen quality
+    off a tiny, noisy sample -- and drops any team with fewer than 3 real
+    relievers on record rather than reporting a number from 1-2 pitchers.
+
+    Returns {team_abbr: {era, fip, ip, n}} -- era/fip are innings-weighted
+    averages across that team's real relief corps (not a simple mean --
+    a reliever with 60 IP should count far more than one with 5), ip is
+    total relief innings (a rough bullpen workload/depth signal), n is the
+    real reliever count that sample was built from.
+    """
+    MIN_IP = 3.0
+    MIN_RELIEVERS = 3
+    agg: dict[str, dict] = {}
+    for row in pitching_rows:
+        tm_raw = (row.get("team_name_abbr") or "").strip()
+        if not tm_raw or tm_raw in ("", "Tm", "--") or re.match(r"^\d+TM$", tm_raw):
+            continue  # blank/header row or a combined multi-team summary row
+        tm = _BREF_TEAM_ABBR_MAP.get(tm_raw, tm_raw)
+        try:
+            g  = float(row.get("p_g") or 0)
+            gs = float(row.get("p_gs") or 0)
+            ip = float(row.get("p_ip") or 0)
+        except (ValueError, TypeError):
+            continue
+        if g <= 0 or ip < MIN_IP:
+            continue
+        if gs / g >= 0.5:
+            continue  # a real starter (or mostly-starter), not bullpen
+        try:
+            era = float(row.get("p_earned_run_avg") or 0)
+        except (ValueError, TypeError):
+            era = 0.0
+        try:
+            fip = float(row.get("p_fip") or 0)
+        except (ValueError, TypeError):
+            fip = 0.0
+        a = agg.setdefault(tm, {"era_ip": 0.0, "fip_ip": 0.0, "era_wsum": 0.0, "fip_wsum": 0.0, "ip": 0.0, "n": 0})
+        a["ip"] += ip
+        a["n"]  += 1
+        if era > 0:
+            a["era_wsum"] += era * ip
+            a["era_ip"]   += ip
+        if fip > 0:
+            a["fip_wsum"] += fip * ip
+            a["fip_ip"]   += ip
+    result: dict = {}
+    for tm, a in agg.items():
+        if a["n"] < MIN_RELIEVERS:
+            continue
+        result[tm] = {
+            "era": round(a["era_wsum"] / a["era_ip"], 3) if a["era_ip"] > 0 else None,
+            "fip": round(a["fip_wsum"] / a["fip_ip"], 3) if a["fip_ip"] > 0 else None,
+            "ip":  round(a["ip"], 1),
+            "n":   a["n"],
+        }
+    log(f"MLB bullpen: {len(result)} teams (from {len(pitching_rows)} pitching rows)")
     return result
 
 def fetch_mlb_team_sabermetrics() -> dict:
@@ -5519,6 +5624,7 @@ def main() -> None:
     mlb_standings        = fetch_mlb_standings()          if S in ("mlb","all") else {}
     mlb_week             = fetch_mlb_schedule_week()      if S in ("mlb","all") else []
     mlb_ref              = (fetch_baseball_reference()    if not args.no_reference else {}) if S in ("mlb","all") else {}
+    mlb_bullpen          = (fetch_mlb_bullpen_stats(mlb_ref.get("pitching", [])) if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_sabre            = (fetch_mlb_team_sabermetrics() if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_fielding         = (fetch_mlb_team_fielding()     if not args.no_reference else {}) if S in ("mlb","all") else {}
     mlb_batters          = fetch_mlb_batter_rosters()     if S in ("mlb","all") else {}
@@ -5868,6 +5974,7 @@ def main() -> None:
             "sabre":        mlb_sabre,
             "fielding":     mlb_fielding,
             "reference":    mlb_ref,
+            "bullpen":      mlb_bullpen,
             "batters":      mlb_batters,
             "statcast":     mlb_statcast,
         },
