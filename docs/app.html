@@ -27940,6 +27940,13 @@ function _socXGFromFBref(name,leagueKey){
         return {xg:t.xg/mp,xga:t.xga/mp,hxg:hxg,hxga:hxga,axg:axg,axga:axga,gf:t.gf/mp,ga:t.ga/mp,mp:mp,
                 poss:t.poss,xag:t.xag,shotsPg:t.shots_pg,sotPg:t.sot_pg,
                 recentForm:t.recentForm,homeSplit:t.homeSplit,awaySplit:t.awaySplit,matchLog:t.matchLog,
+                // Real current-season games played, distinct from `mp` above
+                // (floored to a minimum of 1 by the backend so nothing
+                // downstream divides by zero) -- needed by
+                // _socXGBlendCLDomestic's ramp below, which has to tell "0
+                // real CL games played yet" apart from "1 real CL game
+                // played", a distinction `mp` alone can't make.
+                gamesPlayedThisSeason:t.gamesPlayedThisSeason,
                 homeSplitUsed:!!split,src:'fbref'};
       }
     }
@@ -28022,9 +28029,56 @@ function _socXG(name,leagueKey){
   if(_OPTA_LEAGUES.indexOf(leagueKey)>=0)result=_blendLeagueOpta(name,result,leagueKey);
   return result;
 }
+// Champions League draws its 36 teams from ~15 different domestic
+// leagues; this app only tracks 5 of them directly (PL/La Liga/
+// Bundesliga/Serie A -- MLS excluded, no MLS club plays in UEFA
+// competitions). For a CL match, blend CL-specific performance (real
+// signal on how a team does against Europe's best, but capped at ~8
+// league-phase games -- a small, high-variance sample even at a full
+// season) with that same team's domestic-league form (30-38 games,
+// the far larger and more stable base) when both exist. Weight ramps
+// in with real current-season CL games played (gamesPlayedThisSeason,
+// NOT `mp`, which the backend floors to 1 even at 0 real games -- see
+// _socXGFromFBref's own comment on that field), capped at 45% so a
+// small CL sample can meaningfully move the needle without ever
+// outweighing the much larger domestic one. A team with no domestic
+// entry at all (most of the other ~half the field -- Fenerbahce,
+// Galatasaray, Club Brugge, Shakhtar Donetsk, etc., all from leagues
+// this app doesn't track) just runs on CL-specific data alone, same
+// as before this existed.
+var _CL_DOMESTIC_LEAGUES=['pl','liga','bl','ita'];
+var _CL_WEIGHT_MAX=0.45,_CL_WEIGHT_RAMP_GAMES=3;
+function _socXGBlendCLDomestic(name){
+  var clD=_socXGFromFBref(name,'cl');
+  var domD=null,domKey=null;
+  for(var i=0;i<_CL_DOMESTIC_LEAGUES.length;i++){
+    var d=_socXGFromFBref(name,_CL_DOMESTIC_LEAGUES[i]);
+    if(d){domD=d;domKey=_CL_DOMESTIC_LEAGUES[i];break;}
+  }
+  if(!clD&&!domD)return null;
+  if(!domD)return clD;
+  if(!clD)return domD;
+  var clGames=clD.gamesPlayedThisSeason||0;
+  var wCL=_CL_WEIGHT_MAX*Math.min(clGames,_CL_WEIGHT_RAMP_GAMES)/_CL_WEIGHT_RAMP_GAMES;
+  var wDom=1-wCL;
+  function blend(a,b){return(a==null||b==null)?(a==null?b:a):a*wCL+b*wDom;}
+  return{
+    xg:blend(clD.xg,domD.xg),xga:blend(clD.xga,domD.xga),
+    hxg:blend(clD.hxg,domD.hxg),hxga:blend(clD.hxga,domD.hxga),
+    axg:blend(clD.axg,domD.axg),axga:blend(clD.axga,domD.axga),
+    // Display/context fields read from the domestic side -- a full
+    // season's worth of games/possession/form/splits is the more
+    // meaningful number to show than a partial CL slate's.
+    gf:domD.gf,ga:domD.ga,mp:domD.mp,poss:domD.poss,xag:domD.xag,
+    shotsPg:domD.shotsPg,sotPg:domD.sotPg,recentForm:domD.recentForm,
+    homeSplit:domD.homeSplit,awaySplit:domD.awaySplit,matchLog:domD.matchLog,
+    homeSplitUsed:domD.homeSplitUsed,
+    src:'cl+'+domKey+'-blend(w_cl='+wCL.toFixed(2)+')',
+  };
+}
 function _socXGRaw(name,leagueKey){
   if(!name)return null;
-  var live=_socXGFromFBref(name,leagueKey);
+  var live=leagueKey==='cl'?_socXGBlendCLDomestic(name):_socXGFromFBref(name,leagueKey);
   if(live)return live;
   var k=name.toLowerCase().trim();
   if(_SOC_XG[k])return _SOC_XG[k];
