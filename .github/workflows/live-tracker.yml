@@ -11,11 +11,26 @@ name: Live Score Tracker
 # like GitHub Actions deprioritizing/dropping a high-frequency schedule
 # outright, possibly compounded by this repo's overall scheduled-trigger
 # volume across ~15 other workflow files. Widened to every 15 min as a
-# best-effort mitigation (less contention should mean more of what's
-# requested actually lands), NOT a proven fix -- if real run history
-# still shows large gaps after this change, the interval alone isn't
-# the answer and this needs a different approach (e.g. a self-healing
-# staleness check piggybacked on a more reliably-firing workflow).
+# best-effort mitigation -- CONFIRMED not a fix: a 2026-09-02 audit of
+# subscriber-email delivery (auto-lock-settle.yml's --final-lock-check
+# run, the one that actually emails) found the same problem still very
+# much alive with the 15-min interval in place -- real sends landing
+# 1.5 to 10 hours after their 13:35 UTC target across 5 straight days
+# checked, with gh run logs confirming github.event.schedule correctly
+# reported the intended cron string each time (so it's not that the
+# trigger fired wrong -- the runner itself just didn't start for
+# hours). This one workflow alone was firing ~72 times/day (every 15
+# min, 18hrs/day) -- almost certainly the single largest contributor to
+# this account's total daily scheduled-trigger volume, which is the
+# more likely lever against GitHub's own account-wide throttling of
+# high-volume free-tier scheduling (documented by GitHub itself) than
+# any single cron's own minute offset. Widened again to every 30 min
+# (~36 runs/day) on that evidence -- still checks every watchdog hour
+# below at least twice, and live-score staleness of up to 30 min is a
+# small cost against the multi-hour delays actually being observed
+# elsewhere in the account right now. If email delivery delay persists
+# at this interval too, the volume-reduction theory itself needs
+# revisiting, not just another interval widening.
 #
 # Also replaces run_update.sh's own --mode live cron entry (retired from
 # the local crontab) rather than running both: that entry's
@@ -28,7 +43,7 @@ name: Live Score Tracker
 
 on:
   schedule:
-    # Every 15 min, 6am-11pm MT -- widened from 9am-11pm (matching
+    # Every 30 min, 6am-11pm MT -- widened from 9am-11pm (matching
     # live_tracker.py's own default game-window gate, 11am-1am ET) to
     # also cover CFB/soccer's early-lock windows for the watchdog step
     # below. Live-score polling itself still no-ops harmlessly for the
@@ -36,7 +51,7 @@ on:
     # 6am MT = 12:00 UTC, 11pm MT = 05:00 UTC next day (MDT), hence the
     # split hour range. Like every other fixed-UTC cron in this repo,
     # drifts ~1hr earlier MT once MST returns in November.
-    - cron: '*/15 12-23,0-5 * * *'
+    - cron: '*/30 12-23,0-5 * * *'
   workflow_dispatch:
 
 permissions:
