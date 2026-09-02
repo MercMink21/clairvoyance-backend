@@ -5958,13 +5958,28 @@ async function renderNHLEdge(type){
       el.innerHTML=`<div style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-bottom:8px">SOURCE: EMBEDDED DATA · NHL EDGE (API offline)</div>
       <div style="overflow-x:auto"><table class="dt">
         <thead><tr><th>TEAM</th><th>xGF%</th><th>CF%</th><th>HDCF%</th><th>SH%</th><th>SV%</th><th>SPD</th><th>OZ%</th><th>DZ%</th></tr></thead>
-        <tbody>${Object.entries(NHL).filter(([abbr])=>abbr!=='ANA').map(([abbr,t])=>{const e=t.edge||{};return`<tr>
+        <tbody>${Object.entries(NHL).filter(([abbr])=>abbr!=='ANA').map(([abbr,t])=>{const e=t.edge||{};
+          // Real bug, found live (uncaught TypeError on every page load):
+          // this static fallback object only has full xgf5/cf5/hdcf/sv
+          // stats for the 4 teams that made the 2025 playoff semifinals
+          // (COL/VGK/MTL/CAR, hand-authored with a full series writeup) --
+          // every other team's entry has neither field at all. Every OTHER
+          // field in this row already had a ||fallback (e.sh_pct||11 etc);
+          // these 4 didn't, so this threw the moment iteration reached the
+          // first non-semifinalist team -- which, since this static table
+          // is the fallback for when the backend API isn't reachable (the
+          // normal case on the static GitHub Pages deployment, not a rare
+          // edge case), was every single page load in practice. League-
+          // average-ish neutral defaults, same convention as the other
+          // guarded fields in this row.
+          const xgf5=t.xgf5??.50,cf5=t.cf5??.50,hdcf=t.hdcf??50,sv=t.sv??.905;
+          return`<tr>
           <td><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--ic)">${abbr}</div><div style="font-family:var(--mono);font-size:17px;color:var(--t2)">${t.n}</div></td>
-          <td style="color:${t.xgf5>=.52?'var(--nc)':'var(--hc)'}">${(t.xgf5*100).toFixed(1)}%</td>
-          <td>${(t.cf5*100).toFixed(1)}%</td>
-          <td style="color:${t.hdcf>=52?'var(--nc)':'var(--t)'}">${t.hdcf.toFixed(1)}%</td>
+          <td style="color:${xgf5>=.52?'var(--nc)':'var(--hc)'}">${(xgf5*100).toFixed(1)}%</td>
+          <td>${(cf5*100).toFixed(1)}%</td>
+          <td style="color:${hdcf>=52?'var(--nc)':'var(--t)'}">${hdcf.toFixed(1)}%</td>
           <td class="nv">${(e.sh_pct||11).toFixed(1)}%</td>
-          <td style="color:${t.sv>=.920?'var(--nc)':'var(--hc)'}">${(t.sv*100).toFixed(1)}%</td>
+          <td style="color:${sv>=.920?'var(--nc)':'var(--hc)'}">${(sv*100).toFixed(1)}%</td>
           <td class="np">${(e.avg_spd||e.spd||20.5).toFixed(1)}</td>
           <td style="color:${(e.zone_off||e.zoneOff||50)>=55?'var(--nc)':'var(--t)'}">${(e.zone_off||e.zoneOff||50).toFixed(1)}%</td>
           <td>${(e.zone_def||e.zoneDef||50).toFixed(1)}%</td>
@@ -5972,7 +5987,7 @@ async function renderNHLEdge(type){
       </table></div>`;
     }
     // Always show HV analysis below table
-    el.innerHTML+=`<div class="sh" style="margin-top:12px"><span class="i">HV ANALYSIS</span></div>${Object.entries(NHL).filter(([abbr])=>abbr!=='ANA').map(([abbr,t])=>`<div class="hvw" style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--ic)">${abbr}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}</div>`).join('')}`;
+    el.innerHTML+=`<div class="sh" style="margin-top:12px"><span class="i">HV ANALYSIS</span></div>${Object.entries(NHL).filter(([abbr])=>abbr!=='ANA').map(([abbr,t])=>`<div class="hvw" style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--ic)">${abbr}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span></div>${(typeof hvBar==='function')?hvBar('5V5 OFF',t.hv.off):''}${(typeof hvBar==='function')?hvBar('FINISHING',t.hv.fin):''}${(typeof hvBar==='function')?hvBar('PP OFF',t.hv.pp):''}${(typeof hvBar==='function')?hvBar('5V5 DEF',t.hv.def):''}${(typeof hvBar==='function')?hvBar('PK',t.hv.pk):''}</div>`).join('')}`;
 
   }else if(type==='skater'){
     let skaters=null;
@@ -8934,7 +8949,7 @@ function renderProps(){
   // ── 4. Nothing available — show loading state ─────────────────────────────
   el.innerHTML='<div class="empty" style="text-align:center;padding:24px"><div style="font-family:var(--mono);font-size:18px;color:var(--t3);letter-spacing:1px">LOADING NHL PLAYER PROPS FROM LINEMATE…</div><div style="font-family:var(--mono);font-size:17px;color:var(--t3);margin-top:6px">REFRESHES WITH NEXT DATA FETCH</div></div>';
 }
-function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t||t._syntheticEntry)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:17px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${hvBar('5V5 OFF',t.hv.off)}${hvBar('FINISHING',t.hv.fin)}${hvBar('PP OFF',t.hv.pp)}${hvBar('5V5 DEF',t.hv.def)}${hvBar('PK',t.hv.pk)}<div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
+function renderHVPanels(){const el=document.getElementById('hv-panels');if(!el)return;const active=Object.keys(NHL).filter(a=>!NHL[a].series.startsWith('ELIMINATED'));el.innerHTML=active.map(a=>{const t=NHL[a];if(!t||t._syntheticEntry)return'';return`<div class="hvw" style="border-color:${a==='VGK'||a==='COL'?'rgba(255,204,0,.2)':'rgba(77,121,255,.2)'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:var(--orb);font-size:23px;font-weight:700;color:var(--ic)">${a}</span><span style="font-family:var(--mono);font-size:18px;color:var(--t2)">${t.n}</span><span style="font-family:var(--mono);font-size:17px;color:var(--vc)">${t.series} (${t.sw}-${t.sl})</span></div>${(typeof hvBar==='function')?hvBar('5V5 OFF',t.hv.off):''}${(typeof hvBar==='function')?hvBar('FINISHING',t.hv.fin):''}${(typeof hvBar==='function')?hvBar('PP OFF',t.hv.pp):''}${(typeof hvBar==='function')?hvBar('5V5 DEF',t.hv.def):''}${(typeof hvBar==='function')?hvBar('PK',t.hv.pk):''}<div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">OFF: ${t.hv.offN}<br>FIN: ${t.hv.finN}<br>PP: ${t.hv.ppN}<br>DEF: ${t.hv.defN}<br>PK: ${t.hv.pkN}</div></div>`}).join('');}
 function renderXGFPanels(){const el=document.getElementById('xgf-panels');if(!el)return;let html='';for(const g of TONIGHT){const h=NHL[g.h],aw=NHL[g.a];if(!h?.sxgf)continue;const tot=h.sxgf+aw.sxgf,hPct=Math.round(h.sxgf/tot*100),aPct=100-hPct;html+=`<div class="card ci" style="margin-bottom:8px"><div style="font-family:var(--orb);font-size:23px;font-weight:700;letter-spacing:2px;margin-bottom:8px;color:var(--ic)">${g.h} vs ${g.a} — SERIES 5v5 xGF</div><div style="display:flex;gap:4px;margin-bottom:7px"><div style="flex:${hPct};background:rgba(0,229,255,.08);border:1px solid var(--nc2);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--nc)">${g.h}</div><div style="font-family:var(--mono);font-size:22px;color:var(--nc)">${h.sxgf.toFixed(2)}</div></div><div style="flex:${aPct};background:rgba(240,0,255,.08);border:1px solid var(--pc);border-radius:2px;padding:6px;text-align:center"><div style="font-family:var(--orb);font-size:22px;font-weight:700;color:var(--pc)">${g.a}</div><div style="font-family:var(--mono);font-size:22px;color:var(--pc)">${aw.sxgf.toFixed(2)}</div></div></div><div style="font-family:var(--mono);font-size:18px;color:var(--t2);margin-top:7px;border-top:1px solid rgba(240,0,255,.15);padding-top:6px;line-height:1.8">${h.note}</div></div>`;}el.innerHTML=html;}
 
 // ═══ PARLAY ══════════════════════════════════════════════════
