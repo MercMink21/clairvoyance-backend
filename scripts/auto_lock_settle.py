@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -908,6 +909,53 @@ def gather_cfb_legs_for_date(page, target_date_iso: str) -> dict:
     )
 
 
+def _dedupe_opposite_sides(game_qualifying: list[dict]) -> list[dict]:
+    """Drops the weaker leg of any pair that's really just the two opposite
+    sides of ONE market on the same game -- real bug, found via a live
+    ledger audit: a single tennis match (2026-08-22, Herbert vs Miyoshi)
+    had BOTH players' ML, BOTH sides of its sets O/U, and BOTH sides of
+    its games O/U all qualify and lock simultaneously -- 6 legs, 3
+    self-cancelling pairs where one side was mathematically guaranteed to
+    lose no matter what happened on court. That's not diversification,
+    it's the same coin counted twice: it inflates the pick count while
+    silently dragging the sport's real accuracy down by a fixed amount
+    regardless of model quality. Tennis surfaced it first (its sets/games
+    O/U legs use fixed self-generated prices on both sides -- see
+    _usoMatchCards' own comment on why -- which makes near-50/50 matches
+    the likeliest place for both sides to independently clear the EV bar),
+    but the same shape is possible for any sport's ML/spread ties too, so
+    this runs for every sport, ahead of MLB's own narrower same-team
+    ML+spread cap below (which handles a different, less severe kind of
+    correlation -- two DIFFERENT markets on the same team, not two sides
+    of the same one).
+    ML/SPREAD: only ever 2-3 sides possible for one game's market, so 2+
+    qualifying at once is never real diversification -- keep the single
+    strongest. OU: a game can have more than one distinct O/U market
+    (tennis games O/U AND sets O/U), so sides are grouped by the line
+    itself (the label with its leading OVER/UNDER stripped, e.g. "25.5
+    games") rather than by type alone, and only trimmed within a group.
+    """
+    by_type: dict[str, list[dict]] = {}
+    for leg in game_qualifying:
+        by_type.setdefault(_market_type(leg.get("side")), []).append(leg)
+    kept: list[dict] = []
+    for mkt_type, legs in by_type.items():
+        if mkt_type in ("ML", "SPREAD") and len(legs) > 1:
+            legs.sort(key=lambda q: (q.get("tierN") or 0, q.get("evVal") or 0), reverse=True)
+            kept.append(legs[0])
+        elif mkt_type == "OU":
+            families: dict[str, list[dict]] = {}
+            for leg in legs:
+                fam = re.sub(r"^(OVER|UNDER)\s+", "", (leg.get("label") or ""), flags=re.I).strip().lower()
+                families.setdefault(fam, []).append(leg)
+            for fam_legs in families.values():
+                fam_legs.sort(key=lambda q: (q.get("tierN") or 0, q.get("evVal") or 0), reverse=True)
+                kept.append(fam_legs[0])
+        else:
+            kept.extend(legs)
+    return kept
+
+
 def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) -> list[dict]:
     """only_sports: if given, restricts to exactly these sport tags (e.g.
     PRODUCT_SPORTS["soccer"] for the soccer early pass, {"CFB"} for the
@@ -943,17 +991,27 @@ def build_qualifying(result: dict, only_sports: frozenset[str] | None = None) ->
                     # gameLegs.
                     "mcSummary": gl.get("mcSummary"), "best": gl.get("best"),
                 })
-        # MLB-specific cap: real ledger data showed MLB routinely locking
-        # all 3 markets on one game at once (ML + run line + O/U each
-        # independently qualifying) -- explicitly identified as a drag
-        # dragging overall accuracy down (3 correlated shots at the same
-        # game reads as diversification but isn't). Capped at 2 now: the
-        # single best market by default, plus a 2nd ONLY when it's a
+        if len(game_qualifying) > 1:
+            game_qualifying = _dedupe_opposite_sides(game_qualifying)
+        # Same-game correlated-market cap: originally MLB-only (real ledger
+        # data showed MLB routinely locking all 3 markets on one game at
+        # once -- ML + run line + O/U each independently qualifying --
+        # explicitly identified as a drag on overall accuracy: 3 correlated
+        # shots at the same game reads as diversification but isn't).
+        # Generalized to every sport after the same live-ledger audit that
+        # found _dedupe_opposite_sides' bug also found this exact shape in
+        # WNBA (MIN ML + MIN -2.5, same team, same directional read) and
+        # CFB (HAW ML + HAW +4.0) -- MLB was never actually special, it
+        # just had the highest volume so it surfaced first. Capped at 2:
+        # the single best market by default, plus a 2nd ONLY when it's a
         # genuinely complementary combo (ML+O/U or spread+O/U). ML+spread
         # specifically excluded -- those two are essentially the same
         # directional read on the game (who wins/covers) priced two
-        # different ways, not an independent second edge.
-        if sport == "MLB" and len(game_qualifying) > 1:
+        # different ways, not an independent second edge. Runs after
+        # _dedupe_opposite_sides above, so what's left here is already at
+        # most one leg per market type/family -- this only trims ACROSS
+        # types (e.g. ML vs SPREAD), never within one.
+        if len(game_qualifying) > 1:
             game_qualifying.sort(key=lambda q: (q["tierN"] or 0, q.get("evVal") or 0), reverse=True)
             best = game_qualifying[0]
             best_type = _market_type(best["side"])
