@@ -28315,10 +28315,18 @@ function _optaPowerRankFactors(homeName,awayName,leagueKey){
 // in ITS OWN domestic league's rankings independently via
 // _clDomesticContext, rather than blending anything -- there's no CL-side
 // rating to blend against, just a substitute source when the intended
-// one doesn't exist. Opta's rating is a whole-squad-strength number,
-// not literally "how good in League X", so comparing e.g. a Bundesliga
-// team's rating against a Serie A team's is exactly the intended use
-// here, not a mismatch. Same ±15% clamp as the domestic version.
+// one doesn't exist. Opta's rating is a whole-squad-strength number
+// scored on each league's own ~85-100 internal scale, so a raw
+// cross-league comparison (a Bundesliga 95 vs a Serie A 95) silently
+// assumes the 4 leagues are equally strong top to bottom, which isn't a
+// fair assumption -- Premier League is the strongest of the 4 by
+// reputation, La Liga second, Bundesliga and Serie A roughly level with
+// each other below those two. _CL_LEAGUE_STRENGTH_OFFSET applies a
+// modest downward shift to the non-PL leagues before comparing (kept
+// small deliberately -- a full ~15pt shift would max out the clamp on
+// its own regardless of the actual two teams involved, drowning out
+// real team-specific signal instead of just nudging it).
+var _CL_LEAGUE_STRENGTH_OFFSET={pl:0,liga:-2,bl:-4,ita:-4};
 function _clOptaPowerRating(name){
   var ctx=_clDomesticContext(name);
   if(!ctx)return null;
@@ -28327,7 +28335,8 @@ function _clOptaPowerRating(name){
   if(!pr||!pr.length)return null;
   var k=(name||'').toLowerCase().trim();
   var t=pr.find(function(t){var tk=(t.team||'').toLowerCase();return tk===k||k.indexOf(tk)>=0||tk.indexOf(k)>=0;});
-  return(t&&t.rating!=null)?t.rating:null;
+  if(!t||t.rating==null)return null;
+  return t.rating+(_CL_LEAGUE_STRENGTH_OFFSET[ctx.domKey]||0);
 }
 function _optaPowerRankFactorsCL(homeName,awayName){
   if(!homeName||!awayName)return{home:1,away:1};
