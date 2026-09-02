@@ -2657,6 +2657,12 @@ let TEN_ENS={elo:.22,mc:.50,form:.15,serve:.08,fat:.05};
 // this round's explicit scope (MLB/tennis/NHL) -- left untouched,
 // flagged the same way MLB's own note above already flagged the other
 // three before this update.
+// The 6 club-league sport tags a locked soccer pick's p.sport can actually
+// carry (see lockPick's _lockType map in _renderSocMatchCard) -- 'BL' kept
+// as a legacy alias for picks locked before the BL->BUND rename, matching
+// the same convention _leagueBtns/_SOCCER already use elsewhere. World Cup
+// ('SOC'/'WC') is intentionally excluded: different model, different context.
+const _SOC_LEAGUE_TAGS=new Set(['PL','LIGA','BUND','BL','CL','SERIEA','MLS']);
 const SPORT_CAL={
   MLB:{B:0.033}, // avg model 65.6% → calibrated ~66.4% (actual 67.4%, 1348-bet sample)
   NHL:{B:0.41},  // avg model 57.8% → calibrated ~66.8% (actual 79.3%, 121-bet sample)
@@ -2670,6 +2676,22 @@ const SPORT_CAL={
   // other sport calibrated this session, and the largest real sample of
   // any sport calibrated so far (bigger than NHL's 121 or TEN's 260).
   WNBA:{B:0.3148}, // avg model 57.8% → calibrated ~68.6% (actual 75.1%, 329-bet sample)
+  // Soccer's 3-way (home/draw/away) market never ran through calibration
+  // at all -- the biggest remaining coverage gap the adaptive-learning
+  // audit found. Unlike a single win-prob sport, there's no one number to
+  // calibrate; applied independently to whichever side (home/draw/away) a
+  // given leg actually prices, same as how tennis's O/U sets/games markets
+  // already coexist with TEN's single ML calibration without needing to
+  // jointly reconcile to 1 -- each market is graded against its own price
+  // independently throughout this app, not as a coherent joint
+  // distribution. Real settled-bet sample, ML legs only (O/U intentionally
+  // excluded -- matches the existing app-wide convention that O/U/spread/
+  // prop markets for every sport rely on tier()'s downstream global-band
+  // correction only, never a dedicated Platt constant; MLB/NBA/NHL O/U
+  // never ran through sportCalibrate() either): 100-bet sample, avg model
+  // 58.6% vs actual 78.0%, same underconfidence direction as every other
+  // sport calibrated this session.
+  SOC:{B:0.3666}, // avg model 58.6% → calibrated ~68.7% (actual 78.0%, 100-bet ML sample, all 6 leagues combined)
 };
 function sportCalibrate(p,sport){
   const cal=SPORT_CAL[sport];
@@ -11980,7 +12002,7 @@ function renderOverall(){
     }
     return out;
   };
-  for(const _sp of ['MLB','NHL','NBA','TEN','WNBA']){
+  for(const _sp of ['MLB','NHL','NBA','TEN','WNBA','SOC']){
     // _spUC precomputed once per pick near the top of this function (see
     // that comment for why mutating these fresh getP() objects is safe)
     // -- reused here instead of recomputing .toUpperCase() per item per
@@ -11991,6 +12013,8 @@ function renderOverall(){
     // recompute pattern already fixed elsewhere in this function.
     const _spBets=_sp==='TEN'
       ?settled.filter(p=>p._spUC==='ATP'||p._spUC==='WTA')
+      :_sp==='SOC'
+      ?settled.filter(p=>_SOC_LEAGUE_TAGS.has(p._spUC))
       :settled.filter(p=>p._spUC===_sp);
     _newAdjBySport[_sp]=_calcBandAdjFor(_spBets,_prevAdjBySport[_sp]||{});
   }
@@ -28768,17 +28792,26 @@ function _poissonOverProb(lambda,line){
 // with no Opta/Power-Rankings coverage) rather than overriding a
 // well-supported model view.
 window.SOC_ENS=window.SOC_ENS||(typeof S!=='undefined'?S.g('soc_ens'):null)||{model:.85,market:.15};
+// Applies SPORT_CAL.SOC + the per-sport band adjustment (see renderOverall's
+// 'SOC' bucket) to one side's probability -- called on hP/dP/aP independently,
+// not jointly renormalized afterward, same as every other market pair in
+// this app (e.g. TEN's ML vs sets/games O/U) that's graded side-by-side
+// rather than reconciled to one coherent joint distribution.
+function _socCal(p){
+  p=typeof sportCalibrate==='function'?sportCalibrate(p,'SOC'):p;
+  return Math.min(0.96,Math.max(0.02,p));
+}
 function _socMarketBlend(hP,dP,aP,hML,dML,aML){
-  if(hML==null||dML==null||aML==null)return{hP:hP,dP:dP,aP:aP,blended:false};
+  if(hML==null||dML==null||aML==null)return{hP:_socCal(hP),dP:_socCal(dP),aP:_socCal(aP),blended:false};
   var hD=ml2d(hML),dD=ml2d(dML),aD=ml2d(aML);
-  if(!(hD>1)||!(dD>1)||!(aD>1))return{hP:hP,dP:dP,aP:aP,blended:false};
+  if(!(hD>1)||!(dD>1)||!(aD>1))return{hP:_socCal(hP),dP:_socCal(dP),aP:_socCal(aP),blended:false};
   var ih=1/hD,id=1/dD,ia=1/aD,over=ih+id+ia;
-  if(!(over>0))return{hP:hP,dP:dP,aP:aP,blended:false};
+  if(!(over>0))return{hP:_socCal(hP),dP:_socCal(dP),aP:_socCal(aP),blended:false};
   var mh=ih/over,md=id/over,ma=ia/over; // devigged market-implied probabilities
   var w=window.SOC_ENS.market,mw=window.SOC_ENS.model;
   var bh=mw*hP+w*mh,bd=mw*dP+w*md,ba=mw*aP+w*ma;
   var s=bh+bd+ba||1;
-  return{hP:bh/s,dP:bd/s,aP:ba/s,blended:true,marketH:mh,marketD:md,marketA:ma};
+  return{hP:_socCal(bh/s),dP:_socCal(bd/s),aP:_socCal(ba/s),blended:true,marketH:mh,marketD:md,marketA:ma};
 }
 // Single shared iteration count for every _soccerMC() call site. Used to
 // range from 2,000 (Simulator tab) to 25,000 (main match card) depending
