@@ -171,6 +171,44 @@ jobs:
               gh workflow run "Landing Page Performance Refresh" || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
             fi
           fi
+          # Daily Schedules + Standings Refresh (CFB/NFL/soccer schedule +
+          # standings) and Daily Player & Prop Stats Refresh: same "brand-
+          # new workflow's first scheduled trigger can silently never fire"
+          # pattern as the landing-performance case above, confirmed live
+          # 2026-09-02 -- both consolidated workflows (created that
+          # afternoon) had zero real scheduled runs by the next morning
+          # despite real opportunities (05:10/11:55 UTC and 15:45 UTC
+          # respectively), leaving CFB/NFL schedules and player/prop stats
+          # ~16.5h stale with nothing watching for it. Same no-marker-file
+          # approach as landing-performance: check each job's own output
+          # file's generated_at, since that IS the thing that needs to be
+          # fresh. Checked at 1pm MT, same as landing-performance -- well
+          # after both workflows' own morning cron slots (5:55am and
+          # 9:45am MT) have had a real chance to fire and catch up on
+          # their own first.
+          if [ "$HOUR_MT" = "13" ]; then
+            CFB_SCHED_DATE=$(python3 -c "import json; print(json.load(open('docs/cfb_schedule.json')).get('generated_at','')[:10])" 2>/dev/null || echo "")
+            if [ "$CFB_SCHED_DATE" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: CFB schedule JSON not refreshed today (shows $CFB_SCHED_DATE) by 1pm MT -- dispatching Daily Schedules + Standings Refresh."
+              gh workflow run "Daily Schedules + Standings Refresh" || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+            # docs/player_stats.json (scrape_player_stats.py's own output,
+            # the first script in this job) -- NOT docs/nfl_player_stats.json,
+            # which belongs to a different, unrelated workflow (NFL Team
+            # Stats + Standings Refresh) and would never reflect whether
+            # THIS job ran. Caught live while verifying this exact watchdog:
+            # confirmed via a real manual dispatch that docs/player_stats.json
+            # updated correctly while docs/nfl_player_stats.json stayed
+            # untouched, as expected once the right file was checked. Also
+            # note the field name here is generatedAt (camelCase), not
+            # generated_at like the other scripts checked above -- confirmed
+            # against the real file, not assumed from convention.
+            PSTATS_DATE=$(python3 -c "import json; print(json.load(open('docs/player_stats.json')).get('generatedAt','')[:10])" 2>/dev/null || echo "")
+            if [ "$PSTATS_DATE" != "$TODAY_MT" ]; then
+              echo "::notice::Watchdog: player stats JSON not refreshed today (shows $PSTATS_DATE) by 1pm MT -- dispatching Daily Player & Prop Stats Refresh."
+              gh workflow run "Daily Player & Prop Stats Refresh" || echo "::warning::Watchdog dispatch failed (non-fatal, will retry next tick)"
+            fi
+          fi
 
       - name: Poll live scores
         env:
