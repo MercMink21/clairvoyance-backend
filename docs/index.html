@@ -4242,14 +4242,34 @@ function buildMLB(){
     // Extended offensive score: OBP, SLG, ISO, wOBA, BB%, K%, wRC+
     t.off=(r.bat.Op/100*.25+r.bat.wRC/100*.25+r.bat.wOBA/.340*.20+r.bat.OBP/.320*.15+
            (1-r.bat.K_pct/25)*.10+r.bat.BB_pct/11*.05)*100;
-    // Extended pitching: ERA, FIP, xFIP, K9, BB9, HR9
-    t.pit=(r.pit.Ep/100*.25+(1-r.pit.FIP/5)*.20+(1-r.pit.xFIP/5)*.20+
+    // Extended pitching score (0-100ish composite, for the power ranking
+    // and radar chart below) -- named pitScore, NOT pit, and deliberately
+    // a NEW property rather than overwriting t.pit. Real bug, found via a
+    // live MLB-accuracy audit (2026-09-02): this used to be named t.pit,
+    // clobbering the real per-stat object the {...r,abbr:a} spread above
+    // had just correctly carried over from r.pit (ERA/FIP/xFIP/K9/B9/
+    // HR9/RAG/W/Ep -- confirmed live, all present and fresh in the raw
+    // MLB[abbr].pit source). Every consumer expecting TEAMS[abbr].pit to
+    // be that object (adjLam's dT.pit.RAG read that actually drives the
+    // whole win-probability sim, nrfiProb's h.pit?.RAG/aw.pit?.RAG, the
+    // TEAMS[abbr]?.pit||{} pattern used elsewhere) was silently reading
+    // a NUMBER instead -- property access on a number primitive doesn't
+    // throw in JS, it just silently returns undefined, so adjLam's
+    // `parseFloat(dT.pit.RAG)||4.5` fallback fired on literally every
+    // single team, every single game, permanently defaulting to the
+    // league-average value regardless of which team was actually
+    // pitching. Confirmed live: TEAMS['COL'].pit read as a plain number
+    // (62.98) with .RAG undefined, computing the exact 4.5 fallback --
+    // this was the single largest concrete, fixable factor found in that
+    // audit for MLB's win% (67.4%) trailing every other sport with real
+    // sample size (WNBA 75.1%, NBA 77.3%, NHL 79.3%).
+    t.pitScore=(r.pit.Ep/100*.25+(1-r.pit.FIP/5)*.20+(1-r.pit.xFIP/5)*.20+
            r.pit.K9/10*.15+(1-r.pit.B9/5)*.10+(1-r.pit.HR9/1.5)*.10)*100;
     // Defense: DRS, OAA, fielding%
     t.def=(r.fld.DE/.710*.40+r.fld.F/.985*.30+
            (r.fld.DRS+50)/100*.20+(r.fld.OAA+30)/60*.10)*100;
     // Pythagorean + SRS + power composite
-    t.pwr=.30*t.off+.30*t.pit+.10*t.def+.15*(r.s.SRS/3+1)*100+.15*(r.s.pyth||r.s.WL)*100;
+    t.pwr=.30*t.off+.30*t.pitScore+.10*t.def+.15*(r.s.SRS/3+1)*100+.15*(r.s.pyth||r.s.WL)*100;
     TEAMS[a]=t;
   }
   const ps=Object.values(TEAMS).map(t=>t.pwr);const mn=Math.min(...ps),mx=Math.max(...ps);
@@ -25096,7 +25116,7 @@ function renderAnalyticsMLB(){
         <span style="font-family:var(--mono);font-size:13px;padding:2px 7px;background:rgba(204,0,255,.1);border:1px solid rgba(204,0,255,.3);border-radius:2px;color:var(--pc)">PWR ${t.pn.toFixed(1)}</span>
       </div>
       ${radarBar('OFFENSE',t.off,115,'var(--nc)')}
-      ${radarBar('PITCHING',t.pit,115,'var(--ic)')}
+      ${radarBar('PITCHING',t.pitScore,115,'var(--ic)')}
       ${radarBar('DEFENSE',t.def,115,'var(--vc)')}
       ${radarBar('POWER',t.pn,100,'var(--pc)')}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;font-family:var(--mono);font-size:13px;color:var(--t3)">
