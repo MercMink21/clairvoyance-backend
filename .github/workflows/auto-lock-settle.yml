@@ -91,7 +91,7 @@ on:
         description: 'Which step(s) to run'
         required: false
         type: choice
-        options: ['both', 'lock', 'settle', 'daily-digest', 'adaptive-recalibration']
+        options: ['both', 'lock', 'settle', 'daily-digest', 'adaptive-recalibration', 'catch-up']
         default: 'both'
 
 permissions:
@@ -130,6 +130,16 @@ jobs:
               settle)                  echo "step_flags=--settle" >> "$GITHUB_OUTPUT" ;;
               daily-digest)            echo "step_flags=--daily-digest" >> "$GITHUB_OUTPUT" ;;
               adaptive-recalibration)  echo "step_flags=--adaptive-recalibration" >> "$GITHUB_OUTPUT" ;;
+              # Real gap, found live 2026-09-02: plain 'both' runs lock+
+              # settle but never sets --final-lock-check, so
+              # run_lock_segmented's want_email stays false and no
+              # subscriber email goes out even with live=true -- fine for
+              # a routine manual dry-run, but useless for manually
+              # standing in for a missed scheduled catch-up (see the
+              # 9am-12pm MT catch-up branch below), which is exactly the
+              # situation this option exists for: locks + settles +
+              # emails, same as the real catch-up would have.
+              catch-up)                echo "step_flags=--lock --settle --final-lock-check" >> "$GITHUB_OUTPUT" ;;
               *)                       echo "step_flags=" >> "$GITHUB_OUTPUT" ;;
             esac
             echo "live_flag=${{ inputs.live == true && '--live' || '' }}" >> "$GITHUB_OUTPUT"
