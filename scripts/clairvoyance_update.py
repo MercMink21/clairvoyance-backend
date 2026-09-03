@@ -111,9 +111,7 @@ REF_HEADERS = {          # Sports-Reference sites want a real browser UA
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 NHL_API   = "https://api-web.nhle.com/v1"
 NHL_STATS = "https://api.nhle.com/stats/rest/en"
-MP_BASE_REG     = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2025/regular"
-MP_BASE_PLAYOFF = "https://moneypuck.com/moneypuck/playerData/seasonSummary/2026/playoff"  # fallback
-SEASON    = "20252026"
+MP_BASE = "https://moneypuck.com/moneypuck/playerData/seasonSummary"
 YEAR      = 2026
 
 NOW        = datetime.now(timezone.utc)
@@ -1619,82 +1617,30 @@ def fetch_nhl_edge() -> dict:
     vlog(f"  NHL Edge ({season}): {len(out['goalies'])} team goalies, {len(out['zoneStart'])} team zone-starts")
     return out
 
-def fetch_nhl_edge_enhanced() -> dict:
-    """
-    Enhanced NHL Edge — shot location, zone time, save locations, 5v5 details.
-    Scrapes nhl.com/nhl-edge for team-level and goalie-level advanced shot data.
-    """
-    log("NHL Edge enhanced (shot location, zone time, save %)…")
-    out: dict = {"teams": {}, "goalies": {}, "shotMaps": {}}
-    base = "https://www.nhl.com"
-
-    def _nhl_edge_api(path: str, params: dict = None) -> list:
-        url = f"https://api.nhle.com{path}"
-        try:
-            resp = fetch_json(url, params=params)
-            if isinstance(resp, dict):
-                for key in ("data","skaterStats","goalieStats","teamStats"):
-                    if isinstance(resp.get(key), list):
-                        return resp[key]
-            elif isinstance(resp, list):
-                return resp
-        except Exception:
-            pass
-        return []
-
-    # Team 5v5 stats from NHL API
-    try:
-        season = "20252026"
-        team_stats = _nhl_edge_api(f"/stats/rest/en/team/summary?cayenneExp=seasonId={season}%20and%20gameTypeId=3")
-        for t in team_stats:
-            abbr = t.get("teamAbbrevName","")
-            if not abbr: continue
-            out["teams"][abbr] = {
-                "gp": t.get("gamesPlayed",0),
-                "w": t.get("wins",0), "l": t.get("losses",0),
-                "gf": t.get("goalsFor",0), "ga": t.get("goalsAgainst",0),
-                "gf60": round(t.get("goalsFor",0) / max(t.get("gamesPlayed",1),1) * 60 / 60, 2),
-                "pp_pct": t.get("powerPlayPct",0),
-                "pk_pct": t.get("penaltyKillPct",0),
-                "shots_for": t.get("shotsForPerGame",0),
-                "shots_ag": t.get("shotsAgainstPerGame",0),
-                "faceoff_pct": t.get("faceoffWinPct",0),
-            }
-    except Exception as e:
-        log(f"NHL Edge team stats error: {e}", "WARN")
-
-    # Goalie save % by zone / shot type from NHL Edge skaters API
-    try:
-        goalie_data = _nhl_edge_api(
-            f"/stats/rest/en/goalie/savesByStrength?cayenneExp=seasonId={season}%20and%20gameTypeId=3&limit=50"
-        )
-        for g in goalie_data:
-            name = f"{g.get('skaterFirstName','')} {g.get('skaterLastName','')}".strip()
-            if not name: continue
-            out["goalies"][name] = {
-                "team": g.get("teamAbbrevs",""),
-                "gp": g.get("gamesPlayed",0),
-                "sv5v5": g.get("savePctg5v5",0),
-                "sv5v4": g.get("savePctg5v4",0),
-                "sv4v5": g.get("savePctg4v5",0),
-                "svPct": g.get("savePctg",0),
-                "gaa": g.get("goalsAgainstAverage",0),
-                "hdSvPct": g.get("highDangerSavePct",0),
-                "shots": g.get("shotsAgainst",0),
-            }
-    except Exception as e:
-        log(f"NHL Edge goalie save % error: {e}", "WARN")
-
-    vlog(f"  NHL Edge enhanced: {len(out['teams'])} teams, {len(out['goalies'])} goalies")
-    return out
 
 def fetch_moneypuck() -> dict:
     """MoneyPuck advanced stats — 5v5, 5v4, 4v5, all — teams and goalies."""
     log("MoneyPuck stats…")
     out: dict = {"teams": {}, "goalies": [], "skaters": []}
 
-    # Teams CSV — current regular season (playoff CSV not published mid-season)
-    rows = fetch_csv_rows(f"{MP_BASE_REG}/teams.csv")
+    # MoneyPuck's season folder is named by the season's start year
+    # ("2025" = 2025-26), and used to be hardcoded here -- real risk,
+    # found in the same audit that fixed the NHL Edge/schedule season-
+    # staleness bugs: once a new season starts, a hardcoded prior-year
+    # path doesn't error, it just keeps silently serving last season's
+    # now-frozen data forever, with nothing to force a fix. Confirmed
+    # live: MoneyPuck doesn't publish a season's folder until its own
+    # pipeline starts ingesting that season's real games --
+    # moneypuck.com/.../2026/regular/teams.csv 404s in September, before
+    # puck drop. Tries the real current season first; falls back to the
+    # prior season (still a real, useful baseline through the pre-season
+    # gap) the moment that comes back empty.
+    current_yr = int(_nhl_current_season_id()[:4])
+    mp_base = f"{MP_BASE}/{current_yr}/regular"
+    rows = fetch_csv_rows(f"{mp_base}/teams.csv")
+    if not rows:
+        mp_base = f"{MP_BASE}/{current_yr - 1}/regular"
+        rows = fetch_csv_rows(f"{mp_base}/teams.csv")
     for row in rows:
         situation = row.get("situation","")
         team = row.get("team","")
@@ -1719,7 +1665,7 @@ def fetch_moneypuck() -> dict:
             pass
 
     # Goalies CSV
-    rows_g = fetch_csv_rows(f"{MP_BASE_REG}/goalies.csv")
+    rows_g = fetch_csv_rows(f"{mp_base}/goalies.csv")
     for row in rows_g:
         try:
             out["goalies"].append({
@@ -5861,7 +5807,6 @@ def main() -> None:
     nhl_roster           = fetch_nhl_roster()             if S in ("nhl","all") else {}
     nhl_bracket          = fetch_nhl_playoff_bracket()    if S in ("nhl","all") else {}
     nhl_edge             = fetch_nhl_edge()               if S in ("nhl","all") else {}
-    nhl_edge_enh         = fetch_nhl_edge_enhanced()      if S in ("nhl","all") else {}
     mp                   = fetch_moneypuck()              if S in ("nhl","all") else {}
     hockeyviz            = fetch_hockeyviz()              if S in ("nhl","all") else {}
     hockey_ref           = (fetch_hockey_reference()      if not args.no_reference else {}) if S in ("nhl","all") else {}
@@ -6211,7 +6156,6 @@ def main() -> None:
             "roster":       nhl_roster,
             "bracket":      nhl_bracket,
             "edge":         nhl_edge,
-            "edgeEnhanced": nhl_edge_enh,
             "hockeyviz":    hockeyviz,
             "hockeyRef":    hockey_ref,
             "hockeyRefTeams": hockey_ref_teams,

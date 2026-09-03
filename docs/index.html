@@ -10042,44 +10042,6 @@ async function doUpdate(){
 }
 
 
-// ═══ STATMUSE NHL PLAYOFF LEADERS ════════════════════════════
-// All stats verified via NHL API (gameTypeId=3, seasonId=20252026)
-var STATMUSE_NHL={
-  goals:[{n:'Pavel Dorofeyev',t:'VGK',v:10},{n:'Logan Stankoven',t:'CAR',v:8},{n:'Brett Howden',t:'VGK',v:8},{n:'Mitch Marner',t:'VGK',v:8},{n:'Nathan MacKinnon',t:'COL',v:7},{n:'Alex Newhook',t:'MTL',v:6}],
-  assists:[{n:'Mitch Marner',t:'VGK',v:14},{n:'Jack Eichel',t:'VGK',v:14},{n:'Lane Hutson',t:'MTL',v:11},{n:'Taylor Hall',t:'CAR',v:10},{n:'Martin Necas',t:'COL',v:10},{n:'Sebastian Aho',t:'CAR',v:9}],
-  points:[{n:'Mitch Marner',t:'VGK',v:22},{n:'Jack Eichel',t:'VGK',v:17},{n:'Taylor Hall',t:'CAR',v:14},{n:'Lane Hutson',t:'MTL',v:14},{n:'Nathan MacKinnon',t:'COL',v:13},{n:'Jackson Blake',t:'CAR',v:13}],
-  wins:[{n:'Carter Hart',t:'VGK',v:10},{n:'Frederik Andersen',t:'CAR',v:10},{n:'Jakub Dobes',t:'MTL',v:8},{n:'Scott Wedgewood',t:'COL',v:7}],
-  svpct:[{n:'Frederik Andersen',t:'CAR',v:.946},{n:'Jakub Dobes',t:'MTL',v:.908},{n:'Carter Hart',t:'VGK',v:.921},{n:'Scott Wedgewood',t:'COL',v:.914}],
-  teamGoals:{MTL:3.08,VGK:3.67,COL:4.11,CAR:3.0},
-  teamGA:{MTL:2.40,VGK:2.44,COL:2.56,CAR:1.18},
-  teamPP:{MTL:.198,VGK:.221,COL:.226,CAR:.221},
-  teamPK:{MTL:.804,VGK:.843,COL:.833,CAR:.855},
-  teamPDO:{MTL:1.018,VGK:1.020,COL:1.009,CAR:1.028}
-};
-
-// NHL team composite score 0-100
-function nhlTeamScore(abbr){
-  const t=NHL[abbr];if(!t)return 0;
-  const mp=MP_DATA[abbr]||{};
-  const xgf=((mp.xgf_pct||t.xgf5*100||50)-40)/30*100;
-  const gsax=Math.min(100,Math.max(0,(t.gsax||0)+5)/20*100);
-  const gf=Math.min(100,(t.gf60||t.edge?.goals_for_60||3)/5*100);
-  const ga=Math.min(100,(1-(t.ga60||t.edge?.goals_against_60||3)/5)*100);
-  const pp=Math.min(100,(t.pp||.2)/.28*100);
-  const pk=Math.min(100,(t.pk||.82)/.90*100);
-  const raw=(xgf*.30+gsax*.25+gf*.15+ga*.15+pp*.08+pk*.07);
-  return Math.round(Math.max(0,Math.min(100,raw)));
-}
-function nhlRosterScore(abbr){
-  const base=nhlTeamScore(abbr);
-  const sm=STATMUSE_NHL;
-  let bonus=0;
-  sm.points.forEach((p,i)=>{if(p.t===abbr)bonus+=Math.max(0,(8-i)*1.5);});
-  sm.wins.forEach((p,i)=>{if(p.t===abbr)bonus+=Math.max(0,(5-i)*2);});
-  sm.svpct.forEach((p,i)=>{if(p.t===abbr)bonus+=Math.max(0,(5-i)*2.5);});
-  return Math.round(Math.min(100,base+bonus));
-}
-
 // ═══ NBA DATA — 2025-26 PLAYOFFS ═════════════════════════════
 // NBA FINALS: SA vs NYK — SA WON WCF 4-3 vs OKC. Game 1 June 3 2026.
 // Verified via ESPN API — all eliminated teams removed
@@ -16218,29 +16180,41 @@ async function refreshNHLLive(){const D=window.__CV_DATA||{};
   const el=document.getElementById('nhl-live-scores');
   const elM=document.getElementById('nhl-live-scores-main');
   try{
-    const r=await fetch(`https://api-web.nhle.com/v1/score/${today()}`,{mode:'cors'});
-    if(!r.ok)throw new Error(r.status);
-    const d=await r.json();
-    const games=(d.games||[]);
+    // Real gap, found in the rigorous NHL audit: api-web.nhle.com sends no
+    // Access-Control-Allow-Origin header at all (confirmed live -- every
+    // real browser blocks this fetch before the response body is ever
+    // readable), so this call always threw and the NHL LIVE tab was stuck
+    // on "CONNECTING..." forever, for every real user, regardless of
+    // whether games were actually live. live_tracker.py's fetch_nhl_live()
+    // already hits this exact same NHL endpoint server-side (not subject
+    // to CORS) on a 30-45s cadence during the game window and writes
+    // live_data.json -- window.__CV_LIVE.nhl -- with the scores/state/
+    // period/clock AND a real computed homeWinProb already normalized
+    // into this function's own field names. Reading that instead of
+    // re-fetching client-side fixes the CORS block and drops the extra
+    // network round-trip.
+    const games=(window.__CV_LIVE?.nhl)||[];
     if(!games.length){
       const msg='<div class="empty">NO NHL GAMES TODAY</div>';
       if(el)el.innerHTML=msg;if(elM)elM.innerHTML=msg;return;
     }
     const liveProbs=(DL&&DL.liveProbs)||{};
     const html=games.map(g=>{
-      const h=g.homeTeam?.abbrev||'HOM',a=g.awayTeam?.abbrev||'AWY';
-      const hs=g.homeTeam?.score??'',as=g.awayTeam?.score??'';
-      const st=g.gameState||'';
-      const live=st==='LIVE'||st==='IN';
+      const h=g.home||'HOM',a=g.away||'AWY';
+      const hs=g.homeScore??'',as=g.awayScore??'';
+      const st=g.state||'';
+      const live=st==='LIVE'||st==='CRIT';
       const fin=st==='OFF'||st==='FINAL';
-      const per=g.periodDescriptor?.number||0;
+      const per=g.period||0;
       const perStr=per===4?'OT':per===5?'SO':(per?`P${per}`:'');
-      const clk=g.clock?.timeRemaining||'';
+      const clk=g.displayClock||'';
       const borderC=live?'var(--hc)':fin?'var(--t3)':'var(--ic)';
       const gid=g.id||`${h}${a}`;
-      // win probability from live_data.json
+      // live_tracker.py already computes a real homeWinProb per game;
+      // liveProbs (a separate, older live_data.json field) stays as a
+      // fallback only for the rare case a game object predates it.
       const wpp=liveProbs[gid]||liveProbs[`${a}@${h}`]||{};
-      const hWp=Math.round((wpp.homeWinProb||0.5)*100);
+      const hWp=Math.round((g.homeWinProb??wpp.homeWinProb??0.5)*100);
       const aWp=100-hWp;
       // compute live bet value: if model win prob > market implied prob → flag edge
       const hml=(D&&D.nhl&&D.nhl.today||[]).find(x=>x.home===h||x.away===a)?.homeML;
@@ -20905,11 +20879,24 @@ function patchMLBStandings(standings){
 }
 function patchNHLTonight(games){
   window._remoteNHLGames=games;
-  // Keep TONIGHT in sync with remote game data
-  const active=games.filter(g=>g.state!=='FUT');
-  if(active.length){
+  // Keep TONIGHT in sync with remote game data.
+  // Real bug, found in the rigorous NHL audit: this used to only sync
+  // when at least one game had already left NHL's real "FUT" (future/
+  // not-yet-started) status -- but every one of today's real games
+  // legitimately carries state "FUT" right up until pre-game warmup,
+  // often for many hours after the update pipeline has already loaded
+  // them. For most of any real game day (before the first puck drop),
+  // that condition was never true, so TONIGHT never actually got synced
+  // and stayed on its hardcoded fallback (a single fixed 2026-05-30
+  // Stanley Cup Finals game) -- meaning renderNHLPicks()/_socialPicks()
+  // and anything else reading the raw TONIGHT global showed last May's
+  // Cup Final instead of tonight's real games for most of the day. The
+  // caller already only invokes this when d.nhl.today is real and
+  // non-empty (today-scoped server-side), so every entry here already
+  // belongs on tonight's slate regardless of its own state.
+  if(games.length){
     TONIGHT.length=0;
-    active.forEach(g=>{
+    games.forEach(g=>{
       const sn=g.seriesStatus||g.seriesNote||'';
       const gn=parseInt((sn.match(/Game\s*(\d)/i)||[0,1])[1])||1;
       // _forceHalfLine here (once, at ingest) instead of at every one of
