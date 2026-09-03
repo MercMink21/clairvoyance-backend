@@ -8936,7 +8936,17 @@ function _nhlDatePlus(n){
   const[y,m,d]=today().split('-').map(Number);
   return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);
 }
-function _nhlUpcomingCard(g){
+// Full treatment -- adjustable puck line + O/U (same _adjV/_spreadLockDir/
+// _ouLockDir shared helpers every other sport's game card already uses),
+// ENGINE REASONING + best-market callout + MARKET SCAN (same _evalMkts
+// convention as renderNHLGamesOffline/every other sport's cards), the
+// shared _mcProjBarHTML MC-sim block, and the high-hit-rate badge on
+// heavy favorites -- matching the treatment every other league in this
+// app already gets, not a stripped-down preview card. dayIdx keeps this
+// game's puck-line/O-U input element ids unique across the 3-day list
+// (the same two teams could in principle appear on more than one of the
+// 3 days shown, e.g. a back-to-back).
+function _nhlUpcomingCard(g,dayIdx){
   const h=NHL[g.home],aw=NHL[g.away];
   if(!h||!aw)return`<div class="gc" style="border-left:2px solid rgba(255,255,255,.15);padding:10px"><div style="font-family:var(--orb);font-size:19px;font-weight:700">${g.away} @ ${g.home}</div><div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">No model data for this matchup yet.</div></div>`;
   const ens=nhlEns(g.home,g.away),mc=ens.mcD;
@@ -8945,16 +8955,50 @@ function _nhlUpcomingCard(g){
   const hD=ml2d(hML),aD=ml2d(aML);
   const hEV=ev(hP,hD),aEV=ev(aP,aD);
   const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
+  const favTeam=hP>=aP?g.home:g.away,dogTeam=hP>=aP?g.away:g.home;
+  const favP=Math.max(hP,aP),dogP=Math.min(hP,aP);
+  const favD=hP>=aP?hD:aD,dogD=hP>=aP?aD:hD;
+  const favEV=hP>=aP?hEV:aEV,dogEV=hP>=aP?aEV:hEV;
+  const plP=hP>=.5?(mc?.rl15??.38):(mc?.rlN??.38);
+  const plDogP=Math.max(.25,1-plP);
   const ouLine=g.overUnder!=null?parseFloat(_forceHalfLine(g.overUnder)):(mc?.ouLine||5.5);
   const ouP=mc?.overP??.52;
   const ouDec=1.91;
+  const uid=`${g.home}_${g.away}_${dayIdx}`;
   const nm=_evalMkts([
-    {label:`${g.home} ML`,prob:hP,evVal:hEV,side:'mlFav'},
-    {label:`${g.away} ML`,prob:aP,evVal:aEV,side:'mlDog'},
+    {label:`${favTeam} ML`,prob:favP,evVal:favEV,side:'mlFav'},
+    {label:`${dogTeam} ML`,prob:dogP,evVal:dogEV,side:'mlDog'},
+    {label:`${favTeam} -1.5`,prob:plP,evVal:ev(plP,1.87),dec:1.87,side:'plFav'},
+    {label:`${dogTeam} +1.5`,prob:plDogP,evVal:ev(plDogP,2.05),dec:2.05,side:'plDog'},
     {label:`OVER ${ouLine}`,prob:ouP,evVal:ev(ouP,ouDec),dec:ouDec,side:'over'},
     {label:`UNDER ${ouLine}`,prob:1-ouP,evVal:ev(1-ouP,ouDec),dec:ouDec,side:'under'},
   ]);
+  const topTier=nm.tierN,topTierLabel=nm.lbl,topTierCol=nm.col;
+  const bm=nm.best,evPct=(bm.evVal*100).toFixed(1),bp=(bm.prob*100).toFixed(1);
   _autoLockCapture('NHL',g.home,g.away,nm,mc?`MC PROJ: ${g.away} ${mc.avgA.toFixed(1)} – ${g.home} ${mc.avgH.toFixed(1)} (Total ${mc.avgT.toFixed(1)})`:null);
+  const favGsax=hP>=.5?(h.gsax||0):(aw.gsax||0),dogGsax=hP>=.5?(aw.gsax||0):(h.gsax||0);
+  const gsaxStr=`GSAx: ${favGsax>=0?'+':''}${favGsax.toFixed(1)} vs ${dogGsax>=0?'+':''}${dogGsax.toFixed(1)}`;
+  const ensStr=`MC ${(ens.mc*100).toFixed(0)}% / xGF ${(ens.xgf*100).toFixed(0)}% / hv ${(ens.hvM>=0?'+':'')+(ens.hvM*100).toFixed(1)}pp`;
+  let explanation='';
+  if(topTier===0){
+    explanation=`No qualifying edge (best ${bm.label} ${bp}%). Skip or monitor line movement before puck drop.`;
+  }else if(bm.side==='mlFav'){
+    explanation=`Best market: <strong>${favTeam} ML</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%). ${gsaxStr} favors ${favTeam}. ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }else if(bm.side==='mlDog'){
+    explanation=`Best market: <strong>${dogTeam} ML</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%) — underdog value. ${gsaxStr} signals a closer game than the market price implies. ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }else if(bm.side==='plFav'){
+    const favMC=mc?.rl15??plP,dogMC=mc?.rlN??plDogP;
+    explanation=`Best market: <strong>${favTeam} -1.5</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%). Fav covers -1.5 in ${(favMC*100).toFixed(1)}% of sims (proj ${(mc?.avgH||0).toFixed(1)}–${(mc?.avgA||0).toFixed(1)}). MC cover rate: ${(favMC*100).toFixed(1)}% fav / ${(dogMC*100).toFixed(1)}% dog. ${gsaxStr}. ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }else if(bm.side==='plDog'){
+    const favMC=mc?.rl15??plP,dogMC=mc?.rlN??plDogP;
+    explanation=`Best market: <strong>${dogTeam} +1.5</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%). Dog covers +1.5 in ${(dogMC*100).toFixed(1)}% of sims (proj ${(mc?.avgH||0).toFixed(1)}–${(mc?.avgA||0).toFixed(1)}). MC cover rate: ${(favMC*100).toFixed(1)}% fav / ${(dogMC*100).toFixed(1)}% dog. ${gsaxStr} keeps this within a goal. ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }else if(bm.side==='over'){
+    const projT=mc?(mc.avgH+mc.avgA).toFixed(1):'—';
+    explanation=`Best market: <strong>OVER ${ouLine}</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%). MC projects ${projT} goals vs the ${ouLine} line (${((mc?.overP??.5)*100).toFixed(0)}% over in sims). ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }else{
+    const projT=mc?(mc.avgH+mc.avgA).toFixed(1):'—';
+    explanation=`Best market: <strong>UNDER ${ouLine}</strong> graded ${topTierLabel} (${bp}%, EV +${evPct}%). MC projects ${projT} goals vs the ${ouLine} line (${((1-(mc?.overP??.5))*100).toFixed(0)}% under in sims). ${gsaxStr} points to tighter defense/goaltending. ${ensStr}. ${nm.size}-unit play${nm.secStr}.`;
+  }
   const dt=g.date?new Date(g.date):null;
   const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
   const stateTxt=g.state==='post'?`FINAL${g.homeScore!=null?`: ${g.away} ${g.awayScore} – ${g.home} ${g.homeScore}`:''}`:timeStr;
@@ -8964,11 +9008,42 @@ function _nhlUpcomingCard(g){
       <div style="text-align:right"><div class="np mono" style="font-size:15px">${stateTxt}</div></div>
     </div>
     <div class="brow">
-      <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.home}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
-      <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.away}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
-      <div style="flex:1.2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;text-align:center"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px">O/U ${ouLine}</div><div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${ouP>=.5?'var(--nc)':'var(--mc)'}">${ouP>=.5?'OVER':'UNDER'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${(Math.max(ouP,1-ouP)*100).toFixed(0)}%</div></div>
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.home}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div>${_highHitBadgeHTML(hP)}</div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.away}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div>${_highHitBadgeHTML(aP)}</div>
+      <div style="flex:2;background:rgba(255,200,0,.05);border:1px solid rgba(255,200,0,.2);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">PUCK LINE</div>
+        <div style="display:flex;align-items:center;gap:2px">
+          <button onclick="event.stopPropagation();_adjV('sprd_upc_${uid}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>
+          <input type="number" step="0.5" value="-1.5" id="sprd_upc_${uid}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center" oninput="_syncSprdLabels(this.id)">
+          <button onclick="event.stopPropagation();_adjV('sprd_upc_${uid}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button>
+        </div>
+        <div style="display:flex;gap:2px;width:100%">
+          <button onclick="event.stopPropagation();_spreadLockDir('${favTeam}','${dogTeam}','${g.home}','${g.away}',null,${plP.toFixed(3)},'-1.5','sprd_upc_${uid}','FAV','NHL')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.4);color:var(--gc);border-radius:2px;cursor:pointer;text-align:center"><div>${favTeam}</div><div id="fav_sprd_upc_${uid}" style="font-size:11px;opacity:.85">-1.5</div></button>
+          <button onclick="event.stopPropagation();_spreadLockDir('${favTeam}','${dogTeam}','${g.home}','${g.away}',null,${plP.toFixed(3)},'-1.5','sprd_upc_${uid}','DOG','NHL')" style="flex:1;font-size:13px;padding:2px 3px;background:rgba(80,120,255,.08);border:1px solid rgba(80,120,255,.3);color:var(--t2);border-radius:2px;cursor:pointer;text-align:center"><div>${dogTeam}</div><div id="dog_sprd_upc_${uid}" style="font-size:11px;opacity:.85">+1.5</div></button>
+        </div>
+      </div>
+      <div style="flex:2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:1px">O/U LINE</div>
+        <div style="display:flex;align-items:center;gap:2px">
+          <button onclick="event.stopPropagation();_adjV('ouinp_upc_${uid}',-0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">−</button>
+          <input type="number" step="0.5" value="${ouLine}" id="ouinp_upc_${uid}" style="width:44px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:var(--t);font-family:var(--mono);font-size:16px;padding:2px 4px;border-radius:2px;text-align:center">
+          <button onclick="event.stopPropagation();_adjV('ouinp_upc_${uid}',0.5)" style="font-family:var(--mono);font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(220,190,255,.7);border-radius:2px;cursor:pointer;flex-shrink:0">+</button>
+        </div>
+        <div style="display:flex;gap:3px">
+          <button onclick="event.stopPropagation();_ouLockDir('${g.home}','${g.away}',null,${ouP.toFixed(3)},'${ouLine}','ouinp_upc_${uid}','OVER','NHL')" style="font-size:13px;padding:2px 6px;background:rgba(0,240,255,.1);border:1px solid rgba(0,240,255,.4);color:var(--nc);border-radius:2px;cursor:pointer">▲ OVER</button>
+          <button onclick="event.stopPropagation();_ouLockDir('${g.home}','${g.away}',null,${ouP.toFixed(3)},'${ouLine}','ouinp_upc_${uid}','UNDER','NHL')" style="font-size:13px;padding:2px 6px;background:rgba(255,32,144,.1);border:1px solid rgba(255,32,144,.4);color:var(--hc);border-radius:2px;cursor:pointer">▼ UNDER</button>
+        </div>
+      </div>
     </div>
-    <div style="padding:4px 6px 6px;font-family:var(--mono);font-size:14px;color:var(--t3)">PROJ ${mc?mc.avgA.toFixed(1)+'-'+mc.avgH.toFixed(1):'—'} · MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}%</div>
+    <div style="padding:8px 10px;background:rgba(4,0,12,.5);border-top:1px solid rgba(255,255,255,.05);margin-top:2px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:14px;padding:1px 5px;border:1px solid ${topTierCol};color:${topTierCol};border-radius:2px">${topTierLabel}</span>
+        <span style="font-family:var(--mono);font-size:14px;color:var(--t3)">ENGINE REASONING</span>
+      </div>
+      ${_mcProjBarHTML(mc,ouLine,g.home,g.away,{dec:2})}
+      <div style="font-family:var(--mono);font-size:16px;color:var(--t2);line-height:1.7">${explanation}</div>
+      <div style="margin-top:6px;font-family:var(--mono);font-size:13px;color:var(--t3);letter-spacing:.5px;border-top:1px solid rgba(255,255,255,.05);padding-top:5px">MARKET SCAN: ${nm.mkts.map(m=>m.label+':'+['SKIP','LEAN','OPT','PREM'][m.tierN]).join(' · ')}</div>
+    </div>
   </div>`;
 }
 async function renderNHLUpcoming(){
@@ -8989,7 +9064,7 @@ async function renderNHLUpcoming(){
     const dispDate=new Date(iso+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',weekday:'short',month:'short',day:'numeric'});
     const label=dayLabels[i]?`${dayLabels[i]} · ${dispDate}`:dispDate;
     html+=`<div style="font-family:var(--mono);font-size:15px;letter-spacing:2px;color:var(--nc);margin:${i?'16px':'0'} 0 8px;border-bottom:1px solid rgba(0,240,255,.15);padding-bottom:4px">// ${label} — ${dayGames.length} GAME${dayGames.length===1?'':'S'}</div>`;
-    html+=dayGames.length?dayGames.map(_nhlUpcomingCard).join(''):'<div class="empty" style="padding:14px">NO GAMES SCHEDULED</div>';
+    html+=dayGames.length?dayGames.map(g=>_nhlUpcomingCard(g,i)).join(''):'<div class="empty" style="padding:14px">NO GAMES SCHEDULED</div>';
   });
   el.innerHTML=html;
 }
