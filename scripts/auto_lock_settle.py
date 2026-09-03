@@ -118,29 +118,33 @@ SPORT_TO_LOCKPICK_TYPE = {
 # it just labels which of the two a given qualifying leg belongs to.
 EURO_SOCCER_SPORTS = frozenset({"SOC_CL", "SOC_PL", "SOC_LIGA", "SOC_BL", "SOC_ITA"})
 
-# The 7 paid products (confirmed structure, see _subscribers.py) -- each
+# The 6 paid products (confirmed structure, see _subscribers.py) -- each
 # maps to the exact sport tags gather_legs()/_autoLockCapture use. Soccer
-# bundles all 6 leagues (5 European + MLS) as one purchase. Hockey bundles
-# NHL with SHL/LIIGA -- those 2 have no real game cards wired up yet
-# (confirmed: no _autoLockCapture call exists for them), so today this is
-# functionally NHL-only, but the product already covers them once they are.
-# Explicit decision 2026-09-03: tennis (ATP/WTA) and KHL are real, live
-# engine features kept running for personal use only -- never sold, so
-# "tennis" was dropped from PRODUCT_SPORTS/PRODUCT_LABEL entirely and KHL
-# was removed from hockey's sport set. Their pick generation/lock/settle
-# logic elsewhere in this file (and app.html) is untouched -- this mapping
-# only controls what ships to paying subscribers, not what the engine runs.
+# bundles all 6 leagues (5 European + MLS) as one purchase. Hockey is
+# NHL-only.
+# Explicit decision 2026-09-03: tennis (ATP/WTA), WNBA, KHL, SHL, LIIGA,
+# and College Hockey (NCAAH) are real, live engine features kept running
+# for PERSONAL USE ONLY -- never sold, and explicitly routed to the
+# owner-only "other" pass (see run_lock_segmented below) rather than
+# bundled into any paid product, even though SHL/LIIGA/NCAAH have no real
+# game cards wired up yet. "tennis" and "wnba" were dropped from
+# PRODUCT_SPORTS/PRODUCT_LABEL entirely; KHL/SHL/LIIGA were removed from
+# hockey's sport set (down to NHL only); NCAAH was never added to any
+# product's set. Their pick generation/lock/settle logic elsewhere in
+# this file (and app.html) is untouched -- this mapping only controls
+# what ships to paying subscribers, not what the engine runs. User plans
+# to build SHL/LIIGA/NCAAH out for real later -- when that happens, this
+# is the mapping to revisit for making them paid.
 PRODUCT_SPORTS: dict[str, frozenset[str]] = {
     "nfl": frozenset({"NFL"}),
     "cfb": frozenset({"CFB"}),
     "nba": frozenset({"NBA"}),
-    "wnba": frozenset({"WNBA"}),
     "mlb": frozenset({"MLB"}),
-    "hockey": frozenset({"NHL", "SHL", "LIIGA"}),
+    "hockey": frozenset({"NHL"}),
     "soccer": EURO_SOCCER_SPORTS | frozenset({"SOC_MLS"}),
 }
 PRODUCT_LABEL: dict[str, str] = {
-    "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "wnba": "WNBA", "mlb": "MLB",
+    "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "mlb": "MLB",
     "hockey": "HOCKEY", "soccer": "SOCCER",
 }
 # OPTIMAL=2, PREMIUM=3 in _evalMkts()'s own tierN scale.
@@ -1893,11 +1897,12 @@ def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str
 def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
     part: real browser + live data warmups), then split into a separate
-    qualifying-legs list + a separately-addressed email for each of the 8
+    qualifying-legs list + a separately-addressed email for each of the 7
     paid sport products (see _subscribers.py), plus one more pass for
-    whatever isn't covered by any product (CBB/NCAAH market-read-back legs
-    today, if/when those get wired into gather_legs), sent to the owner
-    only. A subscriber to one product only ever sees that product's email;
+    whatever isn't covered by any product -- CBB, ATP/WTA (tennis), KHL,
+    SHL, LIIGA, and NCAAH (College Hockey) today, all explicitly kept
+    personal-use-only per 2026-09-03 decision -- sent to the owner only.
+    A subscriber to one product only ever sees that product's email;
     nothing is ever silently dropped -- every qualifying leg lands in
     exactly one of these passes. send_email=False for a redundant same-
     morning retry (see run_lock's own docstring) -- still locks and

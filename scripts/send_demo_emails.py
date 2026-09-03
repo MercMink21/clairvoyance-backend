@@ -79,12 +79,6 @@ DEMO_LEGS = {
         _leg("NBA", "PHX", "OKC", "sprdDog", "PHX +5.5", 0.57, "-105", 1.95, 0.018,
              "MC PROJ: PHX 109.0 – OKC 114.0 (Total 223.0, 25k sims)"),
     ],
-    "wnba": [
-        _leg("WNBA", "LVA", "NYL", "over", "OVER 165.5", 0.66, "-115", 1.87, 0.092,
-             "MC PROJ: NYL 84.1 – LVA 88.9 (Total 173.0, 25k sims)"),
-        _leg("WNBA", "SEA", "CONN", "mlFav", "SEA ML", 0.70, "-175", 1.57, 0.055,
-             "MC PROJ: CONN 78.2 – SEA 86.4 (Total 164.6, 25k sims)"),
-    ],
     "mlb": [
         _leg("MLB", "LAD", "SD", "under", "UNDER 7.5", 0.68, "-110", 1.91, 0.104,
              "MC PROJ: SD 3.4 – LAD 3.6 (Total 7.0, 15k sims)"),
