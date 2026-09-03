@@ -1493,54 +1493,135 @@ def _nhl_current_season_id() -> str:
     return f"{start_year}{start_year + 1}"
 
 
-def _nhl_resolve_season() -> str:
-    """Real gap, found in the same audit: SEASON was hardcoded to
-    "20252026" here (and, separately, hardcoded with gameTypeId=3 --
-    PLAYOFFS, not the regular season -- in docs/app.html's own client-
-    side NHL Edge fetch, a completely different but equally wrong
-    mistake found and fixed there). Both would have gone stale the
-    moment the 2026-27 season actually starts, and gameTypeId=3 only
-    ever covers the 16 of 32 teams who make the playoffs, several with
-    tiny 4-7 game samples -- a genuinely bad signal to build a team-
-    quality read on even when it does return real data.
+_NHL_PRIOR_SEASON_WEIGHT = 0.25  # explicit direction: 2025-26 (and going forward, "last season") counts for a fixed 25% of every rate stat feeding the NHL MC sims, permanently -- not a sample-size-adaptive shrinkage that fades out once the new season has enough games.
 
-    Tries the real current season's real regular season first; confirmed
-    live this returns zero rows every day until the season has actually
-    started (real 2026-27 test: 0 rows in September). Falls back to the
-    prior season's full real regular-season data as the honest baseline
-    until the new season has enough real games -- same principle other
-    sports in this app already use for their own early-season sparse-
-    data windows."""
-    current = _nhl_current_season_id()
+def _nhl_prior_season_id(season: str) -> str:
+    start = int(season[:4]) - 1
+    return f"{start}{start + 1}"
+
+def _nhl_blend(current, prior, w_prior: float = _NHL_PRIOR_SEASON_WEIGHT):
+    """current*0.75 + prior*0.25, degrading to whichever side is real
+    when only one exists (e.g. a rookie goalie with no 2025-26 NHL
+    record, or a team stat before the new season has logged any real
+    games yet)."""
+    if current is None and prior is None:
+        return None
+    if current is None:
+        return prior
+    if prior is None:
+        return current
+    return round(current * (1 - w_prior) + prior * w_prior, 4)
+
+def _nhl_fetch_goalie_season(season: str) -> tuple[dict, dict]:
+    """One season's real goalie/summary: (best starter per team, every
+    goalie's stats by name). The by-name lookup is what lets a blend
+    find THIS SAME GOALIE's prior-season numbers even if he was on a
+    different team, or find nothing at all for a rookie -- never another
+    goalie's numbers standing in for his."""
+    try:
+        r = requests.get(
+            f"{NHL_STATS}/goalie/summary",
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 200,
+                    "sort": "gamesPlayed", "cayenneExp": f"seasonId={season} and gameTypeId=2"},
+            headers=HEADERS, timeout=15,
+        )
+        rows = (r.json() or {}).get("data") or [] if r.ok else []
+    except Exception as exc:
+        log(f"NHL Edge goalies {season}: {exc}", "WARN")
+        rows = []
+    best_by_team: dict[str, dict] = {}
+    by_name: dict[str, dict] = {}
+    for g in rows:
+        abbr = g.get("teamAbbrevs", "")
+        name = g.get("goalieFullName", "")
+        if not name:
+            continue
+        stat = {"sv": g.get("savePct"), "gaa": g.get("goalsAgainstAverage"), "gp": g.get("gamesPlayed", 0) or 0}
+        by_name.setdefault(name, stat)  # first row wins if a name repeats across a mid-season trade's split rows
+        # A goalie traded mid-season also gets a combined "EDM,PIT"-style
+        # row (confirmed live) -- skip only THAT one for the team map so
+        # it doesn't sit as a dead key matching no real 3-letter abbr;
+        # the by-name lookup above still benefits from his real per-team
+        # stint rows regardless.
+        if abbr and "," not in abbr:
+            if abbr not in best_by_team or stat["gp"] > best_by_team[abbr]["gp"]:
+                best_by_team[abbr] = {**stat, "name": name}
+    return best_by_team, by_name
+
+def _nhl_fetch_team_percentages(season: str) -> dict:
+    try:
+        r = requests.get(
+            f"{NHL_STATS}/team/percentages",
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 50,
+                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
+            headers=HEADERS, timeout=15,
+        )
+        rows = (r.json() or {}).get("data") or [] if r.ok else []
+    except Exception as exc:
+        log(f"NHL Edge zone starts {season}: {exc}", "WARN")
+        rows = []
+    out = {}
+    for t in rows:
+        abbr = _NHL_TEAM_ID_MAP.get(t.get("teamId"))
+        zs = t.get("zoneStartPct5v5")
+        if abbr and zs is not None:
+            out[abbr] = zs * 100
+    return out
+
+def _nhl_fetch_team_summary(season: str) -> dict:
+    """Real per-team goalsForPerGame/goalsAgainstPerGame/powerPlayPct/
+    penaltyKillPct -- gf60/ga60/pp/pk in this app's own naming. These were
+    never actually pipeline-fetched before this: nhlMC's own gf60/ga60
+    (its single dominant offense/defense term) and pp/pk came only from
+    the static, hand-typed NHL[] table in docs/app.html, refreshed by
+    hand or not at all. Real, live, all 32 teams, both seasons for the
+    25%-weight blend."""
     try:
         r = requests.get(
             f"{NHL_STATS}/team/summary",
-            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 1,
-                    "cayenneExp": f"seasonId={current} and gameTypeId=2"},
+            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 50,
+                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
             headers=HEADERS, timeout=15,
         )
-        if r.ok and (r.json() or {}).get("data"):
-            return current
-    except Exception:
-        pass
-    prior_start = int(current[:4]) - 1
-    return f"{prior_start}{prior_start + 1}"
-
+        rows = (r.json() or {}).get("data") or [] if r.ok else []
+    except Exception as exc:
+        log(f"NHL Edge team rates {season}: {exc}", "WARN")
+        rows = []
+    out = {}
+    for t in rows:
+        abbr = _NHL_TEAM_ID_MAP.get(t.get("teamId"))
+        if not abbr:
+            continue
+        out[abbr] = {
+            "gf60": t.get("goalsForPerGame"),
+            "ga60": t.get("goalsAgainstPerGame"),
+            "pp":   t.get("powerPlayPct"),
+            "pk":   t.get("penaltyKillPct"),
+        }
+    return out
 
 def fetch_nhl_edge() -> dict:
-    """Real per-team goalie quality (save%, GAA) and 5v5 zone-start rate
-    -- the two secondary signals nhlMC (docs/app.html) actually reads
-    (h.edge?.zone_off, and NHL[abbr].sv/gaa via the goalie match in
-    docs/app.html's own processNHLGoalieEdge). Every OTHER field this
-    function used to also fetch (xG%, Corsi%, high-danger chances,
-    skating speed) was confirmed dead via a full consumer grep across
-    docs/app.html -- zero real read sites for any of it, and several of
-    those sub-fetches were independently broken anyway (an invalid sort
-    property causing an outright 400 on team/realtime; the skater/skating
-    endpoint 500s from the real API regardless of parameters, apparently
-    retired). This app's real xG/Corsi signal already comes from the
-    separate, working MoneyPuck integration (NHL[abbr].mp) -- not
-    duplicated here.
+    """Real per-team goalie quality (save%, GAA), 5v5 zone-start rate, and
+    scoring/special-teams rates (gf60/ga60/pp/pk) -- every secondary and
+    primary signal nhlMC/nhlEns (docs/app.html) read from either a live
+    fetch or, for gf60/ga60/pp/pk, a static hand-typed table until now.
+    Every OTHER field this function used to also fetch (xG%, Corsi%,
+    high-danger chances, skating speed) was confirmed dead via a full
+    consumer grep across docs/app.html -- zero real read sites for any of
+    it, and several of those sub-fetches were independently broken anyway
+    (an invalid sort property causing an outright 400 on team/realtime;
+    the skater/skating endpoint 500s from the real API regardless of
+    parameters, apparently retired). This app's real xG/Corsi signal
+    already comes from the separate, working MoneyPuck integration
+    (NHL[abbr].mp) -- not duplicated here.
+
+    Explicit direction: 2025-26 season data should carry a fixed 25%
+    weight in the NHL MC sims going forward, permanently (not just an
+    early-season stopgap). Every stat here is now fetched for BOTH the
+    real current season and 2025-26, then blended 75/25 via _nhl_blend()
+    -- degrading cleanly to 100% of whichever season is real when the
+    other has no data yet (e.g. a rookie goalie, or before the new
+    season has any real games logged).
 
     Real architecture bug, found and fixed separately: this data used to
     ALSO be fetched a second time, directly from the browser
@@ -1556,98 +1637,68 @@ def fetch_nhl_edge() -> dict:
     docs/app.html's own fetchNHLEdge() now reads this instead of
     re-fetching live.
     """
-    log("NHL Edge stats (goalies + zone starts)…")
-    season = _nhl_resolve_season()
-    out: dict = {"season": season, "goalies": {}, "zoneStart": {}}
+    log("NHL Edge stats (goalies + zone starts + team rates, current + 25%% 2025-26)…")
+    current_season = _nhl_current_season_id()
+    prior_season = _nhl_prior_season_id(current_season)
+    out: dict = {"season": current_season, "priorSeason": prior_season,
+                 "priorSeasonWeight": _NHL_PRIOR_SEASON_WEIGHT,
+                 "goalies": {}, "zoneStart": {}, "teamRates": {}}
 
-    try:
-        r = requests.get(
-            f"{NHL_STATS}/goalie/summary",
-            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 100,
-                    "sort": "gamesPlayed",
-                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
-            headers=HEADERS, timeout=15,
-        )
-        rows = (r.json() or {}).get("data") or [] if r.ok else []
-        # One goalie per team: the one with the most games played this
-        # season (the real de facto starter) -- self-updating from real
-        # usage instead of a hand-typed name that goes stale the moment a
-        # team's real starter changes, and works uniformly for all 32
-        # teams instead of only the handful this app has a hardcoded
-        # starting-goalie name for.
-        best_by_team: dict[str, dict] = {}
-        for g in rows:
-            abbr = g.get("teamAbbrevs", "")
-            # A goalie traded mid-season gets a combined "EDM,PIT"-style
-            # row here (confirmed live) alongside his real per-team stint
-            # rows -- skip the combined one so it doesn't sit in the
-            # output as a dead key matching no real team (harmless either
-            # way -- NHL[abbr] lookups downstream already only ever match
-            # a real 3-letter abbreviation -- but not worth carrying).
-            if not abbr or "," in abbr:
-                continue
-            gp = g.get("gamesPlayed", 0) or 0
-            if abbr not in best_by_team or gp > best_by_team[abbr].get("gp", 0):
-                best_by_team[abbr] = {
-                    "name": g.get("goalieFullName", ""),
-                    "sv": g.get("savePct", 0),
-                    "gaa": g.get("goalsAgainstAverage", 0),
-                    "gp": gp,
-                }
-        out["goalies"] = best_by_team
-    except Exception as exc:
-        log(f"NHL Edge goalies: {exc}", "WARN")
+    # Goalies: blend by the SAME PERSON's prior-season row, not just
+    # whichever goalie has the team's job this year vs. last year.
+    cur_g_team, cur_g_name = _nhl_fetch_goalie_season(current_season)
+    pri_g_team, pri_g_name = _nhl_fetch_goalie_season(prior_season)
+    for abbr in set(cur_g_team) | set(pri_g_team):
+        cur = cur_g_team.get(abbr)
+        if cur:
+            prior_stat = pri_g_name.get(cur["name"])
+            out["goalies"][abbr] = {
+                "name": cur["name"],
+                "sv":  _nhl_blend(cur["sv"],  prior_stat["sv"]  if prior_stat else None),
+                "gaa": _nhl_blend(cur["gaa"], prior_stat["gaa"] if prior_stat else None),
+                "gp":  cur["gp"],
+            }
+        else:
+            # No current-season games logged for this team yet -- use
+            # last season's own starter at full weight until real
+            # current-season games exist to blend against.
+            pri = pri_g_team[abbr]
+            out["goalies"][abbr] = {"name": pri["name"], "sv": pri["sv"], "gaa": pri["gaa"], "gp": 0}
 
-    try:
-        r = requests.get(
-            f"{NHL_STATS}/team/percentages",
-            params={"isAggregate": "false", "isGame": "false", "start": 0, "limit": 50,
-                    "cayenneExp": f"seasonId={season} and gameTypeId=2"},
-            headers=HEADERS, timeout=15,
-        )
-        rows = (r.json() or {}).get("data") or [] if r.ok else []
-        for t in rows:
-            abbr = _NHL_TEAM_ID_MAP.get(t.get("teamId"))
-            zs = t.get("zoneStartPct5v5")
-            if abbr and zs is not None:
-                out["zoneStart"][abbr] = round(zs * 100, 1)
-    except Exception as exc:
-        log(f"NHL Edge zone starts: {exc}", "WARN")
+    # Zone starts and team rates: team-level, no identity-matching needed.
+    cur_zs, pri_zs = _nhl_fetch_team_percentages(current_season), _nhl_fetch_team_percentages(prior_season)
+    for abbr in set(cur_zs) | set(pri_zs):
+        blended = _nhl_blend(cur_zs.get(abbr), pri_zs.get(abbr))
+        if blended is not None:
+            out["zoneStart"][abbr] = round(blended, 1)
 
-    vlog(f"  NHL Edge ({season}): {len(out['goalies'])} team goalies, {len(out['zoneStart'])} team zone-starts")
+    cur_tr, pri_tr = _nhl_fetch_team_summary(current_season), _nhl_fetch_team_summary(prior_season)
+    for abbr in set(cur_tr) | set(pri_tr):
+        c, p = cur_tr.get(abbr, {}), pri_tr.get(abbr, {})
+        out["teamRates"][abbr] = {
+            "gf60": _nhl_blend(c.get("gf60"), p.get("gf60")),
+            "ga60": _nhl_blend(c.get("ga60"), p.get("ga60")),
+            "pp":   _nhl_blend(c.get("pp"),   p.get("pp")),
+            "pk":   _nhl_blend(c.get("pk"),   p.get("pk")),
+        }
+
+    vlog(f"  NHL Edge ({current_season} + 25% {prior_season}): {len(out['goalies'])} team goalies, "
+         f"{len(out['zoneStart'])} zone-starts, {len(out['teamRates'])} team rates")
     return out
 
 
-def fetch_moneypuck() -> dict:
-    """MoneyPuck advanced stats — 5v5, 5v4, 4v5, all — teams and goalies."""
-    log("MoneyPuck stats…")
-    out: dict = {"teams": {}, "goalies": [], "skaters": []}
+_MP_TEAM_FIELDS = ("xgfPct","xgf60","xga60","cfPct","hdcfPct","gf","ga","shots","hdgf","hdga","scgf","scga")
+_MP_GOALIE_BLEND_FIELDS = ("gsaa","savePct","xSavePct","hdSavePct","mdSavePct","ldSavePct")
 
-    # MoneyPuck's season folder is named by the season's start year
-    # ("2025" = 2025-26), and used to be hardcoded here -- real risk,
-    # found in the same audit that fixed the NHL Edge/schedule season-
-    # staleness bugs: once a new season starts, a hardcoded prior-year
-    # path doesn't error, it just keeps silently serving last season's
-    # now-frozen data forever, with nothing to force a fix. Confirmed
-    # live: MoneyPuck doesn't publish a season's folder until its own
-    # pipeline starts ingesting that season's real games --
-    # moneypuck.com/.../2026/regular/teams.csv 404s in September, before
-    # puck drop. Tries the real current season first; falls back to the
-    # prior season (still a real, useful baseline through the pre-season
-    # gap) the moment that comes back empty.
-    current_yr = int(_nhl_current_season_id()[:4])
-    mp_base = f"{MP_BASE}/{current_yr}/regular"
-    rows = fetch_csv_rows(f"{mp_base}/teams.csv")
-    if not rows:
-        mp_base = f"{MP_BASE}/{current_yr - 1}/regular"
-        rows = fetch_csv_rows(f"{mp_base}/teams.csv")
+def _mp_load_teams(year: int) -> dict:
+    rows = fetch_csv_rows(f"{MP_BASE}/{year}/regular/teams.csv")
+    out: dict = {}
     for row in rows:
         situation = row.get("situation","")
         team = row.get("team","")
         if not team: continue
-        if team not in out["teams"]: out["teams"][team] = {}
         try:
-            out["teams"][team][situation] = {
+            out.setdefault(team, {})[situation] = {
                 "xgfPct":    float(row.get("xGoalsPercentage") or 0),
                 "xgf60":     float(row.get("xGoalsForPer60") or row.get("xGoalsFor") or 0),
                 "xga60":     float(row.get("xGoalsAgainstPer60") or row.get("xGoalsAgainst") or 0),
@@ -1663,15 +1714,20 @@ def fetch_moneypuck() -> dict:
             }
         except (ValueError, TypeError):
             pass
+    return out
 
-    # Goalies CSV
-    rows_g = fetch_csv_rows(f"{mp_base}/goalies.csv")
-    for row in rows_g:
+def _mp_load_goalies(year: int) -> dict:
+    """Keyed by (name, situation) -- MoneyPuck's goalies.csv has one row
+    per goalie per situation (all/5v5/4v5/...), same as teams.csv."""
+    rows = fetch_csv_rows(f"{MP_BASE}/{year}/regular/goalies.csv")
+    out: dict = {}
+    for row in rows:
+        name = row.get("name","")
+        situation = row.get("situation","all")
+        if not name: continue
         try:
-            out["goalies"].append({
-                "name":      row.get("name",""),
+            out[(name, situation)] = {
                 "team":      row.get("team",""),
-                "situation": row.get("situation","all"),
                 "gp":        int(row.get("games_played") or 0),
                 "gsaa":      float(row.get("goalsAboveAverage") or 0),
                 "savePct":   float(row.get("savePct") or 0),
@@ -1682,12 +1738,57 @@ def fetch_moneypuck() -> dict:
                 "shots":     int(row.get("shotsOnGoalAgainst") or 0),
                 "ga":        float(row.get("goalsAgainst") or 0),
                 "xga":       float(row.get("xGoalsAgainst") or 0),
-            })
+            }
         except (ValueError, TypeError):
             pass
+    return out
+
+def fetch_moneypuck() -> dict:
+    """MoneyPuck advanced stats — 5v5, 5v4, 4v5, all — teams and goalies.
+
+    Explicit direction: 2025-26 season data should carry a fixed 25%
+    weight in the NHL MC sims going forward (docs/app.html's nhlEns()
+    reads MONEYPUCK.teams' xgfPct live for its mpBoost term). Fetches
+    both the real current season and 2025-26 and blends every numeric
+    team field via _nhl_blend() (75% current / 25% prior), same policy
+    and same helper as fetch_nhl_edge(). MoneyPuck doesn't publish a
+    season's folder until its own pipeline starts ingesting that
+    season's real games (confirmed live: .../2026/regular/teams.csv
+    404s in September, before puck drop) -- the blend degrades cleanly
+    to 100% of 2025-26 through that pre-season gap, same as any other
+    team/goalie missing from the current season's file so far.
+    """
+    log("MoneyPuck stats (current + 25% 2025-26)…")
+    out: dict = {"teams": {}, "goalies": [], "skaters": []}
+    current_yr = int(_nhl_current_season_id()[:4])
+    prior_yr = current_yr - 1
+
+    cur_teams, pri_teams = _mp_load_teams(current_yr), _mp_load_teams(prior_yr)
+    for team in set(cur_teams) | set(pri_teams):
+        out["teams"][team] = {}
+        c_sit, p_sit = cur_teams.get(team, {}), pri_teams.get(team, {})
+        for situation in set(c_sit) | set(p_sit):
+            c, p = c_sit.get(situation, {}), p_sit.get(situation, {})
+            out["teams"][team][situation] = {f: _nhl_blend(c.get(f), p.get(f)) for f in _MP_TEAM_FIELDS}
+
+    # Goalies: blend the SAME goalie's prior-season row when it exists
+    # (matched by name+situation, same principle as fetch_nhl_edge's
+    # goalie blend) -- never mixed with a different goalie's numbers.
+    # gp/team/shots/ga/xga stay current-season-only (real current usage/
+    # counting stats, not rate stats meant to be blended); only the rate
+    # fields in _MP_GOALIE_BLEND_FIELDS get the 75/25 treatment.
+    cur_g, pri_g = _mp_load_goalies(current_yr), _mp_load_goalies(prior_yr)
+    for key in set(cur_g) | set(pri_g):
+        name, situation = key
+        c, p = cur_g.get(key), pri_g.get(key)
+        if c:
+            blended = {**c, **{f: _nhl_blend(c.get(f), p.get(f) if p else None) for f in _MP_GOALIE_BLEND_FIELDS}}
+        else:
+            blended = p  # no current-season row yet for this goalie -- 100% 2025-26 until one exists
+        out["goalies"].append({"name": name, "situation": situation, **blended})
 
     out["goalies"].sort(key=lambda g: g["gsaa"], reverse=True)
-    vlog(f"  MoneyPuck: {len(out['teams'])} teams, {len(out['goalies'])} goalies")
+    vlog(f"  MoneyPuck ({current_yr} + 25% {prior_yr}): {len(out['teams'])} teams, {len(out['goalies'])} goalies")
     return out
 
 def fetch_hockeyviz() -> dict:
