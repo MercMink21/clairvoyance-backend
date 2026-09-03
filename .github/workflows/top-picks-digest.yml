@@ -25,18 +25,33 @@ name: Top Picks Digest
 
 on:
   schedule:
-    # 10:30 AM MT = 16:30 UTC (MDT) -- comfortably after CFB's own last
-    # catch-up slot (10:00 AM MT) and after live-tracker.yml's CFB
-    # watchdog window (9:00-10:45 AM MT) has had a chance to compensate
-    # for a dropped CFB trigger too. 3 catch-up slots, 30 min apart, in
-    # case the real lock passes ran unusually late that day. Like every
-    # other MT time in this repo, these are fixed UTC crons -- GitHub
-    # Actions doesn't shift for DST, so real landing times drift ~1hr
-    # earlier MT once MST returns in November.
-    - cron: '30 16 * * *'
-    - cron: '0 17 * * *'
-    - cron: '30 17 * * *'
-    - cron: '0 18 * * *'
+    # Real audit, 2026-09-03: the old 16:30/17:00/17:30/18:00 UTC slots
+    # never actually fired anywhere near on time. Checked real run
+    # history for 2026-08-31/09-01/09-02: on every one of those days,
+    # ALL FOUR nominal attempts landed late -- the first one to actually
+    # execute (should_run=1, not a skip) showed up around 19:27-19:38
+    # UTC, roughly 3 hours past its nominal slot, meaning the real
+    # digest wasn't reaching the inbox until ~1:30-2pm MT instead of the
+    # intended ~10:30am-noon MT. Root cause: this window is the same one
+    # found overcrowded auditing pick-of-day-social-daily.yml the same
+    # day -- top-picks-digest.yml's OWN two triggers (17:00/18:00 UTC)
+    # sat inside it too, alongside daily-health-check.yml (17:15),
+    # verify-lock-workflows.yml (17:30), and pick-of-day's old 18:23 --
+    # this job was contending with itself and its neighbors. Moved
+    # earlier and re-spread to avoid that whole cluster (and pick-of-
+    # day's now-moved 16:40/17:10/17:40 slots): first attempt 16:10 UTC
+    # (~10:10am MT) -- still comfortably after CFB's own last catch-up
+    # (cfb-lock-early.yml, 16:00 UTC) so the CFB-omission bug this
+    # schedule was already once fixed for doesn't come back -- with 3
+    # more catch-up slots spread through the rest of the morning/early
+    # afternoon in case a real lock pass ran unusually late that day.
+    # Like every other MT time in this repo, these are fixed UTC crons
+    # -- GitHub Actions doesn't shift for DST, so real landing times
+    # drift ~1hr earlier MT once MST returns in November.
+    - cron: '10 16 * * *'
+    - cron: '50 16 * * *'
+    - cron: '10 18 * * *'
+    - cron: '50 18 * * *'
   workflow_dispatch:
     inputs:
       live:
