@@ -1539,7 +1539,8 @@ body{line-height:1.5}
   <div id="nba-wnba" class="subp">
     <nav class="inav" id="wnba-in">
       <button class="nb act" onclick="T('wnba','games')">MATCHES</button>
-      <button class="nb" onclick="T('wnba','props')">PROPS</button>
+      <!-- Hidden for WNBA offseason retirement -- flip back to visible (drop style) once reactivating for 2027 -->
+      <button class="nb" style="display:none" onclick="T('wnba','props')">PROPS</button>
       <button class="nb" onclick="T('wnba','model')">MODEL</button>
       <button class="nb" onclick="T('wnba','config')">CONFIG</button>
     </nav>
@@ -1637,7 +1638,7 @@ body{line-height:1.5}
     </div>
     <nav id="mn8" style="display:none">
       <button class="mb" onclick="T('wnba','games')"><span class="mbi"></span>MATCHES</button>
-      <button class="mb" onclick="T('wnba','props')"><span class="mbi"></span>PROPS</button>
+      <button class="mb" style="display:none" onclick="T('wnba','props')"><span class="mbi"></span>PROPS</button>
       <button class="mb" onclick="T('wnba','model')"><span class="mbi"></span>MODEL</button>
       <button class="mb" onclick="T('wnba','config')"><span class="mbi"></span>CONFIG</button>
     </nav>
@@ -26292,10 +26293,16 @@ function _generateWNBAPropsLive(games,statsData){
   });
   return props.sort(function(a,b){return b.prob-a.prob;});
 }
-// Hardcoded WNBA player props for today's games (IND@CON · MIN@LVA · DAL@PDX · LAS@PHX)
-// Updated: June 13 2026 — based on 2026 season averages + matchup
+// WNBA OFFSEASON — regular season concluded 2026-09-03, retired through the
+// 2027 season (see WNBA_OFFSEASON in scripts/clairvoyance_update.py). Props
+// tab hidden in nav; this hardcoded set is emptied so it can't render frozen
+// Aug 30 data with a growing stale-date banner all winter. Flip back
+// alongside WNBA_OFFSEASON when reactivating -- real data restored below,
+// commented out rather than deleted.
+var WNBA_OFFSEASON=true;
 var WNBA_PROPS_DATE='20260830';
-var WNBA_PROPS_DATA=[
+var WNBA_PROPS_DATA=[];
+/* var WNBA_PROPS_DATA_ARCHIVE=[
   // ── Minnesota Lynx @ Atlanta Dream (1:00 PM MT · O/U 177.5) ──
   {player:'Angel Reese',team:'ATL',opp:'MIN',game:'MIN_ATL',stat:'REB',line:11.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'12.5 rpg · glass control',basis:'Angel Reese rebounds dominate the paint. Minnesota Lynx interior rotation leaves gaps. Season avg 12.5 reb. Home board advantage.'},
   {player:'Angel Reese',team:'ATL',opp:'MIN',game:'MIN_ATL',stat:'PRA',line:28.5,over:true,ml:'-257',conf:72,grade:'ELITE',hitRate:'31.4 PRA avg · all-around floor',basis:'Angel Reese fills every box. Season avg 16.1 pts / 12.5 reb / 2.8 ast. Home amplifies every category. Minnesota Lynx matchup supports high PRA floor.'},
@@ -26327,8 +26334,13 @@ var WNBA_PROPS_DATA=[
   {player:'Paige Bueckers',team:'DAL',opp:'CON',game:'CON_DAL',stat:'PTS',line:19.0,over:true,ml:'-223',conf:69,grade:'ELITE',hitRate:'20.6 ppg · home favored',basis:'Paige Bueckers home scorer vs Connecticut Sun. Home crowd elevates output. Season avg 20.6 pts. Matchup context favors over.'},
   {player:'Paige Bueckers',team:'DAL',opp:'CON',game:'CON_DAL',stat:'AST',line:5.5,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'5.9 apg · playmaking engine',basis:'Paige Bueckers runs the offense at home. Connecticut Sun help rotations create kick-outs. Season avg 5.9 ast. Matchup style favors high-usage playmakers.'},
   {player:'Arike Ogunbowale',team:'DAL',opp:'CON',game:'CON_DAL',stat:'PTS',line:14.0,over:true,ml:'-213',conf:68,grade:'ELITE',hitRate:'15.2 ppg · home favored',basis:'Arike Ogunbowale home scorer vs Connecticut Sun. Home crowd elevates output. Season avg 15.2 pts. Matchup context favors over.'},
-];
+]; */
 async function renderWNBAProps(){
+  if(typeof WNBA_OFFSEASON!=='undefined'&&WNBA_OFFSEASON){
+    var elOff=document.getElementById('wnba-props-list');
+    if(elOff)elOff.innerHTML='<div class="empty">NO WNBA PROPS — OFFSEASON</div>';
+    return;
+  }
   var el=document.getElementById('wnba-props-list');
   if(!el)return;
   el.innerHTML='<div class="loading"><span class="spi"></span> LOADING...</div>';
@@ -33878,7 +33890,7 @@ function saveParlayToTracker(legs,sport){
   <div class="ndl"><button onclick="SS('nba');setSub('nba','wnba');hideAllND()">WNBA</button>
     <div class="ndl-sub">
       <button onclick="SS('nba');setSub('nba','wnba');T('wnba','games');hideAllND()">Today</button>
-      <button onclick="SS('nba');setSub('nba','wnba');T('wnba','props');hideAllND()">Props</button>
+      <button style="display:none" onclick="SS('nba');setSub('nba','wnba');T('wnba','props');hideAllND()">Props</button>
       <button onclick="SS('nba');setSub('nba','wnba');T('wnba','model');hideAllND()">Model</button>
       <button onclick="SS('nba');setSub('nba','wnba');T('wnba','config');hideAllND()">Config</button>
     </div>
