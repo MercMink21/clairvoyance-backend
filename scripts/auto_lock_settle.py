@@ -143,6 +143,17 @@ PRODUCT_SPORTS: dict[str, frozenset[str]] = {
     "hockey": frozenset({"NHL"}),
     "soccer": EURO_SOCCER_SPORTS | frozenset({"SOC_MLS"}),
 }
+# Explicit request, 2026-09-03: auto-lock is ONLY nfl/cfb/nba/mlb/nhl/
+# soccer -- WNBA, ATP/WTA (tennis), KHL, and CBB are excluded from the
+# automated pipeline entirely, not just from paid products (their own
+# manual lock/settle buttons in the app UI still work for personal use --
+# this only scopes what run_lock_segmented's automated pass captures).
+# SHL, LIIGA, and NCAAH (College Hockey) are the one exception: once
+# real game cards are wired up for them, they'll auto-lock and route to
+# the owner-only "other" email (see OTHER_ALLOWED_SPORTS below) -- they
+# have no real _autoLockCapture calls yet, so this is a no-op today, but
+# the allow-list is already correct for when that changes.
+OTHER_ALLOWED_SPORTS: frozenset[str] = frozenset({"SHL", "LIIGA", "NCAAH"})
 PRODUCT_LABEL: dict[str, str] = {
     "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "mlb": "MLB",
     "hockey": "HOCKEY", "soccer": "SOCCER",
@@ -1897,16 +1908,20 @@ def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str
 def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     """Main (unscoped) lock run -- ONE gather_legs() call (the expensive
     part: real browser + live data warmups), then split into a separate
-    qualifying-legs list + a separately-addressed email for each of the 7
+    qualifying-legs list + a separately-addressed email for each of the 6
     paid sport products (see _subscribers.py), plus one more pass for
-    whatever isn't covered by any product -- CBB, ATP/WTA (tennis), KHL,
-    SHL, LIIGA, and NCAAH (College Hockey) today, all explicitly kept
-    personal-use-only per 2026-09-03 decision -- sent to the owner only.
-    A subscriber to one product only ever sees that product's email;
-    nothing is ever silently dropped -- every qualifying leg lands in
-    exactly one of these passes. send_email=False for a redundant same-
-    morning retry (see run_lock's own docstring) -- still locks and
-    verifies, just skips re-sending every product's email."""
+    OTHER_ALLOWED_SPORTS (SHL/LIIGA/NCAAH -- personal-use, once they're
+    real) sent to the owner only. Anything outside covered_sports |
+    OTHER_ALLOWED_SPORTS (WNBA, ATP/WTA, KHL, CBB -- explicit 2026-09-03
+    decision) is dropped entirely before either pass, never auto-locked
+    by this automated run at all -- their own manual lock/settle buttons
+    in the app UI are untouched, this only scopes automation. A
+    subscriber to one product only ever sees that product's email;
+    nothing IN SCOPE is ever silently dropped -- every qualifying leg
+    that survives the top-level filter lands in exactly one of these
+    passes. send_email=False for a redundant same-morning retry (see
+    run_lock's own docstring) -- still locks and verifies, just skips
+    re-sending every product's email."""
     log("=== AUTO-LOCK (PREMIUM/OPTIMAL) — ALL PRODUCTS ===")
     result = gather_legs(page)
     log(f"Gathered {len(result.get('gameLegs') or [])} games' worth of markets, "
@@ -1914,8 +1929,15 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
     prop_diag = result.get("propDiag") or {}
     if prop_diag:
         log("  prop generation: " + ", ".join(f"{sp}={detail}" for sp, detail in prop_diag.items()))
-    all_qualifying = build_qualifying(result)
     covered_sports: set[str] = set().union(*PRODUCT_SPORTS.values())
+    all_qualifying_raw = build_qualifying(result)
+    in_scope_sports = covered_sports | OTHER_ALLOWED_SPORTS
+    all_qualifying = [q for q in all_qualifying_raw if q["sport"] in in_scope_sports]
+    excluded = [q for q in all_qualifying_raw if q["sport"] not in in_scope_sports]
+    if excluded:
+        excluded_sports = sorted({q["sport"] for q in excluded})
+        log(f"[excluded] {len(excluded)} qualifying leg(s) outside auto-lock scope, dropped "
+            f"(not locked, not emailed): {excluded_sports}")
     total_locked = 0
 
     for product, sports in PRODUCT_SPORTS.items():
@@ -1966,8 +1988,8 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
         else:
             log(f"Locks email ({label}) skipped -- already sent today ({result.new} locked this pass)")
 
-    other_qualifying = [q for q in all_qualifying if q["sport"] not in covered_sports]
-    log(f"[other] {len(other_qualifying)} qualifying legs (not a paid product yet -- owner only)")
+    other_qualifying = [q for q in all_qualifying if q["sport"] in OTHER_ALLOWED_SPORTS]
+    log(f"[other] {len(other_qualifying)} qualifying legs (SHL/LIIGA/NCAAH, personal-use -- owner only)")
     owner_to = [OWNER_EMAIL] if OWNER_EMAIL else None
     if not live:
         if send_email:
@@ -1978,7 +2000,7 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
         log(f"[other] {result.new} new, {result.already_locked} already locked, "
             f"{result.failed} failed -- {result.confirmed}/{len(other_qualifying)} confirmed locked")
         # No early/evening-pass exclusion here (unlike soccer/cfb above)
-        # -- CBB/NCAAH etc. have no dedicated pass of their own, so this
+        # -- SHL/LIIGA/NCAAH have no dedicated pass of their own, so this
         # unscoped run's final check IS their only report, same as every
         # other non-soccer/CFB product. Reverted an over-broad
         # locked==0-means-skip guard here for the same reason explained
