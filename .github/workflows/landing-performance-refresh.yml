@@ -1,21 +1,30 @@
 name: Landing Page Performance Refresh
 
-# docs/engine_performance.json and docs/sport_performance.json (the ONLY
-# data source clairvoyanceengine.info's Live Track Record / Sport
-# Performance sections read -- a separate repo, clairvoyance-landing,
-# fetches these two files directly from this repo's GitHub Pages) used to
-# refresh only once a day, as a side effect of social-cards-daily.yml's
-# full run (cards + video + email) at ~9:52am MT. That's fine for
-# YESTERDAY/THIS MONTH/LAST MONTH/ALL TIME (they don't change intraday
-# anyway), but TODAY's figures would sit frozen at whatever they were
-# around 10am MT for the rest of the day, growing more stale and
-# misleading as more games actually settle -- directly against the
-# explicit "update every few hours" ask this exists to satisfy.
+# docs/engine_performance.json, docs/engine_performance_subscriber.json,
+# and docs/sport_performance.json (the ONLY data source
+# clairvoyanceengine.info's Live Track Record / Sport Performance sections
+# read -- a separate repo, clairvoyance-landing, fetches these files
+# directly from this repo's GitHub Pages) used to refresh only once a day,
+# as a side effect of social-cards-daily.yml's full run (cards + video +
+# email) at ~9:52am MT. That's fine for YESTERDAY/THIS MONTH/LAST MONTH/
+# ALL TIME (they don't change intraday anyway), but TODAY's figures would
+# sit frozen at whatever they were around 10am MT for the rest of the day,
+# growing more stale and misleading as more games actually settle --
+# directly against the explicit "update every few hours" ask this exists
+# to satisfy.
+#
+# engine_performance_subscriber.json (added 2026-09-03): same periods as
+# engine_performance.json, but filtered to only the 6 real paid-product
+# sports (nfl/cfb/nba/mlb/nhl/soccer) -- explicit request that the public
+# Live Track Record section not include personal-use-only WNBA/tennis/etc
+# performance. The landing page's Live Track Record section fetches this
+# one now; engine_performance.json (the full, unfiltered ledger) stays
+# published too, just unused by that section currently.
 #
 # Runs generate_social_cards.py --json-only (added alongside this
 # workflow): reuses the exact same browser-launch + Supabase-load +
 # snapshot logic the full daily run already uses, but stops right after
-# writing the two JSON files -- no card/video generation, no email, no
+# writing the JSON files -- no card/video generation, no email, no
 # --force date-gate concerns. A fast, cheap, non-Playwright-heavy-in-the-
 # sense-that-matters job (~15s of real work) safe to run several times a
 # day without the queue-starvation risk documented on the heavier daily
@@ -65,7 +74,7 @@ jobs:
         run: |
           git config user.name  "Clairvoyance Bot"
           git config user.email "bot@clairvoyance"
-          git add docs/engine_performance.json docs/sport_performance.json
+          git add docs/engine_performance.json docs/engine_performance_subscriber.json docs/sport_performance.json
           if git diff --cached --quiet; then
             echo "No change"
           else

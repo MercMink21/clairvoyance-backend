@@ -452,6 +452,77 @@ def get_engine_performance(page) -> dict | None:
     )
 
 
+def get_engine_performance_subscriber(page) -> dict | None:
+    """Same Today/Yesterday/Rolling 7D/This Month/Last Month/All Time
+    hCalc() logic as get_engine_performance() above, but pre-filtered to
+    ONLY the 6 real paid-product sports (nfl, cfb, nba, mlb, hockey=NHL,
+    soccer's 6 leagues -- see PRODUCT_SPORTS in auto_lock_settle.py)
+    before computing each period. Explicit request, 2026-09-03: the
+    landing page's public "Live Track Record" section should reflect
+    performance for what's actually sold, not the full ledger (which
+    also includes personal-use-only WNBA/tennis/etc picks per this
+    session's PRODUCT_SPORTS/OTHER_ALLOWED_SPORTS work) -- unlike that
+    other JSON, this one is landing-page-only and never read by the home
+    page's own Engine Performance boxes, so filtering it doesn't affect
+    the personal dashboard at all.
+
+    Sport-tag codes below are the REAL ledger's own p.sport values (not
+    the auto-lock backend's internal SOC_* naming) -- copied from the
+    same leagueMap get_sport_performance() below already uses and has
+    verified correct against real data, so 'FB' (an NFL synonym some
+    older bets use) and the individual soccer league codes (PL/LIGA/
+    BUND/MLS/SERIEA/CL) are included deliberately, matching that
+    precedent exactly rather than re-deriving it."""
+    return page.evaluate(
+        """
+        async () => {
+          const SUBSCRIBER_CODES = new Set([
+            'NFL','FB','CFB','MLB','NHL','NBA',
+            'PL','LIGA','BUND','MLS','SERIEA','CL',
+          ]);
+          const allBets = getP().filter(p => p.sport && SUBSCRIBER_CODES.has(p.sport.toUpperCase()));
+          const now = Date.now();
+          const yd = yesterday();
+          const nowD = getMSTNow();
+          const wk7ts = now - 7 * 86400000;
+          const firstOfMonth = mstFirstOfMonth(nowD);
+          const firstOfLastMonth = mstFirstOfMonth(new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1));
+          const thisMonthLbl = nowD.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+          const lastMonthLbl = firstOfLastMonth.toLocaleDateString('en-US', {month:'short',year:'numeric'}).toUpperCase();
+
+          const hCalc = bets => {
+            const s = bets.filter(p => p.outcome !== 'pending');
+            const w = s.filter(p => p.outcome === 'win').length;
+            const l = s.filter(p => p.outcome === 'loss').length;
+            const u = s.reduce((a, p) => {
+              if (p.outcome === 'win') return a + (parseFloat(p.decOdds) || 2) - 1;
+              if (p.outcome === 'loss') return a - 1;
+              return a;
+            }, 0);
+            return { w, l, n: s.length, pct: s.length ? w / s.length : null, units: u };
+          };
+
+          const todayStr = today();
+          const periods = [
+            { key: 'TODAY', label: 'TODAY', sub: '',
+              perf: hCalc(allBets.filter(p => p.date === todayStr)) },
+            { key: 'YESTERDAY', label: 'YESTERDAY', sub: '',
+              perf: hCalc(allBets.filter(p => p.date === yd)) },
+            { key: 'ROLLING_7D', label: 'ROLLING 7D', sub: '',
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= wk7ts)) },
+            { key: 'THIS_MONTH', label: 'THIS MONTH', sub: thisMonthLbl,
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= firstOfMonth.getTime())) },
+            { key: 'LAST_MONTH', label: 'LAST MONTH', sub: lastMonthLbl,
+              perf: hCalc(allBets.filter(p => p.lockedAt && p.lockedAt >= firstOfLastMonth.getTime() && p.lockedAt < firstOfMonth.getTime())) },
+            { key: 'ALL_TIME', label: 'ALL TIME', sub: '',
+              perf: hCalc(allBets) },
+          ];
+          return periods.map(p => ({ key: p.key, label: p.label, sub: p.sub, w: p.perf.w, l: p.perf.l, n: p.perf.n, pct: p.perf.pct, units: p.perf.units }));
+        }
+        """
+    )
+
+
 def get_sport_performance(page) -> dict | None:
     """Today / Last Month / This Month / All Time win-loss-units, broken
     down by league, computed with the exact same leagueMap categorization
@@ -623,6 +694,24 @@ def run(out_dir: Path, force: set[str] | None = None, json_only: bool = False) -
                 log(f"Wrote {perf_path}")
         except Exception as e:
             log(f"WARNING: engine performance snapshot failed: {e}")
+
+        # Subscriber-scoped Engine Performance snapshot -- same periods, but
+        # filtered to only the 6 real paid-product sports. Explicit request,
+        # 2026-09-03: the landing page's public Live Track Record should not
+        # include personal-use-only WNBA/tennis/etc performance. Separate
+        # file so engine_performance.json (also read by nothing else, but
+        # kept as the "real, full" snapshot) stays the complete picture.
+        try:
+            engine_perf_sub = get_engine_performance_subscriber(page)
+            if engine_perf_sub:
+                perf_sub_path = ROOT / "docs" / "engine_performance_subscriber.json"
+                perf_sub_path.write_text(json.dumps({
+                    "generated_at": now_mt.strftime("%Y-%m-%d %H:%M MT"),
+                    "periods": engine_perf_sub,
+                }, indent=2))
+                log(f"Wrote {perf_sub_path}")
+        except Exception as e:
+            log(f"WARNING: subscriber-scoped engine performance snapshot failed: {e}")
 
         # Sport performance snapshot (Today / This Month / All Time, by league) --
         # feeds the landing page's own Sport Performance section, same
