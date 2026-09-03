@@ -5937,6 +5937,71 @@ function applyNHLEdgeData(edge){
     if(r.pp!=null)NHL[abbr].pp=r.pp;
     if(r.pk!=null)NHL[abbr].pk=r.pk;
   }
+  _nhlDeriveHV();
+}
+// Real gap, explicitly flagged as critical: only the 4 teams hand-
+// curated during last season's playoffs (COL/VGK/MTL/CAR, the final 4)
+// ever had real hv.off/fin/pp/def/pk scouting ratings -- the other 28
+// (every _syntheticEntry patchNHLStandings creates) were hardcoded to 0
+// with no live source ever wired in, meaning nhlMC's own
+// (h.hv.off-aw.hv.def)*.11 / h.hv.fin*.04 terms contributed nothing for
+// 87.5% of the league, and the HV ANALYSIS/matchup-radar panels showed
+// all-zero bars for those teams.
+//
+// Derives a real, mechanical stand-in for all 28 from data already
+// flowing through this same pipeline -- z-scored against the real
+// current league distribution, so it self-calibrates instead of
+// depending on a hand-picked scale constant. Deliberately NOT built from
+// gf60/ga60/pp/pk themselves (those already directly drive hOff/aOff's
+// base rate and the special-teams term elsewhere in nhlMC) -- that would
+// double-count the same signal as a second "qualitative" nudge on top of
+// itself. Uses MoneyPuck's real xgf60/xga60 (5v5 expected-goals-for/
+// against per 60, a shot-quality/process signal genuinely distinct from
+// the actual-goals rate already used) for off/def, and real
+// goals-vs-expected (gf60-xgf60) for a real "finishing above/below
+// expected" reading -- the standard hockey-analytics sense of the term,
+// not a guess. pp/pk stay z-scored off the real blended rates directly,
+// since nothing else in nhlMC reads hv.pp/hv.pk (confirmed via a full
+// consumer grep -- they only ever feed the HV/radar display panels, so
+// there's no double-counting risk there). Idempotent and safe to call
+// from both applyNHLEdgeData() and patchMoneyPuck() -- each call just
+// refines the z-scores with whatever real data has landed so far, and
+// never touches the 4 hand-curated teams (no _syntheticEntry flag).
+function _nhlZScore(vals){
+  const entries=Object.entries(vals).filter(([,v])=>v!=null&&isFinite(v));
+  if(entries.length<2)return{};
+  const nums=entries.map(([,v])=>v);
+  const mean=nums.reduce((a,b)=>a+b,0)/nums.length;
+  const variance=nums.reduce((a,b)=>a+(b-mean)**2,0)/nums.length;
+  const std=Math.sqrt(variance)||1;
+  const out={};
+  entries.forEach(([k,v])=>{out[k]=(v-mean)/std;});
+  return out;
+}
+function _nhlDeriveHV(){
+  const synthAbbrs=Object.keys(NHL).filter(a=>NHL[a]?._syntheticEntry);
+  if(!synthAbbrs.length)return;
+  const xgf60ByAbbr={},xga60ByAbbr={},finByAbbr={},ppByAbbr={},pkByAbbr={};
+  synthAbbrs.forEach(a=>{
+    const t=NHL[a];
+    const mp5=MONEYPUCK.teams?.[a]?.['5on5'];
+    if(mp5?.xgf60!=null)xgf60ByAbbr[a]=mp5.xgf60;
+    if(mp5?.xga60!=null)xga60ByAbbr[a]=mp5.xga60;
+    if(mp5?.xgf60!=null&&t.gf60!=null)finByAbbr[a]=t.gf60-mp5.xgf60;
+    if(t.pp!=null)ppByAbbr[a]=t.pp;
+    if(t.pk!=null)pkByAbbr[a]=t.pk;
+  });
+  const zOff=_nhlZScore(xgf60ByAbbr),zDef=_nhlZScore(xga60ByAbbr),zFin=_nhlZScore(finByAbbr),zPp=_nhlZScore(ppByAbbr),zPk=_nhlZScore(pkByAbbr);
+  const clamp=v=>Math.max(-2,Math.min(2.5,v));
+  synthAbbrs.forEach(a=>{
+    const hv=NHL[a].hv||{off:0,fin:0,def:0,pp:0,pk:0};
+    if(zOff[a]!=null)hv.off=+clamp(zOff[a]).toFixed(2);
+    if(zDef[a]!=null)hv.def=+clamp(-zDef[a]).toFixed(2); // lower xga60 is better defense -- invert
+    if(zFin[a]!=null)hv.fin=+clamp(zFin[a]).toFixed(2);
+    if(zPp[a]!=null)hv.pp=+clamp(zPp[a]).toFixed(2);
+    if(zPk[a]!=null)hv.pk=+clamp(zPk[a]).toFixed(2);
+    NHL[a].hv=hv;
+  });
 }
 // Kept as a callable (was a live-fetch trigger, now just re-applies +
 // re-renders) since the manual Sync flow and NHL Edge display tab both
@@ -21141,6 +21206,11 @@ function patchNHLStandings(standings){
 function patchMoneyPuck(goalies,teams){
   MONEYPUCK.goalies=goalies||[];
   MONEYPUCK.teams=teams||{};
+  // Re-derive the 28 synthetic teams' hv.* now that real xgf60/xga60
+  // just landed (see _nhlDeriveHV's own comment) -- safe/idempotent to
+  // call again even if applyNHLEdgeData() already ran once without this
+  // data available yet.
+  try{if(typeof _nhlDeriveHV==='function')_nhlDeriveHV();}catch(e){}
   try{const el=document.getElementById('mp-content');if(el&&el.closest('.tab.act'))renderMoneyPuck();}catch(e){}
 }
 function patchATPElo(players){
