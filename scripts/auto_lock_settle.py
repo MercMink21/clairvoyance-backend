@@ -848,13 +848,40 @@ def gather_legs(page) -> dict:
             } else propDiag.nhl = { skipped: 'fn missing' };
           } catch (e) { propDiag.nhl = { error: e.message }; }
           try {
-            if (typeof _nflModelPropsForGame === 'function' && window._NFL_DATA) {
+            // Real bug, found + fixed via a rigorous audit, 2026-09-03:
+            // this checked window._NFL_DATA, which is ALWAYS undefined --
+            // _NFL_DATA is declared `let _NFL_DATA=null` at the top level
+            // of app.html's classic (non-module) <script>, and a
+            // top-level `let`/`const` never becomes a `window` own-
+            // property the way `var` or a `function` declaration does.
+            // Confirmed live with a fresh headless Playwright session,
+            // matching this script's own real timing (goto + 40s wait):
+            // window._NFL_DATA stayed null while the bare `_NFL_DATA`
+            // identifier (same page.evaluate() global scope every
+            // classic <script> tag shares) was already fully populated
+            // (32 teams, 25 real schedule weeks). The `typeof
+            // _nflModelPropsForGame === 'function'` half of this check
+            // was always true (function declarations DO attach to
+            // window), so this branch's `else` -- mislabeled "fn
+            // missing" -- fired every single automated run regardless of
+            // real data readiness, silently skipping ALL NFL player prop
+            // generation for the entire lifetime of this feature. Fixed
+            // by referencing the bare `_NFL_DATA` identifier instead of
+            // `window._NFL_DATA` (this page.evaluate() callback runs in
+            // the exact same global scope app.html's own scripts do, so
+            // the bare identifier resolves correctly). NBA/WNBA/NHL's own
+            // readiness checks above were audited too and are NOT
+            // affected -- they read real `window._nbaTodayGames`/
+            // `window._wnbaGameData`/`window._nhlTodayGames` properties
+            // (explicit `window.x = ...` assignments elsewhere in
+            // app.html), not a `let`-scoped bare variable.
+            if (typeof _nflModelPropsForGame === 'function' && typeof _NFL_DATA !== 'undefined' && _NFL_DATA) {
               const games = [];
-              Object.values(window._NFL_DATA.weeks || {}).forEach(list => (list || []).forEach(g => games.push(g)));
+              Object.values(_NFL_DATA.weeks || {}).forEach(list => (list || []).forEach(g => games.push(g)));
               let generated = 0;
               games.forEach(g => { try { const p = _nflModelPropsForGame(g); p.forEach(pp => propLegs.push({ ...pp, sportTag: 'NFL', _nflGame: g })); generated += p.length; } catch (e) {} });
               propDiag.nfl = { games: games.length, generated };
-            } else propDiag.nfl = { skipped: 'fn missing' };
+            } else propDiag.nfl = { skipped: 'nfl data not ready' };
           } catch (e) { propDiag.nfl = { error: e.message }; }
 
           return { gameLegs, propLegs, propDiag };
