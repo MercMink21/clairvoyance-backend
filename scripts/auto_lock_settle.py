@@ -53,6 +53,7 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 import requests
@@ -1099,10 +1100,34 @@ def lock_game_leg(page, q: dict, date_override: str | None = None) -> str:
     return page.evaluate(
         """
         async ({ hA, awA, type, betOn, prob, ml, dec, dateOverride }) => {
+          // Real gap, found auditing the locks-email "X of Y legs actually
+          // locked" line: this used to return a single 'dup-or-failed' for
+          // BOTH "this exact leg was already locked by an earlier pass
+          // today" (completely normal -- the 3 dedicated morning checks
+          // are deliberately redundant) AND a genuine failure, so a caller
+          // had no way to tell them apart. Confirmed live: on a day the
+          // 3 checks land compressed together in real time (a GitHub
+          // Actions scheduling delay, not a locking problem), the first
+          // two checks lock nearly everything, leaving the THIRD (the one
+          // that actually emails) reporting something like "1 of 15" --
+          // reads as a 93% failure rate when 14 of the 15 are actually
+          // sitting in the ledger fine, just locked a few minutes earlier
+          // by this same morning's own prior check. Pre-checking the
+          // SAME dedup lockPick() itself already does internally (its own
+          // deterministic id, `${date}_${hA}_${awA}_${type}_${betOn}`,
+          // plus its date+hA+awA+betOn fallback match) lets this report
+          // "already-locked" as its own real, distinct, non-failure
+          // outcome instead of conflating it with an actual problem.
+          const dateKey = dateOverride || today();
+          const id = `${dateKey}_${hA}_${awA}_${type}_${betOn.replace(/\\s/g,'')}`;
+          const preds = getP();
+          const dup = preds.find(x => x.id === id) ||
+                      preds.find(x => x.date === dateKey && x.hA === hA && x.awA === awA && x.betOn === betOn);
+          if (dup) return 'already-locked';
           const before = getP().length;
-          await lockPick(hA, awA, type, betOn, prob, ml != null ? ml : '-110', dec || 1.91, dateOverride || today(), 'manual');
+          await lockPick(hA, awA, type, betOn, prob, ml != null ? ml : '-110', dec || 1.91, dateKey, 'manual');
           const after = getP().length;
-          return after > before ? 'locked' : 'dup-or-failed';
+          return after > before ? 'locked' : 'failed';
         }
         """,
         {"hA": q["hA"], "awA": q["awA"], "type": lock_type, "betOn": q["label"], "prob": q["prob"], "ml": ml, "dec": dec, "dateOverride": date_override},
@@ -1110,13 +1135,24 @@ def lock_game_leg(page, q: dict, date_override: str | None = None) -> str:
 
 
 def lock_prop_leg(page, sport: str, leg: dict) -> str:
+    # Real bug, found and fixed alongside this same audit: lockProp()/
+    # lockNHLProp()/lockNFLModelProp() (docs/app.html) used to have NO
+    # dedup at all -- a Date.now()-based id, always unique by
+    # construction -- unlike lockPick()'s real deterministic-id dedup
+    # for game legs. That meant every one of this pipeline's real
+    # multiple-passes-per-day (3 dedicated morning checks, by design,
+    # relying on idempotent locking to make repeats safe) could have
+    # been silently creating duplicate prop locks. All 3 now have a
+    # real dedup check and return early (no getP() growth) on a genuine
+    # duplicate, so `after > before` here now correctly means "was this
+    # exact prop actually already locked" rather than being untestable.
     if sport == "NHL":
         return page.evaluate(
             """
             ({ player, stat, dir, prob, ml, line }) => {
               const before = getP().length;
               lockNHLProp(player, stat, dir, prob, ml, line);
-              return getP().length > before ? 'locked' : 'dup-or-failed';
+              return getP().length > before ? 'locked' : 'already-locked';
             }
             """,
             {"player": leg.get("player"), "stat": leg.get("stat"),
@@ -1129,7 +1165,7 @@ def lock_prop_leg(page, sport: str, leg: dict) -> str:
             ({ team, player, line, over, prob, ml, sport, opp }) => {
               const before = getP().length;
               lockProp(team, player, line, over, prob, ml, sport, opp);
-              return getP().length > before ? 'locked' : 'dup-or-failed';
+              return getP().length > before ? 'locked' : 'already-locked';
             }
             """,
             {"team": leg.get("team"), "player": leg.get("player"), "line": leg.get("line"),
@@ -1149,7 +1185,7 @@ def lock_prop_leg(page, sport: str, leg: dict) -> str:
               window._nflModelPropsCurrent.push(row);
               const before = getP().length;
               lockNFLModelProp(window._nflModelPropsCurrent.length - 1);
-              return getP().length > before ? 'locked' : 'dup-or-failed';
+              return getP().length > before ? 'locked' : 'already-locked';
             }
             """,
             leg,
@@ -1240,8 +1276,18 @@ def build_locks_email_html(qualifying: list[dict], live: bool, locked_count: int
         matchup = f"{q['awA']} @ {q['hA']}" if q["kind"] == "GAME" else _prop_matchup_key(q["leg"])
         by_sport.setdefault(sport, {}).setdefault(matchup, []).append(q)
 
+    # Real bug, found via audit: "actually locked" reads as "this specific
+    # send only managed to lock N of them" -- misleading on a day the
+    # morning's dedicated checks land close together in real time (a
+    # GitHub Actions scheduling delay, not a locking problem): the first
+    # couple of checks can lock nearly everything, leaving the one that
+    # actually emails reporting almost no NEW locks even though the
+    # picks are all really there. locked_count is now the real
+    # confirmed-as-of-right-now total (new this pass + already locked by
+    # an earlier pass today), not just this pass's own delta -- "are
+    # locked" instead of "actually locked" reflects that.
     status_line = (
-        f"LIVE — {locked_count} of {len(qualifying)} legs actually locked"
+        f"LIVE — {locked_count} of {len(qualifying)} qualifying legs are locked"
         if live else
         f"DRY RUN — {len(qualifying)} legs qualified, nothing was written"
     )
@@ -1537,7 +1583,30 @@ def send_top_picks_digest_email(bets: list[dict], date_str: str | None = None) -
     log(f"Top picks digest sent to {TOP_PICKS_EMAIL_TO}" if ok else f"Top picks digest send failed: {msg}")
 
 
-def _lock_qualifying_legs(page, qualifying: list[dict], date_override: str | None = None) -> int:
+class LockResult(NamedTuple):
+    """new: genuinely newly locked this pass. already_locked: a real,
+    confirmed duplicate -- this exact leg was already sitting in the
+    ledger (from an earlier pass today, most commonly -- see the 3
+    dedicated morning checks) -- not a failure. failed: lock_*_leg
+    threw, or returned neither 'locked' nor 'already-locked' (a genuine
+    problem, worth surfacing distinctly instead of folding into a vague
+    catch-all).
+
+    confirmed (new + already_locked) is the number that actually answers
+    "of today's qualifying legs, how many are really locked right now" --
+    this is what the locks email's headline count should use, NOT `new`
+    alone, which used to be misreported as if it were the whole story
+    (see the real "1 of 15" audit finding this type was added to fix)."""
+    new: int
+    already_locked: int
+    failed: int
+
+    @property
+    def confirmed(self) -> int:
+        return self.new + self.already_locked
+
+
+def _lock_qualifying_legs(page, qualifying: list[dict], date_override: str | None = None) -> LockResult:
     """Actually calls the real lockPick()/lockProp()/etc. for each leg.
     Shared by run_lock() (single-product early passes) and
     run_lock_segmented() (the main run's per-product loop) so there's one
@@ -1547,18 +1616,31 @@ def _lock_qualifying_legs(page, qualifying: list[dict], date_override: str | Non
     by the evening-prior soccer lock, which locks GAME legs for a date
     that isn't today() yet. Props never use this (there are none in the
     evening-prior pass's qualifying list -- only NBA/WNBA/NHL/NFL have
-    prop legs, none of which run on this path)."""
-    locked = 0
+    prop legs, none of which run on this path).
+
+    Real gap, found and fixed in the same audit that added this type:
+    'locked' vs 'already-locked' vs 'failed' used to collapse into a
+    single non-'locked' bucket (the old 'dup-or-failed' string), so a
+    genuine lock failure and a completely normal same-day re-check
+    dedup were indistinguishable in both the logs and the email. Now
+    logged and counted separately."""
+    new = already_locked = failed = 0
     for q in qualifying:
         try:
             outcome = lock_game_leg(page, q, date_override) if q["kind"] == "GAME" else lock_prop_leg(page, q["sport"], q["leg"])
+            label = q.get('label') or q.get('leg', {}).get('player')
             if outcome == "locked":
-                locked += 1
+                new += 1
+            elif outcome == "already-locked":
+                already_locked += 1
+                log(f"  already locked (earlier pass today): {label}")
             else:
-                log(f"  {outcome}: {q.get('label') or q.get('leg', {}).get('player')}")
+                failed += 1
+                log(f"  FAILED to lock ({outcome}): {label}")
         except Exception as exc:
+            failed += 1
             log(f"  FAILED to lock: {exc}")
-    return locked
+    return LockResult(new, already_locked, failed)
 
 
 def verify_locks_for_date(page, date_iso: str | None = None) -> int:
@@ -1636,9 +1718,10 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
             log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
         return 0
 
-    locked = _lock_qualifying_legs(page, qualifying)
-    log(f"Locked {locked}/{len(qualifying)} legs")
-    if locked > 0:
+    result = _lock_qualifying_legs(page, qualifying)
+    log(f"Locked {result.new} new, {result.already_locked} already locked, "
+        f"{result.failed} failed -- {result.confirmed}/{len(qualifying)} qualifying legs confirmed locked")
+    if result.new > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
     # Real bug, found via audit: this always emailed based on freshly
@@ -1651,17 +1734,27 @@ def run_lock(page, live: bool, only_sports: frozenset[str] | None = None, label:
     # subscriber would get a second email the next morning showing "0 of
     # N actually locked" while still listing all N picks in full, as if
     # reporting something new. Only skip when there's truly nothing new
-    # (locked==0) AND something qualified (qualifying non-empty) --
-    # genuinely new locks (locked>0) and the "nothing qualified today"
-    # case (handled above) still email as before.
-    if send_email and locked == 0 and qualifying:
+    # (result.new==0) AND something qualified (qualifying non-empty) --
+    # genuinely new locks and the "nothing qualified today" case
+    # (handled above) still email as before.
+    if send_email and result.new == 0 and qualifying:
         log(f"Locks email ({label or 'ALL'}) skipped -- all {len(qualifying)} qualifying leg(s) "
             f"were already locked by an earlier pass today, nothing new to report")
     elif send_email:
-        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to)
+        # Real bug, found via audit: this used to pass `locked` (this
+        # pass's NEW count only) as the email's headline "X of Y legs
+        # actually locked" number -- when the day's dedicated checks
+        # land close together in real time (see LockResult's own
+        # docstring), the check that actually emails can legitimately
+        # have very few NEW locks even though nearly everything is
+        # confirmed locked, reading as a near-total failure when it's
+        # not. result.confirmed (new + already_locked) is the real
+        # answer to "of today's qualifying legs, how many are actually
+        # locked right now."
+        send_locks_email(qualifying, live=True, locked_count=result.confirmed, label=label, to=to)
     else:
         log(f"Locks email ({label or 'ALL'}) skipped -- already sent today")
-    return locked
+    return result.new
 
 
 def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[str] | None = None) -> int:
@@ -1712,9 +1805,10 @@ def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[
             log("Locks email (SOCCER evening-prior) skipped -- already sent tonight")
         return 0
 
-    locked = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
-    log(f"Locked {locked}/{len(qualifying)} legs for {tomorrow_iso}")
-    if locked > 0:
+    result = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
+    log(f"Locked {result.new} new, {result.already_locked} already locked, {result.failed} failed -- "
+        f"{result.confirmed}/{len(qualifying)} qualifying legs confirmed locked for {tomorrow_iso}")
+    if result.new > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
     # Same guard as run_lock/run_lock_segmented -- mainly defends against
@@ -1722,14 +1816,14 @@ def run_soccer_evening_lock(page, live: bool, send_email: bool = True, to: list[
     # succeeded (the YAML's own marker check normally prevents this
     # function being invoked twice in one night, but doesn't cover a
     # manual re-trigger).
-    if send_email and locked == 0 and qualifying:
+    if send_email and result.new == 0 and qualifying:
         log(f"Locks email (SOCCER evening-prior) skipped -- all {len(qualifying)} qualifying "
             f"leg(s) were already locked earlier tonight, nothing new to report")
     elif send_email:
-        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
+        send_locks_email(qualifying, live=True, locked_count=result.confirmed, label=label, to=to, date_str=tomorrow_iso)
     else:
         log("Locks email (SOCCER evening-prior) skipped -- already sent tonight")
-    return locked
+    return result.new
 
 
 def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str] | None = None) -> int:
@@ -1777,19 +1871,20 @@ def run_cfb_evening_lock(page, live: bool, send_email: bool = True, to: list[str
             log("Locks email (CFB evening-prior) skipped -- already sent tonight")
         return 0
 
-    locked = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
-    log(f"Locked {locked}/{len(qualifying)} legs for {tomorrow_iso}")
-    if locked > 0:
+    result = _lock_qualifying_legs(page, qualifying, date_override=tomorrow_iso)
+    log(f"Locked {result.new} new, {result.already_locked} already locked, {result.failed} failed -- "
+        f"{result.confirmed}/{len(qualifying)} qualifying legs confirmed locked for {tomorrow_iso}")
+    if result.new > 0:
         flush_to_supabase(page)
         log("Flushed locks to Supabase")
-    if send_email and locked == 0 and qualifying:
+    if send_email and result.new == 0 and qualifying:
         log(f"Locks email (CFB evening-prior) skipped -- all {len(qualifying)} qualifying "
             f"leg(s) were already locked earlier tonight, nothing new to report")
     elif send_email:
-        send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=to, date_str=tomorrow_iso)
+        send_locks_email(qualifying, live=True, locked_count=result.confirmed, label=label, to=to, date_str=tomorrow_iso)
     else:
         log("Locks email (CFB evening-prior) skipped -- already sent tonight")
-    return locked
+    return result.new
 
 
 def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
@@ -1824,8 +1919,10 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
             if send_email:
                 send_locks_email(qualifying, live=False, label=label, to=recipients)
             continue
-        locked = _lock_qualifying_legs(page, qualifying) if qualifying else 0
-        total_locked += locked
+        result = _lock_qualifying_legs(page, qualifying) if qualifying else LockResult(0, 0, 0)
+        total_locked += result.new
+        log(f"[{product}] {result.new} new, {result.already_locked} already locked, "
+            f"{result.failed} failed -- {result.confirmed}/{len(qualifying)} confirmed locked")
         # Real bug, found via audit -- but NOT fixed the way run_lock's
         # own version of this guard is: soccer and CFB both have their
         # own dedicated early/evening pass with a BETTER-timed, more
@@ -1846,11 +1943,20 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
         # continuing to lock without emailing).
         if send_email and product in ("soccer", "cfb"):
             log(f"Locks email ({label}) skipped -- {product} has its own dedicated early/evening "
-                f"pass with a better-timed email; this run still locked as a safety net ({locked} new)")
+                f"pass with a better-timed email; this run still locked as a safety net ({result.new} new)")
         elif send_email:
-            send_locks_email(qualifying, live=True, locked_count=locked, label=label, to=recipients)
+            # Real bug, found via audit: this used to pass `locked` (this
+            # pass's NEW count only) -- see LockResult's own docstring
+            # for the real "1 of 15" case this caused, confirmed live:
+            # the 3 dedicated morning checks landing compressed together
+            # in real time (a GitHub Actions scheduling delay) meant the
+            # first two locked nearly everything, leaving the THIRD
+            # (this one, the one that actually emails) reporting almost
+            # nothing NEW even though the day's picks were all really
+            # there. result.confirmed answers the real question.
+            send_locks_email(qualifying, live=True, locked_count=result.confirmed, label=label, to=recipients)
         else:
-            log(f"Locks email ({label}) skipped -- already sent today ({locked} locked this pass)")
+            log(f"Locks email ({label}) skipped -- already sent today ({result.new} locked this pass)")
 
     other_qualifying = [q for q in all_qualifying if q["sport"] not in covered_sports]
     log(f"[other] {len(other_qualifying)} qualifying legs (not a paid product yet -- owner only)")
@@ -1859,8 +1965,10 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
         if send_email:
             send_locks_email(other_qualifying, live=False, label="OTHER", to=owner_to)
     else:
-        locked = _lock_qualifying_legs(page, other_qualifying) if other_qualifying else 0
-        total_locked += locked
+        result = _lock_qualifying_legs(page, other_qualifying) if other_qualifying else LockResult(0, 0, 0)
+        total_locked += result.new
+        log(f"[other] {result.new} new, {result.already_locked} already locked, "
+            f"{result.failed} failed -- {result.confirmed}/{len(other_qualifying)} confirmed locked")
         # No early/evening-pass exclusion here (unlike soccer/cfb above)
         # -- CBB/NCAAH etc. have no dedicated pass of their own, so this
         # unscoped run's final check IS their only report, same as every
@@ -1870,9 +1978,9 @@ def run_lock_segmented(page, live: bool, send_email: bool = True) -> None:
         # on a normal day where an earlier check already locked
         # everything.
         if send_email:
-            send_locks_email(other_qualifying, live=True, locked_count=locked, label="OTHER", to=owner_to)
+            send_locks_email(other_qualifying, live=True, locked_count=result.confirmed, label="OTHER", to=owner_to)
         else:
-            log(f"Locks email (OTHER) skipped -- already sent today ({locked} locked this pass)")
+            log(f"Locks email (OTHER) skipped -- already sent today ({result.new} locked this pass)")
 
     if total_locked > 0:
         flush_to_supabase(page)
