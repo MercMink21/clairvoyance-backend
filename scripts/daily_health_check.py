@@ -67,9 +67,24 @@ MONITORED = [
 # kickoff 7:00am), CFB's is 10:00am MT (earliest kickoff 10:00am) -- both
 # cutoffs here sit right after those, so a real miss is caught the same
 # morning, not up to a day later.
+#
+# last_pick_of_day_date.txt added after a real rigorous audit
+# (2026-09-03) found this exact gap: MONITORED's check_workflow() below
+# only checks "did a run happen recently and succeed" -- a run that hits
+# the workflow's own "already sent" skip gate ALSO reports success, so a
+# day where the real primary trigger silently never fired (confirmed via
+# real run history: happened on 4 of the last 4 real days) still looked
+# "healthy" as long as some later fallback or a manual dispatch
+# eventually caught it. This marker check is the same date-specific
+# ground truth the soccer/CFB checks already use -- it catches "still
+# missing" AND "took until a very late fallback," not just "never ran at
+# all." Cutoff 13 (1pm MT) sits after pick-of-day-social-daily.yml's own
+# last fallback slot (11:40am MT nominal) with headroom for GitHub's own
+# documented scheduling delay.
 LOCK_MARKERS = [
     (ROOT / "data" / "last_soccer_lock_date.txt", "Soccer Early Lock", 8),
     (ROOT / "data" / "last_cfb_lock_date.txt", "CFB Early Lock", 11),
+    (ROOT / "data" / "last_pick_of_day_date.txt", "Pick-of-Day Social Email", 13),
 ]
 
 

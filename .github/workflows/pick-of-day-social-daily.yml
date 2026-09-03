@@ -2,27 +2,38 @@ name: Daily Pick-of-Day Social Posts
 
 on:
   schedule:
-    # ~12:23 MT. The 11:00-16:45 UTC window is packed with other daily
-    # workflows (soccer/CFB locks, stats/props scrapers, social-cards-daily
-    # itself) -- several of them Playwright-heavy, and social-cards-daily's
-    # own history (2026-08-06) shows two such jobs landing ~22min apart can
-    # queue-starve each other entirely (never assigned a runner). This job
-    # is also Playwright + ffmpeg heavy, so it lands in the genuinely open
-    # 17:00-21:00 UTC gap instead of adding to that cluster -- same-day
-    # timely (real picks were already locked hours earlier, ~8:30am MT),
-    # just not competing for runners with the morning rush.
-    - cron: '23 18 * * *'
+    # Real audit, 2026-09-03: the previous 18:23 UTC (~12:23pm MT) primary
+    # trigger was placed in what its own comment called "the genuinely
+    # open 17:00-21:00 UTC gap" -- true when this job was set up, no
+    # longer true. top-picks-digest.yml has since grown two triggers
+    # right in that window (17:00 and 18:00 UTC), plus
+    # daily-health-check.yml (17:15), verify-lock-workflows.yml (17:30),
+    # and landing-performance-refresh.yml's hourly :37 run -- recreating
+    # exactly the contention this job was designed to dodge. Confirmed
+    # against real run history: on 4 of the last 4 real days
+    # (2026-08-30/31, 09-01/02), the 18:23 UTC primary never actually
+    # produced the day's email -- it silently landed on the SECOND
+    # fallback slot instead (then ~21:23 UTC, delivering ~3-5pm MT), and
+    # on 09-02 even that didn't land in time, needing a manual dispatch
+    # at 10:46am MT to go out at all. Moved to 16:40 UTC (~10:40am MT) --
+    # safely after both the real data refresh (scheduled-refresh.yml,
+    # 15:00 UTC) and CFB's own last catch-up lock (cfb-lock-early.yml,
+    # 16:00 UTC), so the day's picks are genuinely complete, while
+    # landing in one of the actually-quiet hours by the same real cron
+    # census (only cfb-lock-early's 16:00 and auto-lock-settle's 16:20
+    # nearby) -- earlier in the day than before, not later.
+    - cron: '40 16 * * *'
     # Real bug, found and fixed: a single daily cron trigger has no
     # recovery if GitHub silently drops it -- documented GitHub Actions
     # behavior under high load (this repo runs 25+ scheduled workflows),
-    # confirmed live: 2026-08-28's 18:23 UTC trigger never fired at all
-    # (last real run was the PRIOR evening's cycle). Two more staggered
-    # fallback times, each a no-op if data/last_pick_of_day_date.txt
-    # already shows today's date (see the new "Skip if already sent"
-    # step below) -- so a dropped primary trigger gets caught same-day
-    # instead of the email silently never going out.
-    - cron: '23 21 * * *'
-    - cron: '23 0 * * *'
+    # confirmed live multiple times (see above). Two more fallback times,
+    # each a no-op if data/last_pick_of_day_date.txt already shows
+    # today's date (see the "Skip if already sent" step below) -- kept
+    # CLOSE to the primary (30-60min out) rather than hours later, so a
+    # dropped primary still lands same late-morning window instead of
+    # sliding all the way to evening.
+    - cron: '10 17 * * *'
+    - cron: '40 17 * * *'
   workflow_dispatch: {}
 
 permissions:
