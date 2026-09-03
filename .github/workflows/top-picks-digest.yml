@@ -16,42 +16,49 @@ name: Top Picks Digest
 # MT (cfb-lock-early.yml) -- meaning every digest would have gone out
 # BEFORE CFB was locked, silently omitting CFB entirely (in real data,
 # CFB was the single largest contributor: 19 of 33 picks on a sampled
-# day, 5 of that day's top 7 overall). Fixed by moving this to 10:30am+
-# MT and EXPLICITLY verifying both data/last_lock_date.txt and
-# data/last_cfb_lock_date.txt already show today's date before sending
-# -- not just assuming enough time has passed. If either hasn't
-# recorded yet, this attempt skips (not sends incomplete) and the next
-# catch-up slot tries again.
-
+# day, 5 of that day's top 7 overall). EXPLICITLY verifying both
+# data/last_lock_date.txt and data/last_cfb_lock_date.txt already show
+# today's date before sending -- not just assuming enough time has
+# passed -- is what actually prevents that regardless of what triggers
+# this run. If either hasn't recorded yet, this attempt skips (not
+# sends incomplete) and the next attempt retries.
+#
+# Second real audit, 2026-09-03: a fixed-time schedule (even after
+# moving it earlier once already) is fundamentally the wrong tool here
+# -- it's guessing how long real locking takes instead of reacting to
+# it. Confirmed live: on 2026-08-31/09-01/09-02, every nominal slot
+# landed ~3 hours late (a GitHub Actions scheduling-congestion issue,
+# not this workflow's own logic), and on 2026-09-03 the very day this
+# was first fixed, the schedule change itself landed AFTER that day's
+# early slots had already passed, so NONE of them fired at all that
+# day. A fixed clock time can't be both "early" and "safe" when the
+# thing it's actually waiting on (CFB's own lock, which itself runs on
+# catch-up slots and can finish anywhere from ~9am to ~10:45am MT) has
+# no fixed duration. Switched to workflow_run, firing directly off the
+# real completion of both gating lock workflows -- this sends within
+# a couple minutes of whichever one finishes LAST each day, whatever
+# time that actually turns out to be, rather than a guessed buffer.
+# The existing marker-file readiness check (unchanged) is what actually
+# gates a real send either way, so this is strictly an improvement, not
+# a new failure mode: workflow_run firing "too early" (the other lock
+# not done yet) just skips exactly like an early schedule slot always
+# has, and every catch-up opportunity (the lock workflows' OWN retry
+# slots, each of which re-triggers this) still applies.
 on:
+  workflow_run:
+    workflows:
+      - "Auto Lock + Settle"
+      - "CFB Auto Lock (Early)"
+    types: [completed]
   schedule:
-    # Real audit, 2026-09-03: the old 16:30/17:00/17:30/18:00 UTC slots
-    # never actually fired anywhere near on time. Checked real run
-    # history for 2026-08-31/09-01/09-02: on every one of those days,
-    # ALL FOUR nominal attempts landed late -- the first one to actually
-    # execute (should_run=1, not a skip) showed up around 19:27-19:38
-    # UTC, roughly 3 hours past its nominal slot, meaning the real
-    # digest wasn't reaching the inbox until ~1:30-2pm MT instead of the
-    # intended ~10:30am-noon MT. Root cause: this window is the same one
-    # found overcrowded auditing pick-of-day-social-daily.yml the same
-    # day -- top-picks-digest.yml's OWN two triggers (17:00/18:00 UTC)
-    # sat inside it too, alongside daily-health-check.yml (17:15),
-    # verify-lock-workflows.yml (17:30), and pick-of-day's old 18:23 --
-    # this job was contending with itself and its neighbors. Moved
-    # earlier and re-spread to avoid that whole cluster (and pick-of-
-    # day's now-moved 16:40/17:10/17:40 slots): first attempt 16:10 UTC
-    # (~10:10am MT) -- still comfortably after CFB's own last catch-up
-    # (cfb-lock-early.yml, 16:00 UTC) so the CFB-omission bug this
-    # schedule was already once fixed for doesn't come back -- with 3
-    # more catch-up slots spread through the rest of the morning/early
-    # afternoon in case a real lock pass ran unusually late that day.
-    # Like every other MT time in this repo, these are fixed UTC crons
-    # -- GitHub Actions doesn't shift for DST, so real landing times
-    # drift ~1hr earlier MT once MST returns in November.
-    - cron: '10 16 * * *'
-    - cron: '50 16 * * *'
-    - cron: '10 18 * * *'
-    - cron: '50 18 * * *'
+    # Fallback safety net only now, not the primary path -- covers the
+    # case where GitHub drops the workflow_run trigger itself (the same
+    # class of silent-drop behavior already confirmed elsewhere in this
+    # repo's own scheduled workflows). Two widely-spaced slots is enough
+    # for a true backstop since workflow_run should be doing the real
+    # work above.
+    - cron: '30 17 * * *'
+    - cron: '30 19 * * *'
   workflow_dispatch:
     inputs:
       live:
@@ -65,22 +72,28 @@ permissions:
 
 jobs:
   top-picks-digest:
+    # workflow_run fires on every completion of either gating lock
+    # workflow regardless of outcome (types: [completed]) -- skip
+    # outright on a FAILED triggering run (nothing new to check; the
+    # marker files can't have moved) rather than spending even the cheap
+    # readiness-check step on it. schedule/workflow_dispatch runs (no
+    # workflow_run context) always pass this check. Same condition
+    # pages-deploy.yml already uses for its own workflow_run trigger.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -q playwright requests
-          playwright install --with-deps chromium
-
+      # Readiness check moved ahead of the Python/Playwright setup --
+      # real audit finding: with workflow_run now firing on every
+      # completion of either gating lock workflow (each of which retries
+      # on its own catch-up slots through the morning), most invocations
+      # on a given day are expected to land before both locks are done
+      # and just skip. Installing Playwright before knowing that meant
+      # every one of those paid the full install cost for nothing --
+      # this makes a skip a few-second checkout instead.
       - name: Determine live flag and readiness
         id: flags
         env:
@@ -99,12 +112,24 @@ jobs:
               echo "::notice::Top picks digest already sent for $TODAY_MT -- skipping."
               echo "should_run=0" >> "$GITHUB_OUTPUT"
             elif [ "$LAST_LOCK" != "$TODAY_MT" ] || [ "$LAST_CFB" != "$TODAY_MT" ]; then
-              echo "::notice::Top picks digest: today's main lock ($LAST_LOCK) or CFB lock ($LAST_CFB) not yet recorded for $TODAY_MT -- skipping this attempt so the digest isn't sent incomplete, next catch-up slot will retry."
+              echo "::notice::Top picks digest: today's main lock ($LAST_LOCK) or CFB lock ($LAST_CFB) not yet recorded for $TODAY_MT -- skipping this attempt, the next lock completion (or fallback slot) will retry."
               echo "should_run=0" >> "$GITHUB_OUTPUT"
             else
               echo "should_run=1" >> "$GITHUB_OUTPUT"
             fi
           fi
+
+      - name: Set up Python
+        if: ${{ steps.flags.outputs.should_run == '1' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: ${{ steps.flags.outputs.should_run == '1' }}
+        run: |
+          pip install -q playwright requests
+          playwright install --with-deps chromium
 
       - name: Send top picks digest
         if: ${{ steps.flags.outputs.should_run == '1' }}
