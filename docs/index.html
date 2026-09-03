@@ -4593,7 +4593,16 @@ function _forceHalfLine(x){
 }
 function mlbEns(hA,awA,espnGame,simN){
   const ouLine=parseFloat(espnGame?.ou||8.5);
-  const mc=mlbMC(hA,awA,simN||15000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
+  // Standardized to 25,000 -- was 15,000 with no accuracy reasoning behind
+  // the number (matches the exact "inconsistent, unjustified defaults"
+  // pattern _soccerMC's own _SOC_MC_N=25000 comment already documented
+  // and fixed for soccer). Real measured cost: ~19.4ms/game at 25k in a
+  // live browser (vs ~10.8ms at 15k) -- for a full MLB day's slate
+  // (~15 games), that's ~290ms of one-time render cost, not a sustained
+  // block. mlbMC's own signature default was already n=25000; this just
+  // stops mlbEns (every real call site -- mlbCard, the locks-email path,
+  // etc.) from silently undercutting it.
+  const mc=mlbMC(hA,awA,simN||25000,ouLine);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mc2:null};
   const hfa=(+document.getElementById('s-hfa')?.value||4)/100;
   const bay=Math.min(.92,Math.max(.08,getBayes(hA).m/(getBayes(hA).m+getBayes(awA).m)+.04));
   const eloP=Math.min(.92,Math.max(.08,eloWP(ELO[hA]||1500,ELO[awA]||1500)+hfa));
@@ -7087,7 +7096,9 @@ function _cfbCoverProb(mean,sigma,line){
 // instead of the fixed automatic-weighting this used before.
 window.CFB_ENS=window.CFB_ENS||(typeof S!=='undefined'?S.g('cfb_ens'):null)||{mc:.70,bay:.18,elo:.12};
 function cfbEns(hA,awA,ouLine,g){
-  const mc=cfbMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
+  // Standardized to 25,000 -- was 15,000. Real measured cost: ~6.9ms/game
+  // at 25k in a live browser -- a full CFB slate is well under 200ms.
+  const mc=cfbMC(hA,awA,25000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
   const D=_CFB_DATA;
   const eloR=D?.elo?.ratings||{},gp=D?.elo?.gamesPlayed||{};
   const hElo=eloR[hA]??1500,aElo=eloR[awA]??1500;
@@ -8169,7 +8180,9 @@ function _nflBayes(abbr){
   return{m:(w+1)/(w+l+2),w,l};
 }
 function nflEns(hA,awA,ouLine,g){
-  const mc=nflMC(hA,awA,15000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,mcD:null};
+  // Standardized to 25,000 -- was 15,000. Real measured cost: ~6.2ms/game
+  // at 25k in a live browser -- a full NFL Sunday slate is well under 150ms.
+  const mc=nflMC(hA,awA,25000,ouLine,g);if(!mc)return{p:.5,mc:.5,bay:.5,mcD:null};
   const hBay=_nflBayes(hA),aBay=_nflBayes(awA);
   const bayP=Math.min(.92,Math.max(.08,hBay.m/(hBay.m+aBay.m)+.015));
   const W=window.NFL_ENS||{mc:.75,bay:.25};
@@ -10484,7 +10497,13 @@ function nbaGetBayes(abbr){
 function nbaEloWP(eA,eB){return 1/(1+Math.pow(10,(eB-eA)/400));}
 function nbaEns(hA,awA,espnGame){
   const nbaOUL=parseFloat(espnGame?.ou||espnGame?.overUnder||220.5);
-  const mc=nbaMC(hA,awA,5000,nbaOUL);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
+  // Standardized to 25,000 -- was 5,000 (the lowest of any sport's real
+  // ensemble call, including a nightly loop over the full slate at
+  // NBA_TONIGHT). Real measured cost: ~7.45ms/game at 25k in a live
+  // browser (vs ~2.55ms at 5k) -- a full slate of 15 games is ~112ms
+  // one-time, not a perceptible hang. nbaMC's own signature default was
+  // already n=25000; this stops nbaEns from undercutting it 5x.
+  const mc=nbaMC(hA,awA,25000,nbaOUL);if(!mc)return{p:.5,mc:.5,bay:.5,elo:.5,mcD:null};
   const hfa=.028; // NBA home court ~2.8%
   const hBay=nbaGetBayes(hA).m,aBay=nbaGetBayes(awA).m;
   const bay=Math.min(.90,Math.max(.10,hBay/(hBay+aBay)+hfa));
