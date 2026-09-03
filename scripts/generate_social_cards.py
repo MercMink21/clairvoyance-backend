@@ -144,7 +144,7 @@ SPORT_LEAGUES = {
     "BASEBALL": "MLB",
     "BASKETBALL": "NBA, WNBA, CBB",
     "FOOTBALL": "NFL, CFB",
-    "HOCKEY": "NHL, KHL, SHL, LIIGA",
+    "HOCKEY": "NHL, SHL, LIIGA",
     "SOCCER": "Bundesliga, Champions League, La Liga, MLS, Premier League, Serie A",
     "TENNIS": "ATP, WTA",
 }
@@ -368,7 +368,7 @@ def get_year_stats(page, year: int) -> dict:
             if (t === 'MLB') return 'BASEBALL';
             if (['NBA','WNBA','CBB','NCAAB'].includes(t)) return 'BASKETBALL';
             if (['NFL','CFB'].includes(t)) return 'FOOTBALL';
-            if (['NHL','KHL','SHL','LIIGA','NCAAH'].includes(t)) return 'HOCKEY';
+            if (['NHL','SHL','LIIGA','NCAAH'].includes(t)) return 'HOCKEY';
             if (['SOC','WC','WORLD_CUP','WORLDCUP','PL','LIGA','BL','MLS','CH'].includes(t)) return 'SOCCER';
             if (['ATP','WTA','TEN','TENNIS'].includes(t)) return 'TENNIS';
             return null;
@@ -486,7 +486,7 @@ def get_sport_performance(page) -> dict | None:
           const leagueMap = [
             {lbl:'NFL',codes:['NFL','FB']},{lbl:'CFB',codes:['CFB']},{lbl:'MLB',codes:['MLB']},
             {lbl:'NHL',codes:['NHL']},{lbl:'College Hockey',codes:['NCAAH','COLLEGE HOCKEY']},
-            {lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},{lbl:'KHL',codes:['KHL']},
+            {lbl:'SHL',codes:['SHL']},{lbl:'LIIGA',codes:['LIIGA']},
             {lbl:'NBA',codes:['NBA']},{lbl:'WNBA',codes:['WNBA']},{lbl:'CBB',codes:['CBB','NCAAB']},
             {lbl:'ATP',codes:['ATP']},{lbl:'WTA',codes:['WTA']},
             {lbl:'Champions League',codes:['CL','CH']},

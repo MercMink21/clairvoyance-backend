@@ -20,12 +20,15 @@ The account owner's own address is always included for every product
 regardless of subscriber list state, so the personal daily reference
 this was originally built for keeps working with zero paying subscribers.
 
-8 paid products (confirmed structure): nfl, cfb, nba, wnba, mlb, hockey
-(NHL + KHL/SHL/LIIGA bundled -- those 3 have no real game cards wired up
-yet, but the product covers them too so nothing needs to change here
-once they are), soccer (all 6 leagues bundled -- the 5 European leagues
-+ MLS -- as one purchase, not sold separately), tennis (ATP + WTA
-bundled as one purchase).
+7 paid products (confirmed structure, 2026-09-03): nfl, cfb, nba, wnba,
+mlb, hockey (NHL + SHL/LIIGA bundled -- those 2 have no real game cards
+wired up yet, but the product covers them too so nothing needs to change
+here once they are), soccer (all 6 leagues bundled -- the 5 European
+leagues + MLS -- as one purchase, not sold separately). Explicit
+decision 2026-09-03: tennis (ATP/WTA) and KHL are real, live engine
+features kept for personal use only -- never sold to subscribers, so
+"tennis" was removed from PRODUCTS and KHL was dropped from the hockey
+product's sport set entirely (see PRODUCT_SPORTS in auto_lock_settle.py).
 """
 from __future__ import annotations
 import json
@@ -40,7 +43,7 @@ from _gmail_email import send_email as _send_gmail  # noqa: E402
 
 SUBSCRIBERS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscribers.json"
 EVENTS_FILE = Path(__file__).resolve().parent.parent / "data" / "subscriber_events.json"
-PRODUCTS = ("nfl", "cfb", "nba", "wnba", "mlb", "hockey", "soccer", "tennis")
+PRODUCTS = ("nfl", "cfb", "nba", "wnba", "mlb", "hockey", "soccer")
 OWNER_EMAIL = os.environ.get("LOCKS_EMAIL_TO", "") or os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 EXPIRY_DAYS = 30
 
@@ -49,7 +52,8 @@ EXPIRY_DAYS = 30
 # revenue from active subscription counts -- this is not a real payment
 # ledger (Venmo payments aren't tracked here at all), just what someone
 # following the standard pricing would owe for their current product count.
-PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 50, 5: 60, 6: 65, 7: 70, 8: 80}
+# Capped at 7 (len(PRODUCTS)) -- there is no 8th product to bundle anymore.
+PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 50, 5: 60, 6: 65, 7: 70}
 
 # Hosted (not inline-attached) so it actually renders across mail clients --
 # many strip inline/CID images or require an extra click, while a plain
@@ -360,7 +364,7 @@ def revenue_timeline(weeks: int = 8) -> list[dict]:
         for (email, _product), periods in periods_by_key.items():
             if any(p["start"] <= cp < p["end"] for p in periods):
                 counts_by_email[email] = counts_by_email.get(email, 0) + 1
-        revenue = sum(PRICING_BY_COUNT.get(min(n, 8), 0) for n in counts_by_email.values())
+        revenue = sum(PRICING_BY_COUNT.get(min(n, len(PRODUCTS)), 0) for n in counts_by_email.values())
         out.append({"week_of": cp.date().isoformat(), "active_emails": len(counts_by_email), "estimated_revenue": revenue})
     return out
 
@@ -382,7 +386,7 @@ def per_product_revenue() -> dict[str, float]:
     for product, emails in active_by_product.items():
         for email in emails:
             n = active_counts_by_email[email]
-            out[product] += PRICING_BY_COUNT.get(min(n, 8), 0) / n
+            out[product] += PRICING_BY_COUNT.get(min(n, len(PRODUCTS)), 0) / n
     return {p: round(v, 2) for p, v in out.items()}
 
 
@@ -492,7 +496,7 @@ def analytics_summary() -> dict:
         for entry in actives:
             active_counts_by_email[entry["email"]] = active_counts_by_email.get(entry["email"], 0) + 1
 
-    estimated_mrr = sum(PRICING_BY_COUNT.get(min(n, 8), 0) for n in active_counts_by_email.values())
+    estimated_mrr = sum(PRICING_BY_COUNT.get(min(n, len(PRODUCTS)), 0) for n in active_counts_by_email.values())
 
     expiring_soon = []
     for product in PRODUCTS:
@@ -601,7 +605,7 @@ def send_receipt_email(email: str) -> tuple[bool, str]:
         return False, f"{email} has no active products -- nothing to receipt"
 
     n = len(rows)
-    price = PRICING_BY_COUNT.get(min(n, 8), 0)
+    price = PRICING_BY_COUNT.get(min(n, len(PRODUCTS)), 0)
     now = _now()
     expiry_rows = "".join(
         f'<div style="padding:14px 0;'

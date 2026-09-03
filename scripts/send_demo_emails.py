@@ -105,14 +105,6 @@ DEMO_LEGS = {
         _leg("SOC_LIGA", "Real Madrid", "Barcelona", "mlFav", "Real Madrid ML", 0.68, "-120", 1.83, 0.060,
              "xG PROJ: Real Madrid 2.05 – Barcelona 1.40"),
     ],
-    "tennis": [
-        # Tennis has no MC score sim (win prob is ELO-derived) -- real
-        # emails omit mcSummary here too, per the no-model-name rule.
-        _leg("TEN", "Novak Djokovic", "Carlos Alcaraz", "mlFav", "Djokovic ML", 0.58, "+120", 2.20, 0.276,
-             None),
-        _leg("WTA", "Aryna Sabalenka", "Iga Swiatek", "mlFav", "Sabalenka ML", 0.65, "-135", 1.74, 0.131,
-             None),
-    ],
 }
 
 

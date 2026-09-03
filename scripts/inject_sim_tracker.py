@@ -31,7 +31,6 @@ var CV_META = {
     CFB:       { label:'CFB',          sport:'football',   color:'var(--rc)' },
     NHL:       { label:'NHL',          sport:'hockey',     color:'var(--ic)' },
     CH:        { label:'COLLEGE HCKY', sport:'hockey',     color:'var(--vc)' },
-    KHL:       { label:'KHL',          sport:'hockey',     color:'#3399ff'   },
     SHL:       { label:'SHL',          sport:'hockey',     color:'var(--nc)' },
     LIIGA:     { label:'LIIGA',        sport:'hockey',     color:'var(--rc)' },
     ATP:       { label:'ATP',          sport:'tennis',     color:'var(--mc)' },
@@ -41,7 +40,7 @@ var CV_META = {
   /* sport code → league (for picks stored with sport only) */
   sportToLeague: {
     MLB:'MLB',NBA:'NBA',WNBA:'WNBA',NFL:'NFL',CFB:'CFB',
-    NHL:'NHL',KHL:'KHL',SHL:'SHL',LIIGA:'LIIGA',CH:'CH',
+    NHL:'NHL',SHL:'SHL',LIIGA:'LIIGA',CH:'CH',
     TEN:'ATP',ATP:'ATP',WTA:'WTA',SOC:'WORLD_CUP',WORLDCUP:'WORLD_CUP'
   }
 };

@@ -118,27 +118,30 @@ SPORT_TO_LOCKPICK_TYPE = {
 # it just labels which of the two a given qualifying leg belongs to.
 EURO_SOCCER_SPORTS = frozenset({"SOC_CL", "SOC_PL", "SOC_LIGA", "SOC_BL", "SOC_ITA"})
 
-# The 8 paid products (confirmed structure, see _subscribers.py) -- each
+# The 7 paid products (confirmed structure, see _subscribers.py) -- each
 # maps to the exact sport tags gather_legs()/_autoLockCapture use. Soccer
 # bundles all 6 leagues (5 European + MLS) as one purchase. Hockey bundles
-# NHL with KHL/SHL/LIIGA -- those 3 have no real game cards wired up yet
+# NHL with SHL/LIIGA -- those 2 have no real game cards wired up yet
 # (confirmed: no _autoLockCapture call exists for them), so today this is
 # functionally NHL-only, but the product already covers them once they are.
-# Tennis bundles ATP + WTA as one purchase (sets/games O/U only -- no
-# proprietary ML edge, same as CBB/NCAAH, so ML isn't part of this product).
+# Explicit decision 2026-09-03: tennis (ATP/WTA) and KHL are real, live
+# engine features kept running for personal use only -- never sold, so
+# "tennis" was dropped from PRODUCT_SPORTS/PRODUCT_LABEL entirely and KHL
+# was removed from hockey's sport set. Their pick generation/lock/settle
+# logic elsewhere in this file (and app.html) is untouched -- this mapping
+# only controls what ships to paying subscribers, not what the engine runs.
 PRODUCT_SPORTS: dict[str, frozenset[str]] = {
     "nfl": frozenset({"NFL"}),
     "cfb": frozenset({"CFB"}),
     "nba": frozenset({"NBA"}),
     "wnba": frozenset({"WNBA"}),
     "mlb": frozenset({"MLB"}),
-    "hockey": frozenset({"NHL", "KHL", "SHL", "LIIGA"}),
+    "hockey": frozenset({"NHL", "SHL", "LIIGA"}),
     "soccer": EURO_SOCCER_SPORTS | frozenset({"SOC_MLS"}),
-    "tennis": frozenset({"ATP", "WTA"}),
 }
 PRODUCT_LABEL: dict[str, str] = {
     "nfl": "NFL", "cfb": "CFB", "nba": "NBA", "wnba": "WNBA", "mlb": "MLB",
-    "hockey": "HOCKEY", "soccer": "SOCCER", "tennis": "TENNIS",
+    "hockey": "HOCKEY", "soccer": "SOCCER",
 }
 # OPTIMAL=2, PREMIUM=3 in _evalMkts()'s own tierN scale.
 QUALIFYING_TIERS = {2, 3}
