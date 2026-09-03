@@ -114,6 +114,23 @@ NHL_STATS = "https://api.nhle.com/stats/rest/en"
 MP_BASE = "https://moneypuck.com/moneypuck/playerData/seasonSummary"
 YEAR      = 2026
 
+# Explicit request, 2026-09-03: WNBA's real regular season has ended
+# (confirmed live: zero real games 2026-09-01 through 09-05 on ESPN's
+# own scoreboard; the next real games are the 2026-09-17/18 playoff
+# openers) -- retired for the full offseason, through the 2027 season,
+# not just this pre-playoff gap (explicit choice). Real ledger check:
+# zero active WNBA subscribers right now, so this has no live customer
+# impact today. Flip back to False once ready to cover the 2027 season
+# -- every fetch_wnba*() function below short-circuits to its own empty
+# default when this is True, rather than being removed or having its
+# logic altered, so reactivating is exactly this one line, not a
+# rewrite. Deliberately NOT the same "static offseason messaging"
+# treatment an earlier pass gave NBA/NHL's own UI (docs/app.html) --
+# that one accidentally gutted and orphaned real, still-referenced
+# render functions along with the display copy; this only pauses the
+# real, wasted daily fetches for a sport with no real games to fetch.
+WNBA_OFFSEASON = True
+
 NOW        = datetime.now(timezone.utc)
 try:
     import zoneinfo
@@ -802,6 +819,8 @@ def fetch_wnba_roster() -> dict:
     same gap fetch_nba_roster() closes for NBA (no scraped player-team
     source existed before this).
     """
+    if WNBA_OFFSEASON:
+        return {}
     log("WNBA rosters (ESPN)…")
     result: dict = {}
     try:
@@ -3995,6 +4014,8 @@ def fetch_wnba_player_stats() -> list:
     """Scrape WNBA 2026 per-game + advanced player stats from Basketball Reference.
     BBRef WNBA uses table id='per_game' and player name is in <th data-stat='player'><a>.
     """
+    if WNBA_OFFSEASON:
+        return []
     YEAR = 2026
     players: dict[str, dict] = {}
 
@@ -4115,6 +4136,8 @@ def fetch_wnba_team_stats() -> dict:
                per_game-team (pts, fg%, 3p%, ft%)
                per_game-opponent (opp pts, opp fg%)
     """
+    if WNBA_OFFSEASON:
+        return {}
     YEAR = 2026
     result: dict = {}
     try:
@@ -4215,8 +4238,10 @@ def fetch_wnba_team_stats() -> dict:
 
 def fetch_wnba() -> dict:
     """Fetch WNBA scoreboard, standings, schedule from ESPN + BBRef player/team stats."""
-    log("WNBA scoreboard…")
     result = {"today": [], "standings": {}, "schedule": [], "players": [], "teamStats": {}}
+    if WNBA_OFFSEASON:
+        return result
+    log("WNBA scoreboard…")
     try:
         data = fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates={TODAY_ET}&limit=15")
         for ev in (data or {}).get("events", []):
