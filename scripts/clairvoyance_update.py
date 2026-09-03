@@ -2396,11 +2396,28 @@ def fetch_uso_bracket() -> dict:
                     continue
                 s1 = c1.get("curatedRank", {}).get("current")
                 s2 = c2.get("curatedRank", {}).get("current")
+                comp_state = (comp.get("status") or {}).get("type", {}).get("state", "pre")
+                # Real bug, found auditing settlement: this used to read
+                # competitors[].winner with no state check at all --
+                # ESPN's live feed can flag the leading competitor's
+                # winner as true before the match's own status.type.state
+                # actually flips to "post" (an in-progress match still
+                # mid-decider, or the brief window between match point and
+                # the feed's official close-out). A premature winner here
+                # doesn't just mis-render the bracket -- _usoAdvanceRound
+                # (docs/app.html) derives the NEXT round's real pairing the
+                # instant both feeding matches show a winner, and
+                # _captureUSOLegs feeds that derived pairing straight into
+                # the real auto-lock pipeline -- so a too-early winner here
+                # could lock a real subscriber pick against an R2 matchup
+                # that isn't official yet. Only trust winner once ESPN
+                # itself has closed the match out.
                 winner = None
-                if c1.get("winner"):
-                    winner = p1
-                elif c2.get("winner"):
-                    winner = p2
+                if comp_state == "post":
+                    if c1.get("winner"):
+                        winner = p1
+                    elif c2.get("winner"):
+                        winner = p2
                 # Built directly from each competitor's real per-set
                 # linescores rather than regex-parsing the free-text note
                 # ("Daniel Merida (ESP) bt (23) Andrey Rublev (RUS) 6-7 ...")
@@ -2429,7 +2446,7 @@ def fetch_uso_bracket() -> dict:
                     "p1": p1, "s1": f"({s1})" if s1 else "",
                     "p2": p2, "s2": f"({s2})" if s2 else "",
                     "matchDate": match_date, "winner": winner, "score": score,
-                    "state": (comp.get("status") or {}).get("type", {}).get("state", "pre"),
+                    "state": comp_state,
                 })
             out[tour] = rounds
         except Exception as exc:

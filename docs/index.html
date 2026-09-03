@@ -3954,7 +3954,7 @@ async function loadGames(dateStr){
       // matches, nothing gets wrongly settled, the date just retries next
       // run) instead of silent data corruption.
       ESPN_GAMES=[];window._mlbGames=[];
-      return;
+      return[];
     }
     games=events.map(parseESPNGame).filter(Boolean);
     if(st)st.textContent=`ESPN: ${games.length} GAMES`;
@@ -3998,6 +3998,29 @@ async function loadGames(dateStr){
   }
   const pd=document.getElementById('pd');if(pd&&isToday)pd.textContent=`// ${today()}`;
   if(isToday)autoSettleFromESPN(games);
+  // Real bug, found auditing settlement: loadGames() never returned its
+  // own games array -- every caller that needed them had to read the
+  // ESPN_GAMES global back out afterward. That global is shared with
+  // whatever ELSE is calling loadGames() at the same time (a real,
+  // active example: the 5-minute background refresh interval below,
+  // which calls loadGames(todayESPN()) on its own schedule, completely
+  // uncoordinated with anything else on the page) -- so a caller
+  // running a multi-date settlement backfill (run_settle() in
+  // auto_lock_settle.py) that awaits loadGames(dateA) and then reads
+  // ESPN_GAMES has no guarantee it's actually reading dateA's games:
+  // whichever concurrent loadGames() call's own internal awaits happen
+  // to finish last wins the global, regardless of which logical step
+  // was about to read it. Confirmed live: a 2026-09-03-dated CLE@TOR
+  // pick was locked and settled within 7 minutes using 2026-09-02's
+  // real final score (0-11), while the real 2026-09-03 game was still
+  // live (0-0) -- CLE/TOR play on both dates (a real back-to-back
+  // series), so the wrong-date game object matched the team pairing
+  // fine and the date guard downstream never had a chance to catch it,
+  // because the games array itself was already the wrong date's by the
+  // time it was read. Returning games directly lets a caller use this
+  // exact call's own local result instead of the racy shared global --
+  // immune to whatever else touches ESPN_GAMES concurrently.
+  return games;
 }
 
 // ═══ MLB TODAY'S MATCHES ════════════════════════════════════════════════

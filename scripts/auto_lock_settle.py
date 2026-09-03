@@ -450,8 +450,22 @@ def run_settle(page, live: bool, only_dates: list[str] | None = None) -> list[di
             const dEspn = targetDate.replace(/-/g, '');
             const r = {};
             try {
-              if (typeof loadGames === 'function') await loadGames(dEspn).catch(() => {});
-              if (typeof autoSettleFromESPN === 'function' && typeof ESPN_GAMES !== 'undefined' && ESPN_GAMES) autoSettleFromESPN(ESPN_GAMES, targetDate);
+              // Real bug, found and fixed: this used to await loadGames(dEspn)
+              // and then read the games back out of the shared ESPN_GAMES
+              // global -- but that global is also written by the page's own
+              // background refresh interval (loadGames(todayESPN()) every
+              // 5 minutes, completely uncoordinated with this backfill loop),
+              // so whichever concurrent loadGames() call finished last won
+              // the global, regardless of which date this specific step
+              // meant to read. Confirmed live: a same-day CLE@TOR pick got
+              // settled with the PRIOR day's real final score because of
+              // exactly this (the two teams play a real back-to-back series,
+              // so the wrong-date game matched the team pairing cleanly).
+              // loadGames() now returns its own games array directly --
+              // using that local result instead of the global is immune to
+              // whatever else touches ESPN_GAMES concurrently.
+              const dayGames = (typeof loadGames === 'function') ? await loadGames(dEspn).catch(() => []) : null;
+              if (typeof autoSettleFromESPN === 'function' && dayGames) autoSettleFromESPN(dayGames, targetDate);
               r.mlb = 'ok';
             } catch (e) { r.mlb = 'err:' + e.message; }
             try { if (typeof autoSettleNBA === 'function') await autoSettleNBA(targetDate); r.nba = 'ok'; } catch (e) { r.nba = 'err:' + e.message; }
