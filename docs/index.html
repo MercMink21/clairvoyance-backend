@@ -866,6 +866,11 @@ body{line-height:1.5}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:7px 10px;background:rgba(10,0,24,.7);border:1px solid rgba(255,255,255,.07);border-radius:3px;margin-bottom:10px;font-family:var(--mono);font-size:15px"><span style="color:var(--t3);letter-spacing:1px;font-size:14px">KEY:</span><span style="color:var(--gc)">PREMIUM</span><span style="color:var(--t3)">≥67% + EV&gt;5%</span><span style="color:var(--nc)">&nbsp;// OPTIMAL</span><span style="color:var(--t3)">≥62% + EV&gt;3%</span><span style="color:var(--ic)">&nbsp;// LEAN</span><span style="color:var(--t3)">55-62%</span><span style="color:var(--hc)">&nbsp;// SKIP</span><span style="color:var(--t3)">&lt;55%</span></div>
         <div id="nhl-tn" style="margin-bottom:14px"></div>
         <div id="nhl-games"><div class="loading"><span class="spi"></span></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+          <div class="sh" style="margin:0"><span class="i"></span> NEXT 3 DAYS · LEAGUE-WIDE</div>
+          <button class="btn btn-o btn-sm" onclick="renderNHLUpcoming()">↻</button>
+        </div>
+        <div id="nhl-upcoming"><div class="loading"><span class="spi"></span></div></div>
       </div>
       <div id="nhl-tab-edge" class="tab">
         <div class="sh"><span class="p"></span> NHL EDGE STATS</div>
@@ -6186,8 +6191,23 @@ function nhlMC(hA,awA,n=25000){
 function nhlEns(hA,awA){
   const h=NHL[hA],aw=NHL[awA];if(!h||!aw)return{p:.5};
   const mc=nhlMC(hA,awA);if(!mc)return{p:.5};
-  const xgf=h.xgf5/(h.xgf5+aw.xgf5);
-  const gE=(h.gsax-aw.gsax)/100;
+  // Real bug, found building the 3-day upcoming-games view: xgf5/gsax
+  // are hand-typed fields that only ever existed on the 4 hand-curated
+  // teams (last season's playoff final 4) -- the other 28 (any
+  // _syntheticEntry from patchNHLStandings) have neither. Since this
+  // used to divide/subtract them with no fallback at all, ANY matchup
+  // with at least one of those 28 teams (i.e. almost every real 2026-27
+  // game) produced NaN here, which poisoned the entire blended sum below
+  // to NaN -- nhlEns() silently returned no usable win probability for
+  // the vast majority of real matchups, confirmed live (CAR/FLA: p was
+  // null). Neutral fallback (50/50 share, 0 edge) when either team is
+  // missing the data, matching every other term in this same blend
+  // (hv/sw/mp already degrade to a neutral value instead of NaN) --
+  // real MoneyPuck xG signal for these teams still reaches the ensemble
+  // separately via mpBoost below, so this isn't losing real signal, just
+  // no longer crashing on its absence.
+  const xgf=(h.xgf5!=null&&aw.xgf5!=null&&(h.xgf5+aw.xgf5)>0)?h.xgf5/(h.xgf5+aw.xgf5):.5;
+  const gE=(h.gsax!=null&&aw.gsax!=null)?(h.gsax-aw.gsax)/100:0;
   const hvM=((h.hv.off-aw.hv.def)+(h.hv.fin-aw.hv.fin)*.5)*.04;
   const sm=((h.sw||0)-(aw.sw||0))*.015;
   // Prefer the real, live-fetched MoneyPuck team data (MONEYPUCK.teams,
@@ -8890,6 +8910,88 @@ function renderNHLGamesOffline(){
   }
   el.innerHTML=html||'<div class="empty">NO GAMES</div>';
   try{renderNHLSeriesAndProps();}catch(e){}
+}
+// ── NHL 3-day upcoming window ──────────────────────────────────────────
+// Real matchups + real market ML/spread/O-U odds for every team, today
+// plus the next 2 days, all sourced from docs/nhl_schedule.json --
+// fetch_nhl.py's full-season ESPN schedule fetcher (built earlier this
+// session), refreshed daily. renderNHLTonight()/renderNHLGames() only
+// ever cover a single day (today, or a hardcoded tomorrow toggle) and
+// only the live-data/ESPN-fetch path, not real odds for days 2-3 out --
+// this reads the already-fetched full-season file directly instead of
+// adding any new fetch, so it's pure client-side grouping + the same
+// nhlEns() model call every other NHL card already uses.
+let _NHL_SCHEDULE_DATA=null;
+function loadNHLScheduleData(){
+  if(_NHL_SCHEDULE_DATA)return Promise.resolve(_NHL_SCHEDULE_DATA);
+  return fetch('nhl_schedule.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null).then(d=>{
+    _NHL_SCHEDULE_DATA=d||{games:[]};
+    return _NHL_SCHEDULE_DATA;
+  });
+}
+// Pure calendar-day arithmetic off today()'s own MT date string (not a
+// real-time +24h offset, which would drift across the MT/UTC boundary)
+// -- "n days from now" as a plain YYYY-MM-DD.
+function _nhlDatePlus(n){
+  const[y,m,d]=today().split('-').map(Number);
+  return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);
+}
+function _nhlUpcomingCard(g){
+  const h=NHL[g.home],aw=NHL[g.away];
+  if(!h||!aw)return`<div class="gc" style="border-left:2px solid rgba(255,255,255,.15);padding:10px"><div style="font-family:var(--orb);font-size:19px;font-weight:700">${g.away} @ ${g.home}</div><div style="font-family:var(--mono);font-size:15px;color:var(--t3);margin-top:2px">No model data for this matchup yet.</div></div>`;
+  const ens=nhlEns(g.home,g.away),mc=ens.mcD;
+  const hP=ens.p,aP=1-hP;
+  const hML=g.homeML??p2ml(hP),aML=g.awayML??p2ml(aP);
+  const hD=ml2d(hML),aD=ml2d(aML);
+  const hEV=ev(hP,hD),aEV=ev(aP,aD);
+  const hCS=chipC(hP,hEV),aCS=chipC(aP,aEV);
+  const ouLine=g.overUnder!=null?parseFloat(_forceHalfLine(g.overUnder)):(mc?.ouLine||5.5);
+  const ouP=mc?.overP??.52;
+  const ouDec=1.91;
+  const nm=_evalMkts([
+    {label:`${g.home} ML`,prob:hP,evVal:hEV,side:'mlFav'},
+    {label:`${g.away} ML`,prob:aP,evVal:aEV,side:'mlDog'},
+    {label:`OVER ${ouLine}`,prob:ouP,evVal:ev(ouP,ouDec),dec:ouDec,side:'over'},
+    {label:`UNDER ${ouLine}`,prob:1-ouP,evVal:ev(1-ouP,ouDec),dec:ouDec,side:'under'},
+  ]);
+  _autoLockCapture('NHL',g.home,g.away,nm,mc?`MC PROJ: ${g.away} ${mc.avgA.toFixed(1)} – ${g.home} ${mc.avgH.toFixed(1)} (Total ${mc.avgT.toFixed(1)})`:null);
+  const dt=g.date?new Date(g.date):null;
+  const timeStr=dt?dt.toLocaleString('en-US',{timeZone:'America/Denver',hour:'numeric',minute:'2-digit'})+' MT':'TBD';
+  const stateTxt=g.state==='post'?`FINAL${g.homeScore!=null?`: ${g.away} ${g.awayScore} – ${g.home} ${g.homeScore}`:''}`:timeStr;
+  return`<div class="gc" style="border-left:2px solid rgba(0,240,255,.4);margin-bottom:8px">
+    <div class="gch">
+      <div><div style="display:flex;align-items:center;gap:6px"><span class="gtm" style="color:${aP>hP?'var(--pc)':'var(--t2)'}">${g.away}</span><span style="color:var(--t3);font-size:14px;font-family:var(--mono)">at</span><span class="gtm" style="color:${hP>=aP?'var(--pc)':'var(--t2)'}">${g.home}</span></div><div class="gsp">${g.venue||''}</div></div>
+      <div style="text-align:right"><div class="np mono" style="font-size:15px">${stateTxt}</div></div>
+    </div>
+    <div class="brow">
+      <div class="${hCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.home}',${hP.toFixed(3)},'${hML}',${hD.toFixed(3)})"><div class="cht">ML ${g.home}</div><div class="cho">${hML>0?'+':''}${hML}</div><div class="chp">${(hP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${hCS.pl}">${hCS.lb}</span></div></div>
+      <div class="${aCS.c} chip" style="flex:1" onclick="lockH('${g.home}','${g.away}','ML','${g.away}',${aP.toFixed(3)},'${aML}',${aD.toFixed(3)})"><div class="cht">ML ${g.away}</div><div class="cho">${aML>0?'+':''}${aML}</div><div class="chp">${(aP*100).toFixed(1)}%</div><div style="margin-top:2px"><span class="pill ${aCS.pl}">${aCS.lb}</span></div></div>
+      <div style="flex:1.2;background:rgba(0,240,255,.05);border:1px solid rgba(0,240,255,.2);border-radius:3px;padding:5px 6px;text-align:center"><div style="font-family:var(--mono);font-size:12px;color:var(--t3);letter-spacing:1px">O/U ${ouLine}</div><div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${ouP>=.5?'var(--nc)':'var(--mc)'}">${ouP>=.5?'OVER':'UNDER'}</div><div style="font-family:var(--mono);font-size:12px;color:var(--t3)">${(Math.max(ouP,1-ouP)*100).toFixed(0)}%</div></div>
+    </div>
+    <div style="padding:4px 6px 6px;font-family:var(--mono);font-size:14px;color:var(--t3)">PROJ ${mc?mc.avgA.toFixed(1)+'-'+mc.avgH.toFixed(1):'—'} · MC:${(ens.mc*100).toFixed(0)}% xGF:${(ens.xgf*100).toFixed(0)}%</div>
+  </div>`;
+}
+async function renderNHLUpcoming(){
+  const el=document.getElementById('nhl-upcoming');if(!el)return;
+  el.innerHTML='<div class="loading"><span class="spi"></span></div>';
+  const data=await loadNHLScheduleData();
+  const games=data?.games||[];
+  if(!games.length){el.innerHTML='<div class="empty">SCHEDULE NOT LOADED YET</div>';return;}
+  const days=[0,1,2].map(n=>_nhlDatePlus(n));
+  const dayLabels=['TODAY','TOMORROW',null];
+  let html='';
+  days.forEach((iso,i)=>{
+    const dayGames=games.filter(g=>{
+      if(!g.date)return false;
+      const mtDate=new Date(g.date).toLocaleDateString('sv-SE',{timeZone:'America/Denver'});
+      return mtDate===iso;
+    });
+    const dispDate=new Date(iso+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',weekday:'short',month:'short',day:'numeric'});
+    const label=dayLabels[i]?`${dayLabels[i]} · ${dispDate}`:dispDate;
+    html+=`<div style="font-family:var(--mono);font-size:15px;letter-spacing:2px;color:var(--nc);margin:${i?'16px':'0'} 0 8px;border-bottom:1px solid rgba(0,240,255,.15);padding-bottom:4px">// ${label} — ${dayGames.length} GAME${dayGames.length===1?'':'S'}</div>`;
+    html+=dayGames.length?dayGames.map(_nhlUpcomingCard).join(''):'<div class="empty" style="padding:14px">NO GAMES SCHEDULED</div>';
+  });
+  el.innerHTML=html;
 }
 function lockH(hA,awA,type,betOn,p,ml,d){lockPick(hA,awA,type,betOn,p,ml,d,today());}
 // v6.0: Render series series-status note + top player props in games tab
@@ -15947,7 +16049,7 @@ function T(sport,tabId){const D=window.__CV_DATA||{};
   const cls=(sport==='nhl'||sport==='nba'||sport==='wnba')?'ai':'act';
   document.querySelectorAll(`#${navId} .nb,#${mnId} .mb`).forEach(b=>{if(b.getAttribute('onclick')?.includes(`'${tabId}'`))b.classList.add(cls);});
   if(sport==='mlb'){if(tabId==='games'){try{(ESPN_GAMES.length?Promise.resolve():loadGames()).then(()=>renderMLBWeek());}catch(e){}}if(tabId==='model'){renderCal();renderLrn();renderModelWeights('mlb','mlb-model-weights');}if(tabId==='live'){startMLBLive();try{startLive();}catch(e){}}if(tabId==='history')renderHistory();if(tabId==='nrfi')renderNRFI();if(tabId==='set')updateAPIStatus();if(tabId==='parlay')try{cvParlayInit('mlb');}catch(e){}}
-  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games'){renderNHLTonight();renderNHLGames();};if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props'){renderProps();renderNHLSCFProps();setTimeout(()=>renderNHLPropsLive(window._nhlPropFilter||'all'),50);}if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){
+  if(sport==='nhl'){if(tabId==='picks')renderNHLPicks();if(tabId==='games'){renderNHLTonight();renderNHLGames();renderNHLUpcoming();};if(tabId==='goalies')renderGoaliesFromBackend();if(tabId==='props'){renderProps();renderNHLSCFProps();setTimeout(()=>renderNHLPropsLive(window._nhlPropFilter||'all'),50);}if(tabId==='edge')renderNHLEdge('team');if(tabId==='puck')renderMoneyPuck();if(tabId==='history')renderNHLHistory();if(tabId==='live'){
   startNHLLive();renderNHLLiveBets();
   const liveEl=document.getElementById('nhl-live-scores-main');
   if(liveEl){
