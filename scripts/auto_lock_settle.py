@@ -2054,7 +2054,7 @@ def main() -> None:
         today_mt = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
         body = (f"{_EMAIL_WRAP_OPEN}"
                 f'<div style="font-size:16px;color:#ff9090;font-weight:700">⚠ Lock did not run today ({today_mt})</div>'
-                f'<div style="margin-top:10px;font-size:14px;color:#ccc">None of the 3 dedicated 7:00-7:35am MT '
+                f'<div style="margin-top:10px;font-size:14px;color:#ccc">None of the 3 dedicated 7:05-8:05am MT '
                 f'lock checks, nor the 9am-12pm MT catch-up window, produced a real lock pass today -- no new '
                 f'picks were locked, and no locks email went out. This is a same-day alert so it gets noticed '
                 f'today, not whenever someone happens to check the app.</div>'

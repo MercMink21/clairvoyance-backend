@@ -21,27 +21,51 @@ name: Auto Lock + Settle
 
 on:
   schedule:
-    # Main lock: 3 dedicated attempts, shifted earlier to 7:00/7:15/7:35am
-    # MT -- per explicit request, multiple lock runs each morning, each
-    # one independently verifying picks locked correctly (see
-    # verify_todays_locks in auto_lock_settle.py). Locking itself is
-    # idempotent (lockPick() dedupes), so all 3 running is safe; per
-    # explicit request the subscriber email now waits until the LAST of
-    # the 3 (7:35am MT) -- passed --final-lock-check below -- rather than
+    # Main lock: 3 dedicated attempts -- per explicit request, multiple
+    # lock runs each morning, each one independently verifying picks
+    # locked correctly (see verify_todays_locks in auto_lock_settle.py).
+    # Locking itself is idempotent (lockPick() dedupes), so all 3 running
+    # is safe; per explicit request the subscriber email now waits until
+    # the LAST of the 3 -- passed --final-lock-check below -- rather than
     # firing after just the first success, so it reflects everything all
     # 3 attempts together managed to lock. The first two are silent
     # unless something's actually wrong, in which case they're what
-    # catches and fixes it before the email goes out, not after. 7:00 MT
-    # = 13:00 UTC, clear of statmuse-daily.yml's 14:00 UTC cron (also
-    # Playwright-heavy -- landing on the exact same minute risks the
-    # runner queue-starvation pattern documented in social-cards-
-    # daily.yml); the other two are spaced to avoid landing on each other
-    # too. Like every other MT time in this file, these are fixed UTC
+    # catches and fixes it before the email goes out, not after.
+    #
+    # Real audit, 2026-09-03: confirmed live via real run history that
+    # this schedule doesn't reliably land near its nominal times. On the
+    # day this was checked, all 3 nominal 13:00/13:15/13:35 UTC slots
+    # fired ~4 hours late AND compressed into an 8-minute real window
+    # instead of their intended 35-minute spread -- the first two ended
+    # up locking nearly everything just minutes before the third (the
+    # one that emails) ran, which is what produced a real "1 of 15 legs
+    # actually locked" report even though the day's picks were all
+    # really there (see auto_lock_settle.py's LockResult, added the same
+    # audit, which fixes the misleading COUNT regardless of this timing
+    # issue). Checking a broader 5-day sample afterward found the
+    # pattern isn't a single fixable contention window the way pick-of-
+    # day-social-daily.yml's was -- more like inconsistent GitHub-side
+    # trigger delay/drop across the whole day, which a schedule change
+    # alone can't fully solve. What IS real and fixable: soccer-lock-
+    # early.yml runs 4 of its own Playwright-heavy attempts immediately
+    # before this, at 12:00/12:15/12:30/12:45 UTC -- 7 heavy jobs packed
+    # into a 95-minute window is a real, concrete contention risk (the
+    # same class of queue-starvation already documented in social-cards-
+    # daily.yml's own history). Shifted 5 minutes later for more buffer
+    # after soccer's last attempt, and re-spread from 35 to 60 minutes
+    # total (30 min between each instead of 15-20) so a shared delay is
+    # less likely to compress all 3 as tightly as the 8-minute case
+    # found here -- a real, modest mitigation, not a guaranteed fix for
+    # GitHub's own scheduling reliability, which is outside this repo's
+    # control. The self-healing catch-up logic below (and the locked-
+    # count fix in auto_lock_settle.py) is what actually keeps real
+    # locks correct regardless of how this schedule lands on any given
+    # day. Like every other MT time in this file, these are fixed UTC
     # crons -- GitHub Actions doesn't shift for DST, so real landing
     # times drift ~1hr earlier MT once MST returns in November.
-    - cron: '0 13 * * *'
-    - cron: '15 13 * * *'
+    - cron: '5 13 * * *'
     - cron: '35 13 * * *'
+    - cron: '5 14 * * *'
     # Daily settlement digest: yesterday's results ONLY, once/day, after
     # the 3 lock checks above -- per explicit request (picks locked 7/28
     # get their results emailed the morning of 7/29, not mixed into a
@@ -149,12 +173,12 @@ jobs:
           elif [ "${{ github.event.schedule }}" = "20 14 * * *" ]; then
             echo "step_flags=--adaptive-recalibration" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 13 * * *" ] || [ "${{ github.event.schedule }}" = "15 13 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "5 13 * * *" ] || [ "${{ github.event.schedule }}" = "35 13 * * *" ]; then
             # First two of the 3 main lock checks -- lock + verify, no
             # email yet (see --final-lock-check on the 3rd below).
             echo "step_flags=--lock" >> "$GITHUB_OUTPUT"
             echo "live_flag=${{ vars.LIVE_MODE == 'true' && '--live' || '' }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "35 13 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "5 14 * * *" ]; then
             # 3rd and final main lock check -- this is the one that
             # actually emails subscribers, after the first two already
             # had their chance to lock anything qualifying.
