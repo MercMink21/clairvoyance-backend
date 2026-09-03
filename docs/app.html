@@ -19357,10 +19357,25 @@ function _buildUSOGenderData(k){
   const t=TEN_TOURNAMENTS.find(x=>x.id==='uso2026');
   if(!t)return{};
   const out={};
+  // Real, complete bracket from fetch_uso_bracket() (server-side, every
+  // round incl. R1, refreshed each pipeline run) -- when present for a
+  // round, use it directly instead of synthesizing pairings from
+  // resolved winners. Root-cause fix: the old synthesis-only path could
+  // never resolve most R1 winners after the fact (no static winner data
+  // beyond the moment R1's draw was first fetched, and the live tracker
+  // only covers currently-in-progress/very-recent matches) -- so R2+
+  // stayed almost entirely undetermined days after the real tournament
+  // had already moved on, showing "just a few matchups" instead of the
+  // real live draw. Falls back to the old derive-from-winners logic
+  // per-round when real data for that round isn't available yet (e.g. a
+  // fetch hiccup), so this degrades gracefully rather than going blank.
+  const realBracket=window.__CV_DATA?.tennis?.usoBracket?.[k];
   let curData=(t.rounds.find(r=>r.id==='r1')||{})[k]||[];
   let curWinners=null;
   USO_ROUND_IDS.forEach((rid,ri)=>{
-    if(ri>0){
+    if(realBracket&&realBracket[rid]&&realBracket[rid].length){
+      curData=realBracket[rid];
+    }else if(ri>0){
       const realNext=(t.rounds.find(r=>r.id===rid)||{})[k]||[];
       curData=_usoAdvanceRound(curData,curWinners,realNext);
     }
@@ -24452,6 +24467,28 @@ function renderTennisToday(filterTour){
     const todayIso=today();
     const isToday=m=>!m.matchDate||m.matchDate===todayIso;
     let atpMs=[],wtaMs=[],atpMsAnyDay=0,wtaMsAnyDay=0;
+    if(tourney.id==='uso2026'){
+      // US Open's static rounds[] only ever holds real R1 data -- R2
+      // onward are intentionally empty placeholders, meant to be derived
+      // live from resolved winners (see _buildUSOGenderData). Reading
+      // roundsInWindow directly here (the general path below) saw R1's
+      // real matchDates age out of isToday() as the tournament moved on
+      // and R2+ as permanently empty -- the US Open contributed zero
+      // matches to this list days after real play had already reached
+      // Round 2/3. _buildUSOGenderData now sources every round from the
+      // real, always-current ESPN bracket (fetch_uso_bracket()), so walk
+      // that instead -- same per-match filters, just a different source.
+      ['atp','wta'].forEach(k=>{
+        const gd=_buildUSOGenderData(k);
+        USO_ROUND_IDS.forEach(rid=>{
+          const rd=gd[rid];if(!rd)return;
+          const rm=tourney.rounds.find(x=>x.id===rid)||{};
+          const real=rd.data.filter((m,i)=>!rd.winners[i]&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
+          if(k==='atp'){atpMsAnyDay+=real.length;if(AF!=='WTA')atpMs.push(...real.filter(isToday).map(m=>({...m,_tour:'ATP',_roundName:rm.name||rid,_roundDates:rm.dates||''})));}
+          else{wtaMsAnyDay+=real.length;if(AF!=='ATP')wtaMs.push(...real.filter(isToday).map(m=>({...m,_tour:'WTA',_roundName:rm.name||rid,_roundDates:rm.dates||''})));}
+        });
+      });
+    } else {
     roundsInWindow.forEach(r=>{
       const realAtp=r.atp.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
       const realWta=r.wta.filter(m=>!m.winner&&m.p1&&m.p1!=='TBD'&&m.p2&&m.p2!=='TBD');
@@ -24459,6 +24496,7 @@ function renderTennisToday(filterTour){
       if(AF!=='WTA')atpMs.push(...realAtp.filter(isToday).map(m=>({...m,_tour:'ATP',_roundName:r.name,_roundDates:r.dates})));
       if(AF!=='ATP')wtaMs.push(...realWta.filter(isToday).map(m=>({...m,_tour:'WTA',_roundName:r.name,_roundDates:r.dates})));
     });
+    }
     const allMs=[...atpMs,...wtaMs];
 
     if(!allMs.length){

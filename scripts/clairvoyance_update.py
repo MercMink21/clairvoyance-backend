@@ -2270,6 +2270,127 @@ def fetch_tennis_schedule() -> list[dict]:
     log(f"Tennis schedule: {len(matches)} matches")
     return matches
 
+USO_ROUND_MAP = {
+    "Round 1": "r1", "Round 2": "r2", "Round 3": "r3", "Round 4": "r4",
+    "Quarterfinal": "qf", "Semifinal": "sf", "Final": "f",
+}
+
+def _uso_short_name(display_name: str) -> str:
+    """"Jannik Sinner" -> "J.Sinner" -- the F.Lastname format TEN_TOURNAMENTS'
+    hand-authored USO draw already uses everywhere (ATP_DB/WTA_DB keys, every
+    other match's p1/p2), so real fetched matches slot into the exact same
+    shape without a separate name-matching layer."""
+    parts = (display_name or "").split(" ", 1)
+    if len(parts) < 2 or not parts[0]:
+        return display_name or ""
+    return f"{parts[0][0]}.{parts[1]}"
+
+def fetch_uso_bracket() -> dict:
+    """Real, complete, always-current US Open bracket (both tours, every
+    round) straight from ESPN's tennis scoreboard API.
+
+    Real gap found investigating "loads of US Open matchups not showing,
+    so they're not getting locked": TEN_TOURNAMENTS' uso2026 entry hand-
+    authors Round 1 (fetched once, 2026-08-29, before a single R1 match
+    had been played) and leaves Round 2 onward as empty placeholders by
+    design, meant to be derived client-side round-by-round from resolved
+    winners. That derivation only works once R1's real winners are known
+    -- and the ONLY way this app could ever learn a winner was a manual
+    UI click (_usoSetWinnerManual, localStorage) or the ~15-minute live-
+    score tracker feed, which only carries currently-in-progress/very-
+    recent matches, not a match that finished 1-2 days ago. Net effect:
+    almost no R1 winners were ever resolvable after the fact, so almost
+    no R2 pairings could ever be derived either -- the tournament looked
+    nearly empty in the UI (a handful of matches) days after real play
+    had already moved on to Round 2/3.
+
+    Confirmed live: site.api.espn.com's tennis scoreboard endpoint
+    doesn't return one event per match the way fetch_tennis_schedule()
+    (today-only) assumes -- for a Slam it returns ONE event per
+    tournament (id like "189-2026"/"US Open"), and that event's
+    groupings[].competitions[] already contains the ENTIRE draw --
+    every round, qualifying through the final, real opponents (even for
+    rounds that haven't been played yet) and a real competitor[].winner
+    boolean the instant a match finishes. One call per tour, valid for
+    the whole fortnight -- no day-by-day iteration, no name-fuzzy-
+    matching, no CORS issue (same site.api.espn.com domain the rest of
+    this pipeline already uses with empty HEADERS).
+    """
+    log("US Open bracket (real ESPN draw, both tours)…")
+    out: dict = {"atp": {}, "wta": {}}
+    for tour, slug in (("atp", "mens-singles"), ("wta", "womens-singles")):
+        try:
+            data = fetch_json(
+                f"https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}/scoreboard",
+                params={"dates": TODAY_MT},
+            )
+            events = (data or {}).get("events") or []
+            ev = next((e for e in events if "us open" in (e.get("name") or "").lower()), None)
+            if not ev:
+                log(f"US Open bracket {tour}: no matching event for {TODAY_MT}", "WARN")
+                continue
+            grouping = next((g for g in ev.get("groupings", [])
+                              if g.get("grouping", {}).get("slug") == slug), None)
+            if not grouping:
+                continue
+            rounds: dict = {rid: [] for rid in USO_ROUND_MAP.values()}
+            for comp in grouping.get("competitions", []):
+                rname = (comp.get("round") or {}).get("displayName", "")
+                rid = USO_ROUND_MAP.get(rname)
+                if not rid:
+                    continue  # qualifying rounds -- not part of the 128-player main draw
+                competitors = comp.get("competitors") or []
+                if len(competitors) < 2:
+                    continue
+                c1, c2 = competitors[0], competitors[1]
+                a1, a2 = c1.get("athlete") or {}, c2.get("athlete") or {}
+                p1, p2 = _uso_short_name(a1.get("displayName")), _uso_short_name(a2.get("displayName"))
+                if not p1 or not p2:
+                    continue
+                s1 = c1.get("curatedRank", {}).get("current")
+                s2 = c2.get("curatedRank", {}).get("current")
+                winner = None
+                if c1.get("winner"):
+                    winner = p1
+                elif c2.get("winner"):
+                    winner = p2
+                # Built directly from each competitor's real per-set
+                # linescores rather than regex-parsing the free-text note
+                # ("Daniel Merida (ESP) bt (23) Andrey Rublev (RUS) 6-7 ...")
+                # -- a seeded loser's "(23)" sits right after "bt", which a
+                # naive "first ')' after bt" regex mistakes for the
+                # country-code paren and mangles the score. linescores is
+                # always positionally correct regardless of seeding/naming.
+                ls1, ls2 = c1.get("linescores") or [], c2.get("linescores") or []
+                sets = []
+                for i in range(min(len(ls1), len(ls2))):
+                    v1, v2 = ls1[i].get("value"), ls2[i].get("value")
+                    if v1 is None or v2 is None:
+                        continue
+                    tb = ls1[i].get("tiebreak") or ls2[i].get("tiebreak")
+                    sets.append(f"{int(v1)}-{int(v2)}" + (f"({tb})" if tb else ""))
+                score = " ".join(sets) if sets else None
+                match_date = None
+                raw_date = comp.get("date")
+                if raw_date:
+                    try:
+                        dt = datetime.strptime(raw_date, "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
+                        match_date = dt.astimezone(_MT).strftime("%Y-%m-%d")
+                    except Exception:
+                        match_date = None
+                rounds[rid].append({
+                    "p1": p1, "s1": f"({s1})" if s1 else "",
+                    "p2": p2, "s2": f"({s2})" if s2 else "",
+                    "matchDate": match_date, "winner": winner, "score": score,
+                    "state": (comp.get("status") or {}).get("type", {}).get("state", "pre"),
+                })
+            out[tour] = rounds
+        except Exception as exc:
+            log(f"US Open bracket {tour}: {exc}", "WARN")
+    total = sum(len(v) for r in out.values() for v in r.values())
+    log(f"  US Open bracket: {total} real matches across both tours")
+    return out
+
 def fetch_tennis_rankings_espn() -> dict:
     """Fetch ATP + WTA rankings from ESPN as a secondary validation
     reference alongside the primary TennisAbstract Elo ratings (different
@@ -5755,6 +5876,7 @@ def main() -> None:
     tennis_ratio      = fetch_tennis_ratio()          if S in ("tennis","all") else {}
     tennis_schedule   = fetch_tennis_schedule()       if S in ("tennis","all") else []
     tennis_sched_full = fetch_tennis_schedule_full()  if S in ("tennis","all") else {}
+    uso_bracket       = fetch_uso_bracket()           if S in ("tennis","all") else {}
     tennis_rankings   = fetch_tennis_rankings_espn()  if S in ("tennis","all") else {}
 
     # F1 is no longer tracked in the engine — purged from the daily fetch.
@@ -6112,6 +6234,7 @@ def main() -> None:
             "wtaRecentForm": wta_form[:100],
             "schedule":      tennis_schedule,
             "scheduleFull":  tennis_sched_full,
+            "usoBracket":    uso_bracket,
             "rankings":      tennis_rankings,
             "scheduleDate":  TODAY_ISO,
             "rolandGarros":  roland_garros,
