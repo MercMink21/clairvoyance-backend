@@ -963,15 +963,21 @@ def build_educational_caption(topic: dict) -> dict[str, str]:
 
 
 def build_covers_caption() -> dict[str, str]:
+    # League/sport count updated 2026-09-03 to match the current pinned
+    # card + landing page Coverage section exactly (11 subscriber-facing
+    # leagues across 5 sports: NFL/CFB/NBA/NHL/MLB + 6 soccer leagues) --
+    # was stale at "20 leagues across 6 sports" from before WNBA/tennis/
+    # CBB/College Hockey/SHL/LIIGA/KHL were split out as personal-use-only
+    # (see project_subscriber_vs_personal_leagues memory).
     ig = (
         "One engine. Every sport that matters.\n\nThis is Clairvoyance.\n\n"
-        "20 leagues across 6 sports, every pick graded, every result tracked publicly — model outputs, not gut feelings.\n\n"
+        "11 leagues across 5 sports, every pick graded, every result tracked publicly — model outputs, not gut feelings.\n\n"
         "Follow for daily signals, subscribe for exclusive graded picks, and intelligence briefs.\n\n"
         "clairvoyanceengine.info\nIG @clairvoyanceengine\nX @clairvoyanceeng\n\n"
         "#foryou #sportsbetting #bettingtips #bettingpicks"
     )
     x = (
-        "One engine. Every sport that matters.\n\n20 leagues, 6 sports, every pick graded.\n\n"
+        "One engine. Every sport that matters.\n\n11 leagues, 5 sports, every pick graded.\n\n"
         "clairvoyanceengine.info\n\n#sportsbetting #bettingpicks"
     )
     return {"instagram": ig, "x": x}
