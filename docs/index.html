@@ -9213,16 +9213,28 @@ function renderGoalies(){
   const active=Object.entries(NHL).filter(([a,t])=>!t.series.startsWith('ELIMINATED'));
   const html=active.map(([abbr,t])=>{
     if(!t.g1)return'';
-    const gsaxC=t.gsax>=8?'var(--gc)':t.gsax>=4?'var(--nc)':'var(--vc)';
+    // Real bug, found + fixed via a rigorous audit, 2026-09-03: hdsv/gsax
+    // are hand-curated fields that (per nhlEns's own existing comment,
+    // same limitation) only ever existed for a handful of teams -- 28 of
+    // 32 real teams have real gaa/sv but undefined hdsv/gsax, and this
+    // function crashed on t.hdsv.toFixed(3)/t.gsax.toFixed(1) with no
+    // guard, confirmed live (undefined.toFixed threw on every automated
+    // page load, breaking renderGoalies -- and whatever ran after it in
+    // the same synchronous call chain -- for every one of those 28 teams).
+    // gaa/sv ARE real for all 32, so those two rows always render; hdsv/
+    // gsax now render conditionally, same pattern already used just below
+    // for t.edge?.save_pct_pk.
+    const hasHd=t.hdsv!=null,hasGsax=t.gsax!=null;
+    const gsaxC=hasGsax?(t.gsax>=8?'var(--gc)':t.gsax>=4?'var(--nc)':'var(--vc)'):'var(--t3)';
     const gaaC=t.gaa<=2.2?'var(--nc)':t.gaa<=2.8?'var(--vc)':'var(--hc)';
-    return`<div class="gcrd" style="border-color:${t.gsax>=8?'rgba(255,204,0,.5)':t.gsax>=4?'rgba(0,229,255,.4)':'rgba(240,0,255,.3)'}">
+    return`<div class="gcrd" style="border-color:${hasGsax?(t.gsax>=8?'rgba(255,204,0,.5)':t.gsax>=4?'rgba(0,229,255,.4)':'rgba(240,0,255,.3)'):'rgba(240,0,255,.3)'}">
       <div style="font-family:var(--mono);font-size:15px;letter-spacing:2px;color:var(--t3);margin-bottom:3px">${abbr} · ${t.series}</div>
       <div class="gcrd-n">${t.g1}</div>
       ${t.g2?`<div style="font-family:var(--mono);font-size:16px;color:var(--t3)">BU: ${t.g2}</div>`:''}
       <div class="gcrd-s" style="margin-top:6px">GAA: <span style="color:${gaaC}">${t.gaa.toFixed(2)}</span></div>
       <div class="gcrd-s">Sv%: <span style="color:${t.sv>=.920?'var(--nc)':'var(--t2)'}">${t.sv.toFixed(3)}</span></div>
-      <div class="gcrd-s">HDSv%: <span style="color:${t.hdsv>=.920?'var(--nc)':t.hdsv>=.900?'var(--vc)':'var(--hc)'}">${t.hdsv.toFixed(3)}</span></div>
-      <div class="gcrd-s">GSAx: <span style="color:${gsaxC};font-weight:700">${t.gsax>=0?'+':''}${t.gsax.toFixed(1)}</span></div>
+      ${hasHd?`<div class="gcrd-s">HDSv%: <span style="color:${t.hdsv>=.920?'var(--nc)':t.hdsv>=.900?'var(--vc)':'var(--hc)'}">${t.hdsv.toFixed(3)}</span></div>`:''}
+      ${hasGsax?`<div class="gcrd-s">GSAx: <span style="color:${gsaxC};font-weight:700">${t.gsax>=0?'+':''}${t.gsax.toFixed(1)}</span></div>`:''}
       <div class="gcrd-s">5v5: <span class="nn">${(t.edge?.save_pct_5v5||t.sv).toFixed(3)}</span></div>
       ${t.edge?.save_pct_pk!=null?`<div class="gcrd-s">4v5: <span style="color:${t.edge.save_pct_pk>=.900?'var(--nc)':t.edge.save_pct_pk>=.870?'var(--vc)':'var(--hc)'}">${t.edge.save_pct_pk.toFixed(3)}</span></div>`:''}
     </div>`;
