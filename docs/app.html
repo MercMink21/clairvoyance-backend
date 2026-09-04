@@ -22268,7 +22268,10 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
   };
 }
 async function _genPerfGraphicByIdx(i){
-  const periods=window._cvPerfPeriods;
+  // Public/subscriber-scoped -- same reasoning as _genCombinedTrackGraphic
+  // below (this produces the same kind of public-facing PNG, just one
+  // period at a time instead of the full table).
+  const periods=window._cvPerfPeriodsPub;
   if(!periods||!periods[i])return;
   const per=periods[i];
   const slug=per.label.toLowerCase().replace(/[\s/]+/g,'-');
@@ -22410,6 +22413,21 @@ const LEAGUE_FILTER_LABELS=['NFL','CFB','MLB','NHL','College Hockey','SHL','LIIG
 function renderTrackRecord(){
   const el=document.getElementById('social-record-content');if(!el)return;
   const allBets=getP();
+  // Public/subscriber-facing bet set -- excludes WNBA, ATP/WTA (tennis),
+  // CBB, KHL, SHL, LIIGA, NCAAH (College Hockey), World Cup -- everything
+  // that's personal-use-only per the 2026-09-03 PRODUCT_SPORTS/
+  // OTHER_ALLOWED_SPORTS split (auto_lock_settle.py), matching exactly
+  // what the landing page's own Live Track Record / League Performance
+  // sections already show. Explicit request, 2026-09-03: social cards are
+  // public-facing content (emailed/posted daily), so the 3 export
+  // functions below (_genCombinedTrackGraphic/_genSportPerfGraphic/
+  // _genLeaguePerfGraphic) read the "Pub"-suffixed globals built from this
+  // set. The in-app HTML preview this function also renders (personal
+  // use, viewed only by the account owner) is UNTOUCHED and keeps using
+  // the full allBets everywhere it already did -- this is a second,
+  // parallel computation, not a replacement.
+  const _PUB_SPORTS=new Set(['MLB','NHL','NBA','NFL','CFB','PL','LIGA','BUND','MLS','SERIEA','CL']);
+  const pubBets=allBets.filter(b=>_PUB_SPORTS.has(_normSport(b)));
   const now=Date.now();
   const nowD=getMSTNow();
   const todayStr=today(),ydStr=yesterday();
@@ -22446,6 +22464,23 @@ function renderTrackRecord(){
     ?[{key:'DATE',label:_fmtDay(_filterDate),sub:'SELECTED DATE',pC:'#00f0ff',perf:cP(_dayBets)}]
     :periods;
   window._cvPerfPeriods=exportPeriods;
+
+  // Public/subscriber-scoped mirror of the block above, for the PNG export
+  // only (_genCombinedTrackGraphic) -- same periods/date-filter logic, just
+  // sourced from pubBets instead of allBets.
+  const pubPeriods=[
+    {key:'TODAY',      label:'TODAY',      sub:_fmtDay(todayStr), pC:'#f000ff', perf:cP(pubBets.filter(p=>p.date===todayStr))},
+    {key:'YESTERDAY',  label:'YESTERDAY',  sub:_fmtDay(ydStr),    pC:'#f000ff', perf:cP(pubBets.filter(p=>p.date===ydStr))},
+    {key:'ROLLING 7D', label:'ROLLING 7D', sub:'',            pC:'#f000ff', perf:cP(pubBets.filter(p=>p.lockedAt&&p.lockedAt>=wk7))},
+    {key:'THIS MONTH', label:'MONTH TO DATE', sub:thisMonthLbl,  pC:'#f000ff', perf:cP(pubBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfMonth.getTime()))},
+    {key:'LAST MONTH', label:'LAST MONTH', sub:lastMonthLbl,  pC:'#f000ff', perf:cP(pubBets.filter(p=>p.lockedAt&&p.lockedAt>=firstOfLastMonth.getTime()&&p.lockedAt<firstOfMonth.getTime()))},
+    {key:'ALL TIME',   label:'ALL TIME',   sub:'',            pC:'#f000ff', perf:cP(pubBets)},
+    {key:'SINCE LAUNCH',label:'SINCE LAUNCH',sub:'JUL 1, 2026',pC:'#f000ff',perf:cP(pubBets.filter(p=>p.lockedAt&&p.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()))},
+  ];
+  const _pubDayBets=_filterDate?pubBets.filter(b=>b.date===_filterDate):null;
+  window._cvPerfPeriodsPub=_filterDate
+    ?[{key:'DATE',label:_fmtDay(_filterDate),sub:'SELECTED DATE',pC:'#00f0ff',perf:cP(_pubDayBets)}]
+    :pubPeriods;
 
   const rC=p=>p===null?'rgba(220,190,255,.4)':p>=.62?'#00f0ff':p>=.50?'#bbff00':'#ff2090';
   const uC=u=>u>=0?'#00f0ff':'#ff2090';
@@ -22542,7 +22577,7 @@ function renderTrackRecord(){
 
   <!-- ── SPORT / LEAGUE PERFORMANCE CARD ── -->
   <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:10px;text-shadow:0 0 8px #f000ff">// SPORT PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">Baseball, basketball, football, hockey, soccer, tennis · 1080×1350 PNG</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">Baseball, basketball, football, hockey, soccer · 1080×1350 PNG</div>
 
   <!-- Period selector -->
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
@@ -22608,6 +22643,27 @@ function renderTrackRecord(){
       const filteredBets=sportFilter?bySport[sportFilter]||[]:periodBets;
       const totalP=cP(filteredBets);
       window._cvSportPeriodData={sportList,bySport,activePeriod,frameLabel,totalP,sportFilter};
+
+      // Public/subscriber-scoped mirror, for the PNG export only
+      // (_genSportPerfGraphic) -- same activePeriod logic, sourced from
+      // pubBets, and TENNIS dropped from the order entirely (100%
+      // personal-use, no subscriber-facing equivalent to keep it as).
+      const pubPeriodBets=_filterDate?_pubDayBets:
+        activePeriod==='TODAY'?pubBets.filter(b=>b.date===todayStr):
+        activePeriod==='YESTERDAY'?pubBets.filter(b=>b.date===ydStr):
+        activePeriod==='ROLLING 7D'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
+        activePeriod==='THIS MONTH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
+        activePeriod==='LAST MONTH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
+        activePeriod==='SINCE LAUNCH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()):
+        pubBets;
+      const PUB_SPORT_ORDER=['BASEBALL','BASKETBALL','FOOTBALL','HOCKEY','SOCCER'];
+      const pubBySport={};PUB_SPORT_ORDER.forEach(s=>pubBySport[s]=[]);
+      pubPeriodBets.forEach(b=>{const s=_broadSportOf(_normSport(b));if(s&&pubBySport[s])pubBySport[s].push(b);});
+      const pubSportFilter=(sportFilter&&PUB_SPORT_ORDER.includes(sportFilter))?sportFilter:'';
+      const pubSportList=pubSportFilter?[pubSportFilter]:PUB_SPORT_ORDER;
+      const pubFilteredBets=pubSportFilter?pubBySport[pubSportFilter]||[]:pubPeriodBets;
+      const pubTotalP=cP(pubFilteredBets);
+      window._cvSportPeriodDataPub={sportList:pubSportList,bySport:pubBySport,activePeriod,frameLabel,totalP:pubTotalP,sportFilter:pubSportFilter};
       // Which leagues make up each broad sport — shown as a sub-line under
       // the sport name, in the same greyish tone as the column headers.
       const SPORT_LEAGUES={BASEBALL:'MLB',BASKETBALL:'NBA, WNBA, CBB',FOOTBALL:'NFL, CFB',
@@ -22661,7 +22717,7 @@ function renderTrackRecord(){
 
   <!-- ── LEAGUE PERFORMANCE CARD ── -->
   <div style="font-family:'Orbitron',sans-serif;font-size:15px;letter-spacing:3px;color:#f000ff;margin-bottom:6px;text-shadow:0 0 8px #f000ff">// LEAGUE PERFORMANCE CARD — SOCIAL EXPORT</div>
-  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">All 20 leagues · record, win%, units, streak · 1080×1350 PNG</div>
+  <div style="font-family:var(--mono);font-size:15px;color:rgba(220,190,255,.45);margin-bottom:10px">The 10 subscriber-facing leagues · record, win%, units, streak · 1080×1350 PNG</div>
   <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
     ${periods.map(per=>`<button onclick="renderTrackRecord._leaguePeriod='${per.key}';renderTrackRecord()" style="padding:5px 10px;font-family:var(--mono);font-size:15px;border-radius:2px;cursor:pointer;border:1px solid rgba(240,0,255,.35);background:${(renderTrackRecord._leaguePeriod||'ALL TIME')===per.key?'rgba(240,0,255,.28)':'rgba(240,0,255,.06)'};color:#f000ff;letter-spacing:1px">${per.label}</button>`).join('')}
   </div>
@@ -22720,6 +22776,36 @@ function renderTrackRecord(){
     const filteredBets2=leagueFilter?periodBets2.filter(b=>{const lm=LDEFS.find(l=>l.lbl===leagueFilter);return lm&&lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase());}):periodBets2;
     const totalP2=cP(filteredBets2);
     window._cvLeaguePeriodData={LDEFS:activeLDEFS,periodBets:periodBets2,activePeriod,frameLabel:frameLabel2,totalP:totalP2,leagueFilter};
+
+    // Public/subscriber-scoped mirror, for the PNG export only
+    // (_genLeaguePerfGraphic) -- only the 11 real subscriber-facing
+    // leagues (no WNBA/CBB/ATP/WTA/KHL/SHL/LIIGA/College Hockey/World Cup),
+    // sourced from pubBets instead of allBets.
+    const LDEFS_PUB=[
+      {lbl:'NFL',          codes:['NFL','FB']},
+      {lbl:'CFB',          codes:['CFB']},
+      {lbl:'MLB',          codes:['MLB']},
+      {lbl:'NHL',          codes:['NHL']},
+      {lbl:'NBA',          codes:['NBA']},
+      {lbl:'Champions League',codes:['CH','CL']},
+      {lbl:'Premier League',codes:['PL']},
+      {lbl:'La Liga',      codes:['LIGA']},
+      {lbl:'Bundesliga',   codes:['BL']},
+      {lbl:'MLS',          codes:['MLS']},
+    ];
+    const pubLeagueFilter=(leagueFilter&&LDEFS_PUB.some(l=>l.lbl===leagueFilter))?leagueFilter:'';
+    const pubPeriodBets2=_filterDate?_pubDayBets:
+      activePeriod==='TODAY'?pubBets.filter(b=>b.date===todayStr):
+      activePeriod==='YESTERDAY'?pubBets.filter(b=>b.date===ydStr):
+      activePeriod==='ROLLING 7D'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=wk7):
+      activePeriod==='THIS MONTH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfMonth.getTime()):
+      activePeriod==='LAST MONTH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=firstOfLastMonth.getTime()&&b.lockedAt<firstOfMonth.getTime()):
+      activePeriod==='SINCE LAUNCH'?pubBets.filter(b=>b.lockedAt&&b.lockedAt>=new Date('2026-07-01T04:00:00Z').getTime()):
+      pubBets;
+    const pubActiveLDEFS=pubLeagueFilter?LDEFS_PUB.filter(lm=>lm.lbl===pubLeagueFilter):LDEFS_PUB;
+    const pubFilteredBets2=pubLeagueFilter?pubPeriodBets2.filter(b=>{const lm=LDEFS_PUB.find(l=>l.lbl===pubLeagueFilter);return lm&&lm.codes.some(c=>b.sport&&b.sport.toUpperCase()===c.toUpperCase());}):pubPeriodBets2;
+    const pubTotalP2=cP(pubFilteredBets2);
+    window._cvLeaguePeriodDataPub={LDEFS:pubActiveLDEFS,periodBets:pubPeriodBets2,activePeriod,frameLabel:frameLabel2,totalP:pubTotalP2,leagueFilter:pubLeagueFilter};
     const hdr='<div style="text-align:center;margin-bottom:8px"><div style="font-family:\'Orbitron\',sans-serif;font-size:18px;font-weight:900;color:#f000ff;text-shadow:0 0 14px #f000ff;letter-spacing:2px">CLAIRVOYANCE</div><div style="font-family:var(--mono);font-size:11px;color:rgba(220,190,255,.4);letter-spacing:3px">LEAGUE PERFORMANCE</div><div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:#f000ff;letter-spacing:1.5px;margin-top:3px;text-shadow:0 0 6px #f000ff88">'+frameLabel2+'</div></div>';
     const divider='<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(240,0,255,.6),transparent);margin-bottom:6px"></div>';
     const colHdr='<div style="display:grid;grid-template-columns:2fr 1.4fr .9fr .9fr;gap:0;margin-bottom:4px"><div style="font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3);letter-spacing:1px">LEAGUE</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">RECORD</div><div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">WIN%</div><div style="text-align:right;font-family:var(--mono);font-size:10px;color:rgba(220,190,255,.3)">UNITS</div></div>';
@@ -22897,9 +22983,14 @@ function renderTrackRecord(){
 
 async function _genCombinedTrackGraphic(){
   // Refresh so TODAY/YESTERDAY reflect the CURRENT date at save time — the
-  // cached _cvPerfPeriods can be a day stale if the tab was rendered earlier.
+  // cached _cvPerfPeriodsPub can be a day stale if the tab was rendered earlier.
   try{renderTrackRecord();}catch(e){}
-  const periods=window._cvPerfPeriods;
+  // Public/subscriber-scoped -- explicit request, 2026-09-03: this card is
+  // emailed/posted publicly, so it must never include WNBA/tennis/CBB/KHL/
+  // SHL/LIIGA/NCAAH/World Cup performance (personal-use-only, per
+  // OTHER_ALLOWED_SPORTS in auto_lock_settle.py). The in-app HTML preview
+  // (window._cvPerfPeriods, unchanged) still shows everything for personal use.
+  const periods=window._cvPerfPeriodsPub;
   if(!periods){toast('// RENDER TRACK RECORD FIRST');return;}
   toast('// RENDERING 1080×1350...');
   const W=1080,H=1350;
@@ -22996,7 +23087,10 @@ async function _genCombinedTrackGraphic(){
 
 async function _genSportPerfGraphic(){
   try{renderTrackRecord();}catch(e){} // refresh dynamic dates/data at save time
-  const d=window._cvSportPeriodData;
+  // Public/subscriber-scoped -- same reasoning as _genCombinedTrackGraphic
+  // above. TENNIS is dropped entirely (100% personal-use); BASKETBALL/
+  // HOCKEY here are NBA-only/NHL-only, not blended with WNBA/CBB/KHL/SHL/LIIGA.
+  const d=window._cvSportPeriodDataPub;
   if(!d||!d.sportList||!d.sportList.length){toast('// RENDER SPORT CARD FIRST');return;}
   toast('// RENDERING SPORT CARD 1080×1350...');
   const W=1080,H=1350;
@@ -23042,10 +23136,11 @@ async function _genSportPerfGraphic(){
   const sports=(d.sportFilter?d.sportList:d.sportList).slice(0,8);
   const rowH=Math.min(120,(H-380)/Math.max(sports.length+1,1));
   const startY=hdrY+26;
-  const SPORT_LEAGUES={BASEBALL:'MLB',BASKETBALL:'NBA, WNBA, CBB',FOOTBALL:'NFL, CFB',
-    HOCKEY:'NHL, KHL, SHL, LIIGA',
-    SOCCER:'Bundesliga, Champions League, La Liga, MLS, Premier League, Serie A',
-    TENNIS:'ATP, WTA'};
+  // Public/subscriber-scoped legend -- no WNBA/CBB/KHL/SHL/LIIGA/ATP/WTA,
+  // no TENNIS row at all (matches window._cvSportPeriodDataPub above).
+  const SPORT_LEAGUES={BASEBALL:'MLB',BASKETBALL:'NBA',FOOTBALL:'NFL, CFB',
+    HOCKEY:'NHL',
+    SOCCER:'Bundesliga, Champions League, La Liga, MLS, Premier League, Serie A'};
   const _splitLeagues=str=>{
     const parts=str.split(', ');
     if(parts.length<2)return[str,''];
@@ -23105,7 +23200,10 @@ async function _genSportPerfGraphic(){
 // ═══════════════════════════════════════════════════════════════════════════
 async function _genLeaguePerfGraphic(){
   try{renderTrackRecord();}catch(e){} // refresh dynamic dates/data at save time
-  const d=window._cvLeaguePeriodData;
+  // Public/subscriber-scoped -- same reasoning as _genCombinedTrackGraphic
+  // above. Only the 11 real subscriber-facing leagues; a personal-only
+  // leagueFilter (e.g. ATP) is ignored here and falls back to all 11.
+  const d=window._cvLeaguePeriodDataPub;
   if(!d){toast('// SWITCH TO TRACK RECORD TAB FIRST');return;}
   const{LDEFS,periodBets,activePeriod,frameLabel,totalP,leagueFilter}=d;
 
