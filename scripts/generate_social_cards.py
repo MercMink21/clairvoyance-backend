@@ -104,7 +104,12 @@ EVENTS: list[dict] = [
 # every 5 calendar days, deterministically (days-since-epoch // 5), so it
 # never needs stored state and can't double-fire or drift out of sync.
 ROTATION_EPOCH = datetime(2026, 7, 1, tzinfo=timezone.utc)
-ROTATION_CONTENT = ["grading", "subscription", "covers"]
+# "subscription" ("Choose Your Tier") cut from rotation per explicit
+# request, 2026-09-03 -- record_subscription_tiers_reveal()/
+# build_subscription_caption() are left in place (generate_video_reveal.py
+# still has a standalone --type subscription CLI entry for manual use),
+# just no longer auto-generated/emailed every 5th day.
+ROTATION_CONTENT = ["grading", "covers"]
 # Static "what Clairvoyance covers" asset — a real pre-made card (not
 # generated), attached as-is rather than turned into a video.
 COVERS_CARD_PATH = ROOT / "scripts" / "assets" / "covers_card.png"
@@ -1336,14 +1341,15 @@ def main() -> None:
                 intro=f"{ev['event']['name']} just wrapped — final performance card is ready:",
             )
 
-    # Rotation content (grading system, subscription tiers, educational
-    # series) — every 5th day since launch, deterministic from the date.
+    # Rotation content (grading system, educational series) — every 5th day
+    # since launch, deterministic from the date. "subscription" (Choose
+    # Your Tier) cut from this rotation 2026-09-03 -- see ROTATION_CONTENT.
     rotation_item = get_rotation_item(now_mt)
     if rotation_item:
         log(f"Rotation content today: {rotation_item}")
         try:
             from generate_video_reveal import (
-                record_grading_tiers_reveal, record_subscription_tiers_reveal,
+                record_grading_tiers_reveal,
                 record_educational_reveal, EDUCATIONAL_TOPICS,
             )
             if rotation_item == "covers":
@@ -1361,11 +1367,6 @@ def main() -> None:
                     subject = "Clairvoyance — Pick Grading System"
                     intro = "Rotation content — Pick Grading System, ready to post:"
                     captions = build_grading_caption()
-                elif rotation_item == "subscription":
-                    record_subscription_tiers_reveal(rotation_path)
-                    subject = "Clairvoyance — Choose Your Tier"
-                    intro = "Rotation content — Subscription tiers, ready to post:"
-                    captions = build_subscription_caption()
                 else:
                     topic = EDUCATIONAL_TOPICS[rotation_item]
                     record_educational_reveal(topic["tag"], topic["title"], topic["lines"], rotation_path)
