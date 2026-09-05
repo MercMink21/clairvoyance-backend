@@ -80,7 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _gmail_email import send_email as _send_gmail  # noqa: E402
 from _gmail_email import EMAIL_WRAP_OPEN as _EMAIL_WRAP_OPEN, EMAIL_WRAP_CLOSE as _EMAIL_WRAP_CLOSE  # noqa: E402
 
-APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
+APP_URL = "https://purple-wraith.github.io/clairvoyance-backend/app.html"
 SOCIAL_CARD_EMAIL_TO = os.environ.get("SOCIAL_CARD_EMAIL_TO", "")
 ROOT = Path(__file__).resolve().parent.parent
 

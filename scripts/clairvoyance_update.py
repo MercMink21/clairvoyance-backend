@@ -5672,7 +5672,7 @@ def patch_html_timestamp() -> None:
 def git_push(summary: str = "") -> bool:
     try:
         subprocess.run(["git","-C",str(ROOT),"add",
-            # engine SPA + data — served at mercmink21.github.io/clairvoyance-backend/
+            # engine SPA + data — served at purple-wraith.github.io/clairvoyance-backend/
             "docs/index.html",
             "docs/app.html",
             "docs/data.json",
@@ -5698,7 +5698,7 @@ def git_push(summary: str = "") -> bool:
                               capture_output=True)
         if diff.returncode == 0:
             log("git: nothing to commit"); return True
-        msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}\n\nhttps://mercmink21.github.io/clairvoyance-backend/app.html"
+        msg = f"data: {TS_DISPLAY} auto-refresh\n\n{summary}\n\nhttps://purple-wraith.github.io/clairvoyance-backend/app.html"
         subprocess.run(["git","-C",str(ROOT),"commit","-m",msg], check=True, capture_output=True)
         try:
             subprocess.run(["git","-C",str(ROOT),"push","origin","main"], check=True, capture_output=True)
@@ -5737,7 +5737,7 @@ def verify_deployment(retries: int = 3, delay_sec: int = 20) -> bool:
     failure is transient (Pages still rebuilding, a flaky CDN edge) rather
     than a real bad deploy.
     """
-    url = "https://mercmink21.github.io/clairvoyance-backend/data.json"
+    url = "https://purple-wraith.github.io/clairvoyance-backend/data.json"
     for attempt in range(retries):
         try:
             time.sleep(delay_sec)

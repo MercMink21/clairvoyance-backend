@@ -72,7 +72,7 @@ from _subscribers import recipients_for, OWNER_EMAIL, EMAIL_BANNER_URL  # noqa: 
 # path that skips it.
 
 ROOT = Path(__file__).resolve().parent.parent
-APP_URL = "https://mercmink21.github.io/clairvoyance-backend/app.html"
+APP_URL = "https://purple-wraith.github.io/clairvoyance-backend/app.html"
 # Separate from SOCIAL_CARD_EMAIL_TO on purpose -- this is a personal daily
 # betting reference, not public social content, so it can (and probably
 # should) go to a different inbox. Falls back to the social recipient only

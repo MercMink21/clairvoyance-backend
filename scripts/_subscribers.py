@@ -64,7 +64,7 @@ PRICING_BY_COUNT = {1: 20, 2: 30, 3: 40, 4: 50, 5: 60, 6: 65}
 # JPEG q78 -- the source PNG was 843KB uncompressed at that width, too
 # heavy for an email header; JPEG compresses its soft glow/gradient
 # background far better than PNG does).
-EMAIL_BANNER_URL = "https://mercmink21.github.io/clairvoyance-backend/email_banner.jpg"
+EMAIL_BANNER_URL = "https://purple-wraith.github.io/clairvoyance-backend/email_banner.jpg"
 
 
 def _now() -> datetime:

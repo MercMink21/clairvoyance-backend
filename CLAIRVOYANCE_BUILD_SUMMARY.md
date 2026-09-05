@@ -26,7 +26,7 @@ In short: the app went from a 5-league MLB/NBA/NHL/WNBA/Tennis picks tool to a 1
 | Property | Value |
 |---|---|
 | **GitHub Repo** | `MercMink21/clairvoyance-backend` |
-| **Live URL** | `https://mercmink21.github.io/clairvoyance-backend/app.html` |
+| **Live URL** | `https://purple-wraith.github.io/clairvoyance-backend/app.html` |
 | **Root redirect** | `docs/index.html` → identical copy of `app.html` |
 | **Custom domain** | `clairvoyanceengine.info` (Talos spam review flagged ~2026-05-31 — verify current status) |
 | **GitHub Pages source** | `docs/` folder |

@@ -11,7 +11,7 @@ app.html) already builds per-game, so it can seed the same
 _leagueScoreCache that function's live browser fetch populates.
 
 Why this exists: _fetchLeagueScoreboard() calls ESPN's public scoreboard
-API directly from the browser at https://mercmink21.github.io. Confirmed
+API directly from the browser at https://purple-wraith.github.io. Confirmed
 by direct reproduction (headless browser hitting the live page) that this
 call intermittently fails with a CORS error -- "No 'Access-Control-Allow-
 Origin' header is present" -- even though the exact same endpoint returns
